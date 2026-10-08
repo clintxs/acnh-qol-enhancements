@@ -57,6 +57,10 @@ class CardMachine(Machine):
         self.u.reg_write(UC_ARM64_REG_PC, self.u.reg_read(UC_ARM64_REG_LR))
     def service(self, u, pc, size, data):
         off = pc - self.base; service = self.services.get(pc)
+        if off == 0x257b340:
+            if self.enabled: u.reg_write(UC_ARM64_REG_PC, self.callbacks[off])
+            else: self.wallet_debits.append((self.read(self.reg(0), 1), self.reg(1))); self.finish()
+            return
         if off == 0x257abf0:
             if self.enabled: u.reg_write(UC_ARM64_REG_PC, self.callbacks[off])
             else: self.finish(self.wallet)
@@ -79,6 +83,9 @@ class CardMachine(Machine):
             elif name == 'ShopPurchaseSpace': self.space_args = (self.reg(1), self.reg(2)); self.finish(3)
             else: self.finish(1)
             return
+        if service == ('catalog_price', None): self.finish(1000); return
+        if service == ('catalog_ordinance', None): self.finish(int(self.catalog_boom)); return
+        if service == ('catalog_choice', None): self.finish(3); return
         super().service(u, pc, size, data)
     def invoke(self, address, *arguments, caller=None):
         for i, value in enumerate(arguments): self.u.reg_write(UC_ARM64_REG_X0 + i, value)
@@ -152,6 +159,31 @@ for base in (0x7100000000, 0x7200000000):
         m.route(0x257b340, DEBIT_CALLS[0], m.player, 10)
         assert m.route(0x257b6f0, 0xb1d4d4, m.player, 0) == 1234567
         assert m.invoke(m.callbacks[0xf86e68], m.query) == 1
+    # Nook Shopping's exact native BLs work independently of room: Nook Stop,
+    # phone at home, outdoors, and elsewhere; every resident uses their account.
+    for stage in (0, 0x6622bd46, 0xde45e2c6, *SHOPS):
+        m.write(m.info + 0x38, stage, 4)
+        for player in range(8):
+            before = m.balance(player)
+            assert m.invoke(base + 0x2b7763c, m.player, caller=base + 0x2b77640) == before
+            m.invoke(base + 0x2b7f588, m.player, 100, caller=base + 0x2b7f58c)
+            assert m.balance(player) == before - 100
+            assert m.route(0x257abf0, 0x2b77638, m.player) == m.wallet
+    # Execute the actual catalog price/ordinance comparison. Engine item-price
+    # and regulation lookup are modeled; the native 20% arithmetic and choice
+    # of insufficient-funds (2) versus checkout execute unchanged.
+    m.services[base + 0x19ed730] = ('catalog_price', None)
+    m.services[base + 0x263f0a0] = ('catalog_ordinance', None)
+    m.services[base + 0x2b7eeac] = ('catalog_choice', None)
+    for boom in (False, True):
+        m.catalog_boom = boom
+        for available in (0, 999, 1000, 1199, 1200, 999999999):
+            m.u.reg_write(UC_ARM64_REG_X20, available)
+            m.u.reg_write(UC_ARM64_REG_X29, m.ram + 0x1ef000)
+            result = m.invoke(base + 0x2b77700, caller=base + 0x2b777a8)
+            assert result == (3 if available >= (1200 if boom else 1000) else 2)
+    m.write(m.player, 255, 1)
+    assert m.route(0x257abf0, 0x2b7763c, m.player) == m.wallet
     # Room lookup failure, invalid player and alternate capacity modes fail closed.
     m.write(m.info + 0x38, SHOPS[0], 4)
     m.u.mem_write(m.query + 0x200, b'cMoneyBox\0')
@@ -168,6 +200,7 @@ for base in (0x7100000000, 0x7200000000):
     m.deposit(100); assert m.balance() == 999999999
     m.route(0x257b340, DEBIT_CALLS[0], m.player, 999999999)
     assert m.balance() == 0 and m.route(0x257abf0, WALLET_CALLS[0], m.player) == 0
+    assert m.route(0x257abf0, 0x2b7763c, m.player) == 0
     # Prove room constants with the native hash body, not the source comments.
     del m.services[base + 0x5bd550]
     for name, expected in zip(('IdrMarket01', 'IdrMarket02', 'IdrTailor'), SHOPS):

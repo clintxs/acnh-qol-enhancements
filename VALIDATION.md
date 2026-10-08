@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.6 Shopping Card prototype
+# Unified QoL validation — 0.3.7 Shopping Card prototype
 
 Validated locally on October 8, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -50,6 +50,22 @@ SIMD context declaration was corrected to match the assembly stack layout, with
 compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
 
 ## Shopping Card
+
+- 0.3.7 covers regular Nook Shopping/catalog orders for yourself. Catalog gift
+  sending uses a separate native payment path and is outside this prototype.
+- At two ASLR bases, the catalog affordability caller reads each of eight
+  residents' savings in every modeled room and outside shops. The original
+  accepted-order BL executes the compiled debit hook and native encrypted
+  withdrawal; pocket funds remain unchanged. Invalid residents and adjacent
+  unlisted callers retain native routing. Empty savings returns zero even
+  with cash available. Native price comparison and the 20% Bell Boom adjustment
+  execute unchanged at below/equal/above thresholds through the full savings cap.
+- The catalog HUD test executes the original root-list insertion from factory
+  032A7508, then the compiled display hook and original BellPage update. It
+  verifies all residents, savings Down/Finish feedback after catalog payment,
+  silent unchanged balances, restoration of cash on close/destruction, type,
+  resident, context and bounded-list guards. Engine layout/text and playback
+  boundaries are modeled. No live Nook Stop/phone gameplay is claimed.
 
 - Compiled C++ hooks run at two ASLR bases for both Nook's Cranny rooms and
   Able Sisters. Eight separately modeled resident accounts retain independent
@@ -253,4 +269,11 @@ Switch hardware and other emulators/game versions are not validated targets.
    Verify purchases count down with ka-ching, sales count up, rapid changes settle
    correctly, and first entry/resident changes stay silent. Check leaving both
    shops restores cash; pockets still show cash.
+   At Nook Stop and in the phone app (including outdoors), order special goods
+   and previously cataloged furniture/clothing for yourself. Compare savings,
+   pocket Bells and delivered mail; check order limits, cancellation, insufficient
+   savings despite rich pockets, empty pockets with sufficient savings and Bell
+   Boom prices. Verify the card HUD and downward animation/sound, closing to cash,
+   reopening silently and switching residents. Gift payment is unchanged and
+   needs a separate implementation; check the native gift flow for regressions.
    Restart with Shopping Card disabled/removed and verify native payment.

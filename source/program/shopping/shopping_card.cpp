@@ -21,6 +21,12 @@ namespace field {
 constexpr unsigned ActiveField = 0x330, FieldTypeKey = 0x338, StageHash = 0x38;
 constexpr unsigned ActionEvent = 8, EventPlayer = 0x2a8, CapacityModeText = 0x100;
 }
+namespace catalog {
+constexpr std::uintptr_t Methods = 0x049b28b8;
+constexpr std::uintptr_t WalletReturn = 0x02b77640, DebitReturn = 0x02b7f58c;
+constexpr unsigned Context = 0x98, Roots = 0x40, RootCount = 0x50, LinkOffset = 0x54;
+constexpr unsigned State = 0xa8, Player = 0x1f8, DisplayKey = 1;
+}
 namespace display {
 constexpr unsigned Counter = 0x210, Player = 0x230, NumberBinding = 0x250;
 constexpr unsigned Page = 0x210, PageLayout = 0x3f8, Parameters = 0x38, HudPlayer = 0x224;
@@ -82,6 +88,32 @@ template<std::size_t N> bool Contains(const std::array<unsigned, N> &sites, std:
     const auto start = exl::util::modules::GetTargetStart();
     if (caller < start || caller - start > UINT32_MAX) return false;
     for (auto site : sites) if (caller - start == site) return true;
+    return false;
+}
+// The catalog is a root UI sequence in the same native context as BellPage.
+// Factory 032a7508 links it into context+40 using context+54's intrusive-link
+// offset; 032a75e4 assigns its context. Resolve that live list on each update,
+// rather than caching a controller or leaving a flag set after a phone closes.
+bool CatalogOpen(std::uintptr_t owner, unsigned player) {
+    const auto context = owner ? Read<std::uintptr_t>(owner, catalog::Context) : 0;
+    if (!context) return false;
+    const auto count = Read<unsigned>(context, catalog::RootCount);
+    const auto offset = Read<int>(context, catalog::LinkOffset);
+    if (count > 256 || offset < 0 || offset > 0x208 || (offset & 7)) return false;
+    const auto head = context + catalog::Roots;
+    auto node = Read<std::uintptr_t>(head);
+    for (unsigned i = 0; i < count && node && node != head; ++i) {
+        if (node < static_cast<unsigned>(offset)) return false;
+        const auto sequence = node - offset;
+        if (Read<std::uintptr_t>(sequence, catalog::Context) != context) return false;
+        if (Read<std::uintptr_t>(sequence) == Main(catalog::Methods) &&
+            Read<std::uint8_t>(sequence, catalog::Player) == player) {
+            // Native active sequence states: opening, running, and suspended.
+            const auto state = Read<unsigned>(sequence, catalog::State);
+            if (state < 7 && ((1u << state) & 0x58)) return true;
+        }
+        node = Read<std::uintptr_t>(node);
+    }
     return false;
 }
 // Currency display calls deliberately stay on the native wallet. In 0.3.1,
@@ -204,8 +236,8 @@ std::uintptr_t BellPageCounter(std::uintptr_t owner) {
     return Fn<std::uintptr_t (*)(std::uintptr_t, const SafeString *)>(address::FindParameter)(
         layout + display::Parameters, &path);
 }
-void UpdateSavingsDisplay(std::uintptr_t counter, const std::uint8_t *player, DisplaySurface surface) {
-    const auto shop = Valid(player) ? CurrentShop() : 0;
+void UpdateSavingsDisplay(std::uintptr_t owner, std::uintptr_t counter, const std::uint8_t *player, DisplaySurface surface) {
+    const auto shop = !Valid(player) ? 0 : CatalogOpen(owner, *player) ? catalog::DisplayKey : CurrentShop();
     if (surface == DisplaySurface::Hud && !shop) savingsAnimation.initialized = false;
     auto root = BoundNumberPane(counter);
     std::uintptr_t card = 0;
@@ -259,7 +291,7 @@ HOOK_DEFINE_TRAMPOLINE(ShopBalanceDisplay) {
         Orig(owner);
         const auto counter = owner ? Read<std::uintptr_t>(owner, display::Counter) : 0;
         const auto player = owner ? reinterpret_cast<const std::uint8_t *>(owner + display::Player) : nullptr;
-        UpdateSavingsDisplay(counter, player, DisplaySurface::Auxiliary);
+        UpdateSavingsDisplay(owner, counter, player, DisplaySurface::Auxiliary);
     }
 };
 HOOK_DEFINE_TRAMPOLINE(BellPageBalanceDisplay) {
@@ -268,13 +300,16 @@ HOOK_DEFINE_TRAMPOLINE(BellPageBalanceDisplay) {
         // ShopBalanceDisplay. Cash initialization/refresh stays native on both.
         Orig(owner);
         const auto player = owner ? reinterpret_cast<const std::uint8_t *>(owner + display::HudPlayer) : nullptr;
-        UpdateSavingsDisplay(BellPageCounter(owner), player, DisplaySurface::Hud);
+        UpdateSavingsDisplay(owner, BellPageCounter(owner), player, DisplaySurface::Hud);
     }
 };
 HOOK_DEFINE_TRAMPOLINE(ShopWallet) {
     static unsigned Callback(const std::uint8_t *player) {
         const auto caller = reinterpret_cast<std::uintptr_t>(__builtin_return_address(0));
-        if (Contains(WalletCallers, caller) && Valid(player) && CurrentShop())
+        // Catalog's exact checkout caller works at Nook Stop and on the phone,
+        // including outdoors. Its ordinary cash display calls remain untouched.
+        if (Valid(player) && (caller == Main(catalog::WalletReturn) ||
+                              (Contains(WalletCallers, caller) && CurrentShop())))
             return Fn<unsigned (*)(const std::uint8_t *)>(address::Savings)(player);
         return Orig(player);
     }
@@ -282,7 +317,11 @@ HOOK_DEFINE_TRAMPOLINE(ShopWallet) {
 HOOK_DEFINE_TRAMPOLINE(ShopDebit) {
     static void Callback(const std::uint8_t *player, unsigned amount) {
         const auto caller = reinterpret_cast<std::uintptr_t>(__builtin_return_address(0));
-        if (!Contains(DebitCallers, caller) || !Valid(player) || !CurrentShop()) { Orig(player, amount); return; }
+        const bool catalogOrder = caller == Main(catalog::DebitReturn);
+        if (!Valid(player) || (!catalogOrder && !(Contains(DebitCallers, caller) && CurrentShop()))) {
+            Orig(player, amount);
+            return;
+        }
         // The native shop confirmation checks this same account. Never fall back
         // to pocket Bells if it is empty. Use the game's tracked encrypted-money
         // writer; no raw save offsets or transient wallet swaps are involved.
@@ -356,7 +395,7 @@ bool Install() {
     ShopBalanceDisplay::InstallAtOffset(address::BellDisplayUpdate);
     BellPageBalanceDisplay::InstallAtOffset(address::BellPageUpdate);
     installed = true;
-    Logging.Log("[QoL Enhancements/Shopping Card] READY: green savings display; always enabled in Nook's Cranny/Able Sisters; native savings\n");
+    Logging.Log("[QoL Enhancements/Shopping Card] READY: green savings display; always enabled in Nook's Cranny/Able Sisters/Nook Shopping; native savings\n");
     return true;
 }
 } // namespace qol::shopping

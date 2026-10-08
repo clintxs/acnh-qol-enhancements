@@ -71,6 +71,7 @@ class DisplayMachine(CardMachine):
         self.write(self.methods + 0x5e0, base + 0x3c1b588)
     def service(self, u, pc, size, data):
         off = pc - self.base
+        if self.services.get(pc) == ('catalog_lock', None): self.finish(); return
         if off == 0x3025a4c:
             assert self.reg(0) == self.counter
             self.formatted.append(self.reg(1)); self.finish(); return
@@ -272,3 +273,72 @@ for base in (0x7100000000, 0x7200000000):
     m.write(m.info + 0x38, SHOPS[0], 4); m.update_hud()
     assert m.texts[-1] == '101' and m.feedback == before
 print('PASS: full-cap to zero, mid-flight reversal, one-Bell completion, silent pocket refresh and silent shop re-entry at two bases')
+
+# Catalog shares BellPage's native UI context. Exercise the original factory's
+# intrusive-list insertion, then detect the live typed root without retained
+# UI pointers. Closing, destruction, another resident/type and malformed list
+# bounds all restore cash, including catalog use outside supported buildings.
+for base in (0x7100000000, 0x7200000000):
+    m = DisplayMachine(base)
+    context = m.ram + 0x160000; catalog = m.ram + 0x161000
+    m.write(m.hud + 0x98, context)
+    m.write(m.owner + 0x98, context)
+    m.write(context + 0x40, context + 0x40)
+    m.write(context + 0x48, context + 0x40)
+    m.write(context + 0x54, 0x30, 4)
+    m.write(catalog, base + 0x49b28b8)
+    m.write(catalog + 0x98, context)
+    m.write(catalog + 0xa8, 4, 4)
+    # Factory sequence insertion is native code; model only its lock services.
+    m.services[base + 0x3f03880] = ('catalog_lock', None)
+    m.services[base + 0x3f038c0] = ('catalog_lock', None)
+    m.u.reg_write(UC_ARM64_REG_X19, context)
+    m.u.reg_write(UC_ARM64_REG_X22, catalog)
+    m.invoke(base + 0x32a760c, caller=base + 0x32a764c)
+    assert m.read(context + 0x50, 4) == 1
+    assert m.read(context + 0x40) == catalog + 0x30
+    # Another native root precedes Catalog; the scan must follow links rather
+    # than assume the most recently created UI is the catalog.
+    other = m.ram + 0x162000
+    m.write(other + 0x98, context)
+    m.u.reg_write(UC_ARM64_REG_X19, context)
+    m.u.reg_write(UC_ARM64_REG_X22, other)
+    m.invoke(base + 0x32a760c, caller=base + 0x32a764c)
+    assert m.read(context + 0x50, 4) == 2
+    assert m.read(other + 0x30) == catalog + 0x30
+    for stage in (0, 0xde45e2c6):
+        m.write(m.info + 0x38, stage, 4)
+        for player in range(8):
+            m.deposit(1234567 + player, player)
+            m.write(m.hud + 0x224, player, 1)
+            m.write(catalog + 0x1f8, player, 1)
+            m.update_hud()
+            assert m.shown('N_ShoppingCard_00') and not m.shown('T_Num_00')
+            assert m.texts[-1] == f'{m.balance(player):,}'
+        m.write(m.player, 7, 1)
+        m.route(0x257b340, 0x2b7f588, m.player, 1000)
+        m.settle_hud(m.balance(7))
+        assert m.feedback[-1] == ('DownFinish', 4)
+        feedback = list(m.feedback)
+        m.update_hud(); m.update()
+        assert m.feedback == feedback
+        assert m.read(m.counter + 0x260, 4) == m.wallet
+    for state in (0, 1, 2, 5, 7):
+        m.write(catalog + 0xa8, state, 4); m.update_hud()
+        assert not m.shown('N_ShoppingCard_00') and m.shown('T_Num_00')
+    for state in (3, 4, 6):
+        m.write(catalog + 0xa8, state, 4); m.update_hud()
+        assert m.shown('N_ShoppingCard_00')
+    for offset, value, size in ((0, base + 0x49b28c0, 8), (0x1f8, 6, 1), (0x98, 0, 8)):
+        old = m.read(catalog + offset, size); m.write(catalog + offset, value, size)
+        m.update_hud(); assert not m.shown('N_ShoppingCard_00')
+        m.write(catalog + offset, old, size)
+    for offset, value, size in ((0x50, 257, 4), (0x54, 0x209, 4), (0x54, 1, 4), (0x40, context + 0x40, 8)):
+        old = m.read(context + offset, size); m.write(context + offset, value, size)
+        m.update_hud(); assert not m.shown('N_ShoppingCard_00')
+        m.write(context + offset, old, size)
+    m.write(context + 0x50, 0, 4); m.update_hud()
+    assert not m.shown('N_ShoppingCard_00')
+    # The ordinary counter's wallet initialization/refresh remains native in catalog.
+    m.native_refresh(0x2b13f10, 0x2b13ff4, 0x224, UC_ARM64_REG_X22)
+print('PASS: Nook Shopping savings HUD outside shops, native root-list insertion, all players, native order feedback, silent refresh, close/destruction/type/resident/bounds guards at two bases')

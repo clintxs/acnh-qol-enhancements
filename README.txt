@@ -1,8 +1,8 @@
-QoL Enhancements 0.3.6 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.7 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
-Shopping Card: thicker green Bells display, centered dark-edged card and right-hand badge.
+Shopping Card: regular Nook Shopping/catalog orders now use savings, with the card HUD.
 
 INSTALL
 Fully close ACNH. Disable the standalone Catalog Aware Shops, QoL Pockets
@@ -27,10 +27,13 @@ Amiibo: shared event scan timeout extended to 9,000 updates (~5 minutes at 30 Hz
 Shopping Card: Nook's Cranny/Able Sisters purchases use ABD savings; Nook's
 sales deposit to savings and use the ordinary “Thank you! Please come again!”
 message. 0.3.3 removes the misleading pockets-full/wiring explanation. Includes
-fitting checkout and the optional fitting bag.
+fitting checkout and the optional fitting bag. Nook Shopping/catalog orders for
+yourself use savings at Nook Stop and through the phone app. Catalog gift
+orders have a separate native payment path and are not covered in this prototype.
 Always active when this module is enabled. No item, menu addition or unlock yet.
 The top-right display shows a green shopping card and full savings balance
-inside these shops, and ordinary Bells outside. The white English “Bells” badge
+inside these shops and while the catalog is open; closing the catalog outside
+these shops restores ordinary Bells. The white English “Bells” badge
 has green text and sits at the lower right.
 The oval has a thicker white rim; the centered card has a dark edge, with
 its white backing behind the oval. Savings changes use native count-up/down
@@ -46,12 +49,12 @@ No new save fields, SD files, MSBT replacements or permissions are required.
 Disable/remove Shopping Card and restart for a clean uninstall; completed
 transactions remain ordinary saved money/item changes. Nook transactions were
 confirmed in 0.3.1, the savings HUD in 0.3.4 and animation in 0.3.5; the
-0.3.6 layout refinement and Able Sisters need live testing.
+0.3.6 layout refinement, Able Sisters and 0.3.7 catalog checkout/HUD need live testing.
 
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.6
+  version = 0.3.7
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.

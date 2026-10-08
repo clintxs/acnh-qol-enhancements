@@ -1,6 +1,6 @@
 # Shopping Card — ACNH 3.0.3
 
-Prototype 0.3.4, October 8, 2026. Original mapped main SHA-256:
+Prototype 0.3.7, October 8, 2026. Original mapped main SHA-256:
 `b1ae8e2a0d82f9f38f711c132d1751b221baf9d6411b2be06ebc4bb502ac912d`.
 Build ID: `FF1D1C05670DB6021C85B624A710B963`.
 All implementation uses readable Exlaunch C++ hooks. No new game item or data
@@ -65,7 +65,8 @@ Indoor metadata at GOT 04AC3A80 has the room-name hash at +38:
 | IdrMarket02 | 8A17F484 |
 | IdrTailor | 91E12AA0 |
 
-Only those rooms and exact reviewed BL return addresses select savings.
+Physical-shop routing uses those rooms and exact reviewed BL return addresses.
+The catalog callers below are independent of room, including phone use outdoors.
 No remembered speaker, message bank, local-player singleton or persistent
 shop-session cache is used. The exact callsite lists are in shopping_card.cpp.
 Each site and the native dependencies are fingerprinted before installation.
@@ -172,3 +173,38 @@ eight resident slots, exact caller and room routing, zero/cap behavior, native
 sale deposits, ticket-preserving space accounting, the shared fitting accessor,
 module absence and each fingerprint failure. It does not execute Eden or write
 actual saves. See VALIDATION.md for the required live playtest matrix.
+
+## Nook Shopping/catalog — 0.3.7
+
+Regular orders for yourself use the native Catalog sequence, constructed at
+02B65F30 by factory 032A7508. Its resident is +1F8, Page +210 and vtable
+049B28B8 (assigned at 02B66020). The catalog affordability BL at 02B7763C
+calls Wallet 0257ABF0; its exact return 02B77640 now selects savings regardless
+of room. The item-price routine 019ED730 and RegulationType4's native 20%
+Bell Boom arithmetic/insufficient-funds choice remain intact (02B77700..7A8).
+Accepted self-order callback 02B7F384 calls Debit 0257B340 at 02B7F588,
+return 02B7F58C. That caller now withdraws savings. The original mail delivery,
+order limits, purchase records/milestones and cancellation continue unchanged.
+No generic price/display wallet read is redirected.
+
+Catalog and CatalogBG contain no LBell part; the visible currency uses the
+shared BellPage HUD. BellPage+98 and Catalog+98 point to their native UI context.
+Factory 032A75E4 assigns Catalog+98. At 032A7618..644 it links the root into
+context+40 (head), with count+50 and the runtime intrusive link offset at +54.
+Each display update resolves this live list, bounded to 256 entries, verifies
+context ownership, exact Catalog vtable and resident, and uses native active
+states 3/4/6 (mask 58). No controller pointer or open/closed flag survives a
+call. A missing/closed/destroyed catalog restores ordinary pocket-money display
+outside the physical card shops. Savings animation uses its existing value-only
+transition with a distinct catalog context key. The original cash counter,
+initialization and refresh are untouched. Native factory/list insertion and
+BellPage update execute in the regression harness at two ASLR bases.
+
+Catalog gifts use separate CatalogGift/recipient/network sending paths (including
+02B7F988, 02B7FB40, 02B7FE2C and 02B78030) and are not covered by these two
+exact payment callers. Their native payments remain unchanged in this prototype;
+do not infer gift coverage from the shared initial catalog selection or HUD.
+A future extension must trace the actual accepted send and its affordability
+checks together before redirecting shared mail/event money routines. The ABD,
+Poki conversion, ordinary letter fees and other shared transactions must retain
+their original sources. Nook Stop and phone orders still require an Eden playtest.
