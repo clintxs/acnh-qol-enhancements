@@ -253,6 +253,21 @@ def main():
                 assert result[0x21b7] == (3 if held else 1), fault
                 total += 1
         assert 'base=2 boost=4 faster_ui=true npc_count=6' in custom.text
+        if 'SELECT reason=' in custom.text:
+            # Opening UI often lasts hundreds of eligible frames. Repeated UI
+            # must not exhaust diagnostics before the first NPC conversation.
+            probe = DialogueMachine(base, CUSTOM)
+            probe.speaker(window=1, source=False)
+            for _ in range(140): probe.run((1,0,0,0,0,1,1,-1.), 0)
+            assert probe.text.count('SELECT reason=ui-dialog') == 1
+            probe.speaker('rcm')
+            probe.run((1,0,0,0,0,1,1,-1.), 0)
+            assert 'SELECT reason=npc window=0 entity_kind=10 kind=1 npc=rcm speed=4' in probe.text
+            probe.write(probe.entity + 0xb00, 0, 1)
+            probe.run((1,0,0,0,0,1,1,-1.), 0)
+            assert 'SELECT reason=npc-type-unready' in probe.text
+            total += 142
+            print('PASS: bounded transition diagnostics survive repeated UI and identify NPC lookup failures')
         print(f'PASS {base:#x}: compiled SIMD adapter, native reveal/input/renderers, speaker switches, UI/NPC classification, held/release, dynamic rates')
     absent = DialogueMachine(0x7100000000, CUSTOM, enabled=False)
     assert len(absent.opened) == 5 and 'faster-dialogue.custom.ini' not in ''.join(absent.opened)

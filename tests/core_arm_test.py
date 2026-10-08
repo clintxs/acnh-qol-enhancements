@@ -12,6 +12,12 @@ SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'amiibo')
 COUNTS = (16, 16, 5, 11, 1)
 DEFAULT = b'enabled=true\nversion=0.2.0\n'
 
+def expected_hook_count(machine, enabled):
+    # The existing verbose-dialogue build adds a Catalog message trace hook.
+    # Keep normal/diagnostic counts explicit; never infer them from installed hooks.
+    trace_enabled = any('NookMessageTrace' in name for name in machine.module.symbols)
+    return 1 + sum(count for count, active in zip(COUNTS, enabled) if active) + (trace_enabled and enabled[0])
+
 class Machine:
     def __init__(self, base, files):
         self.base = base
@@ -111,7 +117,7 @@ def check_all_subsets():
             m.boot()
             assert len(m.hooks) == 1 and not m.opened and 'WAITING_FOR_CONTENT' in m.text
             m.activate()
-            assert len(m.hooks) == 1 + sum(count for count, enabled in zip(COUNTS, flags) if enabled), m.text
+            assert len(m.hooks) == expected_hook_count(m, flags), m.text
             assert 'BOOT_OK' in m.text and f'enabled_modules={sum(flags)} errors=0' in m.text, m.text
             assert len(m.opened) == 5 + flags[2] and len(m.closed) == sum(flags)
             assert m.read(base + 0xbc4140, 4) == 0x52803848
@@ -163,7 +169,7 @@ def check_errors():
         assert not any(m.base + offset in m.hooks for offset in (0x1afa00c, 0x1afdec0))
     m = Machine(0x7100000000, {slug: b'enabled=true\nversion=0.1.0' for slug in SLUGS})
     m.boot(); m.activate()
-    assert len(m.hooks) == 50 and 'BOOT_OK' in m.text and 'enabled_modules=5 errors=0' in m.text
+    assert len(m.hooks) == expected_hook_count(m, (True,) * 5) and 'BOOT_OK' in m.text and 'enabled_modules=5 errors=0' in m.text
     m = Machine(0x7100000000, {'amiibo': DEFAULT, 'faster-dialogue': DEFAULT})
     m.write(m.base + 0xbc4140, 0x52846508, 4) # Older standalone Amiibo payload.
     m.boot(); m.activate()

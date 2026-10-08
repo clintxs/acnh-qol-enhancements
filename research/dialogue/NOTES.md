@@ -79,3 +79,22 @@ trampoline relocation, filesystem, metadata lookup, speaker delegates and
 parser completion are modeled. Audio/emotes/rendering, controller behavior in
 Eden, and actual in-game categories still require live testing. Diagnostic
 build: tools/build.sh --verbose-dialogue (bounded SELECT logs).
+
+## Live prototype feedback and diagnostic build
+
+The 0.2.0 personal preset was tested in-game: blue dialog windows (ABD and
+save/quit) receive the boost, while the listed NPCs do not. This verifies that
+the personal file and UI selection load, but does not isolate the failing NPC
+lookup step. No speculative lookup change is included in this diagnostic build.
+The ASCII apostrophe in `Kapp'n` is accepted literally by the custom parser and
+is covered by the host and compiled ARM preset tests. INI editor highlighting
+does not govern this parser.
+
+`tools/build.sh --verbose-dialogue` now reports a reason for each classifier
+outcome, window/entity kinds, recognized ID and selected speed. Up to 128
+transitions are logged; repeated frames do not exhaust the trace before an NPC
+is reached. `npc-type-unready` distinguishes the conservative RTTI guard from a
+missing source/handle or unmatched resource ID. The normal build stays quiet.
+To collect evidence: replace Core with the diagnostic Core, keep Faster Dialogue
+and the personal mod enabled, restart, speak to Timmy/Tommy or Orville without
+B/R, then collect the READY and SELECT lines from the Eden log.

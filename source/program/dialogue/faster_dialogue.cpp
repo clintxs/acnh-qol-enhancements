@@ -38,7 +38,14 @@ bool NativeFunction(std::uintptr_t function) {
     const auto &text = exl::util::GetMainModuleInfo().m_Text;
     return function && function >= text.m_Start && function - text.m_Start < text.m_Size && !(function & 3);
 }
+enum class SpeakerLookup {
+    Manager, Context, Window, Source, Delegate, DelegateMethods, DelegateInvalid,
+    EmptyHandle, Registry, Entity, EntityKind, NpcType, NpcMethod, NpcMismatch,
+    NpcName, NpcNameTooLong, Npc, UiDialog, UiPlayer
+};
 struct Speaker {
+    SpeakerLookup lookup = SpeakerLookup::Manager;
+    unsigned window = ~0u, entityKind = ~0u;
     MessageKind kind = MessageKind::Unknown;
     char id[NpcIdBytes]{};
 };
@@ -46,27 +53,37 @@ Speaker CurrentSpeaker(std::uintptr_t text) {
     Speaker result{};
     const auto manager = Read<std::uintptr_t>(text, layout::TextManager);
     if (!manager) return result;
+    result.lookup = SpeakerLookup::Context;
     const auto context = Read<std::uintptr_t>(manager, layout::TalkContext);
     if (!context) return result;
     // Native 01b041a4 selects talk/dialog/balloon from the current message's
     // presentation metadata. A confirmed dialog is UI, even after NPC speech.
-    const auto window = Read<unsigned>(context, layout::WindowKind);
-    if (window == layout::DialogWindow) { result.kind = MessageKind::Ui; return result; }
+    result.lookup = SpeakerLookup::Window;
+    const auto window = result.window = Read<unsigned>(context, layout::WindowKind);
+    if (window == layout::DialogWindow) {
+        result.lookup = SpeakerLookup::UiDialog; result.kind = MessageKind::Ui; return result;
+    }
     if (window != 0) return result; // Balloon/unknown is not automatically UI.
+    result.lookup = SpeakerLookup::Source;
     const auto source = Read<std::uintptr_t>(manager, layout::ActiveSpeaker);
     if (!source) return result; // Absence alone is NOT proof of a UI message.
+    result.lookup = SpeakerLookup::Delegate;
     const auto delegate = source + layout::SpeakerEntityDelegate;
     const auto methods = Read<std::uintptr_t>(delegate);
     if (!methods) return result;
     const auto valid = Read<std::uintptr_t>(methods, layout::DelegateValid);
     const auto resolve = Read<std::uintptr_t>(methods);
+    result.lookup = SpeakerLookup::DelegateMethods;
     if (!NativeFunction(valid) || !NativeFunction(resolve)) return result;
     // Same borrowed delegate, validity check and 12-byte output as the native
     // Animalese update at 01b02e84..01b02ebc. No voice playback is invoked.
+    result.lookup = SpeakerLookup::DelegateInvalid;
     if (!(reinterpret_cast<std::uint64_t (*)(std::uintptr_t)>(valid)(delegate) & 1)) return result;
     std::array<std::uint32_t, 3> handle{};
     reinterpret_cast<void (*)(std::uintptr_t, void *)>(resolve)(delegate, handle.data());
+    result.lookup = SpeakerLookup::EmptyHandle;
     if (!handle[0]) return result;
+    result.lookup = SpeakerLookup::Registry;
     const auto registrySlot = Read<std::uintptr_t>(Main(address::EntityRegistryGot));
     const auto registry = registrySlot ? Read<std::uintptr_t>(registrySlot) : 0;
     const auto table = registry ? Read<std::uintptr_t>(registry, layout::EntityTable) : 0;
@@ -74,15 +91,20 @@ Speaker CurrentSpeaker(std::uintptr_t text) {
     if (!entries) return result;
     // Mirror 01b000fc..01b00178: handles contain a 12-bit table index and
     // generation. This handle comes from a live native speaker delegate.
+    result.lookup = SpeakerLookup::Entity;
     const auto entity = Read<std::uintptr_t>(entries, (handle[0] >> 20) * sizeof(std::uintptr_t));
     if (!entity || Read<unsigned>(entity, layout::EntityHandle) != handle[0] ||
         (Read<unsigned>(entity, layout::EntityFlags) & 2)) return result;
-    const auto kind = Read<unsigned>(entity, layout::EntityKind);
-    if (kind == layout::PlayerEntity) { result.kind = MessageKind::Ui; return result; }
+    result.lookup = SpeakerLookup::EntityKind;
+    const auto kind = result.entityKind = Read<unsigned>(entity, layout::EntityKind);
+    if (kind == layout::PlayerEntity) {
+        result.lookup = SpeakerLookup::UiPlayer; result.kind = MessageKind::Ui; return result;
+    }
     if (kind != layout::NpcEntity) return result;
     // Match native 01b00164..01b001e8's NPC RTTI check before borrowing the
     // NPC-specific name field. Never initialize RTTI from a text hook: native
     // NPC voice setup initializes it first; an unavailable type uses base.
+    result.lookup = SpeakerLookup::NpcType;
     const auto type = Read<std::uintptr_t>(Main(address::NpcTypeGot));
     const auto guard = Read<std::uintptr_t>(Main(address::NpcTypeGuardGot));
     if (!type || !guard ||
@@ -90,19 +112,23 @@ Speaker CurrentSpeaker(std::uintptr_t text) {
               .load(std::memory_order_acquire) & 1)) return result;
     const auto entityMethods = Read<std::uintptr_t>(entity);
     const auto isNpc = entityMethods ? Read<std::uintptr_t>(entityMethods, layout::IsNpcType) : 0;
-    if (!NativeFunction(isNpc) ||
-        !(reinterpret_cast<std::uint64_t (*)(std::uintptr_t, std::uintptr_t)>(isNpc)(entity, type) & 1)) return result;
+    result.lookup = SpeakerLookup::NpcMethod;
+    if (!NativeFunction(isNpc)) return result;
+    result.lookup = SpeakerLookup::NpcMismatch;
+    if (!(reinterpret_cast<std::uint64_t (*)(std::uintptr_t, std::uintptr_t)>(isNpc)(entity, type) & 1)) return result;
     result.kind = MessageKind::Npc;
     // Native NPC voice setup uses this SafeString's data (01b000c8). Resource
     // IDs distinguish rcm/rct even when the message bank is shared.
+    result.lookup = SpeakerLookup::NpcName;
     const auto name = Read<std::uintptr_t>(entity, layout::EntityResourceName);
     if (!name) return result;
     for (unsigned i = 0; i < NpcIdBytes; ++i) {
         const auto c = Read<char>(name, i);
-        if (!c) return result;
+        if (!c) { result.lookup = SpeakerLookup::Npc; return result; }
         if (i == NpcIdBytes - 1) break;
         result.id[i] = c;
     }
+    result.lookup = SpeakerLookup::NpcNameTooLong;
     result.id[0] = 0; // Never match a truncated resource ID.
     return result;
 }
@@ -148,10 +174,25 @@ HOOK_DEFINE_INLINE(DialogueSelectSpeed) {
         // 1 = native fast, 3 = native fast plus extra multiplier (old 0.3 tier).
         registers->W[9] = speed == 4 ? 3 : 1;
 #if CAS_VERBOSE_DIALOGUE_TRACE
-        static unsigned reports = 0;
-        if (reports++ < 64)
-            Logging.Log("[QoL Enhancements/Faster Dialogue] SELECT kind=%u npc=%s speed=%u\n",
+        // Log transitions, not the first frames: title/save dialogs must not
+        // consume the entire trace before the user reaches an NPC.
+        constexpr const char *reasons[]{
+            "no-manager", "no-context", "unsupported-window", "no-source", "no-delegate",
+            "foreign-delegate-method", "invalid-delegate", "empty-handle", "no-registry",
+            "invalid-entity", "other-entity-kind", "npc-type-unready", "foreign-npc-method",
+            "npc-type-mismatch", "no-npc-name", "npc-name-too-long", "npc", "ui-dialog", "ui-player"
+        };
+        static Speaker previous{};
+        static unsigned previousSpeed = 0, reports = 0;
+        const bool changed = !reports || previous.lookup != speaker.lookup ||
+            previous.window != speaker.window || previous.entityKind != speaker.entityKind ||
+            previousSpeed != speed || std::strcmp(previous.id, speaker.id);
+        if (changed && reports < 128) {
+            ++reports; previous = speaker; previousSpeed = speed;
+            Logging.Log("[QoL Enhancements/Faster Dialogue] SELECT reason=%s window=%u entity_kind=%u kind=%u npc=%s speed=%u\n",
+                        reasons[static_cast<unsigned>(speaker.lookup)], speaker.window, speaker.entityKind,
                         static_cast<unsigned>(speaker.kind), speaker.id, speed);
+        }
 #endif
     }
 };
