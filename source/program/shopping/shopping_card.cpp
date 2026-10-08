@@ -8,6 +8,7 @@ namespace {
 namespace address {
 constexpr std::uintptr_t Wallet = 0x0257abf0, Debit = 0x0257b340;
 constexpr std::uintptr_t BellDisplayUpdate = 0x0301b394, BellPageUpdate = 0x02b13bf0;
+constexpr std::uintptr_t StepNumber = 0x03353b14, NumberFeedback = 0x03025400, FormatNumber = 0x03025a4c;
 constexpr std::uintptr_t FindParameter = 0x02b12c24, SafeStringVtableGot = 0x04ab2020;
 constexpr std::uintptr_t FindPane = 0x0027d1d0, SetPaneText = 0x03c1b588, SetGroupText = 0x03c47b90;
 constexpr std::uintptr_t PurchaseSpace = 0x02579fe0;
@@ -26,7 +27,7 @@ constexpr unsigned Page = 0x210, PageLayout = 0x3f8, Parameters = 0x38, HudPlaye
 constexpr unsigned BindingAdapter = 0x48, AdapterPayload = 8, AdapterMethods = 0x18;
 constexpr unsigned SetTextMethod = 0x5e0, GroupCount = 0x10, GroupLinkOffset = 0x14;
 constexpr unsigned NextLink = 8, MemberPane = 0x10, MemberMethods = 0x18;
-constexpr unsigned PaneParent = 0x18, PaneFlags = 0x58;
+constexpr unsigned PaneParent = 0x18, PaneFlags = 0x58, CashCurrent = 0x260;
 }
 // MurmurHash3(name, 0), independently checked against native 005bd550.
 constexpr unsigned MarketSmall = 0xbe3cad72, MarketLarge = 0x8a17f484, Tailor = 0x91e12aa0;
@@ -135,6 +136,61 @@ unsigned FormatSavings(char16_t (&output)[12], unsigned balance) {
     return length;
 }
 enum class DisplaySurface : unsigned { Auxiliary, Hud };
+// The native number transition is a value object (counter+260), separate from
+// the controller and its text binding. Use its exact stepping/rounding with an
+// empty callback, then send feedback through the live HUD's native Up/Down and
+// Finish animations. No save/UI pointer is retained across frames.
+bool NoNumberCallback(const void *) { return false; }
+const std::uintptr_t NumberMethods[]{0, 0, reinterpret_cast<std::uintptr_t>(&NoNumberCallback)};
+struct NumberTransition {
+    int current{}, target{}, step{}, padding{};
+    const std::uintptr_t *methods{NumberMethods};
+    std::uint8_t reserved[24]{};
+    std::uint8_t queued{};
+    std::uint8_t padding2[3]{};
+    int start{}, end{};
+    std::uint8_t resetStart{1};
+    std::uint8_t padding3[3]{};
+    std::uint8_t finished{};
+};
+static_assert(offsetof(NumberTransition, queued) == 0x30);
+static_assert(offsetof(NumberTransition, finished) == 0x40);
+struct SavingsAnimation {
+    NumberTransition number{};
+    unsigned shop{}, player{};
+    bool initialized{};
+};
+SavingsAnimation savingsAnimation{};
+unsigned AnimatedSavings(std::uintptr_t counter, unsigned balance, unsigned shop, unsigned player) {
+    auto &state = savingsAnimation;
+    auto &number = state.number;
+    if (!state.initialized || state.shop != shop || state.player != player) {
+        state = {};
+        state.initialized = true;
+        state.shop = shop;
+        state.player = player;
+        number.current = number.target = number.end = balance;
+        return balance; // Opening a shop or switching residents is silent.
+    }
+    if (number.end != static_cast<int>(balance)) {
+        number.start = number.current;
+        number.end = balance;
+        number.queued = 1;
+    }
+    const auto previous = number.current;
+    Fn<void (*)(NumberTransition *)>(address::StepNumber)(&number);
+    if (number.current != previous) {
+        struct Event { int previous, current, descending; bool finished; };
+        const Event event{previous, number.current, previous >= number.target, bool(number.finished)};
+        Fn<void (*)(std::uintptr_t, const Event *)>(address::NumberFeedback)(counter, &event);
+        // Feedback also formats T_Num_00. Restore that hidden cash text at once
+        // so leaving the shop never exposes a stale savings amount. The native
+        // cash controller's current/target/cache fields are never changed.
+        Fn<void (*)(std::uintptr_t, unsigned)>(address::FormatNumber)(
+            counter, Read<unsigned>(counter, display::CashCurrent));
+    }
+    return number.current;
+}
 std::uintptr_t BellPageCounter(std::uintptr_t owner) {
     // BellPage (02b13c44..02b13c6c) owns a Page, not a counter. Resolve its
     // /L_Bell_00 typed parameter through the same native layout lookup.
@@ -150,6 +206,7 @@ std::uintptr_t BellPageCounter(std::uintptr_t owner) {
 }
 void UpdateSavingsDisplay(std::uintptr_t counter, const std::uint8_t *player, DisplaySurface surface) {
     const auto shop = Valid(player) ? CurrentShop() : 0;
+    if (surface == DisplaySurface::Hud && !shop) savingsAnimation.initialized = false;
     auto root = BoundNumberPane(counter);
     std::uintptr_t card = 0;
     for (unsigned depth = 0; root && depth < 12; ++depth) {
@@ -174,7 +231,10 @@ void UpdateSavingsDisplay(std::uintptr_t counter, const std::uint8_t *player, Di
     if (active) {
         char16_t text[12]{};
         const auto balance = Fn<unsigned (*)(const std::uint8_t *)>(address::Savings)(player);
-        const auto length = FormatSavings(text, balance);
+        // Only the regular HUD drives feedback, so an auxiliary counter cannot
+        // double-play the same purchase sound. Its balance remains immediate.
+        const auto shown = surface == DisplaySurface::Hud ? AnimatedSavings(counter, balance, shop, *player) : balance;
+        const auto length = FormatSavings(text, shown);
         static std::array<bool, 2> reported{};
         if (!reported[index]) {
             reported[index] = true;
@@ -194,8 +254,8 @@ HOOK_DEFINE_TRAMPOLINE(ShopBalanceDisplay) {
     static void Callback(std::uintptr_t owner) {
         // The ordinary cash controller still owns its native lifecycle, amount,
         // sounds and visibility. Only its top-right presentation is switched;
-        // generic pockets/price counters are never restyled. No pointer survives
-        // the call, including across resident changes or scene destruction.
+        // generic pockets/price counters are never restyled. No UI pointer
+        // survives the call, including across scene destruction.
         Orig(owner);
         const auto counter = owner ? Read<std::uintptr_t>(owner, display::Counter) : 0;
         const auto player = owner ? reinterpret_cast<const std::uint8_t *>(owner + display::Player) : nullptr;

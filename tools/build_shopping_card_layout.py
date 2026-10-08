@@ -34,18 +34,35 @@ def edit_layout(data):
     assert CARD not in panes
     material_slot = next(i for i, s in enumerate(sections) if s[:4] == b'mat1')
     records = material_records(sections[material_slot])
-    # Native rounded window has separate content and corner materials. Clone
-    # both so no existing currency or RegionType animation is recolored.
-    background = rename(panes['W_BaseL_00'], 'W_SavingsBase_00')
-    struct.pack_into('<2f', background, 44, -25, -2)
-    struct.pack_into('<2f', background, 76, 306, 128)
-    for offset in (128, 168):
-        old_index = struct.unpack_from('<H', background, offset)[0]
-        material = bytearray(records[old_index])
-        material[:28] = f'SavingsWindow{offset}'.encode().ljust(28, b'\0')
-        material[40:44] = GREEN
-        struct.pack_into('<H', background, offset, len(records))
-        records.append(bytes(material))
+    # Two copies of the native rounded window give the green fill the same
+    # white rim as Bells, without tinting away the rim in a shared material.
+    def window(template, name, x, y, width, height, color):
+        pane = rename(template, name)
+        struct.pack_into('<2f', pane, 44, x, y)
+        struct.pack_into('<2f', pane, 76, width, height)
+        for offset in (128, 168):
+            old_index = struct.unpack_from('<H', pane, offset)[0]
+            material = bytearray(records[old_index])
+            material[:28] = f'{name}_{offset}'.encode().ljust(28, b'\0')
+            material[40:44] = color
+            struct.pack_into('<H', pane, offset, len(records))
+            records.append(bytes(material))
+        return bytes(pane)
+    white = bytes((255, 255, 255, 255))
+    outline = window(panes['W_BaseL_00'], 'W_SavingsRim_00', -25, -2, 306, 128, white)
+    background = bytearray(window(panes['W_BaseL_00'], 'W_SavingsBase_00', -25, -2, 306, 128, GREEN))
+    # Scale the complete native window so its corner/frame geometry shrinks
+    # with the fill, leaving a four-unit rim on each side.
+    struct.pack_into('<2f', background, 68, 298 / 306, 120 / 128)
+    badge = window(panes['W_BellBase_00'], 'W_CardBellBase_00', 0, 0, 96, 40, white)
+    label = bytearray(text_pane(panes['T_Bell_00'], 'T_SavingsLabel_00', 'Bells',
+                                -16, 2, 121.5, 31.95, .5, True))
+    label[92:96] = panes['T_Bell_00'][92:96]  # Native Bells badge alignment.
+    text_material = bytearray(records[struct.unpack_from('<H', label, 88)[0]])
+    text_material[:28] = b'CardBellsText'.ljust(28, b'\0')
+    text_material[40:44] = GREEN
+    struct.pack_into('<H', label, 88, len(records))
+    records.append(bytes(text_material))
     solid = bytearray(records[0])
     assert len(solid) == 44
     solid[:28] = b'ShoppingCardSolid'.ljust(28, b'\0')
@@ -83,7 +100,7 @@ def edit_layout(data):
         pieces.append(bytes(pane))
     # Stepped silhouettes form rounded corners in native layout coordinates.
     for width, height in ((82, 42), (78, 50), (70, 54)):
-        rectangle(0, 0, width, height, (20, 83, 53, 255))
+        rectangle(0, 0, width, height, white)
     for width, height in ((76, 38), (72, 44), (66, 48)):
         rectangle(0, 0, width, height, (84, 183, 120, 255))
     rectangle(0, 10, 76, 8, CREAM)
@@ -91,9 +108,10 @@ def edit_layout(data):
     rectangle(16, -12, 22, 3, CREAM)
     rectangle(9, -19, 36, 3, CREAM)
     number = text_pane(panes['T_Num_00'], NUMBER, '999,999,999', -25, 0, 260, 56, .76, True)
-    label = text_pane(panes['T_Num_00'], 'T_SavingsLabel_00', 'Savings', -25, -45, 190, 30, .43, True)
-    additions = [bytes(group), opening, bytes(background), bytes(icon), opening,
-                 *pieces, closing, number, label, closing]
+    unit = rename(panes['N_Pos_00'], 'N_CardBells_00')
+    struct.pack_into('<f', unit, 44, struct.unpack_from('<f', unit, 44)[0] - 25)
+    additions = [bytes(group), opening, outline, bytes(background), bytes(icon), opening,
+                 *pieces, closing, number, bytes(unit), opening, badge, bytes(label), closing, closing]
     parents = []
     last = None
     insertion = None

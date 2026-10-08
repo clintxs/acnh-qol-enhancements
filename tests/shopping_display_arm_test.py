@@ -30,6 +30,24 @@ class DisplayMachine(CardMachine):
         self.write(self.counter + 0x264, self.wallet, 4)
         self.display_updates = 0
         self.texts = []
+        self.feedback = []; self.formatted = []
+        # Execute the real native feedback callback through animation dispatch
+        # and positional sound setup. Only engine formatting/playback is modeled.
+        animation = self.ram + 0x95000
+        self.write(self.counter + 0x1d0, animation)
+        self.write(animation, animation + 0x100)
+        self.write(animation + 8, animation + 0x300)
+        self.write(animation + 0x18, animation + 0x200)
+        self.position_query = animation + 0x400
+        self.position_get = animation + 0x410
+        self.write(animation + 0x120, self.position_query)
+        self.write(animation + 0x4b0, self.position_get)
+        self.write(base + 0x5639190, self.ram + 0x96000)
+        self.write(base + 0x4ab3508, self.ram + 0x97000)
+        for i in range(4):
+            self.write(self.counter + 0x2a8 + i*8, i + 1)
+            raw = self.read(base + 0x4a022a8 + i*8)
+            self.write(base + 0x4a022a8 + i*8, base + raw)
         self.panes = {}
         self.parents = {}
         for i, name in enumerate(('RootPane', 'N_Pos_01', 'T_Num_00', 'N_ShoppingCard_00',
@@ -53,6 +71,20 @@ class DisplayMachine(CardMachine):
         self.write(self.methods + 0x5e0, base + 0x3c1b588)
     def service(self, u, pc, size, data):
         off = pc - self.base
+        if off == 0x3025a4c:
+            assert self.reg(0) == self.counter
+            self.formatted.append(self.reg(1)); self.finish(); return
+        if off == 0x3c66950:
+            assert self.reg(0) == self.counter
+            name = self.string(self.read(self.reg(1) + 8))
+            self.feedback.append((name, self.reg(2))); self.finish(); return
+        if pc == getattr(self, 'position_query', 0): self.finish(); return
+        if pc == getattr(self, 'position_get', 0):
+            u.mem_write(self.reg(0), struct.pack('<2f', 932, 416)); self.finish(); return
+        if off in (0x3f033a0, 0x3f033b0): self.finish(); return
+        if off == 0x3f04470:
+            u.mem_write(self.reg(0), bytes(u.mem_read(self.reg(1), self.reg(2))))
+            self.finish(self.reg(0)); return
         if off == 0x2b12c24:
             assert self.reg(0) == self.hud_layout + 0x38
             assert self.read(self.reg(1)) == self.ram + 0x94010
@@ -72,6 +104,10 @@ class DisplayMachine(CardMachine):
         super().service(u, pc, size, data)
     def update(self): self.invoke(self.callbacks[0x301b394], self.owner)
     def update_hud(self): self.invoke(self.callbacks[0x2b13bf0], self.hud)
+    def settle_hud(self, expected):
+        for _ in range(30): self.update_hud()
+        assert self.texts[-1] == f'{expected:,}'
+        assert not self.feedback or self.feedback[-1][0].endswith('Finish')
     def shown(self, name): return bool(self.read(self.panes[name] + 0x58, 1) & 1)
     def native_refresh(self, entry, end, player_offset, saved_reg, cached=None):
         # Execute the original "current funds changed?" branch. Its actual BL
@@ -159,16 +195,36 @@ for base in (0x7100000000, 0x7200000000):
             assert m.texts[-1] == f'{123456 + player:,}'
             assert m.read(m.counter + 0x290, 1) == 0
             assert m.read(m.hud + 0x218, 4) == m.wallet
-        # A savings purchase/sale refresh never becomes a native cash animation.
+        # Resident switches initialize silently; a subsequent purchase/sale
+        # uses the native number step and Down/Up/Finish feedback callbacks.
+        assert not m.feedback
         m.write(m.hud + 0x224, 0, 1)
+        m.update_hud()
+        assert not m.feedback
         # Route uses the explicit player context; select resident 0 for updates.
         m.write(m.player, 0, 1)
         m.route(0x257b340, 0xb168b4, m.player, 100)
         expected = m.balance()
-        m.update_hud(); assert m.texts[-1] == f'{expected:,}'
+        m.update_hud()
+        assert int(m.texts[-1].replace(',', '')) > expected
+        assert m.feedback[-1] == ('Down', 2)
+        m.settle_hud(expected)
+        assert m.feedback[-1] == ('DownFinish', 4)
+        assert m.formatted[-1] == m.wallet # hidden cash text restored
+        assert m.read(m.counter + 0x260, 4) == m.wallet
         assert m.read(m.counter + 0x290, 1) == 0
         m.deposit(200); expected = m.balance()
-        m.update_hud(); assert m.texts[-1] == f'{expected:,}'
+        m.update_hud()
+        assert int(m.texts[-1].replace(',', '')) < expected
+        assert m.feedback[-1] == ('Up', 1)
+        m.settle_hud(expected)
+        assert m.feedback[-1] == ('UpFinish', 3)
+        # Pockets/repeated updates cannot replay a settled transaction.
+        feedback = list(m.feedback)
+        for _ in range(5): m.update_hud()
+        m.update() # auxiliary cannot duplicate audio
+        assert m.feedback == feedback
+        m.feedback.clear()
         assert m.read(m.counter + 0x290, 1) == 0
         # Reset deposits before the next room's distinct-resident assertions.
         for player in range(8):
@@ -186,4 +242,33 @@ for base in (0x7100000000, 0x7200000000):
     assert m.read(m.counter + 0x298, 4) == m.wallet
     # A missing/unmounted HUD page is a no-op for native and custom paths.
     m.write(m.hud + 0x210, 0); m.update_hud()
-print('PASS: actual native BellPage HUD update at two bases, native /L_Bell_00 lookup path, all shops/residents, poisoned alternate player offset, savings changes without cash animation, cash restoration and genuine cash animation')
+print('PASS: actual BellPage HUD and native number stepping/Up/Down/Finish feedback at two bases, all shops/residents, silent initialization and unchanged balances, no auxiliary duplicate feedback, untouched native cash counter and restored cash text')
+
+for base in (0x7100000000, 0x7200000000):
+    m = DisplayMachine(base)
+    m.deposit(999999999)
+    m.update_hud()
+    assert m.texts[-1] == '999,999,999' and not m.feedback
+    # Full-range purchases remain bounded, including retargeting mid-animation.
+    m.route(0x257b340, 0xb168b4, m.player, 999999999)
+    m.update_hud()
+    intermediate = int(m.texts[-1].replace(',', ''))
+    assert 0 < intermediate < 999999999
+    m.deposit(999999999)
+    m.update_hud()
+    assert intermediate < int(m.texts[-1].replace(',', '')) < 999999999
+    m.settle_hud(999999999)
+    m.route(0x257b340, 0xb168b4, m.player, 999999999)
+    m.settle_hud(0)
+    m.deposit(1); m.update_hud()
+    assert m.texts[-1] == '1' and m.feedback[-1] == ('UpFinish', 3)
+    before = list(m.feedback)
+    # Reopening pockets/replacing the UI with the same resident cannot restart
+    # a settled savings transition; no raw UI pointers are retained.
+    m.update_hud(); m.update_hud()
+    assert m.feedback == before
+    m.write(m.info + 0x38, 0, 4); m.update_hud()
+    m.deposit(100)
+    m.write(m.info + 0x38, SHOPS[0], 4); m.update_hud()
+    assert m.texts[-1] == '101' and m.feedback == before
+print('PASS: full-cap to zero, mid-flight reversal, one-Bell completion, silent pocket refresh and silent shop re-entry at two bases')

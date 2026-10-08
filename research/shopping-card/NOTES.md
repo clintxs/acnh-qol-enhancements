@@ -110,17 +110,29 @@ the 20-byte hook region.
 
 The Shopping Card module supplies LBellCounterRT with an additional hidden
 N_ShoppingCard_00 subtree. Its green rounded window, geometric card icon,
-English Savings caption and independent T_SavingsNum_00 retain all original
+English Bells badge and independent T_SavingsNum_00 retain all original
 panes/materials/textures/animations. Each HUD update writes the current
-resident’s native savings synchronously using a 24-byte UTF-16 buffer for the
+resident’s native savings using a 24-byte UTF-16 buffer for the
 nine-digit cap with commas. Original cash panes are restored outside supported
 rooms. No player/UI pointer is cached. Pocket/price counters retain cash.
-Savings updates are immediate; no dedicated count-up animation is added.
+0.3.5 adds the white oval/icon rims and native white Bells badge with green text.
+The regular HUD keeps a value-only savings transition (no UI/save pointers).
+Native 03353B14 steps that independent +260-shaped value object; a no-op
+callback interface leaves text/feedback under the module's control. On each
+actual step, 03025400 receives the native previous/current/direction/finished
+event and plays the live counter's Up/Down/Finish animation and sound feedback.
+Its hidden cash text is immediately restored with 03025A4C; no native cash
+amount, target or controller cache is changed. Savings text uses the independent
+animated value. A new target retargets from the currently shown value. Initial
+entry, room/resident switches and settled balances are silent. Only the regular
+HUD drives feedback; the auxiliary display stays immediate to avoid duplicate
+sounds. Leaving a supported room invalidates the numeric state.
 Missing layout/adapter leaves ordinary Bells UI intact. Bounded diagnostics
 report SAVINGS_DISPLAY_READY or SAVINGS_DISPLAY_MISSING with source=HUD or
 auxiliary, making an unbound path observable. Native HUD cash refresh remains
 independent: savings changes do not queue its money animation, while genuine
-cash changes still do. Live rendering/audio verification is pending.
+cash changes still do. The user confirmed the corrected 0.3.4 savings HUD. Live verification of the
+0.3.5 style and animation/audio remains pending.
 
 ## Deferred design
 

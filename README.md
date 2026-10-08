@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.4 Shopping Card prototype** for ACNH **3.0.3 on Eden**. One Core
+**0.3.5 Shopping Card prototype** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -81,7 +81,10 @@ ABD transfers and ordinary pocket-money actions retain their existing paths.
 
 The top-right currency display uses a green shopping card and a separate
 savings amount inside the two shops. It fits the full 999,999,999-Bell balance;
-the prototype label is English (“Savings”). Outside those shops it returns to
+the prototype label is English (“Bells”), on a white badge with green text.
+The green oval and card icon have white rims. Balance changes count up/down
+with the native increase/decrease/finish animation and sound feedback. First
+display, resident/room switches and unchanged balances stay silent. Outside those shops it returns to
 the ordinary Bells presentation. Pockets and other shared cash counters keep
 showing pocket Bells. The 0.3.2 change removes savings substitution from their
 refresh paths, which caused a false money animation/sound after closing pockets.
@@ -96,8 +99,8 @@ menu entry is added. Disabling/removing Shopping Card and restarting restores
 normal transaction routing; ordinary money/item changes from completed
 transactions remain saved. This prototype has local ARM regression coverage,
 including native encrypted savings writes. The user confirmed Nook’s Cranny
-transactions in 0.3.1; the new display/pocket-close fix and Able Sisters still
-need an Eden playtest.
+transactions in 0.3.1 and the corrected savings HUD in 0.3.4. The 0.3.5
+style/animation update and Able Sisters still need an Eden playtest.
 See [research and follow-up scope](research/shopping-card/NOTES.md).
 
 ## Shared configuration overlays
@@ -117,7 +120,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.4
+version = 0.3.5
 base_speed = 2
 boost_speed = 4
 faster_ui = false
