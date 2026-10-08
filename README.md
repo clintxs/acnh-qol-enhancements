@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.1 Shopping Card prototype** for ACNH **3.0.3 on Eden**. One Core
+**0.3.2 Shopping Card prototype** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -14,7 +14,7 @@ for installation, version policy and user-facing limits.
 | Faster Dialogue | C++ hook rewrite of Faster Interactions 0.3.0, with conditional NPC/UI boost | Optional personal configuration |
 | Fitting Room | Able Sisters Bag prototype 0.3.7 | Fitting row badge and original counter layout |
 | Amiibo | C++ hook rewrite of Amiibo Scan 1.0.0 | Configuration only |
-| Shopping Card | Always-enabled native savings routing prototype | Configuration only |
+| Shopping Card | Always-enabled native savings routing prototype | Configuration + savings currency layout |
 
 Faster tool-wheel animations and other workspace mods are not bundled in this
 six-feature suite. Historical source notes under `docs/` describe each
@@ -78,11 +78,21 @@ the original transaction routines. Space checks no longer assume spending
 Bell bags frees pocket slots. Harv's Island, other vendors, the drop-off box,
 ABD transfers and ordinary pocket-money actions retain their existing paths.
 
+The top-right currency display uses a green shopping card and a separate
+savings amount inside the two shops. It fits the full 999,999,999-Bell balance;
+the prototype label is English (“Savings”). Outside those shops it returns to
+the ordinary Bells presentation. Pockets and other shared cash counters keep
+showing pocket Bells. The 0.3.2 change removes savings substitution from their
+refresh paths, which caused a false money animation/sound after closing pockets.
+The card icon is made from native vector panes; no texture or font is replaced.
+
 No new item, save flag, message resource, SD file, filesystem permission or
 menu entry is added. Disabling/removing Shopping Card and restarting restores
 normal transaction routing; ordinary money/item changes from completed
 transactions remain saved. This prototype has local ARM regression coverage,
-including native encrypted savings writes, but still needs an Eden playtest.
+including native encrypted savings writes. The user confirmed Nook’s Cranny
+transactions in 0.3.1; the new display/pocket-close fix and Able Sisters still
+need an Eden playtest.
 See [research and follow-up scope](research/shopping-card/NOTES.md).
 
 ## Shared configuration overlays
@@ -102,7 +112,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.1
+version = 0.3.2
 base_speed = 2
 boost_speed = 4
 faster_ui = false
@@ -224,9 +234,9 @@ at `../vanilla-3.0.3/Layout`; builders verify their hashes and archive structure
 The package script checks that every INI matches the Core release, refuses to
 replace existing archives, and creates:
 
-- `dist/qol-enhancements-v0_3_1_for_acnh_v3_0_3.zip`
-- `dist/qol-enhancements-v0_3_1_for_acnh_v3_0_3_source.zip`
-- `dist/qol-enhancements-v0_3_1_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
+- `dist/qol-enhancements-v0_3_2_for_acnh_v3_0_3.zip`
+- `dist/qol-enhancements-v0_3_2_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v0_3_2_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
 
 The binary ZIP contains a conspicuous installation text file, README, Core and
 six independently selectable feature folders, plus a SHA-256 manifest. Source

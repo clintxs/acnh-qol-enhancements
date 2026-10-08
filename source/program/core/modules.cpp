@@ -87,7 +87,7 @@ const std::array<ModuleDescription, 6> Modules{{
     {"Faster Dialogue", "faster-dialogue", {0, 1, 0}, dialogue::Install, dialogue::Configure},
     {"Fitting Room", "fitting-room", {0, 1, 0}, able_bag::Install},
     {"Amiibo", "amiibo", {0, 1, 0}, amiibo::Install},
-    {"Shopping Card", "shopping-card", {0, 3, 0}, shopping::Install},
+    {"Shopping Card", "shopping-card", {0, 3, 2}, shopping::Install},
 }};
 
 void ActivateModules() {

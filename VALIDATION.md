@@ -1,8 +1,9 @@
-# Unified QoL validation — 0.3.1 Shopping Card prototype
+# Unified QoL validation — 0.3.2 Shopping Card prototype
 
 Validated locally on October 8, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
-dialogue fix and subsequently the corrected 0.2.3 NPC diagnostic build work in Eden. The configuration layering and new Shopping Card prototype
+dialogue fix and subsequently the corrected 0.2.3 NPC diagnostic build work in Eden. The user also confirmed Nook’s Cranny transactions in Shopping Card 0.3.1.
+The configuration layering, new savings UI/pocket-close fix, and Able Sisters
 still need a live check. No running game or save files were accessed by the
 local tests below.
 
@@ -16,8 +17,8 @@ local tests below.
   `exl_main` installs only the content-mount continuation hook and performs no
   configuration reads. Activation executes the real compiled registry/parser and
   installers; a second activation performs no additional reads or installations.
-- Full suite installs 55 disjoint modeled hook ranges (Core 1, Catalog 16,
-  Pockets 16, Faster Dialogue 5, Fitting Room 11, Amiibo 1, Shopping Card 5), plus the private
+- Full suite installs 56 disjoint modeled hook ranges (Core 1, Catalog 16,
+  Pockets 16, Faster Dialogue 5, Fitting Room 11, Amiibo 1, Shopping Card 6), plus the private
   fitting input vtable entry. No embedded binary replacement arrays, IPS or
   dialogue code-cave helper remain in the collection.
 - Per-feature absent, disabled, invalid, missing-version, oversized, below-minimum
@@ -36,7 +37,7 @@ local tests below.
   list replacement/clearing, invalid/duplicate preference fallback, normalization
   after merging, and the same keys in either file. Module packages from 0.1.0
   through the current version remain accepted under minimum 0.1.0 for the
-  original five modules; Shopping Card requires minimum 0.3.0.
+  original five modules; Shopping Card requires minimum 0.3.2 (currency resource required).
 - Compiled Amiibo C++ callback feeds 9,000 into the unchanged native halfword
   timeout store at both load addresses. The original immediate is untouched.
 
@@ -73,6 +74,20 @@ compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
 - Existing native fitting checkout and feedback regressions are rerun with the
   shared account accessor. Actual shopping gameplay, native field state and
   both modules together require the live checks below.
+
+- Original generic and top-right cash refresh branches execute with the
+  compiled wallet hook, different savings/cash balances, and matching native
+  cash caches. Neither queues the amount animation that caused the reported
+  pocket-close ka-ching in 0.3.1. A positive control with a real cash change
+  still queues the original animation; no sound routine is muted.
+- Compiled savings display uses the top-right controller’s current resident,
+  resolves both direct/group text adapters, shows full zero/cap balances,
+  restores cash panes outside supported shops, and tolerates absent resources.
+  Native text setting and pane lookup are modeled; rendering/audio need Eden.
+- Resource checks preserve every existing pane/material and non-layout archive
+  member byte for byte. The added subtree starts hidden, carries an independent
+  24-byte amount buffer, and uses native rounded-window textures/vector shapes.
+  No MSBT lookup is attached to the savings text.
 
 ## Conditional dialogue
 
@@ -145,7 +160,8 @@ real delivery/catalog saves, or complete emulator behavior.
   module marker, so replacing the suite folders cannot overwrite preferences. Optional modules are
   absent from Core's own RomFS, so removing/disabling one removes its marker.
 - Six layout payloads match the current standalone binary ZIPs byte for byte,
-  checked against independently captured SHA-256 values.
+  checked against independently captured SHA-256 values. A seventh layout
+  belongs to Shopping Card and adds the initially hidden savings presentation.
 - Catalog badge builders verify original resource hashes, archive changes and
   hidden initial badge panes. Fitting builders preserve other archive members.
 - Binary ZIP contents and SHA-256 manifest are checked. Matching source excludes
@@ -205,4 +221,7 @@ Switch hardware and other emulators/game versions are not validated targets.
    tickets, full storage/pockets, wearing/sending, and several residents. Sell
    items/turnips at the counter and verify the deposit and wire message. Check
    drop-off box, ABD transfers, Harv and another vendor retain normal behavior.
+   Close/reopen pockets repeatedly without a transaction; verify no false
+   sound/amount animation. Check green savings display at zero and large
+   balances, switching resident and leaving both shops; pockets still show cash.
    Restart with Shopping Card disabled/removed and verify native payment.

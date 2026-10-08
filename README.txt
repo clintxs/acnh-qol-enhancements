@@ -1,8 +1,8 @@
-QoL Enhancements 0.3.1 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.2 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
-Shopping Card: new always-enabled savings prototype; needs an Eden playtest.
+Shopping Card: green savings display and pocket-close sound fix; needs testing.
 
 INSTALL
 Fully close ACNH. Disable the standalone Catalog Aware Shops, QoL Pockets
@@ -27,17 +27,22 @@ Amiibo: shared event scan timeout extended to 9,000 updates (~5 minutes at 30 Hz
 Shopping Card: Nook's Cranny/Able Sisters purchases use ABD savings; Nook's
 sales deposit to savings. Includes fitting checkout and the optional fitting bag.
 Always active when this module is enabled. No item, menu addition or unlock yet.
+The top-right display shows a green shopping card and full savings balance
+inside these shops, and ordinary Bells outside. The English “Savings” label
+is a prototype. Pocket/shared cash counters continue showing pocket Bells;
+0.3.2 fixes their false change animation/sound after closing pockets.
 Pocket Bells/Bell bags stay untouched. No cash fallback for insufficient savings.
 Tailor tickets still work. Native savings cap/deposit clamping still applies.
 Harv, other vendors, the drop-off box and ABD transfers retain normal behavior.
 No new save fields, SD files, MSBT replacements or permissions are required.
 Disable/remove Shopping Card and restart for a clean uninstall; completed
-transactions remain ordinary saved money/item changes. Live testing is pending.
+transactions remain ordinary saved money/item changes. Nook transactions were
+confirmed in 0.3.1; the new UI/fix and Able Sisters need live testing.
 
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.1
+  version = 0.3.2
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.

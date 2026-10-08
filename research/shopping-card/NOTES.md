@@ -1,6 +1,6 @@
 # Shopping Card — ACNH 3.0.3
 
-Prototype 0.3.1, October 8, 2026. Original mapped main SHA-256:
+Prototype 0.3.2, October 8, 2026. Original mapped main SHA-256:
 `b1ae8e2a0d82f9f38f711c132d1751b221baf9d6411b2be06ebc4bb502ac912d`.
 Build ID: `FF1D1C05670DB6021C85B624A710B963`.
 All implementation uses readable Exlaunch C++ hooks. No new game item or data
@@ -73,6 +73,36 @@ and fitting confirmation at 031143FC. Its arguments are player, Bell payment,
 and tailor-ticket usage. Pass zero Bell payment in card shops while preserving
 tickets; otherwise native capacity could count Bell-bag slots that a savings
 payment will never free.
+
+## Savings currency display and pocket-close regression
+
+The user confirmed Nook’s Cranny transactions in 0.3.1, then reported a
+ka-ching and top-right refresh after closing pockets without a transaction.
+Generic money UI 02B13F10 compares its cached cash with 0257ABF0. Its initial
+value (02B136E8, controller+21C) is supplied as cash, so substituting savings on
+refresh queued a spurious native counter transition (+290/+294/+298/+29C).
+0.3.2 removes 02B13F18/28 and 0301AF0C/0301B67C/0301B6C0 from the savings
+callers. Native cash initialization/refresh/animation now use the same source.
+
+The Bell scene uses L_Bell_00 -> LBellCounterRT. Its update starts at
+0301B394, controller player+230 and counter+210. Counter+250 is the numeric
+text binding; binding+48 is its typed adapter (payload+8, methods+18,
+setter+5E0). Direct SetText 03C1B588 and grouped SetText 03C47B90 are resolved
+before following a real pane’s parent. Catalog can already hook these setters,
+so fingerprints check untouched bodies after the 20-byte hook region.
+
+The Shopping Card module supplies LBellCounterRT with an additional hidden
+N_ShoppingCard_00 subtree. Its green rounded window, geometric card icon,
+English Savings caption and independent T_SavingsNum_00 retain all original
+panes/materials/textures/animations. The top-right update selects that subtree
+and writes the current resident’s native savings amount synchronously, using a
+24-byte UTF-16 buffer for the nine-digit cap with commas. Original cash panes
+are restored outside the supported rooms. No player or UI pointer is cached.
+Generic pockets/price counters retain the cash presentation. Savings updates
+are immediate in this prototype; no dedicated count-up animation is added.
+Missing layout/adapter leaves ordinary Bells UI intact. UI rendering and audio
+still require live verification; local tests cover the native refresh branches
+and modeled bindings plus structural resource integrity.
 
 ## Deferred design
 

@@ -7,6 +7,7 @@ import json
 import re
 import build_catalog_badge_layout as badges
 from build_layouts import build as build_fitting
+from build_shopping_card_layout import build as build_shopping
 
 ROOT = Path(__file__).resolve().parents[1]
 CORE_FOLDER = 'QoL Enhancements - Core (REQUIRED)'
@@ -62,7 +63,7 @@ def suite_files():
         for path in sorted(folder.rglob('*')):
             if path.is_file() and path.name != '.DS_Store':
                 files[f'QoL Enhancements - {label}/{path.relative_to(folder)}'] = path.read_bytes()
-    for label, assets in (('Catalog', catalog_layouts()), ('Fitting Room', build_fitting())):
+    for label, assets in (('Catalog', catalog_layouts()), ('Fitting Room', build_fitting()), ('Shopping Card', build_shopping())):
         for name, data in assets.items():
             files[f'QoL Enhancements - {label}/{name}'] = data
     manifest = {name: hashlib.sha256(data).hexdigest() for name, data in files.items()}

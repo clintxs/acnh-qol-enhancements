@@ -19,7 +19,7 @@ assert len(configs) == 6
 assert not any(name.endswith('/faster-dialogue.custom.ini') for name in files)
 for name in configs:
     assert files[name].decode() == f'enabled = true\nversion = {package.release_version()}\n'
-assert sum('/Layout/' in name for name in files) == 6
+assert sum('/Layout/' in name for name in files) == 7
 reference = json.loads((Path(__file__).parent / 'baseline_hashes.json').read_text())
 assert hashlib.sha256(files[f'{core}/exefs/main.npdm']).hexdigest() == reference['npdm_sha256']
 assert files['START HERE - CORE IS REQUIRED.txt'].startswith(b'CORE IS REQUIRED')
@@ -29,7 +29,7 @@ for name, digest in manifest.items(): assert hashlib.sha256(files[name]).hexdige
 # Resource generation must reproduce the current standalone modules exactly.
 for name, digest in reference['assets'].items():
     assert hashlib.sha256(files[name]).hexdigest() == digest, name
-print('PASS: seven mod folders, subsdk6 only, six versioned configs, six unchanged resource payloads and SHA-256 manifest')
+print('PASS: seven mod folders, subsdk6 only, six versioned configs, six unchanged resources plus green Shopping Card layout and SHA-256 manifest')
 custom = package.custom_files()
 personal = [name for name in custom if '/config/' in name]
 assert len(personal) == 1 and personal[0].endswith('/faster-dialogue.custom.ini')

@@ -9,8 +9,8 @@ from unicorn.arm64_const import *
 from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
 SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'amiibo', 'shopping-card')
-COUNTS = (16, 16, 5, 11, 1, 5)
-DEFAULT = b'enabled=true\nversion=0.3.1\n'
+COUNTS = (16, 16, 5, 11, 1, 6)
+DEFAULT = b'enabled=true\nversion=0.3.2\n'
 
 def expected_hook_count(machine, enabled):
     # The existing verbose-dialogue build adds a Catalog message trace hook.
@@ -228,11 +228,11 @@ def check_config_layers():
                 (DEFAULT.replace(b'true', b'false'), b'enabled=true', True),
                 (DEFAULT, b'', True),
                 (DEFAULT, b'version=0.0.1', False),
-                (DEFAULT, b'version=0.3.0', True),
+                (DEFAULT, b'version=0.3.2', True),
                 (DEFAULT, b'enabled=false\nversion=bad', True),
                 (DEFAULT, b'enabled=false\nenabled=true', True),
-                (None, b'enabled=true\nversion=0.3.0', False),
-                (b'enabled=true', b'version=0.3.0', False),
+                (None, b'enabled=true\nversion=0.3.2', False),
+                (b'enabled=true', b'version=0.3.2', False),
             ):
                 files = {slug + '.custom': custom}
                 if regular is not None: files[slug] = regular

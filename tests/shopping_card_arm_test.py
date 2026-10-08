@@ -10,10 +10,10 @@ from unicorn.arm64_const import *
 from unicorn import UC_HOOK_MEM_INVALID, UC_HOOK_CODE
 
 WALLET_CALLS = (0xe7bf84, 0x2ad2fcc, 0x2ad41e4, 0x2ad5a54, 0x2ad5fe8,
-                0x2b13f18, 0x2b13f28, 0x301af0c, 0x301b67c, 0x301b6c0, 0x31192d8)
+                0x31192d8)
 DEBIT_CALLS = (0xace110, 0xacf388, 0xadc1d0, 0xb168b4, 0x311d400)
 SHOPS = (0xbe3cad72, 0x8a17f484, 0x91e12aa0)
-HOOKS = (0x257abf0, 0x257b340, 0x257b6f0, 0xf86e68, 0x2579fe0)
+HOOKS = (0x257abf0, 0x257b340, 0x257b6f0, 0xf86e68, 0x2579fe0, 0x301b394)
 
 class CardMachine(Machine):
     def __init__(self, base, enabled=True):
@@ -23,8 +23,8 @@ class CardMachine(Machine):
         self.u.hook_add(UC_HOOK_MEM_INVALID, lambda u,a,p,n,v,d: print("invalid", hex(u.reg_read(UC_ARM64_REG_PC)), hex(p)) or False)
         for offset in HOOKS: self.u.mem_write(base + offset, RAW[offset:offset + 20])
         self.callbacks = {offset: self.module.find(name, 'Callback') for offset, name in
-                          zip(HOOKS, ('ShopWallet', 'ShopDebit', 'ShopCapacity', 'SaleMessage', 'ShopPurchaseSpace'))}
-        for n, name in enumerate(('ShopWallet', 'ShopDebit', 'ShopCapacity', 'SaleMessage', 'ShopPurchaseSpace')):
+                          zip(HOOKS, ('ShopWallet', 'ShopDebit', 'ShopCapacity', 'SaleMessage', 'ShopPurchaseSpace', 'ShopBalanceDisplay'))}
+        for n, name in enumerate(('ShopWallet', 'ShopDebit', 'ShopCapacity', 'SaleMessage', 'ShopPurchaseSpace', 'ShopBalanceDisplay')):
             stub = self.ram + 0x9000 + n * 0x10
             self.services[stub] = ('card_original', name)
             self.write(self.module.find(name, 'OrigRef'), stub)
@@ -58,7 +58,10 @@ class CardMachine(Machine):
     def service(self, u, pc, size, data):
         off = pc - self.base; service = self.services.get(pc)
         if off == 0x256c940: self.finish(self.house_level); return
-        if off == 0x257abf0 and not self.enabled: self.finish(self.wallet); return
+        if off == 0x257abf0:
+            if self.enabled: u.reg_write(UC_ARM64_REG_PC, self.callbacks[off])
+            else: self.finish(self.wallet)
+            return
         if off in (0x24830c0, 0x2483354):
             player = self.read(self.reg(1), 1); self.lookups.append(player)
             self.finish(self.resident(player) if player < 8 else 0); return
@@ -72,6 +75,7 @@ class CardMachine(Machine):
             name = service[1]
             if name == 'ShopWallet': self.finish(self.wallet)
             elif name == 'ShopDebit': self.wallet_debits.append((self.read(self.reg(0), 1), self.reg(1))); self.finish()
+            elif name == 'ShopBalanceDisplay': self.display_updates += 1; self.finish()
             elif name == 'ShopCapacity': self.finish(1234567)
             elif name == 'ShopPurchaseSpace': self.space_args = (self.reg(1), self.reg(2)); self.finish(3)
             else: self.finish(1)
@@ -136,7 +140,8 @@ for base in (0x7100000000, 0x7200000000):
                 assert m.invoke(m.callbacks[0xf86e68], m.query) == 1
     # ABD deposit/withdraw, pocket Bells, other callers IN shops, and unrelated
     # rooms never borrow the card path.
-    for site in (0x2e72a1c, 0x2e72ef4, 0x307d91c, 0xc33b74, 0x2581728):
+    for site in (0x2e72a1c, 0x2e72ef4, 0x307d91c, 0xc33b74, 0x2581728,
+                 0x2b13f18, 0x2b13f28, 0x301af0c, 0x301b67c, 0x301b6c0):
         assert m.route(0x257abf0, site, m.player) == m.wallet
     m.route(0x257b340, 0x2e72a28, m.player, 100)
     assert m.wallet_debits == [(7, 100)]
