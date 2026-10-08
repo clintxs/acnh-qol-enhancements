@@ -96,7 +96,10 @@ namespace exl::hook::nx64 {
         };
     };
 
-    struct InlineFloatCtx : public InlineCtx {
+    // inline_asm.s pushes GP registers first, then SIMD registers. Its final
+    // SP therefore addresses SIMD first, with GP at +0x200. Match that stack
+    // layout rather than inheriting InlineCtx (which puts GP at offset zero).
+    struct InlineFloatCtx {
         /* Ensure the data is aligned for efficient access. */
         union ALIGNED(sizeof(FloatRegister)) {
             /* Accessors to simplify access to registers. */
@@ -106,6 +109,11 @@ namespace exl::hook::nx64 {
             impl::Float64RegisterAccessor D;
             impl::Float32RegisterAccessor S;
             FloatRegisters m_Fr;
+        };
+        union {
+            impl::Gp64RegisterAccessor X;
+            impl::Gp32RegisterAccessor W;
+            GpRegisters m_Gpr;
         };
 
         /* 

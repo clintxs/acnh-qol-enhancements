@@ -1,8 +1,8 @@
-QoL Enhancements 0.1.0 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.2.0 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
-This is the first unified build; combined in-game validation is pending.
+Conditional Faster Dialogue prototype; in-game validation is pending.
 
 INSTALL
 Fully close ACNH. Disable the standalone Catalog Aware Shops, QoL Pockets
@@ -21,14 +21,14 @@ our hook/layout files. Core supplies the suite's only main.npdm.
 MODULES
 Catalog: catalog/recipe stars, catalog badges and furniture-variation markers.
 Pockets: Grab 5/10, direct storage withdrawal, Y-to-storage and footer hints.
-Faster Dialogue: faster default reveal; hold B or R for another 2x rate boost.
+Faster Dialogue: faster default reveal; B/R boost; optional automatic NPC/UI boost.
 Fitting Room: Y toggles a shopping bag; native bulk checkout includes bag items.
 Amiibo: shared event scan timeout extended to 9,000 updates (~5 minutes at 30 Hz).
 
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.1.0
+  version = 0.2.0
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.
@@ -40,11 +40,45 @@ Config files accept enabled and version, whole-line #/; comments, a UTF-8 BOM,
 CRLF, and ASCII text up to 4 KiB. Both keys are required; duplicate/unknown keys,
 invalid booleans or versions are rejected. Versions use numeric major.minor.patch.
 
+PERSONAL FASTER DIALOGUE SETTINGS
+Install the optional separate faster-dialogue-custom-example ZIP alongside
+Core and Faster Dialogue to try the requested preset: base 2x, B/R 4x, automatic
+4x for Timmy, Tommy, Orville, Wilbur, Kapp'n and recognized UI/player narration.
+The personal mod contains:
+  romfs/qol-enhancements/config/faster-dialogue.custom.ini
+
+Edit this file to customize:
+  base_speed = 2
+  boost_speed = 4
+  faster_ui = true
+  faster_npc_list = Timmy, Tommy, Orville, Wilbur, Kapp'n
+
+The five internal IDs are rcm, rct, dod, doc, kpp; other actual NPC resource
+IDs work too. Kapp'n also covers its kppB profile. Matching ignores case.
+This prototype accepts speed tiers 2/4.
+Holding B/R selects boost_speed without stacking it on an automatic boost.
+Speeds preserve the game's language/FPS-adjusted fast rate; animations and
+scripted waits can limit conversation speed. Native overrides take priority.
+No custom file: base 2, held 4, automatic UI/NPC boost off.
+
+Keep the personal mod folder when replacing the six suite folders. Do not
+reinstall the example preset over your edited preferences. Enable only one
+mod providing the custom file. Fully restart after changes. The custom file
+has no version/enabled key and cannot enable an absent/disabled module.
+Bad custom settings warn and fall back per setting; invalid IDs are ignored.
+Use whole-line #/; comments, at most 4 KiB, and up to 64 ASCII resource IDs.
+Do not put personal preferences in the versioned faster-dialogue.ini.
+
+UI recognition covers native dialog windows and player narration with a valid
+speaker handle. Unknown/balloon contexts or a missing speaker alone use base.
+Settings, catching messages, ABD and offscreen speakers need live coverage
+checks. Kapp'n songs/travel retain native scripting; no skip is added.
+
 LOGS
 Core logs its built-in version, each installed package version and minimum,
 absent/disabled features, newer-package warnings, and installation results.
 Enabled packages below Core's per-feature minimum are rejected. Newer packages
-produce a warning and are attempted if their settings and patches are supported.
+produce a warning and are attempted if their settings and hooks are supported.
 Missing/invalid/unreadable config files do not activate feature code.
 
 Look for WAITING_FOR_CONTENT, followed by BOOT_OK with enabled_modules/errors.

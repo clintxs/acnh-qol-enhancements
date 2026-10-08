@@ -49,6 +49,7 @@ def suite_files():
         f'{CORE_FOLDER}/exefs/subsdk6': (ROOT / 'deploy/subsdk6').read_bytes(),
         f'{CORE_FOLDER}/exefs/main.npdm': (ROOT / 'deploy/main.npdm').read_bytes(),
         f'{CORE_FOLDER}/LICENSE': (ROOT / 'LICENSE').read_bytes(),
+        'faster-dialogue.custom.ini.example': (ROOT / 'examples/faster-dialogue.custom.ini').read_bytes(),
     }
     assert files[f'{CORE_FOLDER}/exefs/subsdk6'][:4] == b'NSO0'
     assert files[f'{CORE_FOLDER}/exefs/main.npdm'][:4] == b'META'
@@ -68,16 +69,41 @@ def suite_files():
     files['SHA256.json'] = (json.dumps(manifest, indent=2) + '\n').encode()
     return files
 
+def custom_files():
+    # This separate, optional personal mod is intentionally absent from suite
+    # module folders, so replacing those folders cannot overwrite preferences.
+    return {
+        'README.txt': (
+            'OPTIONAL PERSONAL FASTER DIALOGUE SETTINGS\n\n'
+            'Install the My Custom Faster Dialogue Settings folder alongside\n'
+            'QoL Enhancements - Core and QoL Enhancements - Faster Dialogue.\n'
+            'Enable all three in Eden and fully restart ACNH.\n\n'
+            'This preset uses base 2x, held B/R 4x, and automatic 4x for\n'
+            "Timmy, Tommy, Orville, Wilbur, Kapp'n and recognized UI messages.\n"
+            'Speeds are nominal tiers based on the native fast-text rate.\n'
+            'Edit romfs/qol-enhancements/config/faster-dialogue.custom.ini\n'
+            'inside the personal mod. Keep this folder when updating the suite.\n'
+            'Do not reinstall this preset over your edited personal settings.\n'
+            'The personal file alone cannot enable Faster Dialogue.\n'
+            'Use only one mod supplying this custom file.\n'
+        ).encode(),
+        'My Custom Faster Dialogue Settings/romfs/qol-enhancements/config/faster-dialogue.custom.ini':
+            (ROOT / 'examples/faster-dialogue.custom.ini').read_bytes(),
+    }
+
 def main():
     output = ROOT / 'dist'
     output.mkdir(exist_ok=True)
     stem = f'qol-enhancements-v{release_version().replace(".", "_")}_for_acnh_v3_0_3'
     binary, source = output / f'{stem}.zip', output / f'{stem}_source.zip'
-    for path in (binary, source):
+    custom = output / f'{stem}_faster-dialogue-custom-example.zip'
+    for path in (binary, source, custom):
         if path.exists(): raise SystemExit(f'Refusing to replace existing release: {path}')
     files = suite_files()
     with ZipFile(binary, 'w', ZIP_DEFLATED) as archive:
         for name, data in sorted(files.items()): archive.writestr(name, data)
+    with ZipFile(custom, 'w', ZIP_DEFLATED) as archive:
+        for name, data in sorted(custom_files().items()): archive.writestr(name, data)
     excluded = {'.git', '.vscode', '__pycache__', 'build', 'deploy', 'dist', 'out'}
     with ZipFile(source, 'w', ZIP_DEFLATED) as archive:
         for path in sorted(ROOT.rglob('*')):
@@ -85,7 +111,7 @@ def main():
             if path.is_file() and not excluded.intersection(relative.parts):
                 if path.suffix not in {'.elf', '.nso', '.npdm', '.pyc', '.map'} and path.name != '.DS_Store':
                     archive.write(path, f'qol-enhancements/{relative}')
-    for path in (binary, source):
+    for path in (binary, source, custom):
         with ZipFile(path) as archive: assert archive.testzip() is None
         print(path)
 

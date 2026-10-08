@@ -3,17 +3,14 @@
 FS, hook installation, writable aliases and cache services are modeled. Every
 module installer and its validation run from the final ELF. No game/save writes.
 """
-from pathlib import Path
 from itertools import product
-import struct
-import json
 from unicorn import Uc, UC_ARCH_ARM64, UC_MODE_ARM, UC_HOOK_CODE, UC_HOOK_MEM_WRITE
 from unicorn.arm64_const import *
 from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
 SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'amiibo')
-COUNTS = (16, 16, 0, 11, 0)
-DEFAULT = b'enabled=true\nversion=0.1.0\n'
+COUNTS = (16, 16, 5, 11, 1)
+DEFAULT = b'enabled=true\nversion=0.2.0\n'
 
 class Machine:
     def __init__(self, base, files):
@@ -23,6 +20,7 @@ class Machine:
         self.files = {f'content:/qol-enhancements/config/{slug}.ini': data for slug, data in files.items()}
         self.handles, self.opened, self.closed = {}, [], []
         self.open_error = self.read_error = self.size_error = False
+        self.custom_fault = None
         self.u.mem_map(base, 0x6000000)
         self.u.mem_write(base, RAW)
         self.ram = base + 0x10000000
@@ -69,17 +67,17 @@ class Machine:
             if 'OpenFile' in value:
                 path = self.string(self.reg(1))
                 self.opened.append(path)
-                if self.open_error: result = 0x402
+                if self.open_error or (self.custom_fault == 'open' and path.endswith('.custom.ini')): result = 0x402
                 elif path not in self.files: result = 0x202
                 else:
                     handle = len(self.opened)
                     self.handles[handle] = self.files[path]
                     self.write(self.reg(0), handle)
             elif 'GetFileSize' in value:
-                if self.size_error: result = 0x402
+                if self.size_error or (self.custom_fault == 'size' and self.opened[-1].endswith('.custom.ini')): result = 0x402
                 else: self.write(self.reg(0), len(self.handles[self.reg(1)]))
             elif 'ReadFile' in value:
-                if self.read_error: result = 0x402
+                if self.read_error or (self.custom_fault == 'read' and self.opened[-1].endswith('.custom.ini')): result = 0x402
                 else:
                     content = self.handles[self.reg(0)]
                     assert self.reg(1) == 0 and self.reg(3) == len(content)
@@ -115,25 +113,25 @@ def check_all_subsets():
             m.activate()
             assert len(m.hooks) == 1 + sum(count for count, enabled in zip(COUNTS, flags) if enabled), m.text
             assert 'BOOT_OK' in m.text and f'enabled_modules={sum(flags)} errors=0' in m.text, m.text
-            assert len(m.opened) == 5 and len(m.closed) == sum(flags)
-            assert m.read(base + 0xbc4140, 4) == (0x52846508 if flags[4] else 0x52803848)
-            assert m.read(base + 0x1af9ff0, 4) == (0x52880049 if flags[2] else 0x528c0049)
+            assert len(m.opened) == 5 + flags[2] and len(m.closed) == sum(flags)
+            assert m.read(base + 0xbc4140, 4) == 0x52803848
+            assert (base + 0xbc4144 in m.hooks) == flags[4]
+            assert m.read(base + 0x1af9ff0, 4) == 0x528c0049
             assert (m.read(base + 0x4a10398) != base + 0x3c58d24) == flags[3]
             if flags[2]:
-                # Final runtime writes must equal the audited standalone boost.
-                reference = json.loads((Path(__file__).parent / 'baseline_hashes.json').read_text())
-                for offset, payload in reference['dialogue'].items():
-                    expected = bytes.fromhex(payload)
-                    assert bytes(m.u.mem_read(base + int(offset, 16), len(expected))) == expected
+                for offset in (0x1afa00c, 0x1afdec0, 0x1afded4, 0x1afdefc, 0x1a969e0):
+                    assert base + offset in m.hooks
+                # No code-cave helper or legacy instruction replacements remain.
+                assert bytes(m.u.mem_read(base + 0x3f06fb0, 48)) == RAW[0x3f06fb0:0x3f06fe0]
             before = (len(m.hooks), len(m.opened), len(m.logs))
             m.activate()
             assert before == (len(m.hooks), len(m.opened), len(m.logs))
-    print('PASS: all 32 module subsets at two bases; deferred activation, isolated hooks/patches, exact boost payload, once-only reads')
+    print('PASS: all 32 module subsets at two bases; deferred activation, isolated C++ hooks, C++ dialogue hooks, once-only reads')
 
 def check_errors():
     for slug in SLUGS:
         for data, expected in ((b'enabled=true\nversion=0.0.9', 'below minimum'),
-                               (b'enabled=true\nversion=0.2.0', 'newer than Core'),
+                               (b'enabled=true\nversion=0.3.0', 'newer than Core'),
                                (b'enabled=false\nversion=0.0.1', 'enabled=false'),
                                (b'enabled=true', 'config invalid'),
                                (b'x' * 4097, 'config invalid'),
@@ -141,7 +139,7 @@ def check_errors():
             m = Machine(0x7100000000, {slug: data})
             m.boot(); m.activate()
             assert expected in m.text, m.text
-            if b'version=0.2.0' in data:
+            if b'version=0.3.0' in data:
                 assert 'BOOT_OK' in m.text and 'enabled_modules=1' in m.text
             else:
                 assert len(m.hooks) == 1 and m.read(m.base + 0xbc4140, 4) == 0x52803848
@@ -156,15 +154,66 @@ def check_errors():
     m.write(m.base + 0x37b5460, 0, 4)
     m.boot()
     assert not m.hooks and not m.opened and 'PROFILE_MISMATCH' in m.text
-    # Dialogue helpers must remain pristine; reject before writing any record.
-    for offset in (0x1af9ff0, 0x3f06fb0):
+    # Dialogue hook sites and legacy paths must remain pristine; validate before installing.
+    for offset in (0x1af9ff0, 0x1afdd20, 0x1afdebc, 0x1afded4):
         m = Machine(0x7100000000, {'faster-dialogue': DEFAULT, 'amiibo': DEFAULT})
         m.write(m.base + offset, 0xdeadbeef, 4)
         m.boot(); m.activate()
         assert 'Faster Dialogue] DISABLED' in m.text and 'Amiibo: ENABLED' in m.text
-        assert m.read(m.base + 0x1afdec8, 4) == 0x3934dec9
+        assert not any(m.base + offset in m.hooks for offset in (0x1afa00c, 0x1afdec0))
+    m = Machine(0x7100000000, {slug: b'enabled=true\nversion=0.1.0' for slug in SLUGS})
+    m.boot(); m.activate()
+    assert len(m.hooks) == 50 and 'BOOT_OK' in m.text and 'enabled_modules=5 errors=0' in m.text
+    m = Machine(0x7100000000, {'amiibo': DEFAULT, 'faster-dialogue': DEFAULT})
+    m.write(m.base + 0xbc4140, 0x52846508, 4) # Older standalone Amiibo payload.
+    m.boot(); m.activate()
+    assert 'Amiibo] DISABLED' in m.text and 'Faster Dialogue: ENABLED' in m.text
+    assert m.base + 0xbc4144 not in m.hooks
     print('PASS: minimum/future/disabled/malformed/oversize versions, file failures, startup and patch conflicts')
+
+def check_amiibo_hook():
+    for base in (0x7100000000, 0x7200000000):
+        m = Machine(base, {'amiibo': DEFAULT})
+        m.boot(); m.activate()
+        registers = m.ram + 0x1000
+        m.write(registers + 8 * 8, 450)
+        m.u.reg_write(UC_ARM64_REG_X0, registers)
+        m.call(m.hooks[base + 0xbc4144])
+        assert m.read(registers + 8 * 8) == 9000
+        m.u.mem_write(base + 0xbc4144, RAW[0xbc4144:0xbc4158])
+        m.u.reg_write(UC_ARM64_REG_X8, m.read(registers + 8 * 8))
+        m.u.reg_write(UC_ARM64_REG_X19, m.ram + 0x2000)
+        m.u.emu_start(base + 0xbc4144, base + 0xbc414c, count=10)
+        assert m.read(m.ram + 0x20f8, 2) == 9000 and m.read(m.ram + 0x20f4, 4) == 0
+    print('PASS: compiled Amiibo C++ hook feeds the unchanged native timeout store at two bases')
+
+def check_custom_preferences():
+    for custom, summary in ((b'', 'base=2 boost=4 faster_ui=false npc_count=0'),
+                            (b'base_speed=4\nboost_speed=2', 'base=4 boost=4'),
+                            (b'base_speed=2\nboost_speed=2', 'base=2 boost=2'),
+                            (b'base_speed=0\nfaster_ui=yes', 'base=2 boost=4 faster_ui=false'),
+                            (b'x' * 4097, 'base=2 boost=4 faster_ui=false')):
+        m = Machine(0x7100000000, {'faster-dialogue': DEFAULT, 'faster-dialogue.custom': custom})
+        m.boot(); m.activate()
+        assert summary in m.text and 'BOOT_OK' in m.text, m.text
+        assert len(m.opened) == 6 and len(m.closed) == 2
+    for fault in ('open', 'size', 'read'):
+        m = Machine(0x7100000000, {'faster-dialogue': DEFAULT, 'faster-dialogue.custom': b'base_speed=4'})
+        m.custom_fault = fault
+        m.boot(); m.activate()
+        assert 'WARNING: custom config' in m.text and 'BOOT_OK' in m.text
+        assert 'base=2 boost=4 faster_ui=false' in m.text
+        assert len(m.closed) == (1 if fault == 'open' else 2)
+    for marker in (None, b'enabled=false\nversion=0.2.0'):
+        files = {'faster-dialogue.custom': b'base_speed=4'}
+        if marker: files['faster-dialogue'] = marker
+        m = Machine(0x7100000000, files)
+        m.boot(); m.activate()
+        assert len(m.opened) == 5 and len(m.hooks) == 1
+    print('PASS: personal preferences load only with enabled module; invalid/oversized/unreadable custom files retain feature defaults')
 
 if __name__ == '__main__':
     check_all_subsets()
     check_errors()
+    check_amiibo_hook()
+    check_custom_preferences()

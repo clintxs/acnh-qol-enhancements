@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.1.0 integration test
+# Unified QoL validation — 0.2.0 conditional dialogue prototype
 
 Validated locally on October 8, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The unified build has **not yet
@@ -14,22 +14,56 @@ been tested in Eden**. No running game or save files were accessed by these test
   `exl_main` installs only the content-mount continuation hook and performs no
   configuration reads. Activation executes the real compiled registry/parser and
   installers; a second activation performs no additional reads or installations.
-- Full suite installs 44 disjoint modeled hook ranges (Core 1, Catalog 16,
-  Pockets 16, Fitting Room 11), the private fitting input vtable entry and eleven
-  runtime instruction records (ten dialogue, one Amiibo).
+- Full suite installs 50 disjoint modeled hook ranges (Core 1, Catalog 16,
+  Pockets 16, Faster Dialogue 5, Fitting Room 11, Amiibo 1), plus the private
+  fitting input vtable entry. No embedded binary replacement arrays, IPS or
+  dialogue code-cave helper remain in the collection.
 - Per-feature absent, disabled, invalid, missing-version, oversized, below-minimum
   and newer-version configurations were checked. Newer valid packages warn and
   run. Below-minimum packages leave feature code untouched. Open/read/size errors
   close handles where appropriate and disable requested features. Occupied
-  startup/patch locations fail their instruction checks; dialogue validation
-  rejects an altered helper before modifying any other dialogue record.
-- Final compiled dialogue writes exactly match the standalone hold-to-boost 0.3.0
-  payload, captured independently in `tests/baseline_hashes.json`.
+  startup/hook locations fail their instruction checks; dialogue validation
+  rejects altered hook sites or legacy instruction changes before any of its
+  hooks are installed. Original code-cave padding remains untouched.
+- Personal settings are opened only for a compatible, enabled Faster Dialogue
+  module. Missing, empty, malformed, oversized and failed open/size/read cases
+  retain usable defaults; opened handles close. Personal config cannot enable
+  an absent/disabled module. Both 0.1.0 and 0.2.0 module packages remain accepted
+  under the unchanged per-feature minimum (0.1.0).
+- Compiled Amiibo C++ callback feeds 9,000 into the unchanged native halfword
+  timeout store at both load addresses. The original immediate is untouched.
 
 The loader harness models FS services, code-hook allocation, writable aliases
 and cache services. It does not execute Eden's loader or establish that the
 content-mount continuation is safe in a live process. Exlaunch's existing inline
-adapter is selected with full SIMD-register preservation for discovery.
+adapter is selected with full SIMD-register preservation for discovery. The
+SIMD context declaration was corrected to match the assembly stack layout, with
+compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
+
+## Conditional dialogue
+
+- Host settings/policy checks cover defaults, friendly aliases and resource IDs,
+  case-insensitive deduplication, UI independence, no stacked boost, 64-ID bounds,
+  invalid values/keys/list entries, empty lists, duplicate keys and size limits.
+- 5,784 compiled ARM cases at two ASLR bases execute the original native input,
+  reveal and renderer gate code with the real compiled SIMD adapter/callbacks.
+  No-input results match native held fast; B/R uses the extra tier. Protected
+  modes, forced native display, disabled acceleration, scripted overrides,
+  countdown handling and parser call counts remain unchanged.
+- Input matrices include B/R, excluded L, unrelated buttons, prior latch,
+  active/fallback/missing controllers and release. Controller bytes are unchanged.
+  Main/renderer matrices use five live fast rates, scales and completed states.
+- Modeled current speaker delegates/registry entries cover rcm/rct/dod/doc/kpp,
+  kppB, another NPC, a villager, player narration, dialog/balloon/unknown,
+  missing or invalid speaker, stale generations, retiring entities, unrelated
+  entity kinds, NPC RTTI mismatch/uninitialized/missing/foreign methods, and
+  overlong resource names. Sequences switch speakers and
+  repeatedly hold/release; borrowed speaker/registry bytes remain unchanged.
+  Kapp'n's friendly alias includes both known SpNpcParam profiles.
+- Speaker delegates, metadata lookup and parser completion are modeled. Hook
+  allocation/trampoline relocation is modeled; the actual SIMD adapter and C++
+  callbacks execute. These tests do not validate physical controllers, audio,
+  emotes, complete rendering or actual game context coverage in Eden.
 
 ## Existing behavior against the unified ELF
 
@@ -64,7 +98,10 @@ real delivery/catalog saves, or complete emulator behavior.
 ## Packaging
 
 - Exactly six mod folders: Core, Catalog, Pockets, Faster Dialogue, Fitting Room,
-  Amiibo. Five versioned INIs; only Core has ExeFS files. Optional modules are
+  Amiibo. Five versioned INIs; only Core has ExeFS files. The actual personal
+  custom INI is absent from the suite; a root .example is inert. A separate
+  optional personal-mod ZIP contains the requested preset and no executable or
+  module marker, so replacing the suite folders cannot overwrite preferences. Optional modules are
   absent from Core's own RomFS, so removing/disabling one removes its marker.
 - Six layout payloads match the current standalone binary ZIPs byte for byte,
   checked against independently captured SHA-256 values.
@@ -95,9 +132,17 @@ CLI are also required. None of those original game assets are redistributed.
    dialogue item sources. Check Pockets Grab 5/10, caption translations, native
    storage withdrawal, Y storage and footer hints with each module alone and
    together.
-4. Test Faster Dialogue no-input speed, held B/R boost, release/disconnect,
-   multi-page dialogue, choices and normal A/B behavior. The standalone 0.3.0
-   hold-to-boost build also still had live validation pending when integrated.
+4. Test Faster Dialogue without a custom mod: base 2, held B/R 4, release and
+   disconnect, multi-page dialogue, choices, A/B behavior, Animalese and emotes.
+   Then enable the separate personal preset and restart: verify automatic 4
+   for Timmy and Tommy independently, Orville, Wilbur, and Kapp'n (including
+   alternate profile if encountered), plus UI settings/catch/ABD dialogs. Verify
+   unlisted villagers remain at base and no prior NPC boost carries into the
+   next message. Check custom file edits, removal, module disabled, unknown IDs
+   and invalid values across full restarts. Kapp'n songs/travel should retain
+   native scripting; UI recognition may need additional verified contexts.
+   Check intended FPS-mod combinations separately; dynamic rates are retained
+   but static hook fingerprints do not establish complete compatibility.
 5. Use the existing save backup for Fitting Room purchases: bag plus outfit,
    overlap, 17–20 items, storage overflow, wear/send and Bell deduction/delivery.
    Confirm badge animation and catalog-star interaction in the fitting UI.

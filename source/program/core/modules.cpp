@@ -1,6 +1,7 @@
 #include "lib.hpp"
 #include "modules.hpp"
 #include "release.hpp"
+#include "program/dialogue/settings.hpp"
 #include "program/catalog/game/build_profile.hpp"
 #include "program/catalog/features/catalog_stars.hpp"
 #include "program/catalog/features/catalog_badges.hpp"
@@ -15,7 +16,7 @@
 #include <cstdio>
 
 namespace able_bag { bool Install(); }
-namespace qol::patches { bool InstallDialogue(); bool InstallAmiibo(); }
+namespace qol::amiibo { bool Install(); }
 
 namespace qol::core {
 namespace {
@@ -73,9 +74,9 @@ std::atomic<bool> ActivationStarted{false};
 const std::array<ModuleDescription, 5> Modules{{
     {"Catalog", "catalog", {0, 1, 0}, InstallCatalog},
     {"Pockets", "pockets", {0, 1, 0}, InstallPockets},
-    {"Faster Dialogue", "faster-dialogue", {0, 1, 0}, patches::InstallDialogue},
+    {"Faster Dialogue", "faster-dialogue", {0, 1, 0}, dialogue::Install},
     {"Fitting Room", "fitting-room", {0, 1, 0}, able_bag::Install},
-    {"Amiibo", "amiibo", {0, 1, 0}, patches::InstallAmiibo},
+    {"Amiibo", "amiibo", {0, 1, 0}, amiibo::Install},
 }};
 
 void ActivateModules() {

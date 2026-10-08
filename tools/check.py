@@ -8,6 +8,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 GROUPS = {
     'core': ['core_arm_test.py'],
+    'dialogue': ['dialogue_arm_test.py'],
     'pockets': ['storage_hint_arm_test.py'],  # Includes full arm_stack_test.
     'fitting': ['purchase_arm_test.py', 'feedback_arm_test.py'],  # Each includes runtime coverage.
     'catalog': ['dialogue_ui_sources_arm_test.py', 'catalog_variation_labels_arm_test.py',
@@ -22,7 +23,7 @@ def main():
     env = dict(os.environ)
     env['PYTHONPATH'] = str(ROOT.parent / 'Grab 5/working/python')
     with tempfile.TemporaryDirectory(prefix='qol-check-') as temporary:
-        for name in ('config_test', 'stack_menu_test', 'storage_policy_test', 'catalog_test', 'bag_policy_test'):
+        for name in ('config_test', 'dialogue_settings_test', 'stack_menu_test', 'storage_policy_test', 'catalog_test', 'bag_policy_test'):
             exe = Path(temporary) / name
             subprocess.run(['c++', '-std=c++20', '-Wall', '-Wextra', '-Werror', '-I', str(ROOT / 'source'),
                             str(ROOT / 'tests' / f'{name}.cpp'), '-o', str(exe)], check=True)

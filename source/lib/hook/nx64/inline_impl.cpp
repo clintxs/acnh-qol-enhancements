@@ -71,6 +71,9 @@ namespace exl::hook::nx64 {
 
         /* Ensure the context's sizes line up.  */
         static_assert(sizeof(InlineFloatCtx) == CtxStackBaseSize + CtxStackFloatSize, "Float context will not fit in the stack!");
+        static_assert(offsetof(InlineFloatCtx, m_Fr) == 0);
+        static_assert(offsetof(InlineFloatCtx, m_Gpr) == CtxStackFloatSize);
+        static_assert(offsetof(InlineFloatCtx, m_Gpr.m_Lr) == CtxStackFloatSize + 0xf0);
         static_assert(sizeof(FloatRegisters) == CtxStackFloatSize, "Float context will not fit in stack!");
 
         /* Select appropriate implementation for entrypoint. */

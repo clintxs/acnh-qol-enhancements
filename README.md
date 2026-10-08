@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-First unified **0.1.0 integration test** for ACNH **3.0.3 on Eden**. One Core
+**0.2.0 conditional dialogue prototype** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates five optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -11,9 +11,9 @@ for installation, version policy and user-facing limits.
 |---|---|---|
 | Catalog | Catalog Aware Shops 0.8.1 | Four catalog row layouts |
 | Pockets | QoL Pockets Interactions 0.1.4 | Editable Grab 5/10 captions |
-| Faster Dialogue | Faster Interactions 0.3.0 hold-to-boost test | Configuration only |
+| Faster Dialogue | C++ hook rewrite of Faster Interactions 0.3.0, with conditional NPC/UI boost | Optional personal configuration |
 | Fitting Room | Able Sisters Bag prototype 0.3.7 | Fitting row badge and original counter layout |
-| Amiibo | Amiibo Scan 1.0.0 | Configuration only |
+| Amiibo | C++ hook rewrite of Amiibo Scan 1.0.0 | Configuration only |
 
 Faster tool-wheel animations and other workspace mods are not bundled in this
 initial five-feature suite. Historical source notes under `docs/` describe each
@@ -43,12 +43,68 @@ hook pools (32 KiB trampoline / 16 KiB inline; fake heap remains 20 KiB).
 Detailed feature logs identify the suite and feature. Pockets reads translations
 at `content:/qol-enhancements/messages/pockets.ini`.
 
-`core/patches.hpp` embeds the exact audited dialogue and Amiibo instruction
-records. Core validates every record for a feature before any write, then uses
-Exlaunch's writable code alias and cache flushing. The dialogue helper retains
-its original 48-byte verified RX padding at main+03F06FB0; it is published before
-branches to it, holds no writable state and matches the standalone 0.3.0 payload.
-No standalone IPS, extra subsdk or duplicated main.npdm ships in feature folders.
+Faster Dialogue now lives in `source/program/dialogue/`: five SIMD-preserving
+C++ hooks implement current B/R input, eligible speed selection/forwarding, and
+main/renderer multipliers. The active speaker is resolved through the same
+native entity delegate used by Animalese; NPC resource IDs are matched without
+localized name comparisons or a last-speaker cache. Native restrictions and
+scripted speed overrides remain in force. No binary replacement array or game
+code-cave helper remains. Amiibo's existing 9,000-update timeout is likewise a
+C++ hook; its behavior is unchanged. Expected instruction words are validation
+fingerprints only, checked before each feature's first hook.
+
+The Exlaunch SIMD context declaration now matches its assembly stack layout;
+compile-time assertions and execution of the real adapter cover that correction.
+Ordinary GP-only callbacks retain their original context layout.
+
+## Conditional Faster Dialogue
+
+The suite keeps its normal versioned `faster-dialogue.ini` marker. Personal
+preferences are read once, after that enabled feature passes compatibility
+checks, from `content:/qol-enhancements/config/faster-dialogue.custom.ini`.
+The main ZIP contains only an `.example` file at its root; it never supplies the
+actual custom INI. A separate optional preset ZIP contains:
+
+```
+My Custom Faster Dialogue Settings/
+  romfs/qol-enhancements/config/faster-dialogue.custom.ini
+```
+
+```ini
+base_speed = 2
+boost_speed = 4
+faster_ui = true
+faster_npc_list = Timmy, Tommy, Orville, Wilbur, Kapp'n
+```
+
+Enable that personal mod alongside Core and Faster Dialogue. Keep it when
+replacing the suite folders, and restart after editing. Do not reinstall the
+example preset over edited preferences. Only one mod should supply the custom
+path; normal RomFS precedence applies if there are duplicates. The custom file
+cannot activate an absent or disabled Faster Dialogue module.
+
+Missing preferences retain base 2 / held B/R 4, with UI/list boost off. A listed
+NPC or recognized UI uses `boost_speed` automatically; holding B/R selects that
+same tier and never stacks to 8. This prototype supports **2 and 4** for both
+speed keys; a boost below the base is raised to the base. These are nominal tiers relative to the live native fast rate,
+including language/FPS adjustments, not fixed wall-clock multipliers. Native
+scripted waits, protected messages and nonnegative overrides retain priority.
+
+The five friendly aliases map to `rcm`, `rct`, `dod`, `doc`, `kpp`. The friendly Kapp'n alias
+also includes its known `kppB` profile. Other resource IDs, such as villager IDs,
+can also be listed; matching is case-insensitive and
+exact, without guessing variant IDs. Up to 64 IDs of at most 15 ASCII identifier
+characters are accepted. Syntactically valid IDs not used by a live speaker
+simply never match. Bad values/keys warn and use defaults for the affected
+setting; invalid list entries are ignored. Duplicate keys revert that setting
+to its default. An unreadable/oversized personal file uses defaults without
+disabling the feature. Whole-line comments, CRLF and UTF-8 BOM are supported.
+
+`faster_ui` recognizes native dialog windows and player narration with a valid
+speaker handle. Unknown/balloon contexts or a missing speaker alone remain at
+base speed. Live coverage of settings, catching messages, ABD and offscreen
+NPCs still needs testing; see [research notes](research/dialogue/NOTES.md).
+There is no song/travel skipping, forced reveal, voice cleanup or emote filtering.
 
 ## Build and package
 
@@ -63,8 +119,9 @@ at `../vanilla-3.0.3/Layout`; builders verify their hashes and archive structure
 The package script checks that every INI matches the Core release, refuses to
 replace existing archives, and creates:
 
-- `dist/qol-enhancements-v0_1_0_for_acnh_v3_0_3.zip`
-- `dist/qol-enhancements-v0_1_0_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v0_2_0_for_acnh_v3_0_3.zip`
+- `dist/qol-enhancements-v0_2_0_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v0_2_0_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
 
 The binary ZIP contains a conspicuous installation text file, README, Core and
 five independently selectable feature folders, plus a SHA-256 manifest. Source
@@ -86,7 +143,9 @@ compatibility with that mod's future hooks or NPDM.
 
 See [VALIDATION.md](VALIDATION.md) for actual results and pending Eden checks.
 The unified loader and suite require a fresh live test, particularly startup,
-module toggles, Pockets translations, fitting checkout and held dialogue boost.
+module toggles, Pockets translations, fitting checkout, speaker/UI classification
+and held dialogue boost. Diagnostic builds use `sh tools/build.sh --verbose-dialogue`
+for bounded SELECT logs. Future behavior changes use C++ hooks per AGENTS.md.
 
 Exlaunch is pinned to upstream f9f4b0dd07b68f97958cb9c79228bbca22ca80d5.
 Keep GPL-2.0 and framework third-party notices and distribute matching source

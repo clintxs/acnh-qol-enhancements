@@ -6,7 +6,9 @@
 using namespace qol::core;
 int main() {
     Config config{};
-    for (const auto *text : {"enabled = true\nversion = 0.1.0\n", "\xef\xbb\xbf# comment\r\nversion=0.1.0\r\nenabled=true\r\n", ";comment\nenabled=true\nversion=0.1.0"}) {
+    for (const auto &text : {std::string("enabled = true\nversion = ") + ReleaseVersion + "\n",
+                             std::string("\xef\xbb\xbf# comment\r\nversion=") + ReleaseVersion + "\r\nenabled=true\r\n",
+                             std::string(";comment\nenabled=true\nversion=") + ReleaseVersion}) {
         assert(ParseConfig(text, config) && config.enabled && config.version == CoreVersion);
     }
     assert(ParseConfig("enabled=false\nversion=0.1.0", config) && !config.enabled);
