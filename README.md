@@ -114,9 +114,30 @@ speaker is missing. Balloon/unknown windows retain base speed.
 Add `faster_player = true` to your **existing personal INI** and restart; an older
 personal file keeps this new option off. Each automatic category selects the
 same `boost_speed`; holding B/R never stacks another boost. In-game coverage of
-these bank paths still needs testing. The reported 0.2.0 NPC recognition failure
-is **not fixed by this addition**; see [research notes](research/dialogue/NOTES.md).
+these bank paths failed in the first 0.2.1 live test: workbench, fish and bug
+messages did not receive the automatic boost. The reported 0.2.0 NPC recognition
+failure is also unresolved; see [research notes](research/dialogue/NOTES.md).
 There is no song/travel skipping, forced reveal, voice cleanup or emote filtering.
+
+To investigate these failures, build/package the diagnostic Core with:
+
+```sh
+sh tools/build.sh --verbose-dialogue
+python3 tools/check.py core dialogue
+python3 tools/package_dialogue_diagnostic.py
+```
+
+The diagnostic ZIP replaces Core only. Keep the Faster Dialogue module and your
+personal settings, including `faster_player = true`, then fully restart. Test a
+workbench, catch message and listed NPC, briefly holding B/R for comparison.
+Collect Eden's `QoL Enhancements/Faster Dialogue` lines before another session
+replaces the log. `DIAGNOSTIC: player-bank-v2` identifies this build; `READY`
+shows loaded settings, `MESSAGE` shows active/cached banks, labels and reveal
+gates, and `SELECT` shows the classification and speed. MESSAGE runs in the input
+hook even when native reveal gates prevent SELECT. Logs stop after 256 MESSAGE
+or 128 SELECT transitions; repeated frames do not consume the limits. This
+diagnostic adds observations without changing the category rules. Restore normal
+Core after collecting the log. Old release ZIPs are preserved.
 
 ## Build and package
 

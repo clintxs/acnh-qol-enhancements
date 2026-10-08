@@ -91,6 +91,15 @@ def custom_files():
             (ROOT / 'examples/faster-dialogue.custom.ini').read_bytes(),
     }
 
+def write_source_archive(path):
+    excluded = {'.git', '.vscode', '__pycache__', 'build', 'deploy', 'dist', 'out'}
+    with ZipFile(path, 'x', ZIP_DEFLATED) as archive:
+        for source in sorted(ROOT.rglob('*')):
+            relative = source.relative_to(ROOT)
+            if source.is_file() and not excluded.intersection(relative.parts):
+                if source.suffix not in {'.elf', '.nso', '.npdm', '.pyc', '.map'} and source.name != '.DS_Store':
+                    archive.write(source, f'qol-enhancements/{relative}')
+
 def main():
     output = ROOT / 'dist'
     output.mkdir(exist_ok=True)
@@ -104,13 +113,7 @@ def main():
         for name, data in sorted(files.items()): archive.writestr(name, data)
     with ZipFile(custom, 'w', ZIP_DEFLATED) as archive:
         for name, data in sorted(custom_files().items()): archive.writestr(name, data)
-    excluded = {'.git', '.vscode', '__pycache__', 'build', 'deploy', 'dist', 'out'}
-    with ZipFile(source, 'w', ZIP_DEFLATED) as archive:
-        for path in sorted(ROOT.rglob('*')):
-            relative = path.relative_to(ROOT)
-            if path.is_file() and not excluded.intersection(relative.parts):
-                if path.suffix not in {'.elf', '.nso', '.npdm', '.pyc', '.map'} and path.name != '.DS_Store':
-                    archive.write(path, f'qol-enhancements/{relative}')
+    write_source_archive(source)
     for path in (binary, source, custom):
         with ZipFile(path) as archive: assert archive.testzip() is None
         print(path)

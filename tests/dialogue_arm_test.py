@@ -150,7 +150,7 @@ class DialogueMachine(Machine):
     def run(self, case, held):
         state, self.mode, instant, disabled, timer, a1, a2, override = case
         memory = bytearray(b'\xa5' * 0x3000)
-        for offset, fmt, value in ((0x208, '<Q', self.meta), (0x21ac, '<I', state),
+        for offset, fmt, value in ((0x208, '<Q', self.meta), (0x210, '<Q', self.context), (0x21ac, '<I', state),
                 (0x21a8, '<I', timer), (0x2190, '<I', 3), (0x2194, '<f', 1.),
                 (0x2198, '<f', 1.), (0x219c, '<f', 1.2), (0x21a0, '<f', self.fast),
                 (0x21a4, '<f', override), (0x1690, '<I', 7), (0x1694, '<f', 7.5)):
@@ -337,6 +337,32 @@ def main():
             probe.write(probe.entity + 0xb00, 0, 1)
             probe.run((1,0,0,0,0,1,1,-1.), 0)
             assert 'SELECT reason=npc-type-unready' in probe.text
+            total += 142
+            # MESSAGE traces must still report unsupported windows and native
+            # gates that prevent SelectSpeed entirely. Observe owned metadata
+            # without using the cache to select a speed or calling a delegate.
+            probe.bank('SYS_Get_Fish')
+            probe.speaker(window=2, source=False)
+            probe.write(probe.meta + 0x25c0, probe.pending_bank)
+            probe.write(probe.meta + 0x24f8, probe.bank_label)
+            probe.u.mem_write(probe.bank_label, b'Catch_Fish_Test\0')
+            probe.run((1,0,1,1,0,1,1,-1.), 0)
+            selected = probe.text.count('SELECT reason=')
+            before = bytes(probe.u.mem_read(probe.meta, 0x2700))
+            for _ in range(140): probe.input(0)
+            assert probe.text.count('MESSAGE manager=') == 1
+            assert 'window=2 state=1 forced=1 disabled=1 context_match=1 bank=SYS_Get_Fish cached_bank=SYS_Get_Fish label=Catch_Fish_Test' in probe.text
+            assert probe.text.count('SELECT reason=') == selected
+            assert probe.delegate_calls == 0
+            assert bytes(probe.u.mem_read(probe.meta, 0x2700)) == before
+            probe.u.mem_write(probe.bank_label, b'Catch_Bug_Test\0')
+            probe.input(0)
+            assert probe.text.count('MESSAGE manager=') == 2
+            assert 'label=Catch_Bug_Test' in probe.text
+            probe.u.mem_write(probe.bank_label, b'X' * 64)
+            probe.input(0)
+            assert 'label=<unterminated>' in probe.text
+            assert 'DIAGNOSTIC: player-bank-v2' in probe.text
             total += 142
             print('PASS: bounded transition diagnostics survive repeated UI and identify NPC lookup failures')
         print(f'PASS {base:#x}: compiled SIMD adapter, native reveal/input/renderers, speaker switches, UI/NPC classification, held/release, dynamic rates')

@@ -122,3 +122,27 @@ The new producer fingerprint and ARM test execute that original native copy.
 MessageID getters and buffer termination/memcpy services are modeled; bank-copy
 instructions, compiled selector and speed path execute. Live coverage still
 needs verification; the outstanding NPC entity lookup issue is unchanged.
+
+## 0.2.1 live failure and second diagnostic
+
+The user tested a crafting table, fish catch and bug catch with no observed
+automatic boost. The modeled native bank copy establishes one producer path,
+but does not establish which metadata is present during these live interactions.
+Rechecking native 01AF8800..01AF9C6F confirms +2488 is copied into the +25C0
+cache and cleared during a presentation transition (state +88 == 3). No change
+to the lookup is justified without observing its state at reveal time. In
+particular, blindly falling back to a cached or pending bank risks stale matches.
+
+The `player-bank-v2` diagnostic adds a bounded MESSAGE trace to the existing
+HeldInput hook. It records the current +2488 bank, cached +25C0 bank, active
+label +24F8, presentation window, source pointer, native text state, forced and
+disabled flags, and whether text+210 equals manager+20. It performs no virtual
+calls and does not feed cache data into speed selection. Unlike SELECT, this
+trace is reached even when native reveal gates prevent the speed selector.
+The compiled ARM regression checks cover that blocked path, unsupported window,
+changing labels, bounded/unterminated strings, and repeated-frame deduplication.
+
+`tools/package_dialogue_diagnostic.py` packages only diagnostic Core, its license,
+instructions, hashes and a matching source ZIP. It requires the diagnostic ELF
+marker and refuses to replace existing archives. Obtain READY/MESSAGE/SELECT
+lines from the user before treating either player or NPC classification as fixed.

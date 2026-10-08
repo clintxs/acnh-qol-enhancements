@@ -174,6 +174,59 @@ void LoadPreferences() {
     if (warnings) Logging.Log("[QoL Enhancements/Faster Dialogue] WARNING: custom config issues=%u; invalid settings use defaults\n", warnings);
 }
 
+#if CAS_VERBOSE_DIALOGUE_TRACE
+// Observe the message even when native reveal gates never reach SelectSpeed.
+// These are the manager's owned SafeStrings, not calls into pending MessageID
+// delegates. The cache is diagnostic evidence only; it cannot select a speed.
+void TraceMessage(std::uintptr_t manager, std::uintptr_t text) {
+    constexpr std::size_t CachedBank = 0x25c0, ActiveLabel = 0x24f8;
+    constexpr std::size_t TextContext = 0x210, RevealState = 0x21ac;
+    constexpr std::size_t ForcedInstant = 0x21b5, AccelerationDisabled = 0x21b6;
+    struct Snapshot {
+        std::uintptr_t manager{}, source{};
+        unsigned window = ~0u, state{}, forced{}, disabled{};
+        bool contextMatches{};
+        char bank[64]{}, cachedBank[64]{}, label[64]{};
+    } current;
+    const auto copy = [](std::uintptr_t pointer, auto &buffer) {
+        if (!pointer) { std::strcpy(buffer, "<null>"); return; }
+        for (unsigned i = 0; i < sizeof(buffer); ++i) {
+            const char c = Read<char>(pointer, i);
+            if (!c) { buffer[i] = 0; return; }
+            if (i + 1 < sizeof(buffer)) buffer[i] = c;
+        }
+        std::strcpy(buffer, "<unterminated>");
+    };
+    current.manager = manager;
+    current.source = Read<std::uintptr_t>(manager, layout::ActiveSpeaker);
+    const auto context = Read<std::uintptr_t>(manager, layout::TalkContext);
+    if (context) current.window = Read<unsigned>(context, layout::WindowKind);
+    current.contextMatches = context == Read<std::uintptr_t>(text, TextContext);
+    current.state = Read<unsigned>(text, RevealState);
+    current.forced = Read<std::uint8_t>(text, ForcedInstant);
+    current.disabled = Read<std::uint8_t>(text, AccelerationDisabled);
+    copy(Read<std::uintptr_t>(manager, layout::ActiveMessageBank), current.bank);
+    copy(Read<std::uintptr_t>(manager, CachedBank), current.cachedBank);
+    copy(Read<std::uintptr_t>(manager, ActiveLabel), current.label);
+    static Snapshot previous;
+    static unsigned reports = 0;
+    const bool changed = !reports || previous.manager != current.manager ||
+        previous.source != current.source || previous.window != current.window ||
+        previous.state != current.state || previous.forced != current.forced ||
+        previous.disabled != current.disabled || previous.contextMatches != current.contextMatches ||
+        std::strcmp(previous.bank, current.bank) || std::strcmp(previous.cachedBank, current.cachedBank) ||
+        std::strcmp(previous.label, current.label);
+    if (!changed || reports >= 256) return;
+    previous = current;
+    ++reports;
+    Logging.Log("[QoL Enhancements/Faster Dialogue] MESSAGE manager=0x%lx source=0x%lx window=%u state=%u forced=%u disabled=%u context_match=%u bank=%s cached_bank=%s label=%s\n",
+                current.manager, current.source, current.window, current.state, current.forced,
+                current.disabled, unsigned(current.contextMatches), current.bank, current.cachedBank, current.label);
+    if (reports == 256)
+        Logging.Log("[QoL Enhancements/Faster Dialogue] MESSAGE trace limit reached; restart for a fresh trace\n");
+}
+#endif
+
 HOOK_DEFINE_INLINE(DialogueHeldInput) {
     static void Callback(exl::hook::InlineFloatCtx *registers) {
         // Immediately after native active-player/fallback selection; x0 is
@@ -184,6 +237,9 @@ HOOK_DEFINE_INLINE(DialogueHeldInput) {
         const std::uint8_t held = controller &&
             (Read<std::uint16_t>(controller, layout::HeldButtons) & layout::BoostButtons);
         std::memcpy(reinterpret_cast<void *>(text + layout::HeldFast), &held, sizeof(held));
+#if CAS_VERBOSE_DIALOGUE_TRACE
+        TraceMessage(registers->X[19], text);
+#endif
     }
 };
 HOOK_DEFINE_INLINE(DialogueSelectSpeed) {
@@ -266,6 +322,9 @@ bool Install() {
         }
     }
     LoadPreferences();
+#if CAS_VERBOSE_DIALOGUE_TRACE
+    Logging.Log("[QoL Enhancements/Faster Dialogue] DIAGNOSTIC: player-bank-v2; bounded MESSAGE and SELECT transitions\n");
+#endif
     DialogueHeldInput::InstallAtOffset(address::HeldInput);
     DialogueSelectSpeed::InstallAtOffset(address::EligibleFast);
     DialogueForwardSpeed::InstallAtOffset(address::ForwardFast);
