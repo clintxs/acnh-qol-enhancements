@@ -1,0 +1,12 @@
+.vscode/*
+build/*
+out/*
+deploy/*
+
+*.elf
+*.nso
+*.npdm
+__pycache__/
+dist/
+.DS_Store
+*.pyc

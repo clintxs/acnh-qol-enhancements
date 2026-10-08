@@ -1,0 +1,141 @@
+# QoL Pockets Interactions
+
+Version **0.1.4**, for Animal Crossing: New Horizons **3.0.3** on Eden.
+Standalone successor to the pocket features in Optimized UI 0.5.16.
+
+- Adds **Grab 5** and **Grab 10** beside the native Grab 1 action when the stack
+  and free pocket space allow it. Turnips retain native behavior.
+- Skips the redundant single-action storage menu when withdrawing an item.
+- Labels the normal home-storage A hint **Move to Pockets**, using the game's
+  existing localized text. Other Select hints and donation confirmations stay unchanged.
+- Uses **Y** for the native Put in Storage action in normal pocket browsing when
+  the game's normal location/item/storage conditions allow it.
+- Plays the native cursor tap after a successful quick-store refresh (prototype;
+  visual timing still needs Eden testing). Sound and transfer timing are unchanged.
+- Keeps translated Grab 5/10 captions in an editable messages.ini.
+- Adds the native **(Y) Put in Storage** footer hint in normal pockets at home.
+  The label reuses the game's existing translation; the icon uses the game's
+  Y glyph, so a font that swaps X/Y should display X without another setting.
+  This is a screen-level hint, not a promise that every selected item can be stored.
+
+The storage and Y actions retain their existing checks. This mod includes no
+catalog stars, shop dialogue changes or multi-select shopping.
+
+## Installation and migration
+
+1. Disable/remove **Optimized UI** in Eden. Keep its ZIP for rollback.
+2. Extract `QoL Pockets Interactions 0.1.4.zip` into the game's mod directory so
+   the `QoL Pockets Interactions` folder contains `exefs` and `romfs`.
+3. If you customized the old captions, copy the contents of the old
+   `romfs/OptimizedUI/messages.ini` into the new
+   `romfs/QoLPocketsInteractions/messages.ini`. The `optimized_ui.grab_five` and
+   `optimized_ui.grab_ten` keys are deliberately retained for compatibility.
+4. Enable QoL Pockets Interactions and restart the game. Enable **Catalog Aware
+   Shops** separately if you want shop ownership stars too.
+
+Either new mod can be used alone. Pockets uses `exefs/subsdk9`; Catalog Aware
+Shops uses `exefs/subsdk8`. Their `main.npdm` files are byte-identical and both
+packages are self-contained. Do not rename those executable slots or keep the
+old combined mod enabled with the standalone replacements.
+
+Expected startup log: `[QoLPocketsInteractions] BOOT_OK 0.1.4; gameplay_hooks=16`.
+All feature diagnostics now use the `[QoLPocketsInteractions]` prefix.
+
+Updating from 0.1.1: replace the files in the existing mod folder; do not enable
+both versions. Keep any customized `messages.ini`. The hint requires no new INI
+keys, font files, layouts or LayoutMsg replacements. The working Y input and
+storage-transfer implementation are unchanged. This first hint build still
+needs live testing for placement, spacing and font-mod rendering.
+
+## Build and validation
+
+### Optional quick tool wheel experiment
+
+Latest comparison: `dist/Quick Tool Wheel 4x - test 3.zip`. Build with
+`python3 tools/build_fast_tool_wheel.py /path/to/romfs/Layout --speed 4`.
+The opening goes from 8 to 2 frames; the 14-frame effect's keys become 3.5 frames
+long, with its integer duration rounded up to 4. Slopes are scaled accordingly.
+Use only one Quick Tool Wheel version at a time. The pre-opening delay is unchanged.
+Test 2 is user-confirmed functional and feels faster; test 3 awaits Eden testing.
+Checks cover 700 timing fields, preserved other members, declared compression size,
+ZIP integrity, 2/4 frame durations, and exact reproduction of test 2's payload at 2x.
+
+`dist/Quick Tool Wheel 2x - test 2.zip` is a separate LayeredFS add-on, not a
+replacement for the working pockets executable. Enable it alongside this mod;
+disable it to restore native tool-wheel opening speed.
+
+Test 1 is user-reported broken: the wheel no longer works. Its Zstandard frame
+omits the decompressed size (vanilla declares 158292 bytes). Test 2 fixes that
+packaging defect using `--stream-size` and `--no-check`, verifies the declared
+size and frame descriptor against vanilla, and retains the same animation edits.
+Disable/remove test 1 before testing this replacement. Runtime recovery is not
+yet confirmed; a successful desktop decompression alone is not a loader test.
+
+Reproduce with `python3 tools/build_fast_tool_wheel.py /path/to/romfs/Layout`
+(requires the zstd CLI). It changes only `LRingMenuTools` opening `In` and
+`InEffect`: 8→4 and 14→7 frames, all key times halved, Hermite slopes doubled
+to preserve the curve shape. No closing/equip/selection or layout changes.
+Archive byte-whitelist checks, unchanged-member checks, compression roundtrip
+and ZIP integrity pass (700 timing fields). No game assets are committed.
+
+Runtime verification is pending: compare D-pad Up and touchpad opening, immediate
+selection/A, B cancellation, reopening, and tool registration. A separate native
+input delay may remain even with faster visuals. Conflicts with other replacements
+of `romfs/Layout/LRingMenuTools.Nin_NX_NVN.zs`; the supplied 16:10 source does not
+replace that asset. The builder refuses to overwrite the existing test ZIP.
+
+### Main executable
+
+`sh tools/build.sh` uses the pinned Docker toolchain with networking disabled.
+`python3 tools/package.py` produces versioned binary/source archives and refuses
+to replace existing releases. The source project builds independently and does
+not include the catalog ownership implementation.
+
+`tests/arm_stack_test.py` exercises compiled callbacks and original game code
+using local, undistributed game assets. See `VALIDATION.md` for results and
+limits. Test Grab 5/10, storage withdrawal and Y-to-storage alone and with Catalog
+Aware Shops enabled. Offline startup checks pass in both orders; live Eden
+loading of the newly separated pair still needs verification.
+
+## Reading the implementation
+
+Start with `source/program/bootstrap.cpp`: supported-build check, framework
+initialization, then stack, storage-withdrawal and quick-store installation.
+Version 0.1.1 is a readability refactor; intended gameplay behavior is unchanged.
+
+| File under `source/program` | Responsibility |
+|---|---|
+| `features/stack_menu.hpp` | Pure rules deciding when Grab 5/10 appear. No game pointers. |
+| `features/stack_splitting.cpp` | Connects native menus to private actions and wraps the game's split operation. |
+| `features/split_call.s` | Preserves the quantity in an ARM stack frame so only our split calls change counts. |
+| `features/menu_text.cpp` and `text/catalog.hpp` | Load translated captions and replace the native caption text. |
+| `features/storage_policy.hpp` | Pure rule for recognizing the single Move to Pockets action. |
+| `features/storage_withdrawal.cpp` | Defers a validated single-action withdrawal until the native command update. |
+| `features/quick_store.cpp` | Detects a fresh Y press, probes native eligibility, queues a request, revalidates and dispatches it. |
+| `features/storage_hint.cpp` | Adds a native Y footer record at home and routes only its private caption token to the existing localized Put in Storage label. |
+| `features/pocket_input_probe.cpp` | Retained diagnostic probe; not installed by bootstrap. |
+
+For quick store, read `HandleQuickStoreInput`, `CanQuickStoreItem`, then the
+`QuickStoreCommand` callback. `NativeMenuAllowsStorage` asks the game whether its
+own Put in Storage action is available; the mod does not replace those rules.
+Trace helpers only explain decisions in logs.
+
+`address::...` values locate native code/vtables relative to the main module;
+`layout::...` values locate observed fields in live objects. A field name records
+what has been verified, not a claim that we know the entire native class. ARM
+fingerprint arrays intentionally keep exact hexadecimal instructions because
+they detect an unsupported game build or another patch at the same location.
+
+`HOOK_DEFINE_TRAMPOLINE` replaces a native function and exposes `Orig` to call
+its original implementation. `HOOK_DEFINE_INLINE` receives saved CPU registers
+at an instruction inside a function. Comments describe the relevant registers
+and stack positions; the wrapper and callback ABI must stay in agreement.
+
+Both storage shortcuts cross native state transitions. Entry records intent;
+Update consumes it, rechecks the selected item, and lets native code perform the
+transfer. Request pointers are identity tokens, not owned objects. The comments
+explain why moving work into Entry or retaining pointers longer would be wrong.
+
+Formatting is defined in `.clang-format`, including the hook macros. This pass
+changes project code under `source/program`, leaving upstream `source/lib` and
+`source/rtld` intact. Existing translation keys remain compatible.
