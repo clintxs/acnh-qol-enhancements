@@ -18,7 +18,7 @@ constexpr std::size_t TextManager = 0x208, ManagerText = 0x28, TalkContext = 0x2
 constexpr std::size_t WindowKind = 0x2c, ActiveSpeaker = 0xc0;
 constexpr std::size_t ActiveMessageBank = 0x2488;
 constexpr unsigned MessageBankBytes = 64;
-constexpr std::size_t SpeakerEntityDelegate = 0x28, DelegateValid = 0x10;
+constexpr std::size_t SpeakerEntityHandle = 8;
 constexpr std::size_t HeldButtons = 8, HeldFast = 0x21b4, EffectiveFast = 0x21b7, RendererFast = 0x205;
 constexpr std::size_t EntityTable = 0x1c0, TableEntries = 8;
 constexpr std::size_t EntityHandle = 0x230, EntityKind = 0x15c, EntityFlags = 0x248;
@@ -41,7 +41,7 @@ bool NativeFunction(std::uintptr_t function) {
     return function && function >= text.m_Start && function - text.m_Start < text.m_Size && !(function & 3);
 }
 enum class SpeakerLookup {
-    Manager, Context, Window, Source, Delegate, DelegateMethods, DelegateInvalid,
+    Manager, Context, Window, Source,
     EmptyHandle, Registry, Entity, EntityKind, NpcType, NpcMethod, NpcMismatch,
     NpcName, NpcNameTooLong, Npc, UiDialog, PlayerEntity, PlayerBank
 };
@@ -49,8 +49,8 @@ struct Speaker {
     SpeakerLookup lookup = SpeakerLookup::Manager;
     unsigned window = ~0u, entityKind = ~0u;
     MessageKind kind = MessageKind::Unknown;
-    std::array<std::uint32_t, 3> handle{};
-    std::uintptr_t entity{}, resolveOffset{};
+    unsigned handle{};
+    std::uintptr_t entity{};
     unsigned entityHandle = ~0u, entityFlags = ~0u;
     char id[NpcIdBytes]{};
     char bank[layout::MessageBankBytes]{};
@@ -95,24 +95,15 @@ Speaker CurrentSpeaker(std::uintptr_t text) {
     result.lookup = SpeakerLookup::Source;
     const auto source = Read<std::uintptr_t>(manager, layout::ActiveSpeaker);
     if (!source) return result; // Absence alone is NOT proof of a UI message.
-    result.lookup = SpeakerLookup::Delegate;
-    const auto delegate = source + layout::SpeakerEntityDelegate;
-    const auto methods = Read<std::uintptr_t>(delegate);
-    if (!methods) return result;
-    const auto valid = Read<std::uintptr_t>(methods, layout::DelegateValid);
-    const auto resolve = Read<std::uintptr_t>(methods);
-    result.lookup = SpeakerLookup::DelegateMethods;
-    if (!NativeFunction(valid) || !NativeFunction(resolve)) return result;
-    result.resolveOffset = resolve - Main(0);
-    // Same borrowed delegate, validity check and 12-byte output as the native
-    // Animalese update at 01b02e84..01b02ebc. No voice playback is invoked.
-    result.lookup = SpeakerLookup::DelegateInvalid;
-    if (!(reinterpret_cast<std::uint64_t (*)(std::uintptr_t)>(valid)(delegate) & 1)) return result;
-    std::array<std::uint32_t, 3> handle{};
-    reinterpret_cast<void (*)(std::uintptr_t, void *)>(resolve)(delegate, handle.data());
-    result.handle = handle;
+    // The NPC component's constructor at 01d9e224..01d9e254 copies the entity's
+    // generation handle (+230) into this TalkSource's +8 field. In that block,
+    // x19=component, source=x19+7f60 and x20=x19+799c: x20+5cc == source+8.
+    // source+28 is a POSITION delegate for spatial voice playback, not identity;
+    // calling it returns three floats. Read the owned handle without invoking
+    // that callback, then validate it against the live registry on every update.
+    const auto handle = result.handle = Read<unsigned>(source, layout::SpeakerEntityHandle);
     result.lookup = SpeakerLookup::EmptyHandle;
-    if (!handle[0]) return result;
+    if (!handle) return result;
     result.lookup = SpeakerLookup::Registry;
     const auto registrySlot = Read<std::uintptr_t>(Main(address::EntityRegistryGot));
     const auto registry = registrySlot ? Read<std::uintptr_t>(registrySlot) : 0;
@@ -120,12 +111,12 @@ Speaker CurrentSpeaker(std::uintptr_t text) {
     const auto entries = table ? Read<std::uintptr_t>(table, layout::TableEntries) : 0;
     if (!entries) return result;
     // Mirror 01b000fc..01b00178: handles contain a 12-bit table index and
-    // generation. This handle comes from a live native speaker delegate.
+    // generation. Never use a message bank or cached actor to guess identity.
     result.lookup = SpeakerLookup::Entity;
-    const auto entity = result.entity = Read<std::uintptr_t>(entries, (handle[0] >> 20) * sizeof(std::uintptr_t));
+    const auto entity = result.entity = Read<std::uintptr_t>(entries, (handle >> 20) * sizeof(std::uintptr_t));
     if (!entity) return result;
     result.entityHandle = Read<unsigned>(entity, layout::EntityHandle);
-    if (result.entityHandle != handle[0]) return result;
+    if (result.entityHandle != handle) return result;
     result.entityFlags = Read<unsigned>(entity, layout::EntityFlags);
     if (result.entityFlags & 2) return result;
     result.lookup = SpeakerLookup::EntityKind;
@@ -266,8 +257,7 @@ HOOK_DEFINE_INLINE(DialogueSelectSpeed) {
         // Log transitions, not the first frames: title/save dialogs must not
         // consume the entire trace before the user reaches an NPC.
         constexpr const char *reasons[]{
-            "no-manager", "no-context", "unsupported-window", "no-source", "no-delegate",
-            "foreign-delegate-method", "invalid-delegate", "empty-handle", "no-registry",
+            "no-manager", "no-context", "unsupported-window", "no-source", "empty-handle", "no-registry",
             "invalid-entity", "other-entity-kind", "npc-type-unready", "foreign-npc-method",
             "npc-type-mismatch", "no-npc-name", "npc-name-too-long", "npc", "ui-dialog", "player-entity", "player-bank"
         };
@@ -276,17 +266,15 @@ HOOK_DEFINE_INLINE(DialogueSelectSpeed) {
         const bool changed = !reports || previous.lookup != speaker.lookup ||
             previous.window != speaker.window || previous.entityKind != speaker.entityKind ||
             previous.handle != speaker.handle || previous.entity != speaker.entity ||
-            previous.resolveOffset != speaker.resolveOffset ||
             previous.entityHandle != speaker.entityHandle || previous.entityFlags != speaker.entityFlags ||
             previousSpeed != speed || std::strcmp(previous.id, speaker.id) ||
             std::strcmp(previous.bank, speaker.bank);
         if (changed && reports < 128) {
             ++reports; previous = speaker; previousSpeed = speed;
-            Logging.Log("[QoL Enhancements/Faster Dialogue] SELECT reason=%s window=%u entity_kind=%u kind=%u npc=%s speed=%u bank=%s handle=%08x/%08x/%08x entity=0x%lx entity_handle=%08x entity_flags=%08x resolve=main+0x%lx\n",
+            Logging.Log("[QoL Enhancements/Faster Dialogue] SELECT reason=%s window=%u entity_kind=%u kind=%u npc=%s speed=%u bank=%s handle=%08x entity=0x%lx entity_handle=%08x entity_flags=%08x\n",
                         reasons[static_cast<unsigned>(speaker.lookup)], speaker.window, speaker.entityKind,
                         static_cast<unsigned>(speaker.kind), speaker.id, speed, speaker.bank,
-                        speaker.handle[0], speaker.handle[1], speaker.handle[2], speaker.entity,
-                        speaker.entityHandle, speaker.entityFlags, speaker.resolveOffset);
+                        speaker.handle, speaker.entity, speaker.entityHandle, speaker.entityFlags);
         }
 #endif
     }
@@ -323,6 +311,10 @@ bool Install() {
         {address::MainRate, {0x14000054, 0x52829108, 0x52a7f017, 0x3934dedf, 0x8b080274}},
         {address::RendererRate, {0x14000002, 0xbd421400, 0xbd420801, 0xbd420c02, 0x5e21d821}},
         {0x01af89d0, {0xaa1803e0, 0xf9524676, 0xf9400d08, 0xd63f0100, 0xf9400717}},
+        {0x01d9dc3c, {0x528f3388, 0xf941d829, 0x8b080008, 0xf81d83a8, 0x528f0d88}},
+        {0x01d9e11c, {0xa97de7b4, 0x910042ea, 0xeb08029f, 0xf93cca74, 0x3900fe9f}},
+        {0x01d9e224, {0x528fec08, 0x8b08026a, 0xb94232c8, 0xf9461d29, 0x39174295}},
+        {0x01d9e244, {0xb905ce88, 0x91004128, 0xb00168a9, 0x52800814, 0xf93fb268}},
         {0x01afdd20, {0xd10183ff, 0xa9027bfd, 0xf9001bf7, 0xa90457f6, 0xa9054ff4}},
         {0x01af9fec, {0x79401008, 0x528c0049, 0x6a09011f, 0x540000a0, 0xf9401668}},
         {0x01afdeac, {0x350002a9, 0x35000768, 0x3974dac8, 0x35000728, 0x3974d2c9}},
@@ -338,7 +330,7 @@ bool Install() {
     }
     LoadPreferences();
 #if CAS_VERBOSE_DIALOGUE_TRACE
-    Logging.Log("[QoL Enhancements/Faster Dialogue] DIAGNOSTIC: player-bank-v3; player window fix and entity handle trace\n");
+    Logging.Log("[QoL Enhancements/Faster Dialogue] DIAGNOSTIC: npc-handle-v4; owned speaker handle and player window fixes\n");
 #endif
     DialogueHeldInput::InstallAtOffset(address::HeldInput);
     DialogueSelectSpeed::InstallAtOffset(address::EligibleFast);

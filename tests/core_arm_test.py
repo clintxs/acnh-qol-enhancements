@@ -10,7 +10,7 @@ from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
 SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'amiibo')
 COUNTS = (16, 16, 5, 11, 1)
-DEFAULT = b'enabled=true\nversion=0.2.2\n'
+DEFAULT = b'enabled=true\nversion=0.2.3\n'
 
 def expected_hook_count(machine, enabled):
     # The existing verbose-dialogue build adds a Catalog message trace hook.
@@ -161,7 +161,8 @@ def check_errors():
     m.boot()
     assert not m.hooks and not m.opened and 'PROFILE_MISMATCH' in m.text
     # Dialogue hook sites and legacy paths must remain pristine; validate before installing.
-    for offset in (0x1af9ff0, 0x1afdd20, 0x1afdebc, 0x1afded4):
+    for offset in (0x1af9ff0, 0x1afdd20, 0x1afdebc, 0x1afded4,
+                   0x1d9dc3c, 0x1d9e11c, 0x1d9e224, 0x1d9e244):
         m = Machine(0x7100000000, {'faster-dialogue': DEFAULT, 'amiibo': DEFAULT})
         m.write(m.base + offset, 0xdeadbeef, 4)
         m.boot(); m.activate()

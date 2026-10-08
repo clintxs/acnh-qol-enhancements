@@ -27,10 +27,12 @@ This is a C++ hook rewrite of the 0.3.0 two-tier behavior, with custom selection
 ## Speaker identity and UI classification
 
 The manager at text+208 owns current message metadata and the active speaker
-source at +C0. This is also the source used by Animalese at 01B02E34. Native
-01B02E84..01B02EBC checks the delegate at source+28 via virtual +10 and calls
-virtual +0 with a 12-byte output to obtain the current entity handle. The C++
-classifier follows that same delegate; it never starts/stops audio.
+source at +C0. This is also the source used by Animalese at 01B02E34. The source
+owns an entity handle at +8. Native 01B02E84..01B02EBC calls the delegate at
+source+28 with a 12-byte output for voice POSITION (three floats), not identity.
+The original classifier misinterpreted this output until corrected in 0.2.3.
+See the constructor evidence and live log analysis below. No position delegate
+is called by the corrected classifier; it never starts/stops audio.
 
 01B000C8 resolves this handle through the entity registry: GOT 04AB27C0 ->
 global slot -> registry, registry+1C0 -> table, table+8 -> entries, handle>>20
@@ -49,13 +51,13 @@ other model suffixes are not guessed.
 Manager+20 is the presentation context. 01B041A4 maps current metadata into
 context+2C: talk=0, dialog=1, balloon=2. Confirmed dialog windows are UI. In a
 talk window, a valid player entity (kind 4F) is UI/self narration; a valid NPC
-is NPC. Balloon/unknown windows, missing/invalid delegates, stale handles,
+is NPC. Except for reviewed player banks, balloon/unknown windows, missing sources, stale handles,
 retiring entities, other entity kinds and missing/overlong IDs remain at base.
 Missing speaker pointers alone are never classified as UI. Identity is read
 on each eligible update; no last-NPC cache survives a change of message.
 
 The field paths are traced from supplied native code. ARM tests use modeled
-entities/delegates and do not establish that every live context (particularly
+entities and do not establish that every live context (particularly
 catch/terminal/settings messages or offscreen speakers) exposes those paths.
 Live logs/verification are needed; unsupported contexts safely use base speed.
 The classifier governs only eligible text; Kapp'n song/travel scripting remains
@@ -174,3 +176,37 @@ delegate output words, resolved entity pointer, stored generation handle/flags,
 and resolver function offset to SELECT. Changes to these fields trigger a new
 trace, allowing null/stale/retiring outcomes to be distinguished without guessing
 at another entity layout. NPC lookup validation itself remains unchanged.
+
+## 0.2.3 speaker identity correction from player-bank-v3
+
+The next live log confirms `player-bank` and speed 4 for FTR_WorkingTable and
+SYS_Get_Fish in window 2. NPC failures instead show changing 12-byte outputs
+from resolver 01DA973C. Example words 432BF0B6/419B62A2/435823B5 decode as
+floats 171.9403/19.4232/216.1395: a spatial voice position, not an entity handle.
+01DA973C is the member-function delegate dispatcher. The original source+28
+assumption was incorrect, and modeled delegate output hid that error in tests.
+
+The NPC component constructor establishes the real field directly:
+
+- 01D9DC3C..01D9DC48 saves component+799C in the frame slot at x29-28.
+- 01D9E11C restores it into x20.
+- 01D9E224..01D9E254 sets source=component+7F60, reads the NPC entity's +230
+  generation handle, stores it at x20+5CC (component+7F68 == source+8), and
+  installs the TalkSource vtable at source+0.
+- 01DA374C..01DA3764 passes the same component+7F60 source and entity+230 handle
+  to native speaker-name/voice metadata setup (01B000C8).
+
+The classifier now reads source+8 each eligible update and retains all registry,
+generation, retiring, entity-kind, RTTI and bounded resource-name validation.
+It invokes no speaker position/validity callbacks and keeps no speaker cache.
+Four producer fingerprints cover the constructor offset chain and copy.
+Regression tests execute original offset setup at 01D9DC3C..01D9DC48, x20 reload
+at 01D9E11C and ARM 01D9E224..01D9E254 to produce source+8,
+then execute the compiled C++ classifier and native speed path. The old position
+callback is a test failure if invoked. Timmy/Tommy switches with their shared
+SP_rcm_00_common bank and changing position coordinates are covered separately.
+
+The optional `npc-handle-v4` diagnostic reports one stable owned handle instead
+of three changing coordinate words. Movement no longer consumes the SELECT
+transition budget. Normal and diagnostic builds both include this fix; live
+NPC recognition still requires confirmation on the corrected Core.

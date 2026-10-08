@@ -1,7 +1,8 @@
 """Run compiled C++ hooks through the real SIMD adapter and native dialogue code.
 
 Original reveal/renderer/input instructions execute locally. Message metadata,
-parser completion and speaker delegates are modeled; this is not an Eden test.
+parser completion and entity registry are modeled; this is not an Eden test.
+The original NPC constructor's speaker-handle producer executes as native ARM.
 """
 import itertools
 import struct
@@ -39,9 +40,10 @@ class DialogueMachine(Machine):
         self.handle = 0x00100042
         self.write(self.entries + 8, self.entity)
         self.write(self.source + 0x28, self.source + 0x100)
-        self.valid, self.resolve = base + 0x1b00de4, base + 0x1b00dfc
+        self.valid, self.resolve = base + 0x1b00de4, base + 0x1da973c
         self.write(self.source + 0x100, self.resolve)
         self.write(self.source + 0x110, self.valid)
+        self.write(base + 0x4ac0c38, base + 0x493e550)
         self.is_npc = base + 0x1b00e70
         self.write(self.entity, self.entity + 0x900)
         self.write(self.entity + 0x920, self.is_npc)
@@ -72,12 +74,31 @@ class DialogueMachine(Machine):
     def speaker(self, name='', kind=10, window=0, source=True, valid=True, stale=False, dead=False):
         self.write(self.context + 0x2c, window, 4)
         self.write(self.meta + 0xc0, self.source if source else 0)
+        self.write(self.entity + 0x230, self.handle if valid else 0, 4)
+        if self.native:
+            # Execute the native constructor's offset setup, saved x20 reload
+            # and entity+230 -> source+8 copy, not a modeled delegate output.
+            component = self.source - 0x7f60
+            self.u.reg_write(UC_ARM64_REG_X0, component)
+            self.u.reg_write(UC_ARM64_REG_X1, self.entity)
+            self.u.reg_write(UC_ARM64_REG_X29, self.stack + 0x2000)
+            self.execute(0x1d9dc3c, (0x1d9dc4c,))
+            self.execute(0x1d9e11c, (0x1d9e120,))
+            assert self.u.reg_read(UC_ARM64_REG_X20) == component + 0x799c
+            self.u.reg_write(UC_ARM64_REG_X19, component)
+            self.u.reg_write(UC_ARM64_REG_X21, 0xff)
+            self.u.reg_write(UC_ARM64_REG_X22, self.entity)
+            self.u.reg_write(UC_ARM64_REG_X9, self.base + 0x4ac0000)
+            self.execute(0x1d9e224, (0x1d9e258,))
+            assert self.read(self.source + 8, 4) == (self.handle if valid else 0)
+            assert self.read(self.source) == self.base + 0x493e560
+        else:
+            self.write(self.source + 8, self.handle if valid else 0, 4)
         self.write(self.entity + 0x230, self.handle + int(stale), 4)
         self.write(self.entity + 0x15c, kind, 4)
         self.write(self.entity + 0x248, 2 if dead else 0, 4)
         self.write(self.entity + 0x3e8, self.entity + 0x800)
         self.u.mem_write(self.entity + 0x800, name.encode() + b'\0')
-        self.delegate_valid = valid
         self.delegate_calls = 0
 
     def service(self, u, pc, size, user):
@@ -108,15 +129,13 @@ class DialogueMachine(Machine):
         if relative in self.entry_stop or relative in (0x1afdd80, 0x1afe064):
             self.stop = relative
             u.emu_stop()
-        elif pc in (self.valid, self.resolve, self.is_npc):
-            if pc == self.is_npc:
-                assert self.reg(0) == self.entity and self.reg(1) == self.entity + 0xa00
-            if pc == self.resolve:
-                self.delegate_calls += 1
-                u.mem_write(self.reg(1), struct.pack('<III', self.handle, 0, 0))
+        elif pc in (self.valid, self.resolve):
+            raise AssertionError('Speaker position delegate must never be called for identity')
+        elif pc == self.is_npc:
+            assert self.reg(0) == self.entity and self.reg(1) == self.entity + 0xa00
             for reg in GP[1:19]: u.reg_write(reg, 0xdeadbeef)
             for reg in Q[:8]: u.reg_write(reg, 0xdeadbeef)
-            u.reg_write(UC_ARM64_REG_X0, int(self.npc_type_matches if pc == self.is_npc else self.delegate_valid))
+            u.reg_write(UC_ARM64_REG_X0, int(self.npc_type_matches))
             u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
         elif pc in (self.get_bank, self.get_label, self.ensure_bank):
             if pc == self.get_bank: u.reg_write(UC_ARM64_REG_X0, self.bank_safe)
@@ -271,6 +290,19 @@ def main():
                 assert bytes(custom.u.mem_read(custom.context, 0x6000)) == before
                 total += 1
         custom.speaker('rcm')
+        # Timmy and Tommy share a message bank in the live log. Actor identity
+        # must come from the current source, and moving voice coordinates must
+        # never change classification or invoke the position callback.
+        timmy_only = DialogueMachine(base, b'faster_npc_list=Timmy')
+        timmy_only.bank('SP_rcm_00_common')
+        for name, expected in (('rcm', 3), ('rct', 1), ('rcm', 3), ('owl', 1)):
+            timmy_only.speaker(name)
+            for position in ((171.94,19.42,216.14), (124.3,18.1,172.4)):
+                timmy_only.u.mem_write(timmy_only.source + 0x200, struct.pack('<fff', *position))
+                result, _ = timmy_only.run((1,0,0,0,0,1,1,-1.), 0)
+                assert result[0x21b7] == expected, (name, position)
+                assert timmy_only.delegate_calls == 0
+                total += 1
         for fault in ('type_mismatch', 'type_unready', 'method_missing', 'method_foreign'):
             custom.npc_type_matches = fault != 'type_mismatch'
             custom.write(custom.entity + 0xb00, int(fault != 'type_unready'), 1)
@@ -385,13 +417,13 @@ def main():
             probe.u.mem_write(probe.bank_label, b'X' * 64)
             probe.input(0)
             assert 'label=<unterminated>' in probe.text
-            assert 'DIAGNOSTIC: player-bank-v3' in probe.text
+            assert 'DIAGNOSTIC: npc-handle-v4' in probe.text
             total += 142
             probe.speaker('rcm', stale=True)
             probe.bank('SP_rcm_00_common')
             probe.run((1,0,0,0,0,1,1,-1.), 0)
-            assert 'handle=00100042/00000000/00000000' in probe.text
-            assert 'entity_handle=00100043 entity_flags=ffffffff resolve=main+0x1b00dfc' in probe.text
+            assert 'handle=00100042 entity=' in probe.text
+            assert 'entity_handle=00100043 entity_flags=ffffffff' in probe.text
             probe.write(probe.entries + 8, 0)
             probe.run((1,0,0,0,0,1,1,-1.), 0)
             assert 'entity=0x0 entity_handle=ffffffff entity_flags=ffffffff' in probe.text

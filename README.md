@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.2.2 player dialogue window fix** for ACNH **3.0.3 on Eden**. One Core
+**0.2.3 NPC dialogue lookup fix** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates five optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -45,8 +45,8 @@ at `content:/qol-enhancements/messages/pockets.ini`.
 
 Faster Dialogue now lives in `source/program/dialogue/`: five SIMD-preserving
 C++ hooks implement current B/R input, eligible speed selection/forwarding, and
-main/renderer multipliers. The active speaker is resolved through the same
-native entity delegate used by Animalese; NPC resource IDs are matched without
+main/renderer multipliers. The active speaker is resolved through its owned
+entity handle, validated against the live registry; NPC resource IDs are matched without
 localized name comparisons or a last-speaker cache. Native restrictions and
 scripted speed overrides remain in force. No binary replacement array or game
 code-cave helper remains. Amiibo's existing 9,000-update timeout is likewise a
@@ -117,9 +117,11 @@ Add `faster_player = true` to your **existing personal INI** and restart; an old
 personal file keeps this new option off. Each automatic category selects the
 same `boost_speed`; holding B/R never stacks another boost. Live 0.2.1 logs
 showed the correct workbench/fish banks rejected by an early window-2 check;
-0.2.2 fixes that restriction. The corrected behavior still needs in-game
-confirmation. The NPC recognition failure is separate and unresolved:
-Timmy's delegate reaches the entity lookup but fails validation. See
+0.2.2 fixes that restriction, and the subsequent live log confirms player-bank
+selection at speed 4 for workbench/fish messages. That log also revealed the
+NPC bug: the old lookup interpreted a voice-position vector as an entity handle.
+0.2.3 reads the speaker's owned handle instead. The corrected NPC behavior still
+needs in-game confirmation. See
 [research notes](research/dialogue/NOTES.md).
 There is no song/travel skipping, forced reveal, voice cleanup or emote filtering.
 
@@ -135,13 +137,13 @@ The diagnostic ZIP replaces Core only. Keep the Faster Dialogue module and your
 personal settings, including `faster_player = true`, then fully restart. Test a
 workbench, catch message and listed NPC, briefly holding B/R for comparison.
 Collect Eden's `QoL Enhancements/Faster Dialogue` lines before another session
-replaces the log. `DIAGNOSTIC: player-bank-v3` identifies this build; `READY`
+replaces the log. `DIAGNOSTIC: npc-handle-v4` identifies this build; `READY`
 shows loaded settings, `MESSAGE` shows active/cached banks, labels and reveal
 gates, and `SELECT` shows the classification, speed and entity handle details.
 MESSAGE runs in the input
 hook even when native reveal gates prevent SELECT. Logs stop after 256 MESSAGE
 or 128 SELECT transitions; repeated frames do not consume the limits. This
-diagnostic includes the 0.2.2 window fix and adds observations. Restore normal
+diagnostic includes both player/NPC fixes and adds observations. Restore normal
 Core after collecting the log. Old release ZIPs are preserved.
 
 ## Build and package
@@ -157,9 +159,9 @@ at `../vanilla-3.0.3/Layout`; builders verify their hashes and archive structure
 The package script checks that every INI matches the Core release, refuses to
 replace existing archives, and creates:
 
-- `dist/qol-enhancements-v0_2_2_for_acnh_v3_0_3.zip`
-- `dist/qol-enhancements-v0_2_2_for_acnh_v3_0_3_source.zip`
-- `dist/qol-enhancements-v0_2_2_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
+- `dist/qol-enhancements-v0_2_3_for_acnh_v3_0_3.zip`
+- `dist/qol-enhancements-v0_2_3_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v0_2_3_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
 
 The binary ZIP contains a conspicuous installation text file, README, Core and
 five independently selectable feature folders, plus a SHA-256 manifest. Source
