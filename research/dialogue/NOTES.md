@@ -98,3 +98,27 @@ missing source/handle or unmatched resource ID. The normal build stays quiet.
 To collect evidence: replace Core with the diagnostic Core, keep Faster Dialogue
 and the personal mod enabled, restart, speak to Timmy/Tommy or Orville without
 B/R, then collect the READY and SELECT lines from the Eden log.
+
+## 0.2.1 player/self category
+
+`faster_player` defaults off and selects the same boost tier as UI/NPC/B/R.
+A valid player entity now belongs to this separate category. Five reviewed
+3.0.3 message banks also identify self text without an entity: FTR_WorkingTable,
+SYS_Player, SYS_Get_Fish, SYS_Get_Insect and SYS_Get_DiveFish. Workbench labels
+001/011/021 are crafting prompts; 031/032 are craft/customization results.
+SYS_Player:509_01 is recipe learning. The catch banks contain catch narration.
+Only exact bank basenames (optionally a directory/.msbt suffix) match; arbitrary
+SYS_*, FTR_*, NPC, object or absent-source messages are not automatically self.
+Known self banks take priority over a dialog window's blue presentation.
+
+The classifier reads the CURRENT bank's SafeString data at manager+2488.
+Native 01AF89A0..01AF89E0 gets the pending MessageID bank and active buffer;
+01AF8A60..01AF8A84 copies that bank into the owned active buffer. 01AF8A98..
+01AF8B50 compares/copies it into the resource cache at +25C0. Message-ref
+metadata at +24D8 and its name at +24F8 are handled separately. Reading the
+pending object at +170 or a global last-bank cache could classify the next
+message early or leak a previous player boost into NPC speech; neither is used.
+The new producer fingerprint and ARM test execute that original native copy.
+MessageID getters and buffer termination/memcpy services are modeled; bank-copy
+instructions, compiled selector and speed path execute. Live coverage still
+needs verification; the outstanding NPC entity lookup issue is unchanged.

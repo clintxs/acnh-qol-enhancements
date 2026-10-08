@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.2.0 conditional dialogue prototype** for ACNH **3.0.3 on Eden**. One Core
+**0.2.1 player dialogue prototype** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates five optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -74,6 +74,7 @@ My Custom Faster Dialogue Settings/
 base_speed = 2
 boost_speed = 4
 faster_ui = true
+faster_player = true
 faster_npc_list = Timmy, Tommy, Orville, Wilbur, Kapp'n
 ```
 
@@ -83,8 +84,8 @@ example preset over edited preferences. Only one mod should supply the custom
 path; normal RomFS precedence applies if there are duplicates. The custom file
 cannot activate an absent or disabled Faster Dialogue module.
 
-Missing preferences retain base 2 / held B/R 4, with UI/list boost off. A listed
-NPC or recognized UI uses `boost_speed` automatically; holding B/R selects that
+Missing preferences retain base 2 / held B/R 4, with UI/player/list boost off. A listed
+NPC, recognized player message or UI uses `boost_speed` automatically; holding B/R selects that
 same tier and never stacks to 8. This prototype supports **2 and 4** for both
 speed keys; a boost below the base is raised to the base. These are nominal tiers relative to the live native fast rate,
 including language/FPS adjustments, not fixed wall-clock multipliers. Native
@@ -100,10 +101,21 @@ setting; invalid list entries are ignored. Duplicate keys revert that setting
 to its default. An unreadable/oversized personal file uses defaults without
 disabling the feature. Whole-line comments, CRLF and UTF-8 BOM are supported.
 
-`faster_ui` recognizes native dialog windows and player narration with a valid
-speaker handle. Unknown/balloon contexts or a missing speaker alone remain at
-base speed. Live coverage of settings, catching messages, ABD and offscreen
-NPCs still needs testing; see [research notes](research/dialogue/NOTES.md).
+`faster_ui` covers native system dialog windows (the blue dialogs). Independent
+`faster_player` covers valid player speakers and five reviewed self-message
+banks: `FTR_WorkingTable`, `SYS_Player`, `SYS_Get_Fish`, `SYS_Get_Insect`, and
+`SYS_Get_DiveFish`. These include DIY workbench prompts/results, recipe learning,
+fish/bug/sea-creature catches and other SYS_Player self narration. The active
+message bank is read directly, so no speaker entity is required. Matching uses
+internal bank names across locales, not displayed text. Known self banks take
+priority over window color; unknown banks never become self merely because a
+speaker is missing. Balloon/unknown windows retain base speed.
+
+Add `faster_player = true` to your **existing personal INI** and restart; an older
+personal file keeps this new option off. Each automatic category selects the
+same `boost_speed`; holding B/R never stacks another boost. In-game coverage of
+these bank paths still needs testing. The reported 0.2.0 NPC recognition failure
+is **not fixed by this addition**; see [research notes](research/dialogue/NOTES.md).
 There is no song/travel skipping, forced reveal, voice cleanup or emote filtering.
 
 ## Build and package
@@ -119,9 +131,9 @@ at `../vanilla-3.0.3/Layout`; builders verify their hashes and archive structure
 The package script checks that every INI matches the Core release, refuses to
 replace existing archives, and creates:
 
-- `dist/qol-enhancements-v0_2_0_for_acnh_v3_0_3.zip`
-- `dist/qol-enhancements-v0_2_0_for_acnh_v3_0_3_source.zip`
-- `dist/qol-enhancements-v0_2_0_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
+- `dist/qol-enhancements-v0_2_1_for_acnh_v3_0_3.zip`
+- `dist/qol-enhancements-v0_2_1_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v0_2_1_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
 
 The binary ZIP contains a conspicuous installation text file, README, Core and
 five independently selectable feature folders, plus a SHA-256 manifest. Source

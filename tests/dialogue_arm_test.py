@@ -9,7 +9,7 @@ from core_arm_test import Machine, RAW, DEFAULT
 from unicorn.arm64_const import *
 
 HOOKS = (0x1afa00c, 0x1afdec0, 0x1afded4, 0x1afdefc, 0x1a969e0)
-CUSTOM = b"base_speed=2\nboost_speed=4\nfaster_ui=true\nfaster_npc_list=Timmy,Tommy,Orville,Wilbur,Kapp'n\n"
+CUSTOM = b"base_speed=2\nboost_speed=4\nfaster_ui=true\nfaster_player=true\nfaster_npc_list=Timmy,Tommy,Orville,Wilbur,Kapp'n\n"
 GP = [globals()[f'UC_ARM64_REG_X{i}'] for i in range(31)]
 Q = [globals()[f'UC_ARM64_REG_Q{i}'] for i in range(32)]
 
@@ -56,6 +56,17 @@ class DialogueMachine(Machine):
         self.entry_stop = set()
         self.fast = 2.4
         self.speaker('rcm', source=False)
+        self.bank_safe, self.bank_label = self.ram + 0x67000, self.ram + 0x67100
+        self.bank_methods, self.pending_bank = self.ram + 0x67200, self.ram + 0x67300
+        self.get_bank, self.get_label, self.ensure_bank = base + 0x1b00f00, base + 0x1b00f04, base + 0x1b00f08
+        self.write(self.meta + 0x170, self.bank_methods)
+        self.write(self.bank_methods + 0x10, self.get_bank)
+        self.write(self.bank_methods + 0x18, self.get_label)
+        self.write(self.bank_safe, self.bank_methods + 0x100)
+        self.write(self.bank_methods + 0x118, self.ensure_bank)
+        self.write(self.bank_safe + 8, self.pending_bank)
+        self.write(self.meta + 0x2488, self.meta + 0x2494)
+        self.write(self.meta + 0x2490, 64, 4)
         self.native = True
 
     def speaker(self, name='', kind=10, window=0, source=True, valid=True, stale=False, dead=False):
@@ -107,6 +118,13 @@ class DialogueMachine(Machine):
             for reg in Q[:8]: u.reg_write(reg, 0xdeadbeef)
             u.reg_write(UC_ARM64_REG_X0, int(self.npc_type_matches if pc == self.is_npc else self.delegate_valid))
             u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
+        elif pc in (self.get_bank, self.get_label, self.ensure_bank):
+            if pc == self.get_bank: u.reg_write(UC_ARM64_REG_X0, self.bank_safe)
+            elif pc == self.get_label: u.reg_write(UC_ARM64_REG_X0, self.bank_label)
+            u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
+        elif relative == 0x3f04470:
+            u.mem_write(self.reg(0), bytes(u.mem_read(self.reg(1), self.reg(2))))
+            u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
         elif relative == 0x2435188:
             u.reg_write(UC_ARM64_REG_X0, 0 if self.getter_null else self.controller)
             for reg in GP[1:19]: u.reg_write(reg, 0xdeadbeef)
@@ -149,6 +167,16 @@ class DialogueMachine(Machine):
         result = bytearray(self.u.mem_read(self.obj, len(memory)))
         result[0x21b4] = 0
         return bytes(result), self.calls
+
+    def bank(self, name, native=True):
+        self.u.mem_write(self.pending_bank, name.encode() + b'\0')
+        if native:
+            # Execute the game's actual pending-bank -> active-bank copy. This
+            # tests the +2488 field contract instead of populating it by hand.
+            self.u.reg_write(UC_ARM64_REG_X19, self.meta)
+            self.u.reg_write(UC_ARM64_REG_SP, self.stack + 0x3000)
+            self.execute(0x1af89a0, (0x1af8a88,))
+            assert self.string(self.meta + 0x2494) == name[:63]
 
     def input(self, buttons, previous=0, getter_null=False, fallback_null=False):
         self.getter_null = getter_null
@@ -252,7 +280,50 @@ def main():
                 result, _ = custom.run((1,0,0,0,0,1,1,-1.), held)
                 assert result[0x21b7] == (3 if held else 1), fault
                 total += 1
-        assert 'base=2 boost=4 faster_ui=true npc_count=6' in custom.text
+        # The self category must work with no entity, and be independent of UI
+        # and NPC settings. Pending next-message IDs must not change this one.
+        for prefs, player_boost, ui_boost in ((b'faster_player=true', True, False),
+                (b'faster_ui=true', False, True), (b'faster_player=false', False, False)):
+            player = DialogueMachine(base, prefs)
+            player.speaker(source=False)
+            for bank in ('FTR_WorkingTable', 'SYS_Get_Fish', 'SYS_Get_Insect', 'SYS_Get_DiveFish',
+                         'SYS_Player', 'TalkSys/SYS_Player.msbt', 'SP_rcm_00_common',
+                         'SYS_Door', 'SYS_Get_Fish_Extra', ''):
+                player.bank(bank)
+                before = bytes(player.u.mem_read(player.meta, 0x2700))
+                for held in (0, 1, 0):
+                    result, _ = player.run((1,0,0,0,0,1,1,-1.), held)
+                    recognized = bank in ('FTR_WorkingTable', 'SYS_Get_Fish', 'SYS_Get_Insect',
+                                         'SYS_Get_DiveFish', 'SYS_Player', 'TalkSys/SYS_Player.msbt')
+                    assert result[0x21b7] == (3 if held or recognized and player_boost else 1), (prefs, bank)
+                    assert bytes(player.u.mem_read(player.meta, 0x2700)) == before
+                    total += 1
+            player.bank('SYS_Player', native=False)
+            result, _ = player.run((1,0,0,0,0,1,1,-1.), 0)
+            assert result[0x21b7] == 1 # Pending bank ignored; active empty bank.
+            player.bank('SYS_Player')
+            player.bank('SP_rcm_00_common', native=False)
+            result, _ = player.run((1,0,0,0,0,1,1,-1.), 0)
+            assert result[0x21b7] == (3 if player_boost else 1)
+            player.speaker(window=1, source=False)
+            result, _ = player.run((1,0,0,0,0,1,1,-1.), 0)
+            assert result[0x21b7] == (3 if player_boost else 1) # Known self bank wins over blue color.
+            player.speaker(source=False)
+            player.bank('SP_rcm_00_common')
+            result, _ = player.run((1,0,0,0,0,1,1,-1.), 0)
+            assert result[0x21b7] == 1 # No player boost leaks to next NPC message.
+            player.speaker(window=1, source=False)
+            result, _ = player.run((1,0,0,0,0,1,1,-1.), 0)
+            assert result[0x21b7] == (3 if ui_boost else 1)
+            player.speaker(kind=0x4f)
+            result, _ = player.run((1,0,0,0,0,1,1,-1.), 0)
+            assert result[0x21b7] == (3 if player_boost else 1)
+            player.speaker(source=False)
+            player.u.mem_write(player.meta + 0x2494, b'A' * 53 + b'/SYS_Player\0')
+            result, _ = player.run((1,0,0,0,0,1,1,-1.), 0)
+            assert result[0x21b7] == 1 # A known basename beyond the bound cannot match.
+            total += 7
+        assert 'base=2 boost=4 faster_ui=true faster_player=true npc_count=6' in custom.text
         if 'SELECT reason=' in custom.text:
             # Opening UI often lasts hundreds of eligible frames. Repeated UI
             # must not exhaust diagnostics before the first NPC conversation.

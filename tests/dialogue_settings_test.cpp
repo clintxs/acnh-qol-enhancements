@@ -6,12 +6,12 @@ using namespace qol::dialogue;
 int main() {
     Settings settings{};
     assert(!ParseSettings("", settings));
-    for (auto kind : {MessageKind::Npc, MessageKind::Ui, MessageKind::Unknown}) {
+    for (auto kind : {MessageKind::Npc, MessageKind::Ui, MessageKind::Player, MessageKind::Unknown}) {
         assert(SelectSpeed(settings, kind, "rcm", false) == 2);
         assert(SelectSpeed(settings, kind, "rcm", true) == 4);
     }
     assert(!ParseSettings("\xef\xbb\xbf# Personal settings\r\nbase_speed = 2\r\n"
-                          "boost_speed = 4\nfaster_ui = true\nfaster_npc_list = Timmy, Tommy, Orville, Wilbur, Kapp'n, rcm, cat00\n", settings));
+                          "boost_speed = 4\nfaster_ui = true\nfaster_player = true\nfaster_npc_list = Timmy, Tommy, Orville, Wilbur, Kapp'n, rcm, cat00\n", settings));
     assert(settings.npcCount == 7);
     for (auto id : {"rcm", "rct", "dod", "doc", "kpp", "kppB", "cat00", "RCM"}) {
         assert(SelectSpeed(settings, MessageKind::Npc, id, false) == 4);
@@ -33,5 +33,21 @@ int main() {
     std::string list = "faster_npc_list=";
     for (unsigned i = 0; i < 65; ++i) list += (i ? ",npc" : "npc") + std::to_string(i);
     assert(ParseSettings(list, settings) == 1 && settings.npcCount == MaxNpcs);
-    puts("PASS: dialogue defaults, aliases/IDs, independent UI/NPC policy, non-stacking boost, invalid keys/values, duplicates and bounded lists");
+    assert(!ParseSettings("faster_ui=true", settings));
+    assert(SelectSpeed(settings, MessageKind::Ui, "", false) == 4);
+    assert(SelectSpeed(settings, MessageKind::Player, "", false) == 2);
+    assert(!ParseSettings("faster_player=true", settings));
+    assert(SelectSpeed(settings, MessageKind::Player, "", false) == 4);
+    assert(SelectSpeed(settings, MessageKind::Ui, "", false) == 2);
+    assert(SelectSpeed(settings, MessageKind::Npc, "rcm", false) == 2);
+    assert(SelectSpeed(settings, MessageKind::Unknown, "", false) == 2);
+    assert(ParseSettings("faster_player=yes", settings) == 1 && !settings.fasterPlayer);
+    assert(ParseSettings("faster_player=true\nfaster_player=false", settings) == 1 && !settings.fasterPlayer);
+    for (auto bank : {"FTR_WorkingTable", "SYS_Player", "SYS_Get_Fish", "SYS_Get_Insect", "SYS_Get_DiveFish",
+                      "TalkFtr/FTR_WorkingTable", "TalkSys/SYS_Player.msbt"})
+        assert(IsPlayerMessageBank(bank));
+    for (auto bank : {"", "SYS_Get_Fish_Extra", "NotSYS_Player", "SP_rcm_00_common", "SYS_Door",
+                      "OBJ_RcoMachine", "TalkSys/SYS_Player.msbt/Unknown", "FTR_WorkingTableExtra"})
+        assert(!IsPlayerMessageBank(bank));
+    puts("PASS: dialogue defaults, aliases/IDs, independent UI/player/NPC policy, exact self-message banks, non-stacking boost, invalid keys/values, duplicates and bounded lists");
 }

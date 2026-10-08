@@ -34,6 +34,7 @@ custom = package.custom_files()
 personal = [name for name in custom if '/config/' in name]
 assert len(personal) == 1 and personal[0].endswith('/faster-dialogue.custom.ini')
 assert custom[personal[0]] == files['faster-dialogue.custom.ini.example']
+assert b'faster_player = true\n' in custom[personal[0]]
 assert not any('/exefs/' in name or name.endswith('/faster-dialogue.ini') for name in custom)
 print('PASS: separate personal preset, no module marker or executable, suite updates cannot replace custom INI')
 

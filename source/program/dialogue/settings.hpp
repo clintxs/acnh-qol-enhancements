@@ -8,16 +8,27 @@ inline constexpr char CustomConfigPath[] =
 inline constexpr unsigned MaxNpcs = 64, NpcIdBytes = 16;
 struct Settings {
     unsigned baseSpeed = 2, boostSpeed = 4;
-    bool fasterUi = false;
+    bool fasterUi = false, fasterPlayer = false;
     unsigned npcCount = 0;
     std::array<std::array<char, NpcIdBytes>, MaxNpcs> npcs{};
 };
-enum class MessageKind { Unknown, Npc, Ui };
+enum class MessageKind { Unknown, Npc, Ui, Player };
 constexpr char Lower(char c) { return c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c; }
 inline bool Equal(std::string_view a, std::string_view b) {
     if (a.size() != b.size()) return false;
     for (unsigned i = 0; i < a.size(); ++i) if (Lower(a[i]) != Lower(b[i])) return false;
     return true;
+}
+// Reviewed self-message banks from the supplied 3.0.3 resources. Matching
+// exact basenames avoids treating NPC banks or all SYS_/FTR_ messages as self.
+inline bool IsPlayerMessageBank(std::string_view bank) {
+    const auto slash = bank.find_last_of('/');
+    if (slash != std::string_view::npos) bank.remove_prefix(slash + 1);
+    if (bank.ends_with(".msbt")) bank.remove_suffix(5);
+    constexpr std::string_view banks[]{"FTR_WorkingTable", "SYS_Player", "SYS_Get_Fish",
+                                       "SYS_Get_Insect", "SYS_Get_DiveFish"};
+    for (auto known : banks) if (Equal(bank, known)) return true;
+    return false;
 }
 inline std::string_view NpcAlias(std::string_view name) {
     constexpr std::string_view names[]{"Timmy", "Tommy", "Orville", "Wilbur", "Kapp'n"};
@@ -49,7 +60,8 @@ inline bool AddNpc(Settings &settings, std::string_view name) {
 }
 inline unsigned SelectSpeed(const Settings &settings, MessageKind kind,
                             std::string_view npc, bool held) {
-    bool automatic = kind == MessageKind::Ui && settings.fasterUi;
+    bool automatic = (kind == MessageKind::Ui && settings.fasterUi) ||
+                     (kind == MessageKind::Player && settings.fasterPlayer);
     if (kind == MessageKind::Npc)
         for (unsigned i = 0; i < settings.npcCount; ++i)
             automatic |= Equal(npc, settings.npcs[i].data());
@@ -80,14 +92,15 @@ inline unsigned ParseSettings(std::string_view input, Settings &output) {
         const auto key = core::Trim(line.substr(0, equals));
         const auto value = core::Trim(line.substr(equals + 1));
         const unsigned bit = key == "base_speed" ? 1 : key == "boost_speed" ? 2 :
-                             key == "faster_ui" ? 4 : key == "faster_npc_list" ? 8 : 0;
+                             key == "faster_ui" ? 4 : key == "faster_npc_list" ? 8 : key == "faster_player" ? 16 : 0;
         if (!bit) { ++warnings; continue; }
         if (seen & bit) { duplicate |= bit; ++warnings; continue; }
         seen |= bit;
         if (bit == 1 || bit == 2) {
             if (!ParseSpeed(value, bit == 1 ? output.baseSpeed : output.boostSpeed)) ++warnings;
-        } else if (bit == 4) {
-            if (value == "true" || value == "false") output.fasterUi = value == "true";
+        } else if (bit == 4 || bit == 16) {
+            if (value == "true" || value == "false")
+                (bit == 4 ? output.fasterUi : output.fasterPlayer) = value == "true";
             else ++warnings;
         } else {
             auto list = value;
@@ -103,6 +116,7 @@ inline unsigned ParseSettings(std::string_view input, Settings &output) {
     if (duplicate & 1) output.baseSpeed = 2;
     if (duplicate & 2) output.boostSpeed = 4;
     if (duplicate & 4) output.fasterUi = false;
+    if (duplicate & 16) output.fasterPlayer = false;
     if (duplicate & 8) { output.npcCount = 0; output.npcs = {}; }
     if (output.boostSpeed < output.baseSpeed) { output.boostSpeed = output.baseSpeed; ++warnings; }
     return warnings;

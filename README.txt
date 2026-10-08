@@ -1,4 +1,4 @@
-QoL Enhancements 0.2.0 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.2.1 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -28,7 +28,7 @@ Amiibo: shared event scan timeout extended to 9,000 updates (~5 minutes at 30 Hz
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.2.0
+  version = 0.2.1
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.
@@ -51,6 +51,7 @@ Edit this file to customize:
   base_speed = 2
   boost_speed = 4
   faster_ui = true
+  faster_player = true
   faster_npc_list = Timmy, Tommy, Orville, Wilbur, Kapp'n
 
 The five internal IDs are rcm, rct, dod, doc, kpp; other actual NPC resource
@@ -59,7 +60,7 @@ This prototype accepts speed tiers 2/4.
 Holding B/R selects boost_speed without stacking it on an automatic boost.
 Speeds preserve the game's language/FPS-adjusted fast rate; animations and
 scripted waits can limit conversation speed. Native overrides take priority.
-No custom file: base 2, held 4, automatic UI/NPC boost off.
+No custom file: base 2, held 4, automatic UI/player/NPC boost off.
 
 Keep the personal mod folder when replacing the six suite folders. Do not
 reinstall the example preset over your edited preferences. Enable only one
@@ -69,10 +70,17 @@ Bad custom settings warn and fall back per setting; invalid IDs are ignored.
 Use whole-line #/; comments, at most 4 KiB, and up to 64 ASCII resource IDs.
 Do not put personal preferences in the versioned faster-dialogue.ini.
 
-UI recognition covers native dialog windows and player narration with a valid
-speaker handle. Unknown/balloon contexts or a missing speaker alone use base.
-Settings, catching messages, ABD and offscreen speakers need live coverage
-checks. Kapp'n songs/travel retain native scripting; no skip is added.
+faster_ui covers blue system dialog windows. Independent faster_player covers
+valid player speakers and the reviewed FTR_WorkingTable, SYS_Player,
+SYS_Get_Fish, SYS_Get_Insect and SYS_Get_DiveFish banks. This includes DIY
+prompts/results, recipe learning, catches and other SYS_Player self narration.
+It reads the active message bank, so no speaker entity is needed. Known self
+banks take priority over window color. Unknown banks/missing speakers alone
+never imply player; balloon/unknown windows retain base speed.
+Add faster_player = true to your existing personal INI and restart. Missing
+faster_player defaults to false. In-game coverage still needs testing.
+The reported NPC recognition problem is not fixed by this addition.
+Kapp'n songs/travel retain native scripting; no skip is added.
 
 LOGS
 Core logs its built-in version, each installed package version and minimum,

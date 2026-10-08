@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.2.0 conditional dialogue prototype
+# Unified QoL validation — 0.2.1 player dialogue prototype
 
 Validated locally on October 8, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The unified build has **not yet
@@ -28,7 +28,7 @@ been tested in Eden**. No running game or save files were accessed by these test
 - Personal settings are opened only for a compatible, enabled Faster Dialogue
   module. Missing, empty, malformed, oversized and failed open/size/read cases
   retain usable defaults; opened handles close. Personal config cannot enable
-  an absent/disabled module. Both 0.1.0 and 0.2.0 module packages remain accepted
+  an absent/disabled module. Module packages from 0.1.0 through 0.2.1 remain accepted
   under the unchanged per-feature minimum (0.1.0).
 - Compiled Amiibo C++ callback feeds 9,000 into the unchanged native halfword
   timeout store at both load addresses. The original immediate is untouched.
@@ -43,9 +43,9 @@ compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
 ## Conditional dialogue
 
 - Host settings/policy checks cover defaults, friendly aliases and resource IDs,
-  case-insensitive deduplication, UI independence, no stacked boost, 64-ID bounds,
+  case-insensitive deduplication, UI/player independence, no stacked boost, 64-ID bounds,
   invalid values/keys/list entries, empty lists, duplicate keys and size limits.
-- 5,784 compiled ARM cases at two ASLR bases execute the original native input,
+- 6,006 compiled ARM cases at two ASLR bases execute the original native input,
   reveal and renderer gate code with the real compiled SIMD adapter/callbacks.
   No-input results match native held fast; B/R uses the extra tier. Protected
   modes, forced native display, disabled acceleration, scripted overrides,
@@ -60,6 +60,13 @@ compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
   overlong resource names. Sequences switch speakers and
   repeatedly hold/release; borrowed speaker/registry bytes remain unchanged.
   Kapp'n's friendly alias includes both known SpNpcParam profiles.
+- Player cases execute the original 01AF89A0..01AF8A84 pending-to-active
+  bank copy, then the compiled classifier through the actual SIMD adapter.
+  They cover all five self banks, missing speaker entities, UI/player settings
+  independently on/off, B/R non-stacking, ignored pending IDs, transitions to
+  unknown/NPC banks, bounded/overlong names, and read-only metadata. Known self banks use the player
+  category even when the presentation is a system dialog. All five bank names
+  were found in each of the 14 localized TalkFtr/TalkSys resource sets.
 - Speaker delegates, metadata lookup and parser completion are modeled. Hook
   allocation/trampoline relocation is modeled; the actual SIMD adapter and C++
   callbacks execute. These tests do not validate physical controllers, audio,
@@ -136,7 +143,11 @@ CLI are also required. None of those original game assets are redistributed.
    disconnect, multi-page dialogue, choices, A/B behavior, Animalese and emotes.
    Then enable the separate personal preset and restart: verify automatic 4
    for Timmy and Tommy independently, Orville, Wilbur, and Kapp'n (including
-   alternate profile if encountered), plus UI settings/catch/ABD dialogs. Verify
+   alternate profile if encountered), plus blue UI/ABD dialogs. Independently
+   enable faster_player for DIY workbench prompts/results, fish/bug/sea-creature
+   catches and recipe learning; turn faster_ui off and check those self messages
+   still boost. Reverse the toggles and check blue system dialogs separately.
+   The reported NPC lookup problem remains outstanding. Verify
    unlisted villagers remain at base and no prior NPC boost carries into the
    next message. Check custom file edits, removal, module disabled, unknown IDs
    and invalid values across full restarts. Kapp'n songs/travel should retain

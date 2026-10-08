@@ -16,6 +16,8 @@ constexpr std::uintptr_t NpcTypeGot = 0x04ab37d0, NpcTypeGuardGot = 0x04ab37d8;
 namespace layout {
 constexpr std::size_t TextManager = 0x208, ManagerText = 0x28, TalkContext = 0x20;
 constexpr std::size_t WindowKind = 0x2c, ActiveSpeaker = 0xc0;
+constexpr std::size_t ActiveMessageBank = 0x2488;
+constexpr unsigned MessageBankBytes = 64;
 constexpr std::size_t SpeakerEntityDelegate = 0x28, DelegateValid = 0x10;
 constexpr std::size_t HeldButtons = 8, HeldFast = 0x21b4, EffectiveFast = 0x21b7, RendererFast = 0x205;
 constexpr std::size_t EntityTable = 0x1c0, TableEntries = 8;
@@ -41,13 +43,14 @@ bool NativeFunction(std::uintptr_t function) {
 enum class SpeakerLookup {
     Manager, Context, Window, Source, Delegate, DelegateMethods, DelegateInvalid,
     EmptyHandle, Registry, Entity, EntityKind, NpcType, NpcMethod, NpcMismatch,
-    NpcName, NpcNameTooLong, Npc, UiDialog, UiPlayer
+    NpcName, NpcNameTooLong, Npc, UiDialog, PlayerEntity, PlayerBank
 };
 struct Speaker {
     SpeakerLookup lookup = SpeakerLookup::Manager;
     unsigned window = ~0u, entityKind = ~0u;
     MessageKind kind = MessageKind::Unknown;
     char id[NpcIdBytes]{};
+    char bank[layout::MessageBankBytes]{};
 };
 Speaker CurrentSpeaker(std::uintptr_t text) {
     Speaker result{};
@@ -60,6 +63,26 @@ Speaker CurrentSpeaker(std::uintptr_t text) {
     // presentation metadata. A confirmed dialog is UI, even after NPC speech.
     result.lookup = SpeakerLookup::Window;
     const auto window = result.window = Read<unsigned>(context, layout::WindowKind);
+    if (window > layout::DialogWindow) return result;
+    // Native 01af89a0..01af8a84 copies the pending MessageID bank into
+    // manager+2480's SafeString (data +2488) when starting the current message.
+    // Read that owned active bank each update, never a pending ID or last-bank
+    // cache. DIY/catch/self narration need not expose an entity delegate.
+    const auto bank = Read<std::uintptr_t>(manager, layout::ActiveMessageBank);
+    if (bank) {
+        bool terminated = false;
+        for (unsigned i = 0; i < sizeof(result.bank); ++i) {
+            const auto c = Read<char>(bank, i);
+            if (!c) { terminated = true; break; }
+            if (i + 1 < sizeof(result.bank)) result.bank[i] = c;
+        }
+        if (!terminated) result.bank[0] = 0; // Never classify a truncated bank.
+        if (IsPlayerMessageBank(result.bank)) {
+            result.lookup = SpeakerLookup::PlayerBank;
+            result.kind = MessageKind::Player;
+            return result;
+        }
+    }
     if (window == layout::DialogWindow) {
         result.lookup = SpeakerLookup::UiDialog; result.kind = MessageKind::Ui; return result;
     }
@@ -98,7 +121,7 @@ Speaker CurrentSpeaker(std::uintptr_t text) {
     result.lookup = SpeakerLookup::EntityKind;
     const auto kind = result.entityKind = Read<unsigned>(entity, layout::EntityKind);
     if (kind == layout::PlayerEntity) {
-        result.lookup = SpeakerLookup::UiPlayer; result.kind = MessageKind::Ui; return result;
+        result.lookup = SpeakerLookup::PlayerEntity; result.kind = MessageKind::Player; return result;
     }
     if (kind != layout::NpcEntity) return result;
     // Match native 01b00164..01b001e8's NPC RTTI check before borrowing the
@@ -180,18 +203,19 @@ HOOK_DEFINE_INLINE(DialogueSelectSpeed) {
             "no-manager", "no-context", "unsupported-window", "no-source", "no-delegate",
             "foreign-delegate-method", "invalid-delegate", "empty-handle", "no-registry",
             "invalid-entity", "other-entity-kind", "npc-type-unready", "foreign-npc-method",
-            "npc-type-mismatch", "no-npc-name", "npc-name-too-long", "npc", "ui-dialog", "ui-player"
+            "npc-type-mismatch", "no-npc-name", "npc-name-too-long", "npc", "ui-dialog", "player-entity", "player-bank"
         };
         static Speaker previous{};
         static unsigned previousSpeed = 0, reports = 0;
         const bool changed = !reports || previous.lookup != speaker.lookup ||
             previous.window != speaker.window || previous.entityKind != speaker.entityKind ||
-            previousSpeed != speed || std::strcmp(previous.id, speaker.id);
+            previousSpeed != speed || std::strcmp(previous.id, speaker.id) ||
+            std::strcmp(previous.bank, speaker.bank);
         if (changed && reports < 128) {
             ++reports; previous = speaker; previousSpeed = speed;
-            Logging.Log("[QoL Enhancements/Faster Dialogue] SELECT reason=%s window=%u entity_kind=%u kind=%u npc=%s speed=%u\n",
+            Logging.Log("[QoL Enhancements/Faster Dialogue] SELECT reason=%s window=%u entity_kind=%u kind=%u npc=%s speed=%u bank=%s\n",
                         reasons[static_cast<unsigned>(speaker.lookup)], speaker.window, speaker.entityKind,
-                        static_cast<unsigned>(speaker.kind), speaker.id, speed);
+                        static_cast<unsigned>(speaker.kind), speaker.id, speed, speaker.bank);
         }
 #endif
     }
@@ -227,6 +251,7 @@ bool Install() {
         {address::ForwardFast, {0xb900011f, 0x394832c8, 0x340007c8, 0x3961f2c8, 0x340008c8}},
         {address::MainRate, {0x14000054, 0x52829108, 0x52a7f017, 0x3934dedf, 0x8b080274}},
         {address::RendererRate, {0x14000002, 0xbd421400, 0xbd420801, 0xbd420c02, 0x5e21d821}},
+        {0x01af89d0, {0xaa1803e0, 0xf9524676, 0xf9400d08, 0xd63f0100, 0xf9400717}},
         {0x01afdd20, {0xd10183ff, 0xa9027bfd, 0xf9001bf7, 0xa90457f6, 0xa9054ff4}},
         {0x01af9fec, {0x79401008, 0x528c0049, 0x6a09011f, 0x540000a0, 0xf9401668}},
         {0x01afdeac, {0x350002a9, 0x35000768, 0x3974dac8, 0x35000728, 0x3974d2c9}},
@@ -246,8 +271,9 @@ bool Install() {
     DialogueForwardSpeed::InstallAtOffset(address::ForwardFast);
     DialogueMainRate::InstallAtOffset(address::MainRate);
     DialogueRendererRate::InstallAtOffset(address::RendererRate);
-    Logging.Log("[QoL Enhancements/Faster Dialogue] READY: C++ hooks; base=%u boost=%u faster_ui=%s npc_count=%u\n",
-                Preferences.baseSpeed, Preferences.boostSpeed, Preferences.fasterUi ? "true" : "false", Preferences.npcCount);
+    Logging.Log("[QoL Enhancements/Faster Dialogue] READY: C++ hooks; base=%u boost=%u faster_ui=%s faster_player=%s npc_count=%u\n",
+                Preferences.baseSpeed, Preferences.boostSpeed, Preferences.fasterUi ? "true" : "false",
+                Preferences.fasterPlayer ? "true" : "false", Preferences.npcCount);
     return true;
 }
 } // namespace qol::dialogue

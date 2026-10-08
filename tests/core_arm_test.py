@@ -10,7 +10,7 @@ from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
 SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'amiibo')
 COUNTS = (16, 16, 5, 11, 1)
-DEFAULT = b'enabled=true\nversion=0.2.0\n'
+DEFAULT = b'enabled=true\nversion=0.2.1\n'
 
 def expected_hook_count(machine, enabled):
     # The existing verbose-dialogue build adds a Catalog message trace hook.
@@ -194,7 +194,7 @@ def check_amiibo_hook():
     print('PASS: compiled Amiibo C++ hook feeds the unchanged native timeout store at two bases')
 
 def check_custom_preferences():
-    for custom, summary in ((b'', 'base=2 boost=4 faster_ui=false npc_count=0'),
+    for custom, summary in ((b'', 'base=2 boost=4 faster_ui=false faster_player=false npc_count=0'),
                             (b'base_speed=4\nboost_speed=2', 'base=4 boost=4'),
                             (b'base_speed=2\nboost_speed=2', 'base=2 boost=2'),
                             (b'base_speed=0\nfaster_ui=yes', 'base=2 boost=4 faster_ui=false'),

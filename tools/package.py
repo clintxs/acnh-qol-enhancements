@@ -79,7 +79,7 @@ def custom_files():
             'QoL Enhancements - Core and QoL Enhancements - Faster Dialogue.\n'
             'Enable all three in Eden and fully restart ACNH.\n\n'
             'This preset uses base 2x, held B/R 4x, and automatic 4x for\n'
-            "Timmy, Tommy, Orville, Wilbur, Kapp'n and recognized UI messages.\n"
+            "Timmy, Tommy, Orville, Wilbur, Kapp'n, recognized UI and player/self messages.\n"
             'Speeds are nominal tiers based on the native fast-text rate.\n'
             'Edit romfs/qol-enhancements/config/faster-dialogue.custom.ini\n'
             'inside the personal mod. Keep this folder when updating the suite.\n'
