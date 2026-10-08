@@ -1,5 +1,6 @@
 """Cash refresh regression and savings presentation using the compiled UI hook."""
 from shopping_card_arm_test import CardMachine, SHOPS
+import struct
 from unicorn.arm64_const import *
 from unicorn import UC_HOOK_CODE
 
@@ -11,6 +12,22 @@ class DisplayMachine(CardMachine):
         self.binding = self.ram + 0x6000
         self.adapter = self.ram + 0x6100
         self.methods = self.ram + 0x6200
+        self.hud = self.ram + 0x90000
+        self.hud_page = self.ram + 0x91000
+        self.hud_holder = self.ram + 0x92000
+        self.hud_layout = self.ram + 0x93000
+        self.parameter_calls = []
+        self.write(self.hud + 0x210, self.hud_page)
+        self.write(self.hud_page + 0x3f8, self.hud_holder)
+        self.write(self.hud_holder, self.hud_layout)
+        self.write(base + 0x4ab2020, self.ram + 0x94000)
+        # Execute the ORIGINAL BellPage update as the trampoline target. This
+        # catches wrong owner layouts that a stubbed auxiliary update missed.
+        self.write(self.module.find('BellPageBalanceDisplay', 'OrigRef'), base + 0x2b13bf0)
+        self.write(self.hud + 0x218, self.wallet, 4)
+        self.write(self.hud + 0x21c, self.wallet, 4)
+        self.write(self.counter + 0x260, self.wallet, 4)
+        self.write(self.counter + 0x264, self.wallet, 4)
         self.display_updates = 0
         self.texts = []
         self.panes = {}
@@ -36,6 +53,12 @@ class DisplayMachine(CardMachine):
         self.write(self.methods + 0x5e0, base + 0x3c1b588)
     def service(self, u, pc, size, data):
         off = pc - self.base
+        if off == 0x2b12c24:
+            assert self.reg(0) == self.hud_layout + 0x38
+            assert self.read(self.reg(1)) == self.ram + 0x94010
+            assert self.string(self.read(self.reg(1) + 8)) == '/L_Bell_00'
+            self.parameter_calls.append(self.u.reg_read(UC_ARM64_REG_LR))
+            self.finish(self.counter); return
         if off == 0x27d1d0:
             root = self.reg(0); name = self.string(self.reg(1))
             pane = self.panes.get(name, 0); node = pane
@@ -48,6 +71,7 @@ class DisplayMachine(CardMachine):
             self.texts.append(text); self.finish(); return
         super().service(u, pc, size, data)
     def update(self): self.invoke(self.callbacks[0x301b394], self.owner)
+    def update_hud(self): self.invoke(self.callbacks[0x2b13bf0], self.hud)
     def shown(self, name): return bool(self.read(self.panes[name] + 0x58, 1) & 1)
     def native_refresh(self, entry, end, player_offset, saved_reg, cached=None):
         # Execute the original "current funds changed?" branch. Its actual BL
@@ -118,3 +142,48 @@ for base in (0x7100000000, 0x7200000000):
     m.write(m.adapter + 0x18, 0); m.update()
     m.write(m.owner + 0x210, 0); m.update()
 print('PASS: original cash refresh branches queue no false animation; green savings display, all residents, cap/zero, room changes, typed adapters and missing resources at two bases')
+
+# This separate controller owns a Page at +210, not a counter. Exercise its
+# actual native update from entry through return, with only engine lookup/text
+# boundaries modeled. The auxiliary-only test above cannot establish HUD wiring.
+for base in (0x7100000000, 0x7200000000):
+    m = DisplayMachine(base)
+    for player in range(8): m.deposit(123456 + player, player)
+    for shop in SHOPS:
+        m.write(m.info + 0x38, shop, 4)
+        for player in range(8):
+            m.write(m.hud + 0x224, player, 1)
+            m.write(m.hud + 0x230, 7 - player, 1) # poison auxiliary player field
+            m.update_hud()
+            assert m.shown('N_ShoppingCard_00') and not m.shown('T_Num_00')
+            assert m.texts[-1] == f'{123456 + player:,}'
+            assert m.read(m.counter + 0x290, 1) == 0
+            assert m.read(m.hud + 0x218, 4) == m.wallet
+        # A savings purchase/sale refresh never becomes a native cash animation.
+        m.write(m.hud + 0x224, 0, 1)
+        # Route uses the explicit player context; select resident 0 for updates.
+        m.write(m.player, 0, 1)
+        m.route(0x257b340, 0xb168b4, m.player, 100)
+        expected = m.balance()
+        m.update_hud(); assert m.texts[-1] == f'{expected:,}'
+        assert m.read(m.counter + 0x290, 1) == 0
+        m.deposit(200); expected = m.balance()
+        m.update_hud(); assert m.texts[-1] == f'{expected:,}'
+        assert m.read(m.counter + 0x290, 1) == 0
+        # Reset deposits before the next room's distinct-resident assertions.
+        for player in range(8):
+            m.write(m.player, player, 1)
+            m.invoke(base + 0x257fb30, m.player, 999999999)
+            m.deposit(123456 + player, player)
+    assert base + 0x2b13c70 in m.parameter_calls
+    assert 'SAVINGS_DISPLAY_READY source=HUD' in m.text
+    m.write(m.info + 0x38, 0, 4); m.update_hud()
+    assert not m.shown('N_ShoppingCard_00') and m.shown('T_Num_00')
+    # Genuine pocket-money changes still use the original HUD amount animation.
+    m.wallet += 100
+    m.update_hud()
+    assert m.read(m.counter + 0x290, 1) == 1
+    assert m.read(m.counter + 0x298, 4) == m.wallet
+    # A missing/unmounted HUD page is a no-op for native and custom paths.
+    m.write(m.hud + 0x210, 0); m.update_hud()
+print('PASS: actual native BellPage HUD update at two bases, native /L_Bell_00 lookup path, all shops/residents, poisoned alternate player offset, savings changes without cash animation, cash restoration and genuine cash animation')

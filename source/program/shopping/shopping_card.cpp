@@ -7,7 +7,8 @@ namespace qol::shopping {
 namespace {
 namespace address {
 constexpr std::uintptr_t Wallet = 0x0257abf0, Debit = 0x0257b340;
-constexpr std::uintptr_t BellDisplayUpdate = 0x0301b394;
+constexpr std::uintptr_t BellDisplayUpdate = 0x0301b394, BellPageUpdate = 0x02b13bf0;
+constexpr std::uintptr_t FindParameter = 0x02b12c24, SafeStringVtableGot = 0x04ab2020;
 constexpr std::uintptr_t FindPane = 0x0027d1d0, SetPaneText = 0x03c1b588, SetGroupText = 0x03c47b90;
 constexpr std::uintptr_t PurchaseSpace = 0x02579fe0;
 constexpr std::uintptr_t Capacity = 0x0257b6f0, MoneyCapacityQuery = 0x00f86e68;
@@ -21,6 +22,7 @@ constexpr unsigned ActionEvent = 8, EventPlayer = 0x2a8, CapacityModeText = 0x10
 }
 namespace display {
 constexpr unsigned Counter = 0x210, Player = 0x230, NumberBinding = 0x250;
+constexpr unsigned Page = 0x210, PageLayout = 0x3f8, Parameters = 0x38, HudPlayer = 0x224;
 constexpr unsigned BindingAdapter = 0x48, AdapterPayload = 8, AdapterMethods = 0x18;
 constexpr unsigned SetTextMethod = 0x5e0, GroupCount = 0x10, GroupLinkOffset = 0x14;
 constexpr unsigned NextLink = 8, MemberPane = 0x10, MemberMethods = 0x18;
@@ -132,8 +134,22 @@ unsigned FormatSavings(char16_t (&output)[12], unsigned balance) {
     output[length] = 0;
     return length;
 }
-void UpdateSavingsDisplay(std::uintptr_t owner) {
-    const auto counter = owner ? Read<std::uintptr_t>(owner, display::Counter) : 0;
+enum class DisplaySurface : unsigned { Auxiliary, Hud };
+std::uintptr_t BellPageCounter(std::uintptr_t owner) {
+    // BellPage (02b13c44..02b13c6c) owns a Page, not a counter. Resolve its
+    // /L_Bell_00 typed parameter through the same native layout lookup.
+    const auto page = owner ? Read<std::uintptr_t>(owner, display::Page) : 0;
+    const auto holder = page ? Read<std::uintptr_t>(page, display::PageLayout) : 0;
+    const auto layout = holder ? Read<std::uintptr_t>(holder) : 0;
+    const auto methods = Read<std::uintptr_t>(Main(address::SafeStringVtableGot));
+    if (!layout || !methods) return 0;
+    struct SafeString { std::uintptr_t methods; const char *text; };
+    const SafeString path{methods + 0x10, "/L_Bell_00"};
+    return Fn<std::uintptr_t (*)(std::uintptr_t, const SafeString *)>(address::FindParameter)(
+        layout + display::Parameters, &path);
+}
+void UpdateSavingsDisplay(std::uintptr_t counter, const std::uint8_t *player, DisplaySurface surface) {
+    const auto shop = Valid(player) ? CurrentShop() : 0;
     auto root = BoundNumberPane(counter);
     std::uintptr_t card = 0;
     for (unsigned depth = 0; root && depth < 12; ++depth) {
@@ -141,14 +157,30 @@ void UpdateSavingsDisplay(std::uintptr_t owner) {
         if (card) break;
         root = Read<std::uintptr_t>(root, display::PaneParent); // native PaneParent
     }
-    if (!card) return; // Old/missing resource: leave the ordinary Bells UI intact.
+    // Bounded diagnostics distinguish a missing resource/binding from a wrong
+    // HUD path without retaining UI/player pointers between updates.
+    static std::array<unsigned, 2> missingReports{};
+    const auto index = static_cast<unsigned>(surface);
+    const char *source = surface == DisplaySurface::Hud ? "HUD" : "auxiliary";
+    if (!card) {
+        if (shop && missingReports[index]++ < 4)
+            Logging.Log("[QoL Enhancements/Shopping Card] SAVINGS_DISPLAY_MISSING source=%s counter=%lx root=%lx\n",
+                        source, counter, root);
+        return;
+    }
     const auto number = FindPane(card, "T_SavingsNum_00");
-    const auto player = reinterpret_cast<const std::uint8_t *>(owner + display::Player);
-    const bool active = number && Valid(player) && CurrentShop();
+    const bool active = number && shop;
     const bool wasActive = Read<std::uint8_t>(card, display::PaneFlags) & 1;
     if (active) {
         char16_t text[12]{};
-        const auto length = FormatSavings(text, Fn<unsigned (*)(const std::uint8_t *)>(address::Savings)(player));
+        const auto balance = Fn<unsigned (*)(const std::uint8_t *)>(address::Savings)(player);
+        const auto length = FormatSavings(text, balance);
+        static std::array<bool, 2> reported{};
+        if (!reported[index]) {
+            reported[index] = true;
+            Logging.Log("[QoL Enhancements/Shopping Card] SAVINGS_DISPLAY_READY source=%s player=%u balance=%u\n",
+                        source, *player, balance);
+        }
         Fn<void (*)(std::uintptr_t, const char16_t *, unsigned)>(address::SetPaneText)(number, text, length);
     }
     ShowPane(card, active);
@@ -165,7 +197,18 @@ HOOK_DEFINE_TRAMPOLINE(ShopBalanceDisplay) {
         // generic pockets/price counters are never restyled. No pointer survives
         // the call, including across resident changes or scene destruction.
         Orig(owner);
-        UpdateSavingsDisplay(owner);
+        const auto counter = owner ? Read<std::uintptr_t>(owner, display::Counter) : 0;
+        const auto player = owner ? reinterpret_cast<const std::uint8_t *>(owner + display::Player) : nullptr;
+        UpdateSavingsDisplay(counter, player, DisplaySurface::Auxiliary);
+    }
+};
+HOOK_DEFINE_TRAMPOLINE(BellPageBalanceDisplay) {
+    static void Callback(std::uintptr_t owner) {
+        // The regular in-shop HUD uses BellPage, a different controller from
+        // ShopBalanceDisplay. Cash initialization/refresh stays native on both.
+        Orig(owner);
+        const auto player = owner ? reinterpret_cast<const std::uint8_t *>(owner + display::HudPlayer) : nullptr;
+        UpdateSavingsDisplay(BellPageCounter(owner), player, DisplaySurface::Hud);
     }
 };
 HOOK_DEFINE_TRAMPOLINE(ShopWallet) {
@@ -251,6 +294,7 @@ bool Install() {
     ShopPurchaseSpace::InstallAtOffset(address::PurchaseSpace);
     SaleMessage::InstallAtOffset(address::MoneyCapacityQuery);
     ShopBalanceDisplay::InstallAtOffset(address::BellDisplayUpdate);
+    BellPageBalanceDisplay::InstallAtOffset(address::BellPageUpdate);
     installed = true;
     Logging.Log("[QoL Enhancements/Shopping Card] READY: green savings display; always enabled in Nook's Cranny/Able Sisters; native savings\n");
     return true;

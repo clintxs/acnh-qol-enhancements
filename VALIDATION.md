@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.3 Shopping Card prototype
+# Unified QoL validation — 0.3.4 Shopping Card prototype
 
 Validated locally on October 8, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -17,8 +17,8 @@ local tests below.
   `exl_main` installs only the content-mount continuation hook and performs no
   configuration reads. Activation executes the real compiled registry/parser and
   installers; a second activation performs no additional reads or installations.
-- Full suite installs 56 disjoint modeled hook ranges (Core 1, Catalog 16,
-  Pockets 16, Faster Dialogue 5, Fitting Room 11, Amiibo 1, Shopping Card 6), plus the private
+- Full suite installs 57 disjoint modeled hook ranges (Core 1, Catalog 16,
+  Pockets 16, Faster Dialogue 5, Fitting Room 11, Amiibo 1, Shopping Card 7), plus the private
   fitting input vtable entry. No embedded binary replacement arrays, IPS or
   dialogue code-cave helper remain in the collection.
 - Per-feature absent, disabled, invalid, missing-version, oversized, below-minimum
@@ -80,10 +80,20 @@ compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
   cash caches. Neither queues the amount animation that caused the reported
   pocket-close ka-ching in 0.3.1. A positive control with a real cash change
   still queues the original animation; no sound routine is muted.
-- Compiled savings display uses the top-right controller’s current resident,
+- The user reported that 0.3.3 still showed pocket Bells in Nook’s Cranny.
+  The earlier test covered an auxiliary controller only. 0.3.4 also hooks the
+  actual BellPage HUD update at 02B13BF0, resolving its /L_Bell_00 counter from
+  the Page/layout parameter table and reading resident+224 rather than +230.
+- New checks execute the original BellPage update from entry to return at two
+  bases, with only engine lookup/text boundaries modeled. All rooms/residents,
+  an intentionally wrong alternate resident field, savings purchase/deposit
+  refreshes without cash animations, cash restoration, and genuine cash-change
+  animation are covered. This closes the earlier auxiliary-only coverage gap.
+- Compiled savings display uses each controller’s current resident,
   resolves both direct/group text adapters, shows full zero/cap balances,
   restores cash panes outside supported shops, and tolerates absent resources.
-  Native text setting and pane lookup are modeled; rendering/audio need Eden.
+  Native text setting, typed parameter lookup and pane lookup are modeled;
+  rendering/audio and the new HUD fix still need Eden verification.
 - Resource checks preserve every existing pane/material and non-layout archive
   member byte for byte. The added subtree starts hidden, carries an independent
   24-byte amount buffer, and uses native rounded-window textures/vector shapes.

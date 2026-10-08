@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.3 Shopping Card prototype** for ACNH **3.0.3 on Eden**. One Core
+**0.3.4 Shopping Card prototype** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -86,6 +86,10 @@ the ordinary Bells presentation. Pockets and other shared cash counters keep
 showing pocket Bells. The 0.3.2 change removes savings substitution from their
 refresh paths, which caused a false money animation/sound after closing pockets.
 The card icon is made from native vector panes; no texture or font is replaced.
+0.3.4 connects the savings display to the regular in-shop Bells HUD. The
+0.3.2–0.3.3 display hook covered an auxiliary counter and left that HUD showing
+cash. Both controller paths now select the same savings subtree, while their
+native cash refreshes stay consistent to avoid the pocket-close animation.
 
 No new item, save flag, message resource, SD file, filesystem permission or
 menu entry is added. Disabling/removing Shopping Card and restarting restores
@@ -113,7 +117,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.3
+version = 0.3.4
 base_speed = 2
 boost_speed = 4
 faster_ui = false
@@ -235,9 +239,9 @@ at `../vanilla-3.0.3/Layout`; builders verify their hashes and archive structure
 The package script checks that every INI matches the Core release, refuses to
 replace existing archives, and creates:
 
-- `dist/qol-enhancements-v0_3_3_for_acnh_v3_0_3.zip`
-- `dist/qol-enhancements-v0_3_3_for_acnh_v3_0_3_source.zip`
-- `dist/qol-enhancements-v0_3_3_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
+- `dist/qol-enhancements-v0_3_4_for_acnh_v3_0_3.zip`
+- `dist/qol-enhancements-v0_3_4_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v0_3_4_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
 
 The binary ZIP contains a conspicuous installation text file, README, Core and
 six independently selectable feature folders, plus a SHA-256 manifest. Source
