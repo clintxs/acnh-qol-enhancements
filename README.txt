@@ -1,15 +1,15 @@
-QoL Enhancements 0.2.4 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.1 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
-Conditional Faster Dialogue: user-confirmed player/NPC fixes; shared config overlays new in 0.2.4.
+Shopping Card: new always-enabled savings prototype; needs an Eden playtest.
 
 INSTALL
 Fully close ACNH. Disable the standalone Catalog Aware Shops, QoL Pockets
 Interactions, Able Sisters Bag Prototype, all Faster Interactions versions,
 Amiibo Scan - 5 Minutes, and the historical Optimized UI/Grab 5 patches.
 
-For the full suite, copy all six “QoL Enhancements” folders into the game's
+For the full suite, copy all seven “QoL Enhancements” folders into the game's
 mods folder, then enable them in Eden. For selected features, copy Core plus
 only the feature folders you want. Restart the game after changing modules.
 
@@ -24,11 +24,20 @@ Pockets: Grab 5/10, direct storage withdrawal, Y-to-storage and footer hints.
 Faster Dialogue: faster default reveal; B/R boost; optional NPC/UI/player boost.
 Fitting Room: Y toggles a shopping bag; native bulk checkout includes bag items.
 Amiibo: shared event scan timeout extended to 9,000 updates (~5 minutes at 30 Hz).
+Shopping Card: Nook's Cranny/Able Sisters purchases use ABD savings; Nook's
+sales deposit to savings. Includes fitting checkout and the optional fitting bag.
+Always active when this module is enabled. No item, menu addition or unlock yet.
+Pocket Bells/Bell bags stay untouched. No cash fallback for insufficient savings.
+Tailor tickets still work. Native savings cap/deposit clamping still applies.
+Harv, other vendors, the drop-off box and ABD transfers retain normal behavior.
+No new save fields, SD files, MSBT replacements or permissions are required.
+Disable/remove Shopping Card and restart for a clean uninstall; completed
+transactions remain ordinary saved money/item changes. Live testing is pending.
 
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.2.4
+  version = 0.3.1
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.
@@ -74,7 +83,7 @@ Speeds preserve the game's language/FPS-adjusted fast rate; animations and
 scripted waits can limit conversation speed. Native overrides take priority.
 No preferences in either file: base 2, held 4, automatic UI/player/NPC boost off.
 
-Keep the personal mod folder when replacing the six suite folders. Do not
+Keep the personal mod folder when replacing the seven suite folders. Do not
 reinstall the example preset over your edited preferences. Enable only one
 mod providing the custom file. Fully restart after changes. The custom file
 may include enabled/version and can override a disabled regular configuration.

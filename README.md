@@ -1,7 +1,7 @@
 # QoL Enhancements
 
-**0.2.4 shared configuration overlays** for ACNH **3.0.3 on Eden**. One Core
-executable in **subsdk6** activates five optional RomFS feature packages. The
+**0.3.1 Shopping Card prototype** for ACNH **3.0.3 on Eden**. One Core
+executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
 
@@ -14,9 +14,10 @@ for installation, version policy and user-facing limits.
 | Faster Dialogue | C++ hook rewrite of Faster Interactions 0.3.0, with conditional NPC/UI boost | Optional personal configuration |
 | Fitting Room | Able Sisters Bag prototype 0.3.7 | Fitting row badge and original counter layout |
 | Amiibo | C++ hook rewrite of Amiibo Scan 1.0.0 | Configuration only |
+| Shopping Card | Always-enabled native savings routing prototype | Configuration only |
 
 Faster tool-wheel animations and other workspace mods are not bundled in this
-initial five-feature suite. Historical source notes under `docs/` describe each
+six-feature suite. Historical source notes under `docs/` describe each
 baseline; their old installation/packaging instructions refer to standalone mods.
 
 Development releases advance numerically (for example, 0.9.0 → 0.10.0).
@@ -27,7 +28,7 @@ Version 1.0.0 is reserved for the initial release.
 `source/program/bootstrap.cpp` validates the original content-mount call and
 continuation, then installs one SIMD-preserving discovery hook at main+037B5464.
 Only after the game's `nn::fs::MountRom("content", ...)` call does Core read the
-five known configuration paths and install enabled features. Activation is
+six known configuration paths and install enabled features. Activation is
 once-only and does no recurring filesystem polling. No host mod-folder access,
 new mounts, filesystem permissions or module discovery are needed.
 
@@ -57,6 +58,33 @@ The Exlaunch SIMD context declaration now matches its assembly stack layout;
 compile-time assertions and execution of the real adapter cover that correction.
 Ordinary GP-only callbacks retain their original context layout.
 
+## Shopping Card prototype
+
+Enable **Core** and **Shopping Card**, then fully restart ACNH. The card is
+always active inside both versions of Nook's Cranny and Able Sisters. Purchases
+use the current player's ABD savings exclusively, even with empty pockets;
+pocket Bells and Bell bags stay untouched. Nook's counter sales go directly to
+savings and use the existing wire-to-account dialogue for residents with a
+placed tent/house; other residents retain ordinary sale text. Native savings limits
+apply (999,999,999 Bells, including the usual deposit clamping at the cap).
+Insufficient savings does not fall back to cash. Existing affordability/error
+text may still refer to pocket Bells.
+
+This includes native fitting-room purchases with or without the Fitting Room
+module. When Fitting Room is enabled, its bag preflight reads the same account
+as native checkout. Tailor tickets retain their normal discounts and use.
+Native item delivery, cancellation, purchase records and milestones remain in
+the original transaction routines. Space checks no longer assume spending
+Bell bags frees pocket slots. Harv's Island, other vendors, the drop-off box,
+ABD transfers and ordinary pocket-money actions retain their existing paths.
+
+No new item, save flag, message resource, SD file, filesystem permission or
+menu entry is added. Disabling/removing Shopping Card and restarting restores
+normal transaction routing; ordinary money/item changes from completed
+transactions remain saved. This prototype has local ARM regression coverage,
+including native encrypted savings writes, but still needs an Eden playtest.
+See [research and follow-up scope](research/shopping-card/NOTES.md).
+
 ## Shared configuration overlays
 
 Every module loads `content:/qol-enhancements/config/<slug>.ini` first, then an
@@ -74,7 +102,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.2.4
+version = 0.3.1
 base_speed = 2
 boost_speed = 4
 faster_ui = false
@@ -92,7 +120,7 @@ comments, CRLF and an optional UTF-8 BOM.
 
 Other modules currently expose just `enabled` and `version`, with names
 `catalog.custom.ini`, `pockets.custom.ini`, `fitting-room.custom.ini` and
-`amiibo.custom.ini`. Pockets' caption file is a separate translation resource,
+`amiibo.custom.ini` and `shopping-card.custom.ini`. Pockets' caption file is a separate translation resource,
 not a module settings file.
 
 ## Conditional Faster Dialogue
@@ -196,12 +224,12 @@ at `../vanilla-3.0.3/Layout`; builders verify their hashes and archive structure
 The package script checks that every INI matches the Core release, refuses to
 replace existing archives, and creates:
 
-- `dist/qol-enhancements-v0_2_4_for_acnh_v3_0_3.zip`
-- `dist/qol-enhancements-v0_2_4_for_acnh_v3_0_3_source.zip`
-- `dist/qol-enhancements-v0_2_4_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
+- `dist/qol-enhancements-v0_3_1_for_acnh_v3_0_3.zip`
+- `dist/qol-enhancements-v0_3_1_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v0_3_1_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
 
 The binary ZIP contains a conspicuous installation text file, README, Core and
-five independently selectable feature folders, plus a SHA-256 manifest. Source
+six independently selectable feature folders, plus a SHA-256 manifest. Source
 includes modules/configurations, translations, code, tools, tests and notices;
 generated game resources and binaries are excluded.
 

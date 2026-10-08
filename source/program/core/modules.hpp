@@ -10,6 +10,6 @@ struct ModuleDescription {
     // Optional per-module parser, used identically for regular and custom INIs.
     unsigned (*configure)(std::string_view) = nullptr;
 };
-extern const std::array<ModuleDescription, 5> Modules;
+extern const std::array<ModuleDescription, 6> Modules;
 void ActivateModules();
 } // namespace qol::core

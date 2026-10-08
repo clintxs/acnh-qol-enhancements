@@ -1,9 +1,9 @@
-# Unified QoL validation — 0.2.4 configuration overlays
+# Unified QoL validation — 0.3.1 Shopping Card prototype
 
 Validated locally on October 8, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
-dialogue fix and subsequently the corrected 0.2.3 NPC diagnostic build work in Eden. The new 0.2.4 configuration layering
-still needs a live check. No running game or save files were accessed by the
+dialogue fix and subsequently the corrected 0.2.3 NPC diagnostic build work in Eden. The configuration layering and new Shopping Card prototype
+still need a live check. No running game or save files were accessed by the
 local tests below.
 
 ## Build and loader
@@ -12,12 +12,12 @@ local tests below.
 - Core deploys only `subsdk6` plus the existing minimally adjusted `main.npdm`.
   No package contains subsdk9; avoiding the slot does not prove future
   Jubbsticks Additions hook/NPDM compatibility.
-- All 32 combinations of five feature packages at two ASLR bases passed.
+- All 64 combinations of six feature packages at two ASLR bases passed.
   `exl_main` installs only the content-mount continuation hook and performs no
   configuration reads. Activation executes the real compiled registry/parser and
   installers; a second activation performs no additional reads or installations.
-- Full suite installs 50 disjoint modeled hook ranges (Core 1, Catalog 16,
-  Pockets 16, Faster Dialogue 5, Fitting Room 11, Amiibo 1), plus the private
+- Full suite installs 55 disjoint modeled hook ranges (Core 1, Catalog 16,
+  Pockets 16, Faster Dialogue 5, Fitting Room 11, Amiibo 1, Shopping Card 5), plus the private
   fitting input vtable entry. No embedded binary replacement arrays, IPS or
   dialogue code-cave helper remain in the collection.
 - Per-feature absent, disabled, invalid, missing-version, oversized, below-minimum
@@ -35,7 +35,8 @@ local tests below.
   activate an absent module. Dialogue tests cover inheritance, false overrides,
   list replacement/clearing, invalid/duplicate preference fallback, normalization
   after merging, and the same keys in either file. Module packages from 0.1.0
-  through the current version remain accepted under minimum 0.1.0.
+  through the current version remain accepted under minimum 0.1.0 for the
+  original five modules; Shopping Card requires minimum 0.3.0.
 - Compiled Amiibo C++ callback feeds 9,000 into the unchanged native halfword
   timeout store at both load addresses. The original immediate is untouched.
 
@@ -45,6 +46,33 @@ content-mount continuation is safe in a live process. Exlaunch's existing inline
 adapter is selected with full SIMD-register preservation for discovery. The
 SIMD context declaration was corrected to match the assembly stack layout, with
 compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
+
+## Shopping Card
+
+- Compiled C++ hooks run at two ASLR bases for both Nook's Cranny rooms and
+  Able Sisters. Eight separately modeled resident accounts retain independent
+  balances. Every allowed balance/debit caller is covered; ABD, pocket and
+  unrelated caller/room paths retain the original wallet service. Missing room
+  state and invalid residents do not route to savings.
+- Tests execute the original savings read, deposit, withdrawal and encrypted
+  money routines, including native zero/cap behavior; only resident lookup,
+  current-field type lookup and RNG service are modeled. No actual save is used.
+  The original hash routine verifies all three room-name constants.
+- The original ShopSellDone payment branch executes with the compiled capacity
+  callback's result and deposits the full test proceeds into the same resident's
+  savings. The cShop capacity query selects existing wire-to-account text;
+  other capacity modes retain the native result. Residents without a placed
+  tent retain ordinary sale text, avoiding the wire-flow housing rejection.
+  Native cap clamping remains.
+- Purchase-space callback passes zero Bell payment and unchanged ticket count
+  to the original space helper, preventing false slots from Bell bags that
+  savings payment does not consume. Shared Fitting Room affordability uses
+  savings only while Shopping Card is installed and in a supported shop.
+- Every Shopping Card instruction fingerprint is individually corrupted; each
+  conflict disables the module before any of its hooks installs.
+- Existing native fitting checkout and feedback regressions are rerun with the
+  shared account accessor. Actual shopping gameplay, native field state and
+  both modules together require the live checks below.
 
 ## Conditional dialogue
 
@@ -110,8 +138,8 @@ real delivery/catalog saves, or complete emulator behavior.
 
 ## Packaging
 
-- Exactly six mod folders: Core, Catalog, Pockets, Faster Dialogue, Fitting Room,
-  Amiibo. Five versioned INIs; only Core has ExeFS files. The actual personal
+- Exactly seven mod folders: Core, Catalog, Pockets, Faster Dialogue, Fitting Room,
+  Amiibo and Shopping Card. Six versioned INIs; only Core has ExeFS files. The actual personal
   custom INI is absent from the suite; a root .example is inert. A separate
   optional personal-mod ZIP contains the requested preset and no executable or
   module marker, so replacing the suite folders cannot overwrite preferences. Optional modules are
@@ -136,7 +164,7 @@ CLI are also required. None of those original game assets are redistributed.
 ## Required live checks
 
 1. Launch Core alone. Confirm ENTRY, WAITING_FOR_CONTENT and BOOT_OK with zero
-   enabled modules, and unchanged gameplay. Launch all five modules and confirm
+   enabled modules, and unchanged gameplay. Launch all six modules and confirm
    all package versions, ENABLED lines and BOOT_OK without installation errors.
 2. Disable/re-enable each module in Eden, fully restarting each time. Verify
    code behavior and resource replacements follow the module toggle. Check a
@@ -168,3 +196,13 @@ CLI are also required. None of those original game assets are redistributed.
    timer was confirmed at five minutes; unified runtime installation is new.
 
 Switch hardware and other emulators/game versions are not validated targets.
+
+7. Shopping Card: use the existing save backup. Test a floor item and cabinet
+   item in both Nook's Cranny versions, clothing from Mabel and the fitting room,
+   then the fitting bag with both modules enabled. Compare savings at the ABD
+   before/after; confirm pocket Bells and Bell bags do not change. Test cash
+   rich/savings poor and cash empty/savings sufficient, cancellation, tailor
+   tickets, full storage/pockets, wearing/sending, and several residents. Sell
+   items/turnips at the counter and verify the deposit and wire message. Check
+   drop-off box, ABD transfers, Harv and another vendor retain normal behavior.
+   Restart with Shopping Card disabled/removed and verify native payment.

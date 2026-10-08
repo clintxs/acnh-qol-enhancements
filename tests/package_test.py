@@ -15,7 +15,7 @@ assert not any(name.endswith('.ips') for name in files)
 assert {name.split('/')[0] for name in files if '/' in name} == {
     core, *(f'QoL Enhancements - {label}' for label in package.LABELS)}
 configs = [name for name in files if '/config/' in name]
-assert len(configs) == 5
+assert len(configs) == 6
 assert not any(name.endswith('/faster-dialogue.custom.ini') for name in files)
 for name in configs:
     assert files[name].decode() == f'enabled = true\nversion = {package.release_version()}\n'
@@ -29,7 +29,7 @@ for name, digest in manifest.items(): assert hashlib.sha256(files[name]).hexdige
 # Resource generation must reproduce the current standalone modules exactly.
 for name, digest in reference['assets'].items():
     assert hashlib.sha256(files[name]).hexdigest() == digest, name
-print('PASS: six mod folders, subsdk6 only, five versioned configs, six unchanged resource payloads and SHA-256 manifest')
+print('PASS: seven mod folders, subsdk6 only, six versioned configs, six unchanged resource payloads and SHA-256 manifest')
 custom = package.custom_files()
 personal = [name for name in custom if '/config/' in name]
 assert len(personal) == 1 and personal[0].endswith('/faster-dialogue.custom.ini')

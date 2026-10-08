@@ -1,6 +1,7 @@
 #include "lib.hpp"
 #include "modules.hpp"
 #include "release.hpp"
+#include "program/shopping/shopping_card.hpp"
 #include "program/dialogue/settings.hpp"
 #include "program/catalog/game/build_profile.hpp"
 #include "program/catalog/features/catalog_stars.hpp"
@@ -80,12 +81,13 @@ std::atomic<bool> ActivationStarted{false};
 
 // Minimum PACKAGE versions accepted by Core. Raise only when older assets
 // stop being compatible; release versions still advance with the whole suite.
-const std::array<ModuleDescription, 5> Modules{{
+const std::array<ModuleDescription, 6> Modules{{
     {"Catalog", "catalog", {0, 1, 0}, InstallCatalog},
     {"Pockets", "pockets", {0, 1, 0}, InstallPockets},
     {"Faster Dialogue", "faster-dialogue", {0, 1, 0}, dialogue::Install, dialogue::Configure},
     {"Fitting Room", "fitting-room", {0, 1, 0}, able_bag::Install},
     {"Amiibo", "amiibo", {0, 1, 0}, amiibo::Install},
+    {"Shopping Card", "shopping-card", {0, 3, 0}, shopping::Install},
 }};
 
 void ActivateModules() {

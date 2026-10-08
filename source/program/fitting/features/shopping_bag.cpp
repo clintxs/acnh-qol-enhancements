@@ -1,5 +1,6 @@
 #include "lib.hpp"
 #include "bag_policy.hpp"
+#include "program/shopping/shopping_card.hpp"
 #include <array>
 #include <cstring>
 #include <cstdio>
@@ -13,7 +14,7 @@ constexpr std::uintptr_t Play = 0x0311a538, Price = 0x0311e180;
 constexpr std::uintptr_t Checkout = 0x0311d3b0, Collect = 0x0311ca40;
 constexpr std::uintptr_t Dialog = 0x031141cc, GrossPrice = 0x0311dec0;
 constexpr std::uintptr_t PurchaseRecord = 0x024d74cc;
-constexpr std::uintptr_t Wallet = 0x0257abf0, DialogTable = 0x05621af8;
+constexpr std::uintptr_t DialogTable = 0x05621af8;
 constexpr std::uintptr_t StorageFree = 0x0257c230, PocketsFree = 0x025731d0;
 constexpr std::uintptr_t PageVtable = 0x04a10348, InputSlot = PageVtable + 0x50;
 constexpr std::uintptr_t OriginalInput = 0x03c58d24, ControllerVtable = 0x04a10620;
@@ -227,7 +228,7 @@ Preflight PreparePurchase(std::uintptr_t owner) {
 }
 unsigned Wallet(std::uintptr_t owner) {
     const auto player = At<std::uint8_t>(owner, field::Player);
-    return player < 8 ? Fn<unsigned (*)(const void *)>(address::Wallet)(&player) : 0;
+    return player < 8 ? qol::shopping::AvailableBells(&player) : 0;
 }
 unsigned ErrorDialog(std::uintptr_t owner, std::uintptr_t output, unsigned code) {
     At<unsigned>(owner, 0x1c4f0) = code;

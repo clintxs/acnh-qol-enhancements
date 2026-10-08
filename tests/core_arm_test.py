@@ -8,9 +8,9 @@ from unicorn import Uc, UC_ARCH_ARM64, UC_MODE_ARM, UC_HOOK_CODE, UC_HOOK_MEM_WR
 from unicorn.arm64_const import *
 from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
-SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'amiibo')
-COUNTS = (16, 16, 5, 11, 1)
-DEFAULT = b'enabled=true\nversion=0.2.4\n'
+SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'amiibo', 'shopping-card')
+COUNTS = (16, 16, 5, 11, 1, 5)
+DEFAULT = b'enabled=true\nversion=0.3.1\n'
 
 def expected_hook_count(machine, enabled):
     # The existing verbose-dialogue build adds a Catalog message trace hook.
@@ -112,14 +112,14 @@ class Machine:
 
 def check_all_subsets():
     for base in (0x7100000000, 0x7200000000):
-        for flags in product((False, True), repeat=5):
+        for flags in product((False, True), repeat=len(SLUGS)):
             m = Machine(base, {slug: DEFAULT for slug, enabled in zip(SLUGS, flags) if enabled})
             m.boot()
             assert len(m.hooks) == 1 and not m.opened and 'WAITING_FOR_CONTENT' in m.text
             m.activate()
             assert len(m.hooks) == expected_hook_count(m, flags), m.text
             assert 'BOOT_OK' in m.text and f'enabled_modules={sum(flags)} errors=0' in m.text, m.text
-            assert len(m.opened) == 5 + sum(flags) and len(m.closed) == sum(flags)
+            assert len(m.opened) == len(SLUGS) + sum(flags) and len(m.closed) == sum(flags)
             assert m.read(base + 0xbc4140, 4) == 0x52803848
             assert (base + 0xbc4144 in m.hooks) == flags[4]
             assert m.read(base + 0x1af9ff0, 4) == 0x528c0049
@@ -132,12 +132,12 @@ def check_all_subsets():
             before = (len(m.hooks), len(m.opened), len(m.logs))
             m.activate()
             assert before == (len(m.hooks), len(m.opened), len(m.logs))
-    print('PASS: all 32 module subsets at two bases; deferred activation, isolated C++ hooks, C++ dialogue hooks, once-only reads')
+    print('PASS: all 64 module subsets at two bases; deferred activation, isolated C++ hooks, C++ dialogue hooks, once-only reads')
 
 def check_errors():
     for slug in SLUGS:
         for data, expected in ((b'enabled=true\nversion=0.0.9', 'below minimum'),
-                               (b'enabled=true\nversion=0.3.0', 'newer than Core'),
+                               (b'enabled=true\nversion=0.4.0', 'newer than Core'),
                                (b'enabled=false\nversion=0.0.1', 'enabled=false'),
                                (b'enabled=true', 'config invalid'),
                                (b'x' * 4097, 'config invalid'),
@@ -145,7 +145,7 @@ def check_errors():
             m = Machine(0x7100000000, {slug: data})
             m.boot(); m.activate()
             assert expected in m.text, m.text
-            if b'version=0.3.0' in data:
+            if b'version=0.4.0' in data:
                 assert 'BOOT_OK' in m.text and 'enabled_modules=1' in m.text
             else:
                 assert len(m.hooks) == 1 and m.read(m.base + 0xbc4140, 4) == 0x52803848
@@ -168,7 +168,7 @@ def check_errors():
         m.boot(); m.activate()
         assert 'Faster Dialogue] DISABLED' in m.text and 'Amiibo: ENABLED' in m.text
         assert not any(m.base + offset in m.hooks for offset in (0x1afa00c, 0x1afdec0))
-    m = Machine(0x7100000000, {slug: b'enabled=true\nversion=0.1.0' for slug in SLUGS})
+    m = Machine(0x7100000000, {slug: b'enabled=true\nversion=0.1.0' for slug in SLUGS[:-1]})
     m.boot(); m.activate()
     assert len(m.hooks) == expected_hook_count(m, (True,) * 5) and 'BOOT_OK' in m.text and 'enabled_modules=5 errors=0' in m.text
     m = Machine(0x7100000000, {'amiibo': DEFAULT, 'faster-dialogue': DEFAULT})
@@ -203,7 +203,7 @@ def check_custom_preferences():
         m = Machine(0x7100000000, {'faster-dialogue': DEFAULT, 'faster-dialogue.custom': custom})
         m.boot(); m.activate()
         assert summary in m.text and 'BOOT_OK' in m.text, m.text
-        assert len(m.opened) == 6 and len(m.closed) == 2
+        assert len(m.opened) == len(SLUGS) + 1 and len(m.closed) == 2
     for fault in ('open', 'size', 'read'):
         m = Machine(0x7100000000, {'faster-dialogue': DEFAULT, 'faster-dialogue.custom': b'base_speed=4'})
         m.custom_fault = fault
@@ -216,7 +216,7 @@ def check_custom_preferences():
         if marker: files['faster-dialogue'] = marker
         m = Machine(0x7100000000, files)
         m.boot(); m.activate()
-        assert len(m.opened) == (6 if marker else 5) and len(m.hooks) == 1
+        assert len(m.opened) == (len(SLUGS) + 1 if marker else len(SLUGS)) and len(m.hooks) == 1
     print('PASS: missing/malformed/oversized/unreadable custom preferences preserve defaults')
 
 def check_config_layers():
@@ -231,8 +231,8 @@ def check_config_layers():
                 (DEFAULT, b'version=0.3.0', True),
                 (DEFAULT, b'enabled=false\nversion=bad', True),
                 (DEFAULT, b'enabled=false\nenabled=true', True),
-                (None, b'enabled=true\nversion=0.2.4', False),
-                (b'enabled=true', b'version=0.2.4', False),
+                (None, b'enabled=true\nversion=0.3.0', False),
+                (b'enabled=true', b'version=0.3.0', False),
             ):
                 files = {slug + '.custom': custom}
                 if regular is not None: files[slug] = regular
@@ -271,7 +271,7 @@ def check_config_layers():
             m = Machine(base, files)
             m.boot(); m.activate()
             assert 'base=2 boost=4 faster_ui=true faster_player=true npc_count=6' in m.text, m.text
-    print('PASS: shared regular/custom order, enabled/version overrides for all five modules, atomic metadata, failure fallback, inheritance and settings parity at two bases')
+    print('PASS: shared regular/custom order, enabled/version overrides for all six modules, atomic metadata, failure fallback, inheritance and settings parity at two bases')
 
 if __name__ == '__main__':
     check_all_subsets()
