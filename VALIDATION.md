@@ -1,8 +1,10 @@
-# Unified QoL validation — 0.2.1 player dialogue prototype
+# Unified QoL validation — 0.2.4 configuration overlays
 
 Validated locally on October 8, 2026 against the supplied original ACNH 3.0.3
-main (build FF1D1C05670DB6021C85B624A710B963). The unified build has **not yet
-been tested in Eden**. No running game or save files were accessed by these tests.
+main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
+dialogue fix and subsequently the corrected 0.2.3 NPC diagnostic build work in Eden. The new 0.2.4 configuration layering
+still needs a live check. No running game or save files were accessed by the
+local tests below.
 
 ## Build and loader
 
@@ -25,11 +27,15 @@ been tested in Eden**. No running game or save files were accessed by these test
   startup/hook locations fail their instruction checks; dialogue validation
   rejects altered hook sites or legacy instruction changes before any of its
   hooks are installed. Original code-cave padding remains untouched.
-- Personal settings are opened only for a compatible, enabled Faster Dialogue
-  module. Missing, empty, malformed, oversized and failed open/size/read cases
-  retain usable defaults; opened handles close. Personal config cannot enable
-  an absent/disabled module. Module packages from 0.1.0 through 0.2.1 remain accepted
-  under the unchanged per-feature minimum (0.1.0).
+- Every installed module reads its regular INI and then its optional custom INI,
+  including disabled regular configurations. Shared enabled/version overrides,
+  empty overlays, absent/invalid markers, atomic rejection of invalid/duplicate
+  metadata, missing/read/size/open failures and once-only reads are tested at
+  two load addresses. A custom file can re-enable installed code but cannot
+  activate an absent module. Dialogue tests cover inheritance, false overrides,
+  list replacement/clearing, invalid/duplicate preference fallback, normalization
+  after merging, and the same keys in either file. Module packages from 0.1.0
+  through the current version remain accepted under minimum 0.1.0.
 - Compiled Amiibo C++ callback feeds 9,000 into the unchanged native halfword
   timeout store at both load addresses. The original immediate is untouched.
 
@@ -45,7 +51,7 @@ compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
 - Host settings/policy checks cover defaults, friendly aliases and resource IDs,
   case-insensitive deduplication, UI/player independence, no stacked boost, 64-ID bounds,
   invalid values/keys/list entries, empty lists, duplicate keys and size limits.
-- 6,006 compiled ARM cases at two ASLR bases execute the original native input,
+- 6,454 compiled ARM cases at two ASLR bases execute the original native input,
   reveal and renderer gate code with the real compiled SIMD adapter/callbacks.
   No-input results match native held fast; B/R uses the extra tier. Protected
   modes, forced native display, disabled acceleration, scripted overrides,
@@ -53,7 +59,7 @@ compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
 - Input matrices include B/R, excluded L, unrelated buttons, prior latch,
   active/fallback/missing controllers and release. Controller bytes are unchanged.
   Main/renderer matrices use five live fast rates, scales and completed states.
-- Modeled current speaker delegates/registry entries cover rcm/rct/dod/doc/kpp,
+- Native-produced owned speaker handles and modeled registry entries cover rcm/rct/dod/doc/kpp,
   kppB, another NPC, a villager, player narration, dialog/balloon/unknown,
   missing or invalid speaker, stale generations, retiring entities, unrelated
   entity kinds, NPC RTTI mismatch/uninitialized/missing/foreign methods, and
@@ -67,7 +73,7 @@ compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
   unknown/NPC banks, bounded/overlong names, and read-only metadata. Known self banks use the player
   category even when the presentation is a system dialog. All five bank names
   were found in each of the 14 localized TalkFtr/TalkSys resource sets.
-- Speaker delegates, metadata lookup and parser completion are modeled. Hook
+- Speaker metadata lookup and parser completion are modeled; the owned handle is produced by original constructor instructions. Hook
   allocation/trampoline relocation is modeled; the actual SIMD adapter and C++
   callbacks execute. These tests do not validate physical controllers, audio,
   emotes, complete rendering or actual game context coverage in Eden.
@@ -147,10 +153,11 @@ CLI are also required. None of those original game assets are redistributed.
    enable faster_player for DIY workbench prompts/results, fish/bug/sea-creature
    catches and recipe learning; turn faster_ui off and check those self messages
    still boost. Reverse the toggles and check blue system dialogs separately.
-   The reported NPC lookup problem remains outstanding. Verify
+   The corrected NPC diagnostic was confirmed working; verify
    unlisted villagers remain at base and no prior NPC boost carries into the
    next message. Check custom file edits, removal, module disabled, unknown IDs
-   and invalid values across full restarts. Kapp'n songs/travel should retain
+   and invalid values across full restarts. Check regular-file preferences,
+   custom inheritance and enabled overrides for other modules in 0.2.4. Kapp'n songs/travel should retain
    native scripting; UI recognition may need additional verified contexts.
    Check intended FPS-mod combinations separately; dynamic rates are retained
    but static hook fingerprints do not establish complete compatibility.

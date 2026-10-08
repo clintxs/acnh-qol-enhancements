@@ -10,7 +10,7 @@ from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
 SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'amiibo')
 COUNTS = (16, 16, 5, 11, 1)
-DEFAULT = b'enabled=true\nversion=0.2.3\n'
+DEFAULT = b'enabled=true\nversion=0.2.4\n'
 
 def expected_hook_count(machine, enabled):
     # The existing verbose-dialogue build adds a Catalog message trace hook.
@@ -119,7 +119,7 @@ def check_all_subsets():
             m.activate()
             assert len(m.hooks) == expected_hook_count(m, flags), m.text
             assert 'BOOT_OK' in m.text and f'enabled_modules={sum(flags)} errors=0' in m.text, m.text
-            assert len(m.opened) == 5 + flags[2] and len(m.closed) == sum(flags)
+            assert len(m.opened) == 5 + sum(flags) and len(m.closed) == sum(flags)
             assert m.read(base + 0xbc4140, 4) == 0x52803848
             assert (base + 0xbc4144 in m.hooks) == flags[4]
             assert m.read(base + 0x1af9ff0, 4) == 0x528c0049
@@ -208,7 +208,7 @@ def check_custom_preferences():
         m = Machine(0x7100000000, {'faster-dialogue': DEFAULT, 'faster-dialogue.custom': b'base_speed=4'})
         m.custom_fault = fault
         m.boot(); m.activate()
-        assert 'WARNING: custom config' in m.text and 'BOOT_OK' in m.text
+        assert 'WARNING:' in m.text and 'custom config' in m.text and 'BOOT_OK' in m.text
         assert 'base=2 boost=4 faster_ui=false' in m.text
         assert len(m.closed) == (1 if fault == 'open' else 2)
     for marker in (None, b'enabled=false\nversion=0.2.0'):
@@ -216,11 +216,66 @@ def check_custom_preferences():
         if marker: files['faster-dialogue'] = marker
         m = Machine(0x7100000000, files)
         m.boot(); m.activate()
-        assert len(m.opened) == 5 and len(m.hooks) == 1
-    print('PASS: personal preferences load only with enabled module; invalid/oversized/unreadable custom files retain feature defaults')
+        assert len(m.opened) == (6 if marker else 5) and len(m.hooks) == 1
+    print('PASS: missing/malformed/oversized/unreadable custom preferences preserve defaults')
+
+def check_config_layers():
+    for base in (0x7100000000, 0x7200000000):
+        for slug in SLUGS:
+            # Core supplies the naming and merge behavior for every module.
+            for regular, custom, active in (
+                (DEFAULT, b'enabled=false', False),
+                (DEFAULT.replace(b'true', b'false'), b'enabled=true', True),
+                (DEFAULT, b'', True),
+                (DEFAULT, b'version=0.0.1', False),
+                (DEFAULT, b'version=0.3.0', True),
+                (DEFAULT, b'enabled=false\nversion=bad', True),
+                (DEFAULT, b'enabled=false\nenabled=true', True),
+                (None, b'enabled=true\nversion=0.2.4', False),
+                (b'enabled=true', b'version=0.2.4', False),
+            ):
+                files = {slug + '.custom': custom}
+                if regular is not None: files[slug] = regular
+                m = Machine(base, files)
+                m.boot(); m.activate()
+                assert len(m.hooks) == expected_hook_count(m, [active and name == slug for name in SLUGS]), m.text
+                paths = [f'content:/qol-enhancements/config/{name}.ini' for name in SLUGS]
+                if regular is not None and b'version=' in regular:
+                    paths.insert(SLUGS.index(slug) + 1, f'content:/qol-enhancements/config/{slug}.custom.ini')
+                assert m.opened == paths, m.opened
+                before = (len(m.opened), len(m.logs), len(m.hooks))
+                m.activate()
+                assert before == (len(m.opened), len(m.logs), len(m.hooks))
+            for fault in ('open', 'size', 'read'):
+                m = Machine(base, {slug: DEFAULT, slug + '.custom': b'enabled=false'})
+                m.custom_fault = fault
+                m.boot(); m.activate()
+                assert len(m.hooks) == expected_hook_count(m, [name == slug for name in SLUGS]), m.text
+                assert 'WARNING:' in m.text and 'BOOT_OK' in m.text
+        regular = DEFAULT + b'base_speed=4\nboost_speed=2\nfaster_ui=true\nfaster_player=true\nfaster_npc_list=Timmy,Tommy'
+        cases = (
+            (b'base_speed=2\nfaster_ui=false\nfaster_npc_list=Wilbur', 'base=2 boost=2 faster_ui=false faster_player=true npc_count=1'),
+            (b'base_speed=bad\nfaster_ui=bad', 'base=4 boost=4 faster_ui=true faster_player=true npc_count=2'),
+            (b'faster_npc_list=', 'base=4 boost=4 faster_ui=true faster_player=true npc_count=0'),
+            (b'base_speed=2\nversion=bad', 'base=4 boost=4 faster_ui=true faster_player=true npc_count=2'),
+            (b'base_speed=2\nbase_speed=2', 'base=4 boost=4 faster_ui=true faster_player=true npc_count=2'),
+        )
+        for custom, summary in cases:
+            m = Machine(base, {'faster-dialogue': regular, 'faster-dialogue.custom': custom})
+            m.boot(); m.activate()
+            assert summary in m.text and 'BOOT_OK' in m.text, m.text
+        # All preference keys work equally in either file.
+        preferences = b"base_speed=2\nboost_speed=4\nfaster_ui=true\nfaster_player=true\nfaster_npc_list=Timmy,Tommy,Orville,Wilbur,Kapp'n"
+        for files in ({'faster-dialogue': DEFAULT + preferences},
+                      {'faster-dialogue': DEFAULT, 'faster-dialogue.custom': preferences}):
+            m = Machine(base, files)
+            m.boot(); m.activate()
+            assert 'base=2 boost=4 faster_ui=true faster_player=true npc_count=6' in m.text, m.text
+    print('PASS: shared regular/custom order, enabled/version overrides for all five modules, atomic metadata, failure fallback, inheritance and settings parity at two bases')
 
 if __name__ == '__main__':
     check_all_subsets()
     check_errors()
     check_amiibo_hook()
     check_custom_preferences()
+    check_config_layers()

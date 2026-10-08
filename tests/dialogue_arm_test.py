@@ -15,9 +15,9 @@ GP = [globals()[f'UC_ARM64_REG_X{i}'] for i in range(31)]
 Q = [globals()[f'UC_ARM64_REG_Q{i}'] for i in range(32)]
 
 class DialogueMachine(Machine):
-    def __init__(self, base, custom=None, enabled=True):
+    def __init__(self, base, custom=None, enabled=True, regular=DEFAULT):
         self.native = False
-        files = {'faster-dialogue': DEFAULT} if enabled else {}
+        files = {'faster-dialogue': regular} if enabled else {}
         if custom is not None: files['faster-dialogue.custom'] = custom
         super().__init__(base, files)
         self.boot(); self.activate()
@@ -268,7 +268,7 @@ def main():
                 result, _ = m.run((1, 0, 0, 0, 0, 1, 1, -1.), held)
                 assert abs(struct.unpack_from('<f', result, 0x2194)[0] - (-2 + fast * (2 if held else 1))) < 1e-5
                 total += 1
-        custom = DialogueMachine(base, CUSTOM)
+        custom = DialogueMachine(base, CUSTOM) if base == 0x7100000000 else DialogueMachine(base, regular=DEFAULT + CUSTOM)
         for name, kind, window, source, valid, stale, dead, tier in (
                 ('rcm',10,0,True,True,False,False,3), ('rct',10,0,True,True,False,False,3),
                 ('dod',10,0,True,True,False,False,3), ('doc',10,0,True,True,False,False,3),

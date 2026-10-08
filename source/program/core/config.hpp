@@ -10,6 +10,7 @@ struct Version {
 };
 inline constexpr std::size_t MaxConfigBytes = 4096;
 struct Config { bool enabled{}; Version version{}; };
+enum class ConfigLayer { Module, Custom };
 
 constexpr std::string_view Trim(std::string_view value) {
     while (!value.empty() && (value.front() == ' ' || value.front() == '\t' || value.front() == '\r')) value.remove_prefix(1);
@@ -40,10 +41,14 @@ constexpr bool ParseVersion(std::string_view value, Version &output) {
     return true;
 }
 
-inline bool ParseConfig(std::string_view input, Config &output) {
+// A regular file is the installation marker and must provide both metadata
+// keys. A custom file is a partial overlay. Commit metadata only on success;
+// module-specific preferences are parsed separately, after this validation.
+inline bool ParseConfig(std::string_view input, Config &output,
+                        ConfigLayer layer = ConfigLayer::Module, bool hasModuleSettings = false) {
     if (input.size() > MaxConfigBytes) return false;
     if (input.starts_with("\xef\xbb\xbf")) input.remove_prefix(3);
-    Config parsed{};
+    Config parsed = layer == ConfigLayer::Custom ? output : Config{};
     bool hasEnabled = false, hasVersion = false;
     for (char character : input) {
         const auto byte = static_cast<unsigned char>(character);
@@ -55,7 +60,10 @@ inline bool ParseConfig(std::string_view input, Config &output) {
         input = newline == std::string_view::npos ? std::string_view{} : input.substr(newline + 1);
         if (line.empty() || line.front() == '#' || line.front() == ';') continue;
         const auto equals = line.find('=');
-        if (equals == std::string_view::npos) return false;
+        if (equals == std::string_view::npos) {
+            if (hasModuleSettings) continue; // Module parser reports malformed preferences.
+            return false;
+        }
         const auto key = Trim(line.substr(0, equals));
         const auto value = Trim(line.substr(equals + 1));
         if (key == "enabled") {
@@ -65,9 +73,9 @@ inline bool ParseConfig(std::string_view input, Config &output) {
         } else if (key == "version") {
             if (hasVersion || !ParseVersion(value, parsed.version)) return false;
             hasVersion = true;
-        } else return false; // Reject typos and unimplemented settings.
+        } else if (!hasModuleSettings) return false;
     }
-    if (!hasEnabled || !hasVersion) return false;
+    if (layer == ConfigLayer::Module && (!hasEnabled || !hasVersion)) return false;
     output = parsed;
     return true;
 }

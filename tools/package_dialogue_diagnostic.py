@@ -40,7 +40,7 @@ def main():
             'SELECT reports classification, speed, owned speaker handle, resolved entity,\n'
             'and stored entity handle/flags.\n'
             'Both traces are bounded; restart if the MESSAGE limit is reached.\n\n'
-            'Restore the normal 0.2.3 Core after collecting the log.\n'
+            f'Restore the normal {package.release_version()} Core after collecting the log.\n'
             'Built with Exlaunch (GPL-2.0); see LICENSE and the matching source ZIP.\n'
         ).encode(),
     }

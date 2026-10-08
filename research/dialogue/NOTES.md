@@ -208,5 +208,17 @@ SP_rcm_00_common bank and changing position coordinates are covered separately.
 
 The optional `npc-handle-v4` diagnostic reports one stable owned handle instead
 of three changing coordinate words. Movement no longer consumes the SELECT
-transition budget. Normal and diagnostic builds both include this fix; live
-NPC recognition still requires confirmation on the corrected Core.
+transition budget. Normal and diagnostic builds both include this fix. The user
+subsequently confirmed the corrected diagnostic build works in game.
+
+
+## 0.2.4 shared configuration layering
+
+Core now reads each module's regular INI followed by its optional .custom.ini.
+Dialogue registers one preference parser used for both files; its old private
+filesystem loader is removed. Metadata overlays are validated atomically before
+preferences are applied. Omitted keys inherit, duplicate preferences restore the
+previous layer, lists replace (empty clears), and boost/base normalization runs
+after both layers. Enabled/version can be overridden for every installed module;
+an absent/invalid regular marker still prevents activation. Native hooks and
+speaker/message classification are unchanged from the confirmed NPC fix.

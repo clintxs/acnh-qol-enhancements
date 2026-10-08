@@ -3,8 +3,6 @@
 #include <array>
 
 namespace qol::dialogue {
-inline constexpr char CustomConfigPath[] =
-    "content:/qol-enhancements/config/faster-dialogue.custom.ini";
 inline constexpr unsigned MaxNpcs = 64, NpcIdBytes = 16;
 struct Settings {
     unsigned baseSpeed = 2, boostSpeed = 4;
@@ -74,12 +72,12 @@ inline bool ParseSpeed(std::string_view value, unsigned &speed) {
     speed = value == "2" ? 2 : 4;
     return true;
 }
-// Personal preferences are tolerant per key: a bad key/value warns and leaves
-// that setting at its default; a bad NPC entry leaves other entries usable.
-// Duplicate keys invalidate that setting, avoiding order-dependent surprises.
-inline unsigned ParseSettings(std::string_view input, Settings &output) {
-    output = {};
+// Both files use this parser. Missing/invalid values inherit the earlier layer;
+// duplicates restore that key's earlier value. A supplied NPC list replaces
+// the earlier list, while invalid entries leave its other entries usable.
+inline unsigned ApplySettings(std::string_view input, Settings &output) {
     if (input.size() > core::MaxConfigBytes) return 1;
+    const Settings previous = output;
     if (input.starts_with("\xef\xbb\xbf")) input.remove_prefix(3);
     unsigned warnings = 0, seen = 0, duplicate = 0;
     while (!input.empty()) {
@@ -91,6 +89,7 @@ inline unsigned ParseSettings(std::string_view input, Settings &output) {
         if (equals == std::string_view::npos) { ++warnings; continue; }
         const auto key = core::Trim(line.substr(0, equals));
         const auto value = core::Trim(line.substr(equals + 1));
+        if (key == "enabled" || key == "version") continue; // Validated by Core.
         const unsigned bit = key == "base_speed" ? 1 : key == "boost_speed" ? 2 :
                              key == "faster_ui" ? 4 : key == "faster_npc_list" ? 8 : key == "faster_player" ? 16 : 0;
         if (!bit) { ++warnings; continue; }
@@ -103,6 +102,8 @@ inline unsigned ParseSettings(std::string_view input, Settings &output) {
                 (bit == 4 ? output.fasterUi : output.fasterPlayer) = value == "true";
             else ++warnings;
         } else {
+            output.npcCount = 0;
+            output.npcs = {};
             auto list = value;
             while (!list.empty()) {
                 const auto comma = list.find(',');
@@ -113,13 +114,25 @@ inline unsigned ParseSettings(std::string_view input, Settings &output) {
             }
         }
     }
-    if (duplicate & 1) output.baseSpeed = 2;
-    if (duplicate & 2) output.boostSpeed = 4;
-    if (duplicate & 4) output.fasterUi = false;
-    if (duplicate & 16) output.fasterPlayer = false;
-    if (duplicate & 8) { output.npcCount = 0; output.npcs = {}; }
+    if (duplicate & 1) output.baseSpeed = previous.baseSpeed;
+    if (duplicate & 2) output.boostSpeed = previous.boostSpeed;
+    if (duplicate & 4) output.fasterUi = previous.fasterUi;
+    if (duplicate & 16) output.fasterPlayer = previous.fasterPlayer;
+    if (duplicate & 8) { output.npcCount = previous.npcCount; output.npcs = previous.npcs; }
+    return warnings;
+}
+// Normalize only after both layers: a custom lower base can make a regular
+// boost valid without having that inherited boost changed prematurely.
+inline unsigned NormalizeSettings(Settings &output) {
+    unsigned warnings = 0;
     if (output.boostSpeed < output.baseSpeed) { output.boostSpeed = output.baseSpeed; ++warnings; }
     return warnings;
 }
+inline unsigned ParseSettings(std::string_view input, Settings &output) {
+    output = {};
+    const auto warnings = ApplySettings(input, output);
+    return warnings + NormalizeSettings(output);
+}
+unsigned Configure(std::string_view input);
 bool Install();
 } // namespace qol::dialogue

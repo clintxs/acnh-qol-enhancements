@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.2.3 NPC dialogue lookup fix** for ACNH **3.0.3 on Eden**. One Core
+**0.2.4 shared configuration overlays** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates five optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -57,11 +57,48 @@ The Exlaunch SIMD context declaration now matches its assembly stack layout;
 compile-time assertions and execution of the real adapter cover that correction.
 Ordinary GP-only callbacks retain their original context layout.
 
+## Shared configuration overlays
+
+Every module loads `content:/qol-enhancements/config/<slug>.ini` first, then an
+optional `<slug>.custom.ini` in the same directory. This is Core behavior, so
+future module settings inherit the convention by registering a parser rather
+than implementing another file loader. Both files support the same keys for
+that module. Defaults apply first; regular values replace defaults; custom values
+replace only the keys supplied. `enabled` and `version` follow the same rule.
+The regular installation marker must exist and contain valid `enabled` and
+`version` keys; the custom file may omit either or both. An absent/invalid regular
+file cannot be rescued by a custom file. Setting `enabled=false` overrides code
+activation only; Eden still controls resource replacements through mod toggles.
+
+For example, `faster-dialogue.ini` can contain:
+
+```ini
+enabled = true
+version = 0.2.4
+base_speed = 2
+boost_speed = 4
+faster_ui = false
+faster_player = true
+```
+
+A `faster-dialogue.custom.ini` containing just `faster_ui = true` keeps all the
+other values and overrides that one setting. An NPC list replaces the previous
+list; an empty list clears it. Custom files are read once per restart, even if
+regular `enabled` is false, so a custom `enabled=true` can re-enable installed
+code. An unreadable, oversized or invalid metadata overlay leaves the regular
+configuration intact. Neither malformed metadata nor duplicate metadata is
+partially applied. Each file is limited to 4 KiB of ASCII text, with whole-line
+comments, CRLF and an optional UTF-8 BOM.
+
+Other modules currently expose just `enabled` and `version`, with names
+`catalog.custom.ini`, `pockets.custom.ini`, `fitting-room.custom.ini` and
+`amiibo.custom.ini`. Pockets' caption file is a separate translation resource,
+not a module settings file.
+
 ## Conditional Faster Dialogue
 
-The suite keeps its normal versioned `faster-dialogue.ini` marker. Personal
-preferences are read once, after that enabled feature passes compatibility
-checks, from `content:/qol-enhancements/config/faster-dialogue.custom.ini`.
+All five preferences below work in either Faster Dialogue INI. Personal
+preferences are best kept in a separate mod so suite updates cannot replace them.
 The main ZIP contains only an `.example` file at its root; it never supplies the
 actual custom INI. A separate optional preset ZIP contains:
 
@@ -82,9 +119,9 @@ Enable that personal mod alongside Core and Faster Dialogue. Keep it when
 replacing the suite folders, and restart after editing. Do not reinstall the
 example preset over edited preferences. Only one mod should supply the custom
 path; normal RomFS precedence applies if there are duplicates. The custom file
-cannot activate an absent or disabled Faster Dialogue module.
+cannot activate an absent Faster Dialogue module.
 
-Missing preferences retain base 2 / held B/R 4, with UI/player/list boost off. A listed
+Preferences absent from both files retain base 2 / held B/R 4, with UI/player/list boost off. A listed
 NPC, recognized player message or UI uses `boost_speed` automatically; holding B/R selects that
 same tier and never stacks to 8. This prototype supports **2 and 4** for both
 speed keys; a boost below the base is raised to the base. These are nominal tiers relative to the live native fast rate,
@@ -96,10 +133,10 @@ also includes its known `kppB` profile. Other resource IDs, such as villager IDs
 can also be listed; matching is case-insensitive and
 exact, without guessing variant IDs. Up to 64 IDs of at most 15 ASCII identifier
 characters are accepted. Syntactically valid IDs not used by a live speaker
-simply never match. Bad values/keys warn and use defaults for the affected
-setting; invalid list entries are ignored. Duplicate keys revert that setting
-to its default. An unreadable/oversized personal file uses defaults without
-disabling the feature. Whole-line comments, CRLF and UTF-8 BOM are supported.
+simply never match. Bad values/keys warn; invalid values retain the earlier
+layer's value, and invalid list entries are ignored. Duplicate preference keys
+revert that setting to its value before the file. The boost/base relationship
+is normalized after both files have loaded.
 
 `faster_ui` covers native system dialog windows (the blue dialogs). Independent
 `faster_player` covers valid player speakers and five reviewed self-message
@@ -120,8 +157,8 @@ showed the correct workbench/fish banks rejected by an early window-2 check;
 0.2.2 fixes that restriction, and the subsequent live log confirms player-bank
 selection at speed 4 for workbench/fish messages. That log also revealed the
 NPC bug: the old lookup interpreted a voice-position vector as an entity handle.
-0.2.3 reads the speaker's owned handle instead. The corrected NPC behavior still
-needs in-game confirmation. See
+0.2.3 reads the speaker's owned handle instead, and the user confirmed the
+corrected diagnostic build works in game. See
 [research notes](research/dialogue/NOTES.md).
 There is no song/travel skipping, forced reveal, voice cleanup or emote filtering.
 
@@ -159,9 +196,9 @@ at `../vanilla-3.0.3/Layout`; builders verify their hashes and archive structure
 The package script checks that every INI matches the Core release, refuses to
 replace existing archives, and creates:
 
-- `dist/qol-enhancements-v0_2_3_for_acnh_v3_0_3.zip`
-- `dist/qol-enhancements-v0_2_3_for_acnh_v3_0_3_source.zip`
-- `dist/qol-enhancements-v0_2_3_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
+- `dist/qol-enhancements-v0_2_4_for_acnh_v3_0_3.zip`
+- `dist/qol-enhancements-v0_2_4_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v0_2_4_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
 
 The binary ZIP contains a conspicuous installation text file, README, Core and
 five independently selectable feature folders, plus a SHA-256 manifest. Source

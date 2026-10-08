@@ -46,24 +46,33 @@ bool InstallPockets() {
 }
 
 enum class LoadResult { Absent, Invalid, Ready };
-LoadResult LoadConfig(const ModuleDescription &module, Config &config) {
+LoadResult LoadConfig(const ModuleDescription &module, Config &config, ConfigLayer layer) {
+    const bool custom = layer == ConfigLayer::Custom;
     char path[160];
-    std::snprintf(path, sizeof(path), "content:/qol-enhancements/config/%s.ini", module.slug);
+    std::snprintf(path, sizeof(path), "content:/qol-enhancements/config/%s%s.ini", module.slug,
+                  custom ? ".custom" : "");
     nn::fs::FileHandle file{};
     const auto result = nn::fs::OpenFile(&file, path, nn::fs::OpenMode_Read);
     if (result != 0) {
         // Horizon FS PathNotFound (module 2, description 1).
         if (result == 0x202) return LoadResult::Absent;
-        Logging.Log("[QoL Enhancements] ERROR: %s config open failed: 0x%x\n", module.name, result);
+        Logging.Log("[QoL Enhancements] %s: %s %sconfig open failed: 0x%x\n",
+                    custom ? "WARNING" : "ERROR", module.name, custom ? "custom " : "", result);
         return LoadResult::Invalid;
     }
     long size = 0;
     char buffer[MaxConfigBytes];
-    bool valid = nn::fs::GetFileSize(&size, file) == 0 && size > 0 &&
+    bool valid = nn::fs::GetFileSize(&size, file) == 0 && size >= 0 &&
                  static_cast<unsigned long>(size) <= sizeof(buffer);
-    if (valid) valid = nn::fs::ReadFile(file, 0, buffer, static_cast<unsigned long>(size)) == 0;
+    if (valid && size) valid = nn::fs::ReadFile(file, 0, buffer, static_cast<unsigned long>(size)) == 0;
     nn::fs::CloseFile(file);
-    if (valid) valid = ParseConfig({buffer, static_cast<std::size_t>(size)}, config);
+    const std::string_view input{buffer, valid ? static_cast<std::size_t>(size) : 0};
+    if (valid) valid = ParseConfig(input, config, layer, module.configure != nullptr);
+    if (valid && module.configure) {
+        const auto warnings = module.configure(input);
+        if (warnings) Logging.Log("[QoL Enhancements] WARNING: %s %sconfig issues=%u; invalid settings retain prior values\n",
+                                  module.name, custom ? "custom " : "", warnings);
+    }
     return valid ? LoadResult::Ready : LoadResult::Invalid;
 }
 std::atomic<bool> ActivationStarted{false};
@@ -74,7 +83,7 @@ std::atomic<bool> ActivationStarted{false};
 const std::array<ModuleDescription, 5> Modules{{
     {"Catalog", "catalog", {0, 1, 0}, InstallCatalog},
     {"Pockets", "pockets", {0, 1, 0}, InstallPockets},
-    {"Faster Dialogue", "faster-dialogue", {0, 1, 0}, dialogue::Install},
+    {"Faster Dialogue", "faster-dialogue", {0, 1, 0}, dialogue::Install, dialogue::Configure},
     {"Fitting Room", "fitting-room", {0, 1, 0}, able_bag::Install},
     {"Amiibo", "amiibo", {0, 1, 0}, amiibo::Install},
 }};
@@ -85,7 +94,7 @@ void ActivateModules() {
     unsigned installed = 0, errors = 0;
     for (const auto &module : Modules) {
         Config config{};
-        const auto loaded = LoadConfig(module, config);
+        const auto loaded = LoadConfig(module, config, ConfigLayer::Module);
         if (loaded == LoadResult::Absent) {
             Logging.Log("[QoL Enhancements] %s: not installed\n", module.name);
             continue;
@@ -95,6 +104,12 @@ void ActivateModules() {
             ++errors;
             continue;
         }
+        // All installed modules use the same overlay path and order, including
+        // disabled modules: a personal enabled=true can re-enable their code.
+        // An absent/invalid marker never reaches this optional read.
+        if (LoadConfig(module, config, ConfigLayer::Custom) == LoadResult::Invalid)
+            Logging.Log("[QoL Enhancements] WARNING: %s custom config invalid/unreadable; retaining regular config\n",
+                        module.name);
         Logging.Log("[QoL Enhancements] %s: %u.%u.%u; enabled=%s; minimum=%u.%u.%u\n",
                     module.name, config.version.major, config.version.minor, config.version.patch,
                     config.enabled ? "true" : "false", module.minimum.major, module.minimum.minor,

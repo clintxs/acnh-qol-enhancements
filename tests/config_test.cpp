@@ -19,6 +19,22 @@ int main() {
     }
     assert(!ParseConfig(std::string("enabled=true\nversion=0.1.0\0", 27), config));
     assert(!ParseConfig(std::string(MaxConfigBytes + 1, ' '), config));
+    // Shared overlays are partial and atomic; the regular installation marker
+    // still requires enabled/version even when a module has extra preferences.
+    assert(ParseConfig("enabled=true\nversion=0.1.0", config));
+    assert(ParseConfig("enabled=false", config, ConfigLayer::Custom) && !config.enabled);
+    assert((config.version == Version{0,1,0}));
+    assert(ParseConfig("version=0.2.0", config, ConfigLayer::Custom));
+    assert((!config.enabled && config.version == Version{0,2,0}));
+    assert(ParseConfig("", config, ConfigLayer::Custom) && !config.enabled);
+    for (auto input : {"enabled=true\nversion=bad", "enabled=true\nenabled=false", "unknown=true"}) {
+        assert(!ParseConfig(input, config, ConfigLayer::Custom));
+        assert((!config.enabled && config.version == Version{0,2,0}));
+    }
+    assert(ParseConfig("enabled=true\nversion=0.1.0\nfaster_player=true", config,
+                       ConfigLayer::Module, true));
+    assert(ParseConfig("faster_ui=true", config, ConfigLayer::Custom, true));
+    assert(!ParseConfig("faster_ui=true", config, ConfigLayer::Module, true));
     Version version{};
     assert(ParseVersion("65535.65535.65535", version));
     assert((version == Version{65535,65535,65535}));

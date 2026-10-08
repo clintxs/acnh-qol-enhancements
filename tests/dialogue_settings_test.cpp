@@ -43,6 +43,19 @@ int main() {
     assert(SelectSpeed(settings, MessageKind::Unknown, "", false) == 2);
     assert(ParseSettings("faster_player=yes", settings) == 1 && !settings.fasterPlayer);
     assert(ParseSettings("faster_player=true\nfaster_player=false", settings) == 1 && !settings.fasterPlayer);
+    // Layer inheritance, valid false overrides, list replacement/clearing, and
+    // invalid/duplicate custom values preserving their regular-file values.
+    settings = {};
+    assert(!ApplySettings("enabled=true\nversion=0.2.4\nbase_speed=4\nboost_speed=2\n"
+                          "faster_ui=true\nfaster_player=true\nfaster_npc_list=Timmy,Tommy", settings));
+    assert(!ApplySettings("base_speed=2\nfaster_ui=false\nfaster_npc_list=Wilbur", settings));
+    assert(!NormalizeSettings(settings));
+    assert(settings.baseSpeed == 2 && settings.boostSpeed == 2 && !settings.fasterUi && settings.fasterPlayer);
+    assert(settings.npcCount == 1 && Equal(settings.npcs[0].data(), "doc"));
+    assert(ApplySettings("boost_speed=bad\nfaster_player=bad\nfaster_npc_list=Timmy\nfaster_npc_list=Tommy", settings) == 3);
+    assert(settings.boostSpeed == 2 && settings.fasterPlayer && settings.npcCount == 1);
+    assert(Equal(settings.npcs[0].data(), "doc"));
+    assert(!ApplySettings("faster_npc_list=", settings) && settings.npcCount == 0);
     for (auto bank : {"FTR_WorkingTable", "SYS_Player", "SYS_Get_Fish", "SYS_Get_Insect", "SYS_Get_DiveFish",
                       "TalkFtr/FTR_WorkingTable", "TalkSys/SYS_Player.msbt"})
         assert(IsPlayerMessageBank(bank));

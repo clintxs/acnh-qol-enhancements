@@ -84,7 +84,9 @@ def custom_files():
             'Edit romfs/qol-enhancements/config/faster-dialogue.custom.ini\n'
             'inside the personal mod. Keep this folder when updating the suite.\n'
             'Do not reinstall this preset over your edited personal settings.\n'
-            'The personal file alone cannot enable Faster Dialogue.\n'
+            'Values override faster-dialogue.ini; omitted keys inherit.\n'
+            'The same settings work in either file.\n'
+            'The personal file alone cannot enable an absent Faster Dialogue module.\n'
             'Use only one mod supplying this custom file.\n'
         ).encode(),
         'My Custom Faster Dialogue Settings/romfs/qol-enhancements/config/faster-dialogue.custom.ini':

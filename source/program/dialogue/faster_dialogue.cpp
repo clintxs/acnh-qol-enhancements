@@ -1,6 +1,5 @@
 #include "lib.hpp"
 #include "settings.hpp"
-#include <nn/fs/fs_files.hpp>
 #include <atomic>
 #include <cstring>
 
@@ -156,24 +155,6 @@ Speaker CurrentSpeaker(std::uintptr_t text) {
     result.id[0] = 0; // Never match a truncated resource ID.
     return result;
 }
-void LoadPreferences() {
-    Preferences = {};
-    nn::fs::FileHandle file{};
-    const auto opened = nn::fs::OpenFile(&file, CustomConfigPath, nn::fs::OpenMode_Read);
-    if (opened == 0x202) return;
-    if (opened) {
-        Logging.Log("[QoL Enhancements/Faster Dialogue] WARNING: custom config open=0x%x; defaults\n", opened);
-        return;
-    }
-    char buffer[core::MaxConfigBytes];
-    long size = 0;
-    bool readable = nn::fs::GetFileSize(&size, file) == 0 && size >= 0 &&
-                    static_cast<unsigned long>(size) <= sizeof(buffer);
-    if (readable && size) readable = nn::fs::ReadFile(file, 0, buffer, size) == 0;
-    nn::fs::CloseFile(file);
-    const auto warnings = readable ? ParseSettings({buffer, static_cast<std::size_t>(size)}, Preferences) : 1;
-    if (warnings) Logging.Log("[QoL Enhancements/Faster Dialogue] WARNING: custom config issues=%u; invalid settings use defaults\n", warnings);
-}
 
 #if CAS_VERBOSE_DIALOGUE_TRACE
 // Observe the message even when native reveal gates never reach SelectSpeed.
@@ -299,6 +280,10 @@ HOOK_DEFINE_INLINE(DialogueRendererRate) {
 };
 } // namespace
 
+unsigned Configure(std::string_view input) {
+    return ApplySettings(input, Preferences);
+}
+
 bool Install() {
     // Original instructions are fingerprints only, never replacement payloads.
     // Check all sites/dependencies before installing the first C++ hook. Also
@@ -328,7 +313,8 @@ bool Install() {
             return false;
         }
     }
-    LoadPreferences();
+    if (NormalizeSettings(Preferences))
+        Logging.Log("[QoL Enhancements/Faster Dialogue] WARNING: boost_speed below base_speed; using base speed for both\n");
 #if CAS_VERBOSE_DIALOGUE_TRACE
     Logging.Log("[QoL Enhancements/Faster Dialogue] DIAGNOSTIC: npc-handle-v4; owned speaker handle and player window fixes\n");
 #endif
