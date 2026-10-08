@@ -1,10 +1,10 @@
-# Unified QoL validation — 0.3.7 Shopping Card prototype
+# Unified QoL validation — 0.3.8 Shopping Card prototype
 
 Validated locally on October 8, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
 dialogue fix and subsequently the corrected 0.2.3 NPC diagnostic build work in Eden. The user also confirmed Nook’s Cranny transactions in Shopping Card 0.3.1.
 The user confirmed the corrected savings HUD in 0.3.4 and balance animation
-in 0.3.5. The configuration layering, 0.3.6 layout refinement and Able Sisters
+in 0.3.5. The configuration layering, 0.3.8 layout/display corrections and Able Sisters
 still need a live check. No running game or save files were accessed by the
 local tests below.
 
@@ -18,8 +18,8 @@ local tests below.
   `exl_main` installs only the content-mount continuation hook and performs no
   configuration reads. Activation executes the real compiled registry/parser and
   installers; a second activation performs no additional reads or installations.
-- Full suite installs 57 disjoint modeled hook ranges (Core 1, Catalog 16,
-  Pockets 16, Faster Dialogue 5, Fitting Room 11, Amiibo 1, Shopping Card 7), plus the private
+- Full suite installs 60 disjoint modeled hook ranges (Core 1, Catalog 16,
+  Pockets 16, Faster Dialogue 5, Fitting Room 11, Amiibo 1, Shopping Card 10), plus the private
   fitting input vtable entry. No embedded binary replacement arrays, IPS or
   dialogue code-cave helper remain in the collection.
 - Per-feature absent, disabled, invalid, missing-version, oversized, below-minimum
@@ -60,12 +60,16 @@ compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
   unlisted callers retain native routing. Empty savings returns zero even
   with cash available. Native price comparison and the 20% Bell Boom adjustment
   execute unchanged at below/equal/above thresholds through the full savings cap.
-- The catalog HUD test executes the original root-list insertion from factory
-  032A7508, then the compiled display hook and original BellPage update. It
-  verifies all residents, savings Down/Finish feedback after catalog payment,
-  silent unchanged balances, restoration of cash on close/destruction, type,
-  resident, context and bounded-list guards. Engine layout/text and playback
-  boundaries are modeled. No live Nook Stop/phone gameplay is claimed.
+- The 0.3.7 same-context root-list fixture passed, but the user reported cash
+  still displayed outside Nook’s Cranny. 0.3.8 removes that context assumption.
+  At two ASLR bases, the revised HUD test executes native Catalog open/close
+  routines and the original BellPage update with deliberately separate contexts.
+  It checks all eight residents outside shops and in Resident Services,
+  savings Down/Finish feedback after ordering, silent unchanged/reopened balances,
+  cash restoration on close, direct/deleting destruction and resident isolation.
+  The deleting destructor's original BL enters the compiled teardown hook.
+  Native open/close engine calls and destructor internals are modeled at their
+  boundaries. No live Nook Stop/phone gameplay is claimed.
 
 - Compiled C++ hooks run at two ASLR bases for both Nook's Cranny rooms and
   Able Sisters. Eight separately modeled resident accounts retain independent
@@ -110,7 +114,7 @@ compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
   resolves both direct/group text adapters, shows full zero/cap balances,
   restores cash panes outside supported shops, and tolerates absent resources.
   Native text setting, typed parameter lookup and pane lookup are modeled;
-  0.3.6 appearance still needs Eden verification; the user confirmed the
+  0.3.8 appearance still needs Eden verification; the user confirmed the
   balance animation in 0.3.5.
 - 0.3.5 tests execute native 03353B14 number stepping and 03025400 feedback
   through its Up/Down/Finish animation dispatch and positional sound setup,
@@ -127,7 +131,12 @@ compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
   24-byte amount buffer, and uses native rounded-window textures/vector shapes.
   The eight-unit oval rim, centered card transform, dark foreground card
   edge, separate white backing behind the oval and right-hand Bells badge
-  are checked in 0.3.6. The badge text material matches the main green fill. No MSBT lookup is attached to the savings text.
+  are checked. 0.3.8 also checks three centered native rounded windows for the
+  white backing, dark edge and green face, their frame dimensions/materials,
+  preserved native mask/filter/UV setup, removal of stepped silhouettes, and
+  a 24-layout-unit (about 16-screen-pixel) badge shift left. The badge text
+  material matches the main green fill. No MSBT lookup is attached to the savings text.
+  Structural checks do not establish rendered edge quality.
 
 ## Conditional dialogue
 
@@ -264,12 +273,13 @@ Switch hardware and other emulators/game versions are not validated targets.
    Close/reopen pockets repeatedly without a transaction; verify no false
    sound/amount animation. Check green savings display at zero and large
    balances, thicker white oval outline, centered dark-edged card and its white
-   backing visible only above the oval; check the lower-right white Bells badge
-   with green text.
+   backing visible only above the oval; check smooth dark/white card corners
+   and the lower-right white Bells badge with green text shifted left about 16 pixels.
    Verify purchases count down with ka-ching, sales count up, rapid changes settle
    correctly, and first entry/resident changes stay silent. Check leaving both
    shops restores cash; pockets still show cash.
-   At Nook Stop and in the phone app (including outdoors), order special goods
+   At Nook Stop and in the phone app (including outdoors), first verify the
+   savings display appears without visiting Nook’s Cranny. Order special goods
    and previously cataloged furniture/clothing for yourself. Compare savings,
    pocket Bells and delivered mail; check order limits, cancellation, insufficient
    savings despite rich pockets, empty pockets with sufficient savings and Bell

@@ -28,7 +28,7 @@ for section in new:
 assert not parents and tree[card.CARD] == 'N_Pos_01'
 assert tree[card.NUMBER] == tree['N_CardBells_00'] == card.CARD
 assert tree['T_SavingsLabel_00'] == tree['W_CardBellBase_00'] == 'N_CardBells_00'
-assert all(tree[f'P_CardShape_{i:02}'] == 'N_CardIcon_00' for i in range(10))
+assert all(tree[f'P_CardShape_{i:02}'] == 'N_CardIcon_00' for i in range(4))
 number = new_panes[card.NUMBER]
 assert struct.unpack_from('<H', number, 84)[0] == 24 # 11 characters plus terminator
 assert struct.unpack_from('<I', number, 128)[0] == 0 # no MSBT lookup
@@ -40,7 +40,7 @@ assert all(a == b for a,b in zip([s for s in old if s[:4] not in PANE_TYPES | {b
                                [s for s in new if s[:4] not in PANE_TYPES | {b'pas1', b'pae1', b'mat1'}]))
 for key in original:
     if not key.endswith('.bflyt'): assert modified[key] == original[key]
-print('PASS: savings subtree hidden by default; original panes/materials/animations/textures intact, vector card and full nine-digit text capacity, no MSBT lookup')
+print('PASS: savings subtree hidden by default; original panes/materials/animations/textures intact, native rounded-window card and full nine-digit text capacity, no MSBT lookup')
 
 label = new_panes['T_SavingsLabel_00']
 start = struct.unpack_from('<I', label, 100)[0]
@@ -52,10 +52,23 @@ for name, color in (('W_SavingsRim_00', bytes([255]*4)),
     for offset in (128, 168):
         index = struct.unpack_from('<H', new_panes[name], offset)[0]
         assert new_materials[index][40:44] == color
-for i in range(3):
-    assert new_panes[f'P_CardShape_{i:02}'][84:100] == card.INK * 4
-    assert new_panes[f'P_CardRim_{i:02}'][84:100] == bytes([255]*16)
-    assert tree[f'P_CardRim_{i:02}'] == 'N_CardBacking_00'
+for name, color, size, radius, parent in (
+        ('W_CardRim_00', bytes([255]*4), (94, 66), 15, 'N_CardBacking_00'),
+        ('W_CardEdge_00', card.INK, (82, 54), 9, 'N_CardIcon_00'),
+        ('W_CardFace_00', bytes((84,183,120,255)), (76,48), 6, 'N_CardIcon_00')):
+    pane = new_panes[name]
+    assert pane[:4] == b'wnd1' and pane[9] == 0
+    assert struct.unpack_from('<2f', pane, 76) == size
+    assert struct.unpack_from('<4H', pane, 92) == (radius,)*4
+    assert tree[name] == parent
+    for offset in (128,168):
+        material = new_materials[struct.unpack_from('<H', pane, offset)[0]]
+        assert material[40:44] == color
+        # The complete native filtered mask/UV/shader setup stays intact.
+        original_material = old_materials[struct.unpack_from('<H', old_panes['W_BellBase_00'], offset)[0]]
+        assert material[28:40] == original_material[28:40]
+        assert material[44:] == original_material[44:]
+assert not any(name.startswith('P_CardRim') for name in new_panes)
 print('PASS: dark card edge inside white backing; white native Bells badge with matching green caption')
 
 fill = new_panes['W_SavingsBase_00']
@@ -68,5 +81,5 @@ assert (order.index('N_CardBacking_00') < order.index('W_SavingsRim_00') <
 icon, backing = new_panes['N_CardIcon_00'], new_panes['N_CardBacking_00']
 assert icon[44:76] == backing[44:76]
 assert struct.unpack_from('<f', icon, 44)[0] == struct.unpack_from('<f', fill, 44)[0]
-assert struct.unpack_from('<f', new_panes['N_CardBells_00'], 44)[0] == 120
-print('PASS: thicker eight-unit oval rim, centered card, backing occluded by oval, Bells badge at lower right')
+assert struct.unpack_from('<f', new_panes['N_CardBells_00'], 44)[0] == 96
+print('PASS: thicker eight-unit oval rim, centered card, backing occluded by oval, Bells badge shifted 24 layout units left')

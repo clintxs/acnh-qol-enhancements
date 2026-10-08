@@ -1,6 +1,6 @@
 # Shopping Card — ACNH 3.0.3
 
-Prototype 0.3.7, October 8, 2026. Original mapped main SHA-256:
+Prototype 0.3.8, October 8, 2026. Original mapped main SHA-256:
 `b1ae8e2a0d82f9f38f711c132d1751b221baf9d6411b2be06ebc4bb502ac912d`.
 Build ID: `FF1D1C05670DB6021C85B624A710B963`.
 All implementation uses readable Exlaunch C++ hooks. No new game item or data
@@ -141,7 +141,15 @@ so the white lower edge is occluded while the card remains visible in front.
 Both card layers use the same transform; the icon is almost upright after the
 native parent's rotation. The native right-origin Bells badge is placed eight
 units inside the oval's right edge. No transaction or animation behavior is
-changed. Live verification of the refined appearance remains pending.
+changed. In 0.3.8 the stepped rectangular card silhouettes are replaced with
+three centered clones of the native W_BellBase_00 rounded window. White backing
+94×66/frame 15, dark edge 82×54/frame 9 and green face 76×48/frame 6 preserve
+its texture/filter/UV/shader setup. Their nested sizes give a six-unit white
+rim and three-unit dark rim with concentric corners. The backing remains behind
+the oval; four small rectangular decorations remain on the card face. The whole
+Bells badge moves 24 layout units left (about 16 screen pixels at 1280 width),
+keeping the caption centered in its white badge. Rendered edge quality still
+needs live verification.
 
 ## Deferred design
 
@@ -188,17 +196,30 @@ order limits, purchase records/milestones and cancellation continue unchanged.
 No generic price/display wallet read is redirected.
 
 Catalog and CatalogBG contain no LBell part; the visible currency uses the
-shared BellPage HUD. BellPage+98 and Catalog+98 point to their native UI context.
-Factory 032A75E4 assigns Catalog+98. At 032A7618..644 it links the root into
-context+40 (head), with count+50 and the runtime intrusive link offset at +54.
-Each display update resolves this live list, bounded to 256 entries, verifies
-context ownership, exact Catalog vtable and resident, and uses native active
-states 3/4/6 (mask 58). No controller pointer or open/closed flag survives a
-call. A missing/closed/destroyed catalog restores ordinary pocket-money display
-outside the physical card shops. Savings animation uses its existing value-only
-transition with a distinct catalog context key. The original cash counter,
-initialization and refresh are untouched. Native factory/list insertion and
-BellPage update execute in the regression harness at two ASLR bases.
+shared BellPage HUD. 0.3.7 searched the root list from BellPage+98 for the
+Catalog sequence, assuming both shared a UI context. Its fixture passed, but
+the user reported pocket Bells outside Nook’s Cranny. That assumption is no
+longer required in 0.3.8; the exact live context arrangement was not measured.
+
+Catalog vtable 049B28B8 supplies OnOpen at +168 (02B70FFC), close cleanup at
++1C8 (02B711B8), and destructor at +10 (02B66CF0). The deleting destructor
+02B67064 calls the same destructor at 02B67074. Opening activates children
++228 and +218 through 03769260, then sets the +210 Page visibility through
+03C5C660. Close has a native early-return path when +1F0/+1F4 are both -1 and
++1B0 is below 2. Trampoline hooks set the resident bit after native open and
+clear it before close/destruction, including that early return. Only an eight-bit
+resident mask survives calls; no UI/controller/save pointer is retained. This
+is transient display state, with no on-disk preference or save-field addition.
+A closed/destroyed catalog restores cash outside the physical card shops.
+Savings animation keeps its value-only transition and distinct catalog context
+key; native cash initialization/refresh remain unchanged.
+
+The revised fixture uses deliberately different Catalog/BellPage contexts and
+executes native open/close instructions plus BellPage updates at two ASLR bases.
+It covers all residents outside shops/in Resident Services, purchase feedback,
+silent reopen, resident isolation, ordinary teardown and the deleting-dtor BL.
+Engine child/page calls and destructor internals are modeled. This removes the
+old fixture’s shared-context assumption without claiming an Eden playtest.
 
 Catalog gifts use separate CatalogGift/recipient/network sending paths (including
 02B7F988, 02B7FB40, 02B7FE2C and 02B78030) and are not covered by these two

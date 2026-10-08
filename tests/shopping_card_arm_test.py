@@ -13,18 +13,19 @@ WALLET_CALLS = (0xe7bf84, 0x2ad2fcc, 0x2ad41e4, 0x2ad5a54, 0x2ad5fe8,
                 0x31192d8)
 DEBIT_CALLS = (0xace110, 0xacf388, 0xadc1d0, 0xb168b4, 0x311d400)
 SHOPS = (0xbe3cad72, 0x8a17f484, 0x91e12aa0)
-HOOKS = (0x257abf0, 0x257b340, 0x257b6f0, 0xf86e68, 0x2579fe0, 0x301b394, 0x2b13bf0)
+HOOKS = (0x257abf0, 0x257b340, 0x257b6f0, 0xf86e68, 0x2579fe0, 0x301b394, 0x2b13bf0, 0x2b70ffc, 0x2b711b8, 0x2b66cf0)
 
 class CardMachine(Machine):
     def __init__(self, base, enabled=True):
+        self.lifecycle_events = []
         self.enabled = enabled; self.wallet = 77777; self.wallet_debits = []; self.lookups = []
         super().__init__(base, {'shopping-card': DEFAULT} if enabled else {})
         self.boot(); self.activate()
         self.u.hook_add(UC_HOOK_MEM_INVALID, lambda u,a,p,n,v,d: print("invalid", hex(u.reg_read(UC_ARM64_REG_PC)), hex(p)) or False)
         for offset in HOOKS: self.u.mem_write(base + offset, RAW[offset:offset + 20])
         self.callbacks = {offset: self.module.find(name, 'Callback') for offset, name in
-                          zip(HOOKS, ('ShopWallet', 'ShopDebit', 'ShopCapacity', 'SaleMessage', 'ShopPurchaseSpace', 'ShopBalanceDisplay', 'BellPageBalanceDisplay'))}
-        for n, name in enumerate(('ShopWallet', 'ShopDebit', 'ShopCapacity', 'SaleMessage', 'ShopPurchaseSpace', 'ShopBalanceDisplay', 'BellPageBalanceDisplay')):
+                          zip(HOOKS, ('ShopWallet', 'ShopDebit', 'ShopCapacity', 'SaleMessage', 'ShopPurchaseSpace', 'ShopBalanceDisplay', 'BellPageBalanceDisplay', 'CatalogOpened', 'CatalogClosed', 'CatalogDestroyed'))}
+        for n, name in enumerate(('ShopWallet', 'ShopDebit', 'ShopCapacity', 'SaleMessage', 'ShopPurchaseSpace', 'ShopBalanceDisplay', 'BellPageBalanceDisplay', 'CatalogOpened', 'CatalogClosed', 'CatalogDestroyed')):
             stub = self.ram + 0x9000 + n * 0x10
             self.services[stub] = ('card_original', name)
             self.write(self.module.find(name, 'OrigRef'), stub)
@@ -57,6 +58,8 @@ class CardMachine(Machine):
         self.u.reg_write(UC_ARM64_REG_PC, self.u.reg_read(UC_ARM64_REG_LR))
     def service(self, u, pc, size, data):
         off = pc - self.base; service = self.services.get(pc)
+        if off == 0x2b66cf0 and self.enabled:
+            u.reg_write(UC_ARM64_REG_PC, self.callbacks[off]); return
         if off == 0x257b340:
             if self.enabled: u.reg_write(UC_ARM64_REG_PC, self.callbacks[off])
             else: self.wallet_debits.append((self.read(self.reg(0), 1), self.reg(1))); self.finish()
@@ -79,6 +82,7 @@ class CardMachine(Machine):
             if name == 'ShopWallet': self.finish(self.wallet)
             elif name == 'ShopDebit': self.wallet_debits.append((self.read(self.reg(0), 1), self.reg(1))); self.finish()
             elif name in ('ShopBalanceDisplay', 'BellPageBalanceDisplay'): self.display_updates += 1; self.finish()
+            elif name.startswith('Catalog'): self.lifecycle_events.append((name, self.reg(0))); self.finish()
             elif name == 'ShopCapacity': self.finish(1234567)
             elif name == 'ShopPurchaseSpace': self.space_args = (self.reg(1), self.reg(2)); self.finish(3)
             else: self.finish(1)

@@ -22,10 +22,9 @@ constexpr unsigned ActiveField = 0x330, FieldTypeKey = 0x338, StageHash = 0x38;
 constexpr unsigned ActionEvent = 8, EventPlayer = 0x2a8, CapacityModeText = 0x100;
 }
 namespace catalog {
-constexpr std::uintptr_t Methods = 0x049b28b8;
 constexpr std::uintptr_t WalletReturn = 0x02b77640, DebitReturn = 0x02b7f58c;
-constexpr unsigned Context = 0x98, Roots = 0x40, RootCount = 0x50, LinkOffset = 0x54;
-constexpr unsigned State = 0xa8, Player = 0x1f8, DisplayKey = 1;
+constexpr std::uintptr_t Open = 0x02b70ffc, Close = 0x02b711b8, Destroy = 0x02b66cf0;
+constexpr unsigned Player = 0x1f8, DisplayKey = 1;
 }
 namespace display {
 constexpr unsigned Counter = 0x210, Player = 0x230, NumberBinding = 0x250;
@@ -90,32 +89,38 @@ template<std::size_t N> bool Contains(const std::array<unsigned, N> &sites, std:
     for (auto site : sites) if (caller - start == site) return true;
     return false;
 }
-// The catalog is a root UI sequence in the same native context as BellPage.
-// Factory 032a7508 links it into context+40 using context+54's intrusive-link
-// offset; 032a75e4 assigns its context. Resolve that live list on each update,
-// rather than caching a controller or leaving a flag set after a phone closes.
-bool CatalogOpen(std::uintptr_t owner, unsigned player) {
-    const auto context = owner ? Read<std::uintptr_t>(owner, catalog::Context) : 0;
-    if (!context) return false;
-    const auto count = Read<unsigned>(context, catalog::RootCount);
-    const auto offset = Read<int>(context, catalog::LinkOffset);
-    if (count > 256 || offset < 0 || offset > 0x208 || (offset & 7)) return false;
-    const auto head = context + catalog::Roots;
-    auto node = Read<std::uintptr_t>(head);
-    for (unsigned i = 0; i < count && node && node != head; ++i) {
-        if (node < static_cast<unsigned>(offset)) return false;
-        const auto sequence = node - offset;
-        if (Read<std::uintptr_t>(sequence, catalog::Context) != context) return false;
-        if (Read<std::uintptr_t>(sequence) == Main(catalog::Methods) &&
-            Read<std::uint8_t>(sequence, catalog::Player) == player) {
-            // Native active sequence states: opening, running, and suspended.
-            const auto state = Read<unsigned>(sequence, catalog::State);
-            if (state < 7 && ((1u << state) & 0x58)) return true;
-        }
-        node = Read<std::uintptr_t>(node);
-    }
-    return false;
+// Catalog and BellPage can belong to different native UI contexts (phone,
+// Nook Stop, and field HUD). Follow Catalog's actual open/close lifecycle
+// rather than searching BellPage's unrelated root list. Keep only resident bits;
+// never retain a controller, layout or save pointer across calls.
+unsigned catalogPlayers{};
+void SetCatalogOpen(std::uintptr_t owner, bool active) {
+    const auto player = owner ? reinterpret_cast<const std::uint8_t *>(owner + catalog::Player) : nullptr;
+    if (!Valid(player)) return;
+    const auto bit = 1u << *player;
+    if (active) catalogPlayers |= bit;
+    else catalogPlayers &= ~bit;
 }
+HOOK_DEFINE_TRAMPOLINE(CatalogOpened) {
+    static void Callback(std::uintptr_t owner) {
+        Orig(owner);
+        SetCatalogOpen(owner, true);
+    }
+};
+HOOK_DEFINE_TRAMPOLINE(CatalogClosed) {
+    static void Callback(std::uintptr_t owner) {
+        SetCatalogOpen(owner, false);
+        Orig(owner);
+    }
+};
+HOOK_DEFINE_TRAMPOLINE(CatalogDestroyed) {
+    static void Callback(std::uintptr_t owner) {
+        // Covers both ordinary and deleting destructors: 02b67074 calls this
+        // same native destructor. Clear before native teardown invalidates owner.
+        SetCatalogOpen(owner, false);
+        Orig(owner);
+    }
+};
 // Currency display calls deliberately stay on the native wallet. In 0.3.1,
 // the generic counter initialized from pocket Bells, then refreshed from savings
 // and played a spurious change animation after closing pockets. The savings
@@ -236,8 +241,8 @@ std::uintptr_t BellPageCounter(std::uintptr_t owner) {
     return Fn<std::uintptr_t (*)(std::uintptr_t, const SafeString *)>(address::FindParameter)(
         layout + display::Parameters, &path);
 }
-void UpdateSavingsDisplay(std::uintptr_t owner, std::uintptr_t counter, const std::uint8_t *player, DisplaySurface surface) {
-    const auto shop = !Valid(player) ? 0 : CatalogOpen(owner, *player) ? catalog::DisplayKey : CurrentShop();
+void UpdateSavingsDisplay(std::uintptr_t counter, const std::uint8_t *player, DisplaySurface surface) {
+    const auto shop = !Valid(player) ? 0 : (catalogPlayers & (1u << *player)) ? catalog::DisplayKey : CurrentShop();
     if (surface == DisplaySurface::Hud && !shop) savingsAnimation.initialized = false;
     auto root = BoundNumberPane(counter);
     std::uintptr_t card = 0;
@@ -291,7 +296,7 @@ HOOK_DEFINE_TRAMPOLINE(ShopBalanceDisplay) {
         Orig(owner);
         const auto counter = owner ? Read<std::uintptr_t>(owner, display::Counter) : 0;
         const auto player = owner ? reinterpret_cast<const std::uint8_t *>(owner + display::Player) : nullptr;
-        UpdateSavingsDisplay(owner, counter, player, DisplaySurface::Auxiliary);
+        UpdateSavingsDisplay(counter, player, DisplaySurface::Auxiliary);
     }
 };
 HOOK_DEFINE_TRAMPOLINE(BellPageBalanceDisplay) {
@@ -300,7 +305,7 @@ HOOK_DEFINE_TRAMPOLINE(BellPageBalanceDisplay) {
         // ShopBalanceDisplay. Cash initialization/refresh stays native on both.
         Orig(owner);
         const auto player = owner ? reinterpret_cast<const std::uint8_t *>(owner + display::HudPlayer) : nullptr;
-        UpdateSavingsDisplay(owner, BellPageCounter(owner), player, DisplaySurface::Hud);
+        UpdateSavingsDisplay(BellPageCounter(owner), player, DisplaySurface::Hud);
     }
 };
 HOOK_DEFINE_TRAMPOLINE(ShopWallet) {
@@ -394,6 +399,9 @@ bool Install() {
     SaleMessage::InstallAtOffset(address::MoneyCapacityQuery);
     ShopBalanceDisplay::InstallAtOffset(address::BellDisplayUpdate);
     BellPageBalanceDisplay::InstallAtOffset(address::BellPageUpdate);
+    CatalogOpened::InstallAtOffset(catalog::Open);
+    CatalogClosed::InstallAtOffset(catalog::Close);
+    CatalogDestroyed::InstallAtOffset(catalog::Destroy);
     installed = true;
     Logging.Log("[QoL Enhancements/Shopping Card] READY: green savings display; always enabled in Nook's Cranny/Able Sisters/Nook Shopping; native savings\n");
     return true;

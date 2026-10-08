@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.7 Shopping Card prototype** for ACNH **3.0.3 on Eden**. One Core
+**0.3.8 Shopping Card prototype** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -85,6 +85,8 @@ savings amount inside the two shops and while the catalog is open. It fits the f
 the prototype label is English (“Bells”), on a white badge with green text.
 The green oval has a thick white rim. The centered card has a dark edge and
 a white backing behind the oval; the white Bells badge sits at the lower right.
+0.3.8 uses native rounded-window masks for smoother card outlines and moves
+the badge left by about 16 screen pixels at 1280-pixel width.
 Balance changes count up/down with the native increase/decrease/finish animation
 and sound feedback. First display, resident/room switches and unchanged balances
 stay silent. Outside those shops, closing the catalog returns to the ordinary Bells presentation. Pockets and other shared cash counters keep
@@ -102,9 +104,11 @@ normal transaction routing; ordinary money/item changes from completed
 transactions remain saved. This prototype has local ARM regression coverage,
 including native encrypted savings writes. The user confirmed Nook’s Cranny
 transactions in 0.3.1, the corrected savings HUD in 0.3.4 and the balance
-animation in 0.3.5. The 0.3.6 layout refinement and Able Sisters still need
-an Eden playtest. Version 0.3.7 adds regular catalog checkout and detects the
-live catalog sequence for the savings HUD. Catalog gift orders use a separate
+animation in 0.3.5. Able Sisters still needs an Eden playtest. Version 0.3.7 added regular catalog
+checkout, but the user reported its HUD still showed cash outside Nook’s Cranny.
+0.3.8 follows the catalog’s native opening, closing and destruction events
+instead of assuming it shares the HUD’s UI context. This display correction
+and the smoother card appearance need live verification. Catalog gift orders use a separate
 native sending/payment path and are not covered by this prototype; their
 payment remains unchanged. Nook Stop and phone catalog purchases, insufficient
 savings, cancellation, order limits, delivery and screen transitions need live
@@ -128,7 +132,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.7
+version = 0.3.8
 base_speed = 2
 boost_speed = 4
 faster_ui = false

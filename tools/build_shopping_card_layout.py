@@ -1,7 +1,7 @@
 """Add a separate, hidden savings display to the native top-right currency part.
 
-Uses native rounded-window textures and untextured vector panes for the green
-card. Original panes, animation, fonts and textures remain byte-for-byte intact.
+Uses native rounded-window textures for the green card and untextured
+vector panes for its details. Original panes, animation, fonts and textures remain byte-for-byte intact.
 No item or MSBT resources are added. Requires the local hash-checked 3.0.3 dump.
 """
 from pathlib import Path
@@ -25,6 +25,7 @@ OVAL_CENTER = (-25, -2)
 OVAL_SIZE = (306, 128)
 RIM = 8
 CARD_CENTER = (-25, 52)
+BADGE_SHIFT = 24  # About 16 screen pixels at the 1280-wide HUD scale.
 CARD_ANGLE = 6  # Slight tilt after the native HUD parent's -3-degree rotation.
 
 
@@ -69,6 +70,14 @@ def edit_layout(data):
     text_material[40:44] = GREEN
     struct.pack_into('<H', label, 88, len(records))
     records.append(bytes(text_material))
+    def rounded_card(name, width, height, radius, color):
+        pane = bytearray(window(panes['W_BellBase_00'], name, 0, 0, width, height, color))
+        pane[9] = 0  # Center origin; the native badge has a right-hand origin.
+        struct.pack_into('<4H', pane, 92, radius, radius, radius, radius)
+        return bytes(pane)
+    card_rim = rounded_card('W_CardRim_00', 94, 66, 15, white)
+    card_edge = rounded_card('W_CardEdge_00', 82, 54, 9, INK)
+    card_face = rounded_card('W_CardFace_00', 76, 48, 6, (84, 183, 120, 255))
     solid = bytearray(records[0])
     assert len(solid) == 44
     solid[:28] = b'ShoppingCardSolid'.ljust(28, b'\0')
@@ -93,9 +102,9 @@ def edit_layout(data):
     struct.pack_into('<f', icon, 64, CARD_ANGLE)
     backing = rename(icon, 'N_CardBacking_00')
     opening, closing = struct.pack('<4sI', b'pas1', 8), struct.pack('<4sI', b'pae1', 8)
-    pieces, rim_pieces = [], []
-    def rectangle(x, y, width, height, color, output=pieces, prefix='P_CardShape'):
-        pane = rename(panes['P_Icon_00'][:104], f'{prefix}_{len(output):02}')
+    pieces = []
+    def rectangle(x, y, width, height, color):
+        pane = rename(panes['P_Icon_00'][:104], f'P_CardShape_{len(pieces):02}')
         pane[8:12] = bytes((3, 0, 255, 0))
         struct.pack_into('<3f', pane, 44, x, y, 0)
         struct.pack_into('<3f', pane, 56, 0, 0, 0)
@@ -104,16 +113,11 @@ def edit_layout(data):
         pane[84:100] = bytes(color) * 4
         struct.pack_into('<HBB', pane, 100, solid_index, 0, 0)
         struct.pack_into('<I', pane, 4, len(pane))
-        output.append(bytes(pane))
+        pieces.append(bytes(pane))
     # The white backing is drawn BEFORE the oval, so its lower outline is
     # occluded by the oval. The dark edge belongs to the foreground card icon.
-    for width, height in ((94, 54), (90, 62), (82, 66)):
-        rectangle(0, 0, width, height, white, rim_pieces, 'P_CardRim')
-    # Stepped silhouettes form rounded corners in native layout coordinates.
-    for width, height in ((82, 42), (78, 50), (70, 54)):
-        rectangle(0, 0, width, height, INK)
-    for width, height in ((76, 38), (72, 44), (66, 48)):
-        rectangle(0, 0, width, height, (84, 183, 120, 255))
+    # Native rounded-window masks provide continuous filtered contours for
+    # both outlines and the face; rectangle decorations stay inside the face.
     rectangle(0, 10, 76, 8, CREAM)
     rectangle(-23, -7, 14, 12, (240, 204, 101, 255))
     rectangle(16, -12, 22, 3, CREAM)
@@ -121,11 +125,12 @@ def edit_layout(data):
     number = text_pane(panes['T_Num_00'], NUMBER, '999,999,999', -25, 0, 260, 56, .76, True)
     unit = rename(panes['N_Pos_00'], 'N_CardBells_00')
     # The native badge window uses a right-hand origin: place that origin
-    # eight units inside the oval's right edge, matching the Bells reference.
-    struct.pack_into('<f', unit, 44, OVAL_CENTER[0] + OVAL_SIZE[0] / 2 - RIM)
-    additions = [bytes(group), opening, bytes(backing), opening, *rim_pieces, closing,
+    # eight units inside the oval's right edge, then move the whole
+    # badge left so its text stays centered on its white background.
+    struct.pack_into('<f', unit, 44, OVAL_CENTER[0] + OVAL_SIZE[0] / 2 - RIM - BADGE_SHIFT)
+    additions = [bytes(group), opening, bytes(backing), opening, card_rim, closing,
                  outline, bytes(background), bytes(icon), opening,
-                 *pieces, closing, number, bytes(unit), opening, badge, bytes(label), closing, closing]
+                 card_edge, card_face, *pieces, closing, number, bytes(unit), opening, badge, bytes(label), closing, closing]
     parents = []
     last = None
     insertion = None
