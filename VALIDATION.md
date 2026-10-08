@@ -1,4 +1,4 @@
-# Unified QoL validation — 1.0.0 integration test
+# Unified QoL validation — 0.1.0 integration test
 
 Validated locally on October 8, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The unified build has **not yet

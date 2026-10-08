@@ -71,11 +71,11 @@ std::atomic<bool> ActivationStarted{false};
 // Minimum PACKAGE versions accepted by Core. Raise only when older assets
 // stop being compatible; release versions still advance with the whole suite.
 const std::array<ModuleDescription, 5> Modules{{
-    {"Catalog", "catalog", {1, 0, 0}, InstallCatalog},
-    {"Pockets", "pockets", {1, 0, 0}, InstallPockets},
-    {"Faster Dialogue", "faster-dialogue", {1, 0, 0}, patches::InstallDialogue},
-    {"Fitting Room", "fitting-room", {1, 0, 0}, able_bag::Install},
-    {"Amiibo", "amiibo", {1, 0, 0}, patches::InstallAmiibo},
+    {"Catalog", "catalog", {0, 1, 0}, InstallCatalog},
+    {"Pockets", "pockets", {0, 1, 0}, InstallPockets},
+    {"Faster Dialogue", "faster-dialogue", {0, 1, 0}, patches::InstallDialogue},
+    {"Fitting Room", "fitting-room", {0, 1, 0}, able_bag::Install},
+    {"Amiibo", "amiibo", {0, 1, 0}, patches::InstallAmiibo},
 }};
 
 void ActivateModules() {

@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-First unified **1.0.0 integration test** for ACNH **3.0.3 on Eden**. One Core
+First unified **0.1.0 integration test** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates five optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -18,6 +18,9 @@ for installation, version policy and user-facing limits.
 Faster tool-wheel animations and other workspace mods are not bundled in this
 initial five-feature suite. Historical source notes under `docs/` describe each
 baseline; their old installation/packaging instructions refer to standalone mods.
+
+Development releases advance numerically (for example, 0.9.0 → 0.10.0).
+Version 1.0.0 is reserved for the initial release.
 
 ## Architecture
 
@@ -60,8 +63,8 @@ at `../vanilla-3.0.3/Layout`; builders verify their hashes and archive structure
 The package script checks that every INI matches the Core release, refuses to
 replace existing archives, and creates:
 
-- `dist/qol-enhancements-v1_0_0_for_acnh_v3_0_3.zip`
-- `dist/qol-enhancements-v1_0_0_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v0_1_0_for_acnh_v3_0_3.zip`
+- `dist/qol-enhancements-v0_1_0_for_acnh_v3_0_3_source.zip`
 
 The binary ZIP contains a conspicuous installation text file, README, Core and
 five independently selectable feature folders, plus a SHA-256 manifest. Source

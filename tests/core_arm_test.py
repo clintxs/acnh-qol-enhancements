@@ -13,7 +13,7 @@ from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
 SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'amiibo')
 COUNTS = (16, 16, 0, 11, 0)
-DEFAULT = b'enabled=true\nversion=1.0.0\n'
+DEFAULT = b'enabled=true\nversion=0.1.0\n'
 
 class Machine:
     def __init__(self, base, files):
@@ -132,16 +132,16 @@ def check_all_subsets():
 
 def check_errors():
     for slug in SLUGS:
-        for data, expected in ((b'enabled=true\nversion=0.9.9', 'below minimum'),
-                               (b'enabled=true\nversion=1.1.0', 'newer than Core'),
-                               (b'enabled=false\nversion=0.1.0', 'enabled=false'),
+        for data, expected in ((b'enabled=true\nversion=0.0.9', 'below minimum'),
+                               (b'enabled=true\nversion=0.2.0', 'newer than Core'),
+                               (b'enabled=false\nversion=0.0.1', 'enabled=false'),
                                (b'enabled=true', 'config invalid'),
                                (b'x' * 4097, 'config invalid'),
                                (b'', 'config invalid')):
             m = Machine(0x7100000000, {slug: data})
             m.boot(); m.activate()
             assert expected in m.text, m.text
-            if b'version=1.1.0' in data:
+            if b'version=0.2.0' in data:
                 assert 'BOOT_OK' in m.text and 'enabled_modules=1' in m.text
             else:
                 assert len(m.hooks) == 1 and m.read(m.base + 0xbc4140, 4) == 0x52803848

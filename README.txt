@@ -1,4 +1,4 @@
-QoL Enhancements 1.0.0 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.1.0 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -28,7 +28,7 @@ Amiibo: shared event scan timeout extended to 9,000 updates (~5 minutes at 30 Hz
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 1.0.0
+  version = 0.1.0
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.
