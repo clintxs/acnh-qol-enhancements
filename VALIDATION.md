@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.2 Shopping Card prototype
+# Unified QoL validation — 0.3.3 Shopping Card prototype
 
 Validated locally on October 8, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -61,10 +61,10 @@ compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
   The original hash routine verifies all three room-name constants.
 - The original ShopSellDone payment branch executes with the compiled capacity
   callback's result and deposits the full test proceeds into the same resident's
-  savings. The cShop capacity query selects existing wire-to-account text;
-  other capacity modes retain the native result. Residents without a placed
-  tent retain ordinary sale text, avoiding the wire-flow housing rejection.
-  Native cap clamping remains.
+  savings. The cShop capacity query selects ordinary sale success text (case 0)
+  for every resident. Actual positive proceeds still follow the native savings
+  branch. Other capacity modes/shops retain the native query result. No housing
+  prerequisite or pockets-full explanation is introduced. Native cap clamping remains.
 - Purchase-space callback passes zero Bell payment and unchanged ticket count
   to the original space helper, preventing false slots from Bell bags that
   savings payment does not consume. Shared Fitting Room affordability uses
@@ -219,7 +219,7 @@ Switch hardware and other emulators/game versions are not validated targets.
    before/after; confirm pocket Bells and Bell bags do not change. Test cash
    rich/savings poor and cash empty/savings sufficient, cancellation, tailor
    tickets, full storage/pockets, wearing/sending, and several residents. Sell
-   items/turnips at the counter and verify the deposit and wire message. Check
+   items/turnips at the counter and verify the deposit and ordinary thank-you message. Check
    drop-off box, ABD transfers, Harv and another vendor retain normal behavior.
    Close/reopen pockets repeatedly without a transaction; verify no false
    sound/amount animation. Check green savings display at zero and large

@@ -17,7 +17,7 @@ HOOKS = (0x257abf0, 0x257b340, 0x257b6f0, 0xf86e68, 0x2579fe0, 0x301b394)
 
 class CardMachine(Machine):
     def __init__(self, base, enabled=True):
-        self.house_level = 2; self.enabled = enabled; self.wallet = 77777; self.wallet_debits = []; self.lookups = []
+        self.enabled = enabled; self.wallet = 77777; self.wallet_debits = []; self.lookups = []
         super().__init__(base, {'shopping-card': DEFAULT} if enabled else {})
         self.boot(); self.activate()
         self.u.hook_add(UC_HOOK_MEM_INVALID, lambda u,a,p,n,v,d: print("invalid", hex(u.reg_read(UC_ARM64_REG_PC)), hex(p)) or False)
@@ -57,7 +57,6 @@ class CardMachine(Machine):
         self.u.reg_write(UC_ARM64_REG_PC, self.u.reg_read(UC_ARM64_REG_LR))
     def service(self, u, pc, size, data):
         off = pc - self.base; service = self.services.get(pc)
-        if off == 0x256c940: self.finish(self.house_level); return
         if off == 0x257abf0:
             if self.enabled: u.reg_write(UC_ARM64_REG_PC, self.callbacks[off])
             else: self.finish(self.wallet)
@@ -125,7 +124,7 @@ for base in (0x7100000000, 0x7200000000):
             m.write(m.event + 0x2a8, player, 1)
             if shop != SHOPS[2]:
                 assert m.route(0x257b6f0, 0xb1d4d4, m.player, 0) == 0
-                assert m.invoke(m.callbacks[0xf86e68], m.query) == 2
+                assert m.invoke(m.callbacks[0xf86e68], m.query) == 0
                 # Execute the ACTUAL ShopSellDone capacity branch and native
                 # deposit with the compiled callback's result. Stop before records.
                 before = m.balance(player)
@@ -153,13 +152,6 @@ for base in (0x7100000000, 0x7200000000):
         m.route(0x257b340, DEBIT_CALLS[0], m.player, 10)
         assert m.route(0x257b6f0, 0xb1d4d4, m.player, 0) == 1234567
         assert m.invoke(m.callbacks[0xf86e68], m.query) == 1
-    # A resident without a placed tent must not enter the wire-message
-    # flow that would reject that resident on the native housing condition.
-    m.write(m.info + 0x38, SHOPS[0], 4)
-    m.house_level = 0
-    assert m.invoke(m.callbacks[0xf86e68], m.query) == 0
-    assert m.route(0x257b6f0, 0xb1d4d4, m.player, 0) == 0
-    m.house_level = 2
     # Room lookup failure, invalid player and alternate capacity modes fail closed.
     m.write(m.info + 0x38, SHOPS[0], 4)
     m.u.mem_write(m.query + 0x200, b'cMoneyBox\0')
@@ -193,4 +185,4 @@ for base in (0x7100000000, 0x7200000000):
         bad.write(base + int(offset, 16), 0xdeadbeef, 4)
         bad.boot(); bad.activate()
         assert len(bad.hooks) == 1 and 'Shopping Card] DISABLED' in bad.text
-print('PASS: Shopping Card native savings, encrypted writes/cap, all 8 players, exact caller/room scope, native sale branch, fitting accessor, removal and all fingerprints at two ASLR bases')
+print('PASS: Shopping Card native savings, encrypted writes/cap, all 8 players, exact caller/room scope, native sale branch with ordinary success dialogue, fitting accessor, removal and all fingerprints at two ASLR bases')

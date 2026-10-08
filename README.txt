@@ -1,8 +1,8 @@
-QoL Enhancements 0.3.2 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.3 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
-Shopping Card: green savings display and pocket-close sound fix; needs testing.
+Shopping Card: ordinary sale thank-you text, green savings display and pocket-close fix.
 
 INSTALL
 Fully close ACNH. Disable the standalone Catalog Aware Shops, QoL Pockets
@@ -25,7 +25,9 @@ Faster Dialogue: faster default reveal; B/R boost; optional NPC/UI/player boost.
 Fitting Room: Y toggles a shopping bag; native bulk checkout includes bag items.
 Amiibo: shared event scan timeout extended to 9,000 updates (~5 minutes at 30 Hz).
 Shopping Card: Nook's Cranny/Able Sisters purchases use ABD savings; Nook's
-sales deposit to savings. Includes fitting checkout and the optional fitting bag.
+sales deposit to savings and use the ordinary “Thank you! Please come again!”
+message. 0.3.3 removes the misleading pockets-full/wiring explanation. Includes
+fitting checkout and the optional fitting bag.
 Always active when this module is enabled. No item, menu addition or unlock yet.
 The top-right display shows a green shopping card and full savings balance
 inside these shops, and ordinary Bells outside. The English “Savings” label
@@ -42,7 +44,7 @@ confirmed in 0.3.1; the new UI/fix and Able Sisters need live testing.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.2
+  version = 0.3.3
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.

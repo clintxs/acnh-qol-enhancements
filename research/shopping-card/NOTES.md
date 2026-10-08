@@ -1,6 +1,6 @@
 # Shopping Card — ACNH 3.0.3
 
-Prototype 0.3.2, October 8, 2026. Original mapped main SHA-256:
+Prototype 0.3.3, October 8, 2026. Original mapped main SHA-256:
 `b1ae8e2a0d82f9f38f711c132d1751b221baf9d6411b2be06ebc4bb502ac912d`.
 Build ID: `FF1D1C05670DB6021C85B624A710B963`.
 All implementation uses readable Exlaunch C++ hooks. No new game item or data
@@ -41,14 +41,17 @@ are deliberately native; this prototype does not extend the savings limit.
 At 00B1D4D4, ShopSellDone asks 0257B6F0 for wallet/pocket payment capacity.
 Returning zero forces every positive sale through its existing savings deposit
 at 00B1D4E8. A zero-valued sale follows the original zero-wallet-add branch.
-The cShop MoneyCapacity query selects existing flow case 2, whose message says
-payment will be wired to the account. That flow has a per-resident housing
-condition: PlayerHouseLevel must differ from Homeless (enum 0). Query factory
-0105C500 (hash 74BA90AD) and evaluator 00F8B474 read the same house-level data
-as 0256C940. Only residents with a placed tent/house use the wire message.
-Other residents retain ordinary sale text and still deposit through ShopSellDone.
-This avoids introducing a housing prerequisite for selling with the card. Drop-off-box payouts use
-separate routines and are not changed.
+The cShop MoneyCapacity query now selects existing flow case 0 for every
+resident: SP_rcm_00_common:051, “Thank you! Please come again!” (with the twins’
+echo). Verified directly in the local original 3.0.3 TalkSNpc_USen archive.
+Case 0 executes the same ShopSellDone before the message; routing remains
+controlled independently by the capacity hook above. No MSBT or event-flow
+resource is replaced. Other modes/rooms and drop-off-box payouts are unchanged.
+
+In 0.3.0–0.3.2, the query selected case 2 for residents with placed tents/houses.
+Although that text mentions wiring to the account, it also incorrectly says
+the wallet and pockets are full. Version 0.3.3 uses the neutral normal thank-you
+instead and removes the now-unnecessary native house-level dependency.
 
 ShopHasBellCount/ShopBuyDone resolve current field metadata through the
 manager at GOT 04AB2720 and field-type table at GOT 04AB2640. The active field

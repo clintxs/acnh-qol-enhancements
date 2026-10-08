@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.2 Shopping Card prototype** for ACNH **3.0.3 on Eden**. One Core
+**0.3.3 Shopping Card prototype** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -64,8 +64,9 @@ Enable **Core** and **Shopping Card**, then fully restart ACNH. The card is
 always active inside both versions of Nook's Cranny and Able Sisters. Purchases
 use the current player's ABD savings exclusively, even with empty pockets;
 pocket Bells and Bell bags stay untouched. Nook's counter sales go directly to
-savings and use the existing wire-to-account dialogue for residents with a
-placed tent/house; other residents retain ordinary sale text. Native savings limits
+savings and use the ordinary localized “Thank you! Please come again!” sale
+message. Version 0.3.3 replaces the wire message, which incorrectly explained
+that the player’s wallet and pockets were full. Native savings limits
 apply (999,999,999 Bells, including the usual deposit clamping at the cap).
 Insufficient savings does not fall back to cash. Existing affordability/error
 text may still refer to pocket Bells.
@@ -112,7 +113,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.2
+version = 0.3.3
 base_speed = 2
 boost_speed = 4
 faster_ui = false
@@ -234,9 +235,9 @@ at `../vanilla-3.0.3/Layout`; builders verify their hashes and archive structure
 The package script checks that every INI matches the Core release, refuses to
 replace existing archives, and creates:
 
-- `dist/qol-enhancements-v0_3_2_for_acnh_v3_0_3.zip`
-- `dist/qol-enhancements-v0_3_2_for_acnh_v3_0_3_source.zip`
-- `dist/qol-enhancements-v0_3_2_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
+- `dist/qol-enhancements-v0_3_3_for_acnh_v3_0_3.zip`
+- `dist/qol-enhancements-v0_3_3_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v0_3_3_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
 
 The binary ZIP contains a conspicuous installation text file, README, Core and
 six independently selectable feature folders, plus a SHA-256 manifest. Source

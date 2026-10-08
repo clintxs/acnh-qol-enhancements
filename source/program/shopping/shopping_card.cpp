@@ -11,7 +11,6 @@ constexpr std::uintptr_t BellDisplayUpdate = 0x0301b394;
 constexpr std::uintptr_t FindPane = 0x0027d1d0, SetPaneText = 0x03c1b588, SetGroupText = 0x03c47b90;
 constexpr std::uintptr_t PurchaseSpace = 0x02579fe0;
 constexpr std::uintptr_t Capacity = 0x0257b6f0, MoneyCapacityQuery = 0x00f86e68;
-constexpr std::uintptr_t HouseLevel = 0x0256c940;
 constexpr std::uintptr_t Savings = 0x0257f8b0, Withdraw = 0x0257fb30;
 constexpr std::uintptr_t FieldManagerGot = 0x04ab2720, FieldTypesGot = 0x04ab2640;
 constexpr std::uintptr_t IndoorFieldInfoGot = 0x04ac3a80, HashString = 0x005bd550;
@@ -219,14 +218,11 @@ HOOK_DEFINE_TRAMPOLINE(SaleMessage) {
         const auto player = event ? reinterpret_cast<const std::uint8_t *>(event + field::EventPlayer) : nullptr;
         const auto text = query ? Read<const char *>(query, field::CapacityModeText) : nullptr;
         const auto shop = Valid(player) && text && !std::strcmp(text, "cShop") ? CurrentShop() : 0;
-        // Existing case 2 says the shop will wire the payment to the account.
-        // Its flow also requires PlayerHouseLevel != Homeless (0). Residents
-        // who have not placed a tent use ordinary success text (case 0);
-        // ShopCapacity still sends their actual proceeds to savings.
-        // Keep all other capacity modes, actors outside the shop, and native
-        // transaction/cancellation/records/milestones code unchanged.
-        if (shop == MarketSmall || shop == MarketLarge)
-            return Fn<unsigned (*)(const std::uint8_t *)>(address::HouseLevel)(player) != 0 ? 2 : 0;
+        // Case 0 is the ordinary localized "Thank you! Please come again!".
+        // Case 2 explains that pockets are full, which is misleading for card
+        // payments. Dialogue selection is independent of ShopCapacity: that
+        // hook still routes the actual sale proceeds to native savings.
+        if (shop == MarketSmall || shop == MarketLarge) return 0;
         return Orig(query);
     }
 };
