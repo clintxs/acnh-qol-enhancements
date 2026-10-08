@@ -20,6 +20,12 @@ CARD = 'N_ShoppingCard_00'
 NUMBER = 'T_SavingsNum_00'
 GREEN = bytes((40, 116, 82, 255))
 CREAM = bytes((255, 241, 195, 255))
+INK = bytes((53, 57, 48, 255))
+OVAL_CENTER = (-25, -2)
+OVAL_SIZE = (306, 128)
+RIM = 8
+CARD_CENTER = (-25, 52)
+CARD_ANGLE = 6  # Slight tilt after the native HUD parent's -3-degree rotation.
 
 
 def rename(section, name):
@@ -49,11 +55,11 @@ def edit_layout(data):
             records.append(bytes(material))
         return bytes(pane)
     white = bytes((255, 255, 255, 255))
-    outline = window(panes['W_BaseL_00'], 'W_SavingsRim_00', -25, -2, 306, 128, white)
-    background = bytearray(window(panes['W_BaseL_00'], 'W_SavingsBase_00', -25, -2, 306, 128, GREEN))
+    outline = window(panes['W_BaseL_00'], 'W_SavingsRim_00', *OVAL_CENTER, *OVAL_SIZE, white)
+    background = bytearray(window(panes['W_BaseL_00'], 'W_SavingsBase_00', *OVAL_CENTER, *OVAL_SIZE, GREEN))
     # Scale the complete native window so its corner/frame geometry shrinks
-    # with the fill, leaving a four-unit rim on each side.
-    struct.pack_into('<2f', background, 68, 298 / 306, 120 / 128)
+    # with the fill, leaving an eight-unit rim on each side.
+    struct.pack_into('<2f', background, 68, *((size - 2 * RIM) / size for size in OVAL_SIZE))
     badge = window(panes['W_BellBase_00'], 'W_CardBellBase_00', 0, 0, 96, 40, white)
     label = bytearray(text_pane(panes['T_Bell_00'], 'T_SavingsLabel_00', 'Bells',
                                 -16, 2, 121.5, 31.95, .5, True))
@@ -83,12 +89,13 @@ def edit_layout(data):
     group = rename(panes['N_Pos_01'], CARD)
     group[8] = 2  # Starts hidden even if Core/module is disabled.
     icon = rename(panes['N_Pos_01'], 'N_CardIcon_00')
-    struct.pack_into('<3f', icon, 44, 2, 52, 0)
-    struct.pack_into('<f', icon, 64, -8)
+    struct.pack_into('<3f', icon, 44, *CARD_CENTER, 0)
+    struct.pack_into('<f', icon, 64, CARD_ANGLE)
+    backing = rename(icon, 'N_CardBacking_00')
     opening, closing = struct.pack('<4sI', b'pas1', 8), struct.pack('<4sI', b'pae1', 8)
-    pieces = []
-    def rectangle(x, y, width, height, color):
-        pane = rename(panes['P_Icon_00'][:104], f'P_CardShape_{len(pieces):02}')
+    pieces, rim_pieces = [], []
+    def rectangle(x, y, width, height, color, output=pieces, prefix='P_CardShape'):
+        pane = rename(panes['P_Icon_00'][:104], f'{prefix}_{len(output):02}')
         pane[8:12] = bytes((3, 0, 255, 0))
         struct.pack_into('<3f', pane, 44, x, y, 0)
         struct.pack_into('<3f', pane, 56, 0, 0, 0)
@@ -97,10 +104,14 @@ def edit_layout(data):
         pane[84:100] = bytes(color) * 4
         struct.pack_into('<HBB', pane, 100, solid_index, 0, 0)
         struct.pack_into('<I', pane, 4, len(pane))
-        pieces.append(bytes(pane))
+        output.append(bytes(pane))
+    # The white backing is drawn BEFORE the oval, so its lower outline is
+    # occluded by the oval. The dark edge belongs to the foreground card icon.
+    for width, height in ((94, 54), (90, 62), (82, 66)):
+        rectangle(0, 0, width, height, white, rim_pieces, 'P_CardRim')
     # Stepped silhouettes form rounded corners in native layout coordinates.
     for width, height in ((82, 42), (78, 50), (70, 54)):
-        rectangle(0, 0, width, height, white)
+        rectangle(0, 0, width, height, INK)
     for width, height in ((76, 38), (72, 44), (66, 48)):
         rectangle(0, 0, width, height, (84, 183, 120, 255))
     rectangle(0, 10, 76, 8, CREAM)
@@ -109,8 +120,11 @@ def edit_layout(data):
     rectangle(9, -19, 36, 3, CREAM)
     number = text_pane(panes['T_Num_00'], NUMBER, '999,999,999', -25, 0, 260, 56, .76, True)
     unit = rename(panes['N_Pos_00'], 'N_CardBells_00')
-    struct.pack_into('<f', unit, 44, struct.unpack_from('<f', unit, 44)[0] - 25)
-    additions = [bytes(group), opening, outline, bytes(background), bytes(icon), opening,
+    # The native badge window uses a right-hand origin: place that origin
+    # eight units inside the oval's right edge, matching the Bells reference.
+    struct.pack_into('<f', unit, 44, OVAL_CENTER[0] + OVAL_SIZE[0] / 2 - RIM)
+    additions = [bytes(group), opening, bytes(backing), opening, *rim_pieces, closing,
+                 outline, bytes(background), bytes(icon), opening,
                  *pieces, closing, number, bytes(unit), opening, badge, bytes(label), closing, closing]
     parents = []
     last = None

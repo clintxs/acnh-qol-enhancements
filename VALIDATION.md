@@ -1,10 +1,11 @@
-# Unified QoL validation — 0.3.5 Shopping Card prototype
+# Unified QoL validation — 0.3.6 Shopping Card prototype
 
 Validated locally on October 8, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
 dialogue fix and subsequently the corrected 0.2.3 NPC diagnostic build work in Eden. The user also confirmed Nook’s Cranny transactions in Shopping Card 0.3.1.
-The user confirmed the corrected savings HUD in 0.3.4. The configuration
-layering, 0.3.5 style/animation update and Able Sisters still need a live check. No running game or save files were accessed by the
+The user confirmed the corrected savings HUD in 0.3.4 and balance animation
+in 0.3.5. The configuration layering, 0.3.6 layout refinement and Able Sisters
+still need a live check. No running game or save files were accessed by the
 local tests below.
 
 ## Build and loader
@@ -93,7 +94,8 @@ compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
   resolves both direct/group text adapters, shows full zero/cap balances,
   restores cash panes outside supported shops, and tolerates absent resources.
   Native text setting, typed parameter lookup and pane lookup are modeled;
-  0.3.5 rendering/audio still need Eden verification.
+  0.3.6 appearance still needs Eden verification; the user confirmed the
+  balance animation in 0.3.5.
 - 0.3.5 tests execute native 03353B14 number stepping and 03025400 feedback
   through its Up/Down/Finish animation dispatch and positional sound setup,
   with engine formatting, animation playback, position query and thread index
@@ -107,8 +109,9 @@ compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
 - Resource checks preserve every existing pane/material and non-layout archive
   member byte for byte. The added subtree starts hidden, carries an independent
   24-byte amount buffer, and uses native rounded-window textures/vector shapes.
-  White oval/icon rims, a native white Bells badge and a matching green text
-  material are checked. No MSBT lookup is attached to the savings text.
+  The eight-unit oval rim, centered card transform, dark foreground card
+  edge, separate white backing behind the oval and right-hand Bells badge
+  are checked in 0.3.6. The badge text material matches the main green fill. No MSBT lookup is attached to the savings text.
 
 ## Conditional dialogue
 
@@ -244,7 +247,9 @@ Switch hardware and other emulators/game versions are not validated targets.
    drop-off box, ABD transfers, Harv and another vendor retain normal behavior.
    Close/reopen pockets repeatedly without a transaction; verify no false
    sound/amount animation. Check green savings display at zero and large
-   balances, white oval/icon outlines and the white Bells badge with green text.
+   balances, thicker white oval outline, centered dark-edged card and its white
+   backing visible only above the oval; check the lower-right white Bells badge
+   with green text.
    Verify purchases count down with ka-ching, sales count up, rapid changes settle
    correctly, and first entry/resident changes stay silent. Check leaving both
    shops restores cash; pockets still show cash.

@@ -52,10 +52,21 @@ for name, color in (('W_SavingsRim_00', bytes([255]*4)),
     for offset in (128, 168):
         index = struct.unpack_from('<H', new_panes[name], offset)[0]
         assert new_materials[index][40:44] == color
-for i in range(3): assert new_panes[f'P_CardShape_{i:02}'][84:100] == bytes([255]*16)
-print('PASS: white oval/card rim, white native Bells badge with matching green caption, original badge alignment')
+for i in range(3):
+    assert new_panes[f'P_CardShape_{i:02}'][84:100] == card.INK * 4
+    assert new_panes[f'P_CardRim_{i:02}'][84:100] == bytes([255]*16)
+    assert tree[f'P_CardRim_{i:02}'] == 'N_CardBacking_00'
+print('PASS: dark card edge inside white backing; white native Bells badge with matching green caption')
 
 fill = new_panes['W_SavingsBase_00']
 width, height = struct.unpack_from('<2f', fill, 76)
 sx, sy = struct.unpack_from('<2f', fill, 68)
-assert abs(width*sx - 298) < .001 and height*sy == 120
+assert abs(width*sx - 290) < .001 and height*sy == 112
+order = list(new_panes)
+assert (order.index('N_CardBacking_00') < order.index('W_SavingsRim_00') <
+        order.index('W_SavingsBase_00') < order.index('N_CardIcon_00'))
+icon, backing = new_panes['N_CardIcon_00'], new_panes['N_CardBacking_00']
+assert icon[44:76] == backing[44:76]
+assert struct.unpack_from('<f', icon, 44)[0] == struct.unpack_from('<f', fill, 44)[0]
+assert struct.unpack_from('<f', new_panes['N_CardBells_00'], 44)[0] == 120
+print('PASS: thicker eight-unit oval rim, centered card, backing occluded by oval, Bells badge at lower right')

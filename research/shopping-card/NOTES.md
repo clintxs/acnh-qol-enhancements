@@ -131,8 +131,16 @@ Missing layout/adapter leaves ordinary Bells UI intact. Bounded diagnostics
 report SAVINGS_DISPLAY_READY or SAVINGS_DISPLAY_MISSING with source=HUD or
 auxiliary, making an unbound path observable. Native HUD cash refresh remains
 independent: savings changes do not queue its money animation, while genuine
-cash changes still do. The user confirmed the corrected 0.3.4 savings HUD. Live verification of the
-0.3.5 style and animation/audio remains pending.
+cash changes still do. The user confirmed the corrected 0.3.4 savings HUD and the 0.3.5 balance
+animation. Their screenshots compare that layout with native Nook Miles and
+Bells counters. 0.3.6 doubles the oval rim from four to eight layout units,
+centers the card over the oval, and places its separate white backing BEFORE
+the oval in draw order. The dark-edged green card is drawn AFTER the oval,
+so the white lower edge is occluded while the card remains visible in front.
+Both card layers use the same transform; the icon is almost upright after the
+native parent's rotation. The native right-origin Bells badge is placed eight
+units inside the oval's right edge. No transaction or animation behavior is
+changed. Live verification of the refined appearance remains pending.
 
 ## Deferred design
 
