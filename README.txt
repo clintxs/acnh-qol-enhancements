@@ -1,4 +1,4 @@
-QoL Enhancements 0.2.1 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.2.2 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -21,14 +21,14 @@ our hook/layout files. Core supplies the suite's only main.npdm.
 MODULES
 Catalog: catalog/recipe stars, catalog badges and furniture-variation markers.
 Pockets: Grab 5/10, direct storage withdrawal, Y-to-storage and footer hints.
-Faster Dialogue: faster default reveal; B/R boost; optional automatic NPC/UI boost.
+Faster Dialogue: faster default reveal; B/R boost; optional NPC/UI/player boost.
 Fitting Room: Y toggles a shopping bag; native bulk checkout includes bag items.
 Amiibo: shared event scan timeout extended to 9,000 updates (~5 minutes at 30 Hz).
 
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.2.1
+  version = 0.2.2
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.
@@ -58,6 +58,8 @@ The five internal IDs are rcm, rct, dod, doc, kpp; other actual NPC resource
 IDs work too. Kapp'n also covers its kppB profile. Matching ignores case.
 This prototype accepts speed tiers 2/4.
 Holding B/R selects boost_speed without stacking it on an automatic boost.
+0.2.2 fixes an early window check that rejected recognized DIY/catch messages.
+The NPC entity lookup failure reported in 0.2.1 remains unresolved.
 Speeds preserve the game's language/FPS-adjusted fast rate; animations and
 scripted waits can limit conversation speed. Native overrides take priority.
 No custom file: base 2, held 4, automatic UI/player/NPC boost off.

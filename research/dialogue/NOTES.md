@@ -146,3 +146,31 @@ changing labels, bounded/unterminated strings, and repeated-frame deduplication.
 instructions, hashes and a matching source ZIP. It requires the diagnostic ELF
 marker and refuses to replace existing archives. Obtain READY/MESSAGE/SELECT
 lines from the user before treating either player or NPC classification as fixed.
+
+## 0.2.2 window fix from live evidence
+
+The player-bank-v2 log confirms preferences loaded (`faster_player=true`, boost
+4) and text+210 equals manager+20. Workbench FTR_WorkingTable:001 and fish
+SYS_Get_Fish:Fish_02233 both have window=2, state=1, forced=0 and disabled=0.
+SELECT returns unsupported-window with speed=2 before reading their bank.
+The bank field assumption was correct; the earlier window filter was wrong.
+
+0.2.2 admits native window kinds 0/1/2 to the exact player-bank check. Known
+player banks select Player in a balloon; unknown balloon banks remain Unknown,
+not UI/NPC. Unknown window kinds remain rejected. All other native reveal gates
+and configured speed selection remain unchanged. ARM regression coverage now
+tests every reviewed player bank at window 0/1/2 with independent player/UI
+toggles, held/released input, unknown banks/windows, and protected/forced/mode/
+scripted-rate cases. These checks reproduce the logged classification conditions;
+the corrected build still needs in-game confirmation.
+
+Timmy's SP_rcm_00_common:011/905 instead reaches invalid-entity in a talk window.
+This is a separate failure after delegate resolution and registry/table lookup,
+before reading NPC kind or name. Native 01B000FC..01B00178 was rechecked: table
+index `(handle >> 20)` matches `(handle >> 17) & 0x7ff8` in byte-offset form.
+No bank-based NPC fallback is added: shared banks must not confuse Timmy/Tommy.
+The optional player-bank-v3 diagnostic includes the player fix and adds all three
+delegate output words, resolved entity pointer, stored generation handle/flags,
+and resolver function offset to SELECT. Changes to these fields trigger a new
+trace, allowing null/stale/retiring outcomes to be distinguished without guessing
+at another entity layout. NPC lookup validation itself remains unchanged.

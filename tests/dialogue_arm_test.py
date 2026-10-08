@@ -285,19 +285,23 @@ def main():
         for prefs, player_boost, ui_boost in ((b'faster_player=true', True, False),
                 (b'faster_ui=true', False, True), (b'faster_player=false', False, False)):
             player = DialogueMachine(base, prefs)
-            player.speaker(source=False)
-            for bank in ('FTR_WorkingTable', 'SYS_Get_Fish', 'SYS_Get_Insect', 'SYS_Get_DiveFish',
+            for window, bank in itertools.product((0, 1, 2), ('FTR_WorkingTable', 'SYS_Get_Fish', 'SYS_Get_Insect', 'SYS_Get_DiveFish',
                          'SYS_Player', 'TalkSys/SYS_Player.msbt', 'SP_rcm_00_common',
-                         'SYS_Door', 'SYS_Get_Fish_Extra', ''):
+                         'SYS_Door', 'SYS_Get_Fish_Extra', '')):
+                player.speaker(window=window, source=False)
                 player.bank(bank)
                 before = bytes(player.u.mem_read(player.meta, 0x2700))
                 for held in (0, 1, 0):
                     result, _ = player.run((1,0,0,0,0,1,1,-1.), held)
                     recognized = bank in ('FTR_WorkingTable', 'SYS_Get_Fish', 'SYS_Get_Insect',
                                          'SYS_Get_DiveFish', 'SYS_Player', 'TalkSys/SYS_Player.msbt')
-                    assert result[0x21b7] == (3 if held or recognized and player_boost else 1), (prefs, bank)
+                    automatic = player_boost if recognized else window == 1 and ui_boost
+                    assert result[0x21b7] == (3 if held or automatic else 1), (prefs, window, bank)
+                    rate = 2.4 * (2 if held or automatic else 1)
+                    assert abs(struct.unpack_from('<f', result, 0x2194)[0] - (-2 + rate)) < 1e-5
                     assert bytes(player.u.mem_read(player.meta, 0x2700)) == before
                     total += 1
+            player.speaker(source=False)
             player.bank('SYS_Player', native=False)
             result, _ = player.run((1,0,0,0,0,1,1,-1.), 0)
             assert result[0x21b7] == 1 # Pending bank ignored; active empty bank.
@@ -323,6 +327,25 @@ def main():
             result, _ = player.run((1,0,0,0,0,1,1,-1.), 0)
             assert result[0x21b7] == 1 # A known basename beyond the bound cannot match.
             total += 7
+            player.bank('SYS_Get_Fish')
+            for window in (3, 0xffffffff):
+                player.speaker(window=window, source=False)
+                for held in (0, 1):
+                    result, _ = player.run((1,0,0,0,0,1,1,-1.), held)
+                    assert result[0x21b7] == (3 if held else 1) # Unknown window still rejected.
+                    total += 1
+            # Replay the live window-2 path through native reveal gates. The
+            # known bank may select a category, but never overrides protection,
+            # forced reveal, parser mode, scripted rate or message state.
+            player.speaker(window=2, source=False)
+            for case in ((1,0,0,0,0,1,1,-1.), (1,0,1,0,0,1,1,-1.),
+                         (1,0,0,1,0,1,1,-1.), (1,1,0,0,0,1,1,-1.),
+                         (1,2,0,0,0,1,1,-1.), (3,0,0,0,0,1,1,-1.),
+                         (1,0,0,0,0,1,1,.75), (1,0,0,0,9,1,1,-1.)):
+                result, calls = player.run(case, 0)
+                expected, expected_calls = m.run(case, int(player_boost))
+                assert result == expected and calls == expected_calls, (prefs, case)
+                total += 1
         assert 'base=2 boost=4 faster_ui=true faster_player=true npc_count=6' in custom.text
         if 'SELECT reason=' in custom.text:
             # Opening UI often lasts hundreds of eligible frames. Repeated UI
@@ -362,8 +385,21 @@ def main():
             probe.u.mem_write(probe.bank_label, b'X' * 64)
             probe.input(0)
             assert 'label=<unterminated>' in probe.text
-            assert 'DIAGNOSTIC: player-bank-v2' in probe.text
+            assert 'DIAGNOSTIC: player-bank-v3' in probe.text
             total += 142
+            probe.speaker('rcm', stale=True)
+            probe.bank('SP_rcm_00_common')
+            probe.run((1,0,0,0,0,1,1,-1.), 0)
+            assert 'handle=00100042/00000000/00000000' in probe.text
+            assert 'entity_handle=00100043 entity_flags=ffffffff resolve=main+0x1b00dfc' in probe.text
+            probe.write(probe.entries + 8, 0)
+            probe.run((1,0,0,0,0,1,1,-1.), 0)
+            assert 'entity=0x0 entity_handle=ffffffff entity_flags=ffffffff' in probe.text
+            probe.write(probe.entries + 8, probe.entity)
+            probe.speaker('rcm', dead=True)
+            probe.run((1,0,0,0,0,1,1,-1.), 0)
+            assert 'entity_handle=00100042 entity_flags=00000002' in probe.text
+            total += 3
             print('PASS: bounded transition diagnostics survive repeated UI and identify NPC lookup failures')
         print(f'PASS {base:#x}: compiled SIMD adapter, native reveal/input/renderers, speaker switches, UI/NPC classification, held/release, dynamic rates')
     absent = DialogueMachine(0x7100000000, CUSTOM, enabled=False)

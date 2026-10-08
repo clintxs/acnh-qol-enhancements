@@ -1,4 +1,4 @@
-"""Package the player-bank-v2 diagnostic Core without replacing any release."""
+"""Package the player-bank-v3 diagnostic Core without replacing any release."""
 from zipfile import ZipFile, ZIP_DEFLATED
 import hashlib
 import json
@@ -7,10 +7,10 @@ import package
 
 def main():
     root = package.ROOT
-    marker = b'DIAGNOSTIC: player-bank-v2'
+    marker = b'DIAGNOSTIC: player-bank-v3'
     if marker not in (root / 'project.elf').read_bytes():
         raise SystemExit('Build the diagnostic Core first: sh tools/build.sh --verbose-dialogue')
-    stem = f'qol-enhancements-v{package.release_version().replace(".", "_")}_player-diagnostic2_for_acnh_v3_0_3'
+    stem = f'qol-enhancements-v{package.release_version().replace(".", "_")}_player-diagnostic3_for_acnh_v3_0_3'
     output = root / 'dist'
     output.mkdir(exist_ok=True)
     binary, source = output / f'{stem}.zip', output / f'{stem}_source.zip'
@@ -23,7 +23,7 @@ def main():
         f'{core}/LICENSE': (root / 'LICENSE').read_bytes(),
         'README.txt': (
             'FASTER PLAYER / NPC DIALOGUE DIAGNOSTIC - ACNH 3.0.3\n\n'
-            'This build adds logging; it does not fix the reported category failure.\n'
+            'This build includes the player window fix and adds NPC handle logging.\n'
             'Fully close ACNH. Replace the existing QoL Enhancements - Core\n'
             '(REQUIRED) folder with this Core. Enable only one Core copy.\n'
             'Keep your Faster Dialogue module and personal settings mod enabled.\n'
@@ -34,12 +34,13 @@ def main():
             'Close ACNH, then copy the Eden log before starting another session.\n'
             'Send the log or its lines containing QoL Enhancements/Faster Dialogue.\n'
             'Include Core startup/BOOT lines if there are no dialogue lines.\n\n'
-            'DIAGNOSTIC: player-bank-v2 identifies this build. READY confirms\n'
+            'DIAGNOSTIC: player-bank-v3 identifies this build. READY confirms\n'
             'the settings that actually loaded. MESSAGE reports current/cached\n'
             'banks, labels and native reveal gates even if SELECT is never reached.\n'
-            'SELECT reports the classifier result and requested speed tier.\n'
+            'SELECT reports classification, speed, delegate handle, resolved entity,\n'
+            'stored entity handle/flags and resolver function offset.\n'
             'Both traces are bounded; restart if the MESSAGE limit is reached.\n\n'
-            'Restore the normal 0.2.1 Core after collecting the log.\n'
+            'Restore the normal 0.2.2 Core after collecting the log.\n'
             'Built with Exlaunch (GPL-2.0); see LICENSE and the matching source ZIP.\n'
         ).encode(),
     }

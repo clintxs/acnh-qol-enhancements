@@ -24,7 +24,7 @@ constexpr std::size_t EntityTable = 0x1c0, TableEntries = 8;
 constexpr std::size_t EntityHandle = 0x230, EntityKind = 0x15c, EntityFlags = 0x248;
 constexpr std::size_t EntityResourceName = 0x3e8;
 constexpr std::size_t IsNpcType = 0x20;
-constexpr unsigned NpcEntity = 10, PlayerEntity = 0x4f, DialogWindow = 1;
+constexpr unsigned NpcEntity = 10, PlayerEntity = 0x4f, DialogWindow = 1, BalloonWindow = 2;
 constexpr std::uint16_t BoostButtons = 0x4002; // B/R; L is deliberately excluded.
 } // namespace layout
 Settings Preferences{};
@@ -49,6 +49,9 @@ struct Speaker {
     SpeakerLookup lookup = SpeakerLookup::Manager;
     unsigned window = ~0u, entityKind = ~0u;
     MessageKind kind = MessageKind::Unknown;
+    std::array<std::uint32_t, 3> handle{};
+    std::uintptr_t entity{}, resolveOffset{};
+    unsigned entityHandle = ~0u, entityFlags = ~0u;
     char id[NpcIdBytes]{};
     char bank[layout::MessageBankBytes]{};
 };
@@ -63,11 +66,13 @@ Speaker CurrentSpeaker(std::uintptr_t text) {
     // presentation metadata. A confirmed dialog is UI, even after NPC speech.
     result.lookup = SpeakerLookup::Window;
     const auto window = result.window = Read<unsigned>(context, layout::WindowKind);
-    if (window > layout::DialogWindow) return result;
+    if (window > layout::BalloonWindow) return result;
     // Native 01af89a0..01af8a84 copies the pending MessageID bank into
     // manager+2480's SafeString (data +2488) when starting the current message.
     // Read that owned active bank each update, never a pending ID or last-bank
-    // cache. DIY/catch/self narration need not expose an entity delegate.
+    // cache. Live DIY/catch messages use window 2 (balloon), so recognize known
+    // self banks BEFORE restricting UI and entity lookup by window kind.
+    // Unrecognized balloons still receive no automatic category boost.
     const auto bank = Read<std::uintptr_t>(manager, layout::ActiveMessageBank);
     if (bank) {
         bool terminated = false;
@@ -98,12 +103,14 @@ Speaker CurrentSpeaker(std::uintptr_t text) {
     const auto resolve = Read<std::uintptr_t>(methods);
     result.lookup = SpeakerLookup::DelegateMethods;
     if (!NativeFunction(valid) || !NativeFunction(resolve)) return result;
+    result.resolveOffset = resolve - Main(0);
     // Same borrowed delegate, validity check and 12-byte output as the native
     // Animalese update at 01b02e84..01b02ebc. No voice playback is invoked.
     result.lookup = SpeakerLookup::DelegateInvalid;
     if (!(reinterpret_cast<std::uint64_t (*)(std::uintptr_t)>(valid)(delegate) & 1)) return result;
     std::array<std::uint32_t, 3> handle{};
     reinterpret_cast<void (*)(std::uintptr_t, void *)>(resolve)(delegate, handle.data());
+    result.handle = handle;
     result.lookup = SpeakerLookup::EmptyHandle;
     if (!handle[0]) return result;
     result.lookup = SpeakerLookup::Registry;
@@ -115,9 +122,12 @@ Speaker CurrentSpeaker(std::uintptr_t text) {
     // Mirror 01b000fc..01b00178: handles contain a 12-bit table index and
     // generation. This handle comes from a live native speaker delegate.
     result.lookup = SpeakerLookup::Entity;
-    const auto entity = Read<std::uintptr_t>(entries, (handle[0] >> 20) * sizeof(std::uintptr_t));
-    if (!entity || Read<unsigned>(entity, layout::EntityHandle) != handle[0] ||
-        (Read<unsigned>(entity, layout::EntityFlags) & 2)) return result;
+    const auto entity = result.entity = Read<std::uintptr_t>(entries, (handle[0] >> 20) * sizeof(std::uintptr_t));
+    if (!entity) return result;
+    result.entityHandle = Read<unsigned>(entity, layout::EntityHandle);
+    if (result.entityHandle != handle[0]) return result;
+    result.entityFlags = Read<unsigned>(entity, layout::EntityFlags);
+    if (result.entityFlags & 2) return result;
     result.lookup = SpeakerLookup::EntityKind;
     const auto kind = result.entityKind = Read<unsigned>(entity, layout::EntityKind);
     if (kind == layout::PlayerEntity) {
@@ -265,13 +275,18 @@ HOOK_DEFINE_INLINE(DialogueSelectSpeed) {
         static unsigned previousSpeed = 0, reports = 0;
         const bool changed = !reports || previous.lookup != speaker.lookup ||
             previous.window != speaker.window || previous.entityKind != speaker.entityKind ||
+            previous.handle != speaker.handle || previous.entity != speaker.entity ||
+            previous.resolveOffset != speaker.resolveOffset ||
+            previous.entityHandle != speaker.entityHandle || previous.entityFlags != speaker.entityFlags ||
             previousSpeed != speed || std::strcmp(previous.id, speaker.id) ||
             std::strcmp(previous.bank, speaker.bank);
         if (changed && reports < 128) {
             ++reports; previous = speaker; previousSpeed = speed;
-            Logging.Log("[QoL Enhancements/Faster Dialogue] SELECT reason=%s window=%u entity_kind=%u kind=%u npc=%s speed=%u bank=%s\n",
+            Logging.Log("[QoL Enhancements/Faster Dialogue] SELECT reason=%s window=%u entity_kind=%u kind=%u npc=%s speed=%u bank=%s handle=%08x/%08x/%08x entity=0x%lx entity_handle=%08x entity_flags=%08x resolve=main+0x%lx\n",
                         reasons[static_cast<unsigned>(speaker.lookup)], speaker.window, speaker.entityKind,
-                        static_cast<unsigned>(speaker.kind), speaker.id, speed, speaker.bank);
+                        static_cast<unsigned>(speaker.kind), speaker.id, speed, speaker.bank,
+                        speaker.handle[0], speaker.handle[1], speaker.handle[2], speaker.entity,
+                        speaker.entityHandle, speaker.entityFlags, speaker.resolveOffset);
         }
 #endif
     }
@@ -323,7 +338,7 @@ bool Install() {
     }
     LoadPreferences();
 #if CAS_VERBOSE_DIALOGUE_TRACE
-    Logging.Log("[QoL Enhancements/Faster Dialogue] DIAGNOSTIC: player-bank-v2; bounded MESSAGE and SELECT transitions\n");
+    Logging.Log("[QoL Enhancements/Faster Dialogue] DIAGNOSTIC: player-bank-v3; player window fix and entity handle trace\n");
 #endif
     DialogueHeldInput::InstallAtOffset(address::HeldInput);
     DialogueSelectSpeed::InstallAtOffset(address::EligibleFast);
