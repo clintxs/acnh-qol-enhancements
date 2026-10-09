@@ -109,7 +109,7 @@ The user is considering one **Crafting** submodule containing:
 - The crafting quantity selector wrap tweak documented above.
 - DIY Recipes app 3D previews and their follow-ups.
 - Vertical up/down tilt for workbench previews.
-- The existing Faster Crafting feature.
+- The existing Faster Crafting feature, with configurable speed settings.
 
 This is a tentative packaging direction, not a decision to reorganize or begin
 implementation. It would bring together the current Core DIY preview feature,
@@ -118,3 +118,15 @@ settings, migration/compatibility and the final module boundary remain undecided
 The proposed separate, default-on workbench tilt setting remains recorded in
 [the preview follow-ups](../recipe-preview/NOTES.md#deferred-follow-ups--october-9-2026).
 No modules, defaults, configuration files or release packages change now.
+
+
+## Deferred settings follow-up — Faster Crafting speeds (October 9, 2026)
+
+Add user-configurable speed settings for Faster Crafting. This joins the
+other deferred Crafting work; no implementation starts with this note.
+
+The current implementation uses a fixed logarithmic ramp from 1x to 3x over
+60 updates, shared by crafting/customization and cooking. The requested setting
+names, available speeds, defaults and whether ramp timing or separate action
+speeds should be configurable remain to be decided. Those details are not yet
+requirements. No current settings, behavior or release packages change.
