@@ -38,6 +38,7 @@ def linear_rgba(red, green, blue):
 ISLAND_BLUE = linear_rgba(106, 189, 196)  # #6ABDC4
 ISLAND_MINT = linear_rgba(149, 226, 197)  # #95E2C5
 ISLAND_OFF_WHITE = linear_rgba(248, 246, 239)  # #F8F6EF
+ISLAND_CREAM = linear_rgba(255, 249, 227)  # #FFF9E3, sampled from the pockets UI screenshot.
 
 
 # Linear RGBA, as used by the native materials and RGBA8_UNORM textures.
@@ -58,7 +59,7 @@ PALETTES = {
                         (239,95,61,255), (255,241,195,255), (240,204,101,255)),
     'island': Palette(ISLAND_BLUE, ISLAND_BLUE, linear_rgba(63,142,150),
                       ISLAND_BLUE, (255,255,255,255), (255,255,255,255),
-                      stripe=ISLAND_MINT, background=ISLAND_OFF_WHITE, balance=ISLAND_BLUE,
+                      stripe=ISLAND_MINT, background=ISLAND_CREAM, balance=ISLAND_BLUE,
                       caption=ISLAND_OFF_WHITE),
 }
 
