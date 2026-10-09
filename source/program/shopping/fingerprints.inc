@@ -1,4 +1,5 @@
-// ACNH 3.0.3 mapped main: validated before installing any Shopping Card hook.
+// ACNH 3.0.3 mapped main: validate before enabling Shopping Card behavior.
+// Allocation support has its own independent entry check.
 {0x005bd550, {0x3940000c, 0x3400044c, 0x2a1f03e9, 0x5285aa2a}},
 {0x00ace110, {0x946ab48c, 0x9001ff28, 0xf001a589, 0x91004529}},
 {0x00acf388, {0x946aafee, 0x528ccce8, 0x72acccc8, 0x9b287e88}},
@@ -50,3 +51,6 @@
 {0x02b711b8, {0xb941f008, 0x3100051f, 0xb941f409, 0xb941b00a}},
 {0x02b66cf0, {0xa9bc7bfd, 0xf9000bf7, 0xa90257f6, 0xa9034ff4}},
 {0x02b67064, {0xa9be7bfd, 0xf9000bf3, 0x910003fd, 0xaa0003f3}},
+// Resource-size entry is independently checked by PrepareResources. Its
+// prologue may already be hooked before behavior activation; check its body.
+{0x03e3cb04, {0xf94006a9, 0x39400128, 0x34000468, 0x9100052a}},

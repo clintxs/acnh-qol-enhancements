@@ -1,6 +1,6 @@
 """Check packaged textures, GPU byte order and the game's texture-name search.
 
-The SDK relocation import is modeled from serialized RLT entries. Native main
+Native SDK relocation is checked against the serialized RLT model. Native main
 code performs dictionary traversal and string comparisons are modeled. GPU
 sampling/drawing still requires an Eden playtest.
 """
@@ -109,6 +109,9 @@ for texture,backing in zip(after[7:],(True,False)):
         assert pixel(16,-12) == art.CREAM and pixel(9,-19) == art.CREAM
 print('PASS: original seven textures preserved; two RGBA8 images, independent GPU-byte-order decode, complete colored card and antialiased corners')
 
+from nso_reader import image
+SDK = image(card.ROOT.parent/'Extracted/Animal Crossing_ New Horizons 3.0.3 [01006F8002326800][v2228224][UPD]/Program #0/0/sdk',
+            'a226048605d3597f90cb1067d141cd36647b90cd000000000000000000000000')
 RAW = (card.ROOT.parent/'Grab 5/working/main.raw').read_bytes()
 # Main's inline texture dictionary traversal in ArcResourceAccessor. Fingerprint
 # both noncontiguous blocks; refuses a different game implementation.
@@ -120,6 +123,9 @@ for base in (0,0x7100000000):
     machine.mem_map(base+0x3f03000,0x1000)
     ram = base+0x6000000
     machine.mem_map(ram,0x200000)
+    sdk_base = base+0x1000000
+    machine.mem_map(sdk_base,(len(SDK)+4095)&~4095)
+    machine.mem_write(sdk_base,SDK)
     result = []
     def service(u,pc,size,data):
         if pc == base+0x3f03380: # strcmp import
@@ -136,7 +142,18 @@ for base in (0,0x7100000000):
             u.emu_stop()
     machine.hook_add(UC_HOOK_CODE,service)
     for resource in (original[key],modified[key]):
-        machine.mem_write(ram,relocate(resource,ram))
+        # Execute the real SDK leaf routine. No imported functions or GPU
+        # services are needed; compare every relocated byte with the model.
+        machine.mem_write(ram,resource)
+        machine.reg_write(UC_ARM64_REG_X0,ram+read(resource,24))
+        stop = ram+0x1ff000
+        machine.reg_write(UC_ARM64_REG_LR,stop)
+        machine.emu_start(sdk_base+0x81a90,stop,count=100000)
+        assert machine.reg_read(UC_ARM64_REG_PC) == stop
+        expected = bytearray(relocate(resource,ram))
+        expected[20] |= 1 # SDK marks the file relocated.
+        assert bytes(machine.mem_read(ram,len(resource))) == expected
+
         dic = ram+read(resource,56,'Q')
         names = [t.name for t in textures(resource)]
         for name in names+['MissingShoppingCard^w','QoLShoppingCardIcon','']:
@@ -152,4 +169,4 @@ for base in (0,0x7100000000):
             # The root sentinel represents FindIndex's -1 result for an empty key.
             if index == -1: index = None
             assert index == (names.index(name) if name in names else None), (name,index)
-    print(f'PASS: native 3.0.3 texture-name lookup, original and expanded dictionaries, absent keys, base {base:#x}')
+    print(f'PASS: native SDK relocation and 3.0.3 texture-name lookup, original/expanded containers, absent keys, base {base:#x}')

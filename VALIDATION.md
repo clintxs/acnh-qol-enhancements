@@ -1,11 +1,11 @@
-# Unified QoL validation — 0.3.13 Shopping Card textured-icon prototype
+# Unified QoL validation — 0.3.14 Shopping Card resource-budget correction
 
 Validated locally on October 8, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
 dialogue fix and subsequently the corrected 0.2.3 NPC diagnostic build work in Eden. The user also confirmed Nook’s Cranny transactions in Shopping Card 0.3.1.
 The user confirmed the corrected savings HUD in 0.3.4 and balance animation
 in 0.3.5 and the restored counter in 0.3.10. Configuration layering, the
-0.3.13 textured icon, aspect-ratio placement and Able Sisters still need a live check. No running game or save files were accessed by the
+0.3.14 resource-budget correction, aspect-ratio placement and Able Sisters still need a live check. No running game or save files were accessed by the
 local tests below.
 
 ## Build and loader
@@ -18,14 +18,16 @@ local tests below.
   `exl_main` installs only the content-mount continuation hook and performs no
   configuration reads. Activation executes the real compiled registry/parser and
   installers; a second activation performs no additional reads or installations.
-- Full suite installs 60 disjoint modeled hook ranges (Core 1, Catalog 16,
-  Pockets 16, Faster Dialogue 5, Fitting Room 11, Amiibo 1, Shopping Card 10), plus the private
+- Full suite installs 61 disjoint modeled hook ranges (Core 1, Catalog 16,
+  Pockets 16, Faster Dialogue 5, Fitting Room 11, Amiibo 1, Shopping Card 10 behavior + 1 allocation support), plus the private
   fitting input vtable entry. No embedded binary replacement arrays, IPS or
   dialogue code-cave helper remain in the collection.
 - Per-feature absent, disabled, invalid, missing-version, oversized, below-minimum
   and newer-version configurations were checked. Newer valid packages warn and
   run. Below-minimum packages leave feature code untouched. Open/read/size errors
-  close handles where appropriate and disable requested features. Occupied
+  close handles where appropriate and disable requested behavior. Installed Shopping Card assets retain their
+  independently checked allocation support, including invalid/disabled metadata,
+  because RomFS overrides still load; absent packages install no support. Occupied
   startup/hook locations fail their instruction checks; dialogue validation
   rejects altered hook sites or legacy instruction changes before any of its
   hooks are installed. Original code-cave padding remains untouched.
@@ -91,7 +93,9 @@ compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
   savings payment does not consume. Shared Fitting Room affordability uses
   savings only while Shopping Card is installed and in a supported shop.
 - Every Shopping Card instruction fingerprint is individually corrupted; each
-  conflict disables the module before any of its hooks installs.
+  conflict prevents financial/UI behavior hooks; independent allocation support
+  stays active for installed assets. Its own entry conflict prevents all support
+  and behavior.
 - Existing native fitting checkout and feedback regressions are rerun with the
   shared account accessor. Actual shopping gameplay, native field state and
   both modules together require the live checks below.
@@ -194,10 +198,34 @@ compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
   full independent block-linear decoding, stripe/chip/detail colors and partial
   alpha coverage at rounded corners. Native 3.0.3 dictionary lookup (00263368
   and 00263410) resolves all original and added texture names at two bases and
-  rejects missing names; SDK relocation and strcmp are modeled.
+  rejects missing names; strcmp is modeled. The actual hash-checked 3.0.3 SDK
+  relocation routine (00081A90 in SDK) now relocates both original and extended
+  containers and agrees byte for byte with the relocation model (including the
+  relocated flag). SDK NSO segments are decompressed and hash-verified locally.
 - The preview resolves exported PIC/material/texture references and decodes
   packaged image bytes. Its oval is illustrative. GPU loading/sampling/drawing,
   native output colors and continued counter visibility require an Eden check.
+
+- The user reported all currency display missing in 0.3.13. The native RSTC
+  entry for `Layout/LBellCounterRT.Nin_NX_NVN` is 77,952 bytes; vanilla expands
+  to 69,760, 0.3.10/0.3.12 to 73,856, 0.3.9 to 98,432, and 0.3.13 to 463,528.
+  This is a concrete allocation mismatch missed by prior structural tests.
+- 0.3.14 adds a trampoline at native resource-size lookup 03E3CAD0. It executes
+  the original lookup, then raises only the exact normalized counter path to
+  at least 1 MiB. Larger sizes and existing metadata are preserved; missing
+  entries receive the floor with flag zero. No shared RSTC file is replaced.
+  The builder checks expanded resource size plus native overhead fits the floor.
+- The new resource ARM test executes actual CRC32 and RSTC binary search with
+  the local original table and compiled callback at two bases. It reproduces
+  the insufficient original budget, checks the new floor, exact-path isolation,
+  larger overrides/metadata, missing table, disabled behavior and removal.
+  Resource-entry fingerprint conflicts reject support and all behavior.
+- Resource preparation is independent of financial/UI behavior: while the
+  package marker remains installed, its enlarged assets can still load with
+  disabled, invalid or incompatible configuration. Preparation is once-only;
+  absent packages install no hook. Core subset/metadata/overlay tests cover
+  this exception without enabling transactions or savings presentation.
+  Actual live counter visibility and GPU rendering still need an Eden check.
 
 ## Conditional dialogue
 

@@ -9,6 +9,9 @@ struct ModuleDescription {
     bool (*install)();
     // Optional per-module parser, used identically for regular and custom INIs.
     unsigned (*configure)(std::string_view) = nullptr;
+    // RomFS overrides still load when behavior is disabled or config is invalid.
+    // Prepare their allocation support whenever the package marker is present.
+    bool (*prepareResources)() = nullptr;
 };
 extern const std::array<ModuleDescription, 6> Modules;
 void ActivateModules();

@@ -10,13 +10,14 @@ from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
 SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'amiibo', 'shopping-card')
 COUNTS = (16, 16, 5, 11, 1, 10)
-DEFAULT = b'enabled=true\nversion=0.3.13\n'
+DEFAULT = b'enabled=true\nversion=0.3.14\n'
 
 def expected_hook_count(machine, enabled):
     # The existing verbose-dialogue build adds a Catalog message trace hook.
     # Keep normal/diagnostic counts explicit; never infer them from installed hooks.
     trace_enabled = any('NookMessageTrace' in name for name in machine.module.symbols)
-    return 1 + sum(count for count, active in zip(COUNTS, enabled) if active) + (trace_enabled and enabled[0])
+    resources = 'content:/qol-enhancements/config/shopping-card.ini' in machine.files
+    return 1 + int(resources) + sum(count for count, active in zip(COUNTS, enabled) if active) + (trace_enabled and enabled[0])
 
 class Machine:
     def __init__(self, base, files):
@@ -148,13 +149,13 @@ def check_errors():
             if b'version=0.4.0' in data:
                 assert 'BOOT_OK' in m.text and 'enabled_modules=1' in m.text
             else:
-                assert len(m.hooks) == 1 and m.read(m.base + 0xbc4140, 4) == 0x52803848
+                assert len(m.hooks) == 1 + (slug == 'shopping-card') and m.read(m.base + 0xbc4140, 4) == 0x52803848
                 assert m.read(m.base + 0x1af9ff0, 4) == 0x528c0049
     for fault in ('open_error', 'read_error', 'size_error'):
         m = Machine(0x7100000000, {slug: DEFAULT for slug in SLUGS})
         setattr(m, fault, True)
         m.boot(); m.activate()
-        assert len(m.hooks) == 1 and 'BOOT_PARTIAL' in m.text
+        assert len(m.hooks) == 2 and 'BOOT_PARTIAL' in m.text
     # A startup conflict prevents even the Core discovery hook.
     m = Machine(0x7100000000, {})
     m.write(m.base + 0x37b5460, 0, 4)

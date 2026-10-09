@@ -87,7 +87,7 @@ const std::array<ModuleDescription, 6> Modules{{
     {"Faster Dialogue", "faster-dialogue", {0, 1, 0}, dialogue::Install, dialogue::Configure},
     {"Fitting Room", "fitting-room", {0, 1, 0}, able_bag::Install},
     {"Amiibo", "amiibo", {0, 1, 0}, amiibo::Install},
-    {"Shopping Card", "shopping-card", {0, 3, 2}, shopping::Install},
+    {"Shopping Card", "shopping-card", {0, 3, 2}, shopping::Install, nullptr, shopping::PrepareResources},
 }};
 
 void ActivateModules() {
@@ -99,6 +99,12 @@ void ActivateModules() {
         const auto loaded = LoadConfig(module, config, ConfigLayer::Module);
         if (loaded == LoadResult::Absent) {
             Logging.Log("[QoL Enhancements] %s: not installed\n", module.name);
+            continue;
+        }
+        if (module.prepareResources && !module.prepareResources()) {
+            Logging.Log("[QoL Enhancements] ERROR: %s resource support unavailable; feature code disabled\n",
+                        module.name);
+            ++errors;
             continue;
         }
         if (loaded == LoadResult::Invalid) {

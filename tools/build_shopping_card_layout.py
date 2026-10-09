@@ -8,6 +8,7 @@ No item or MSBT resources are added. Requires the local hash-checked 3.0.3 dump.
 from pathlib import Path
 from compression import zstd
 import hashlib
+import re
 import struct
 from layout_io import archive_entries, layout_sections, pane_name, resources
 from build_layouts import text_pane, PANE_TYPES
@@ -189,6 +190,12 @@ def build():
     original = zstd.decompress(packed)
     modified, count = patch_archive(original)
     assert count == 1
+    header = (ROOT / 'source/program/shopping/resource_budget.hpp').read_text()
+    floor = int(re.search(r'CounterResourceMinimumBytes = (\d+)', header)[1])
+    # Vanilla's RSTC allowance includes 8 KiB beyond its expanded archive size.
+    # Keep at least that overhead; current 1 MiB floor also leaves ample room
+    # for added panes/materials. Runtime hook and exact target are ARM-tested.
+    assert len(modified) + 8192 <= floor, 'Counter archive exceeds scoped runtime resource budget'
     old, new = resources(original), resources(modified)
     assert old.keys() == new.keys()
     for name in old:

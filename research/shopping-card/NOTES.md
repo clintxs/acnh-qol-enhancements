@@ -1,6 +1,6 @@
 # Shopping Card — ACNH 3.0.3
 
-Prototype 0.3.13, October 8, 2026. Original mapped main SHA-256:
+Prototype 0.3.14, October 8, 2026. Original mapped main SHA-256:
 `b1ae8e2a0d82f9f38f711c132d1751b221baf9d6411b2be06ebc4bb502ac912d`.
 Build ID: `FF1D1C05670DB6021C85B624A710B963`.
 All implementation uses readable Exlaunch C++ hooks. No new game item or data
@@ -365,3 +365,49 @@ The preview resolves actual exported texture/material bindings and image bytes,
 not just the source drawing formula. Layout is 24 panes/63 sections/7,100 bytes;
 original cash presentation, 16:9 canvas/root, badge shift and animation remain.
 Eden still must verify GPU loading, rendered icon, cash visibility and feedback.
+
+
+### Counter allocation allowance (0.3.14)
+
+The user reports the entire balance counter missing in 0.3.13. A previously
+unchecked layer is the game's resource-size table. The supplied Yaz0-wrapped
+RSTC has CRC32 867463D4 for normalized path
+`Layout/LBellCounterRT.Nin_NX_NVN`: size 00013080 = 77,952 and flag zero.
+Original compressed asset expands to 69,760 bytes (8 KiB of budget overhead).
+0.3.10/0.3.12 expand to 73,856; 0.3.9 to 98,432; 0.3.13 to 463,528. Thus both
+missing-counter experiments exceeded the original allowance. This establishes
+an allocation mismatch, though the user's process was not traced directly.
+
+Native 03E3C8DC parses RSTB/RSTC, retaining RSTC count/records at manager+68/+70
+and named records at +78/+80. 03E3CAD0 takes manager, result and SafeString path:
+CRC32 over path+8, then binary search of the sorted records. On success it
+writes uint32 size at result+0, metadata byte at +4 and returns true. False
+leaves output unspecified. Resource request setup at 03E36E30/03E36560 queries
+this result before selecting/creating its resource heap; compression suffixes
+are normalized by native 03E362C0. No broad filename matching is appropriate.
+
+CounterResourceBudget calls the original query, then matches the exact path
+and raises size to at least 1 MiB. Preserve larger overrides/metadata, and supply
+size+zero flag for a missing counter entry. Unrelated output/return values are
+untouched. No global RSTC asset is shipped, avoiding conflicts with other mods.
+The package builder refuses archives whose expanded size plus 8 KiB exceeds
+this floor. The margin also accommodates added layout objects.
+
+Core's optional prepareResources callback runs for installed package markers
+before behavior configuration gating. Shopping Card independently fingerprints
+and installs its allocation hook once; disabled/invalid/old configuration still
+needs it because RomFS layout overrides remain installed. Removing the package
+means no allocation hook or behavior hooks after restart. Financial/UI behavior
+is still wholly gated by valid enabled compatible configuration. Resource
+fingerprint failure prevents both support and behavior installation; behavior
+fingerprint failures leave only the safe, narrowly scoped allocation support.
+
+shopping_resource_arm_test.py executes native CRC32/RSTC lookup and the final
+compiled callback with the supplied table at two bases. It reproduces 77,952
+vs 463,528 and verifies the floor, missing entries, larger mod overrides/flags,
+exact-path isolation, disabled behavior, removal and fingerprint conflicts.
+The texture test now runs actual SDK RelocationTable::Relocate at SDK+81A90
+(build A226048605D3597F90CB1067D141CD36) and compares all relocated bytes to
+its model. NSO sections are independently decompressed/hash-verified. Native
+texture-name traversal also passes. GPU initialization and live visibility
+remain unverified until the next Eden playtest.

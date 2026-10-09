@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.13 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.14 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -44,7 +44,13 @@ split, distorted geometry. 0.3.13 uses an ordinary textured picture for the
 complete card and a separate white backing behind the oval. The card textures
 include smooth corner coverage. Original cash texture pixels/settings, panes,
 materials and animations are preserved. Packaged image decoding and native
-texture-name lookup pass; rendered appearance still needs an Eden playtest.
+texture-name lookup pass. The user reported the whole counter missing in
+0.3.13: the archive exceeded its native resource-size allowance. 0.3.14 adds
+an allocation floor for this counter only, preserving other resources and
+larger mod overrides. This support also keeps cash visible when Shopping Card
+behavior is disabled but its assets remain installed. No shared RSTC file is
+replaced. Update both Core and Shopping Card, then fully restart the game.
+Native size lookup and SDK relocation pass; live visibility still needs testing.
 The Bells badge retains its shift about 16 screen pixels left at 1280-pixel width.
 Savings changes use native count-up/down animation and sound.
 Entering shops, switching residents and unchanged balances are silent.
@@ -58,7 +64,7 @@ No new save fields, SD files, MSBT replacements or permissions are required.
 Disable/remove Shopping Card and restart for a clean uninstall; completed
 transactions remain ordinary saved money/item changes. Nook transactions were
 confirmed in 0.3.1, the savings HUD in 0.3.4 and animation in 0.3.5; the
-0.3.13 textured icon, Able Sisters and catalog checkout need live testing.
+0.3.14 resource-budget correction, Able Sisters and catalog checkout need live testing.
 0.3.7 still showed cash outside Nook’s Cranny; 0.3.8 follows native catalog
 open/close/destruction events independently of the shop or HUD’s UI context.
 The latest catalog screenshot shows the savings presentation.
@@ -73,7 +79,7 @@ this package does not supply an aspect-ratio patch.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.13
+  version = 0.3.14
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.

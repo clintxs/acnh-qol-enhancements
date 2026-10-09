@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.13 Shopping Card textured-icon prototype** for ACNH **3.0.3 on Eden**. One Core
+**0.3.14 Shopping Card resource-budget correction** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -97,7 +97,14 @@ stripe, chip and details; its white backing remains behind the oval. Smooth
 corner coverage is baked into the textures. The component is 24 panes/63 sections.
 Original cash texture pixels/settings, panes, materials, fonts and animations
 are preserved. Local checks decode the packaged image byte order and execute
-native texture-name lookup. GPU rendering still needs an Eden playtest.
+native texture-name lookup. The user reported the entire counter disappeared in 0.3.13. Its expanded
+archive is 463,528 bytes, exceeding the native RSTC allowance of 77,952 bytes.
+0.3.14 raises only this counter's runtime allocation floor to 1 MiB, preserving
+larger overrides and other resource lookups. This support remains active when
+the package is installed but its behavior is disabled, so ordinary cash can
+still load. Removing the package removes this support on restart. No shared
+RSTC replacement is shipped. Native size lookup and SDK relocation now have
+regression coverage. In-game visibility/rendering still needs confirmation.
 The badge remains shifted left by about 16 screen pixels at 1280-pixel width.
 Balance changes count up/down with the native increase/decrease/finish animation
 and sound feedback. First display, resident/room switches and unchanged balances
@@ -126,7 +133,7 @@ checkout, but the user reported its HUD still showed cash outside Nook’s Crann
 0.3.8 follows the catalog’s native opening, closing and destruction events
 instead of assuming it shares the HUD’s UI context. This display correction
 was followed by a catalog screenshot showing the savings presentation.
-Catalog checkout and the 0.3.13 textured icon still need live verification. Catalog gift orders use a separate
+Catalog checkout and the 0.3.14 resource-budget correction still need live verification. Catalog gift orders use a separate
 native sending/payment path and are not covered by this prototype; their
 payment remains unchanged. Nook Stop and phone catalog purchases, insufficient
 savings, cancellation, order limits, delivery and screen transitions need live
@@ -150,7 +157,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.13
+version = 0.3.14
 base_speed = 2
 boost_speed = 4
 faster_ui = false
