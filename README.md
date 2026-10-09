@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.34 DIY app A-button fix** for ACNH **3.0.3 on Eden**. One Core
+**0.3.35 DIY app direct A-input prototype** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -60,10 +60,11 @@ fingerprints only, checked before each feature's first hook.
 
 ## DIY Recipes app previews
 
-0.3.34 corrects the shortcut input check that silently blocked A in 0.3.33.
-The app uses shortcut kind 5 where the code expected a Back hint (kind 3).
-Native shortcut setup now runs in the regression test; missing or invalid input
-routing is logged when A is declined. The 0.3.33 loading-crash fix is retained.
+0.3.35 reads A directly from the app's controller snapshot. The previous build
+bound its callback but still did nothing in the live test. Recipe focus is
+observed while preserving native selection/material updates; focus alone cannot
+open a preview. Opening requires a fresh, unconsumed A press on a focused recipe.
+The loading-crash and shortcut-routing corrections are retained.
 
 This approach uses the item renderer directly within the existing DIY app.
 The existing DIY app keeps its materials panel, category, selection and scroll
@@ -195,7 +196,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.34
+version = 0.3.35
 base_speed = 2
 boost_speed = 4
 faster_ui = false

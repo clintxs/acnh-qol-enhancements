@@ -11,8 +11,10 @@ namespace {
 namespace address {
 constexpr std::uintptr_t BuildLayout = 0x00267d64, FindPane = 0x0027d1d0;
 constexpr std::uintptr_t PhoneBind = 0x02e9cde0, PhoneFrame = 0x02e9fbb0;
-constexpr std::uintptr_t PhoneDeactivate = 0x02e9d538, PhonePress = 0x02e99d94;
+constexpr std::uintptr_t PhoneDeactivate = 0x02e9d538;
+constexpr std::uintptr_t RecipeFocus = 0x02e96a80, RecipeLeave = 0x02e99d90;
 constexpr std::uintptr_t PageInput = 0x03c58d24, UiContext = 0x04ab2230;
+constexpr std::uintptr_t Application = 0x059f83f0;
 constexpr std::uintptr_t CreateItemModel = 0x032bd990, ReleaseModel = 0x032ba5e4;
 constexpr std::uintptr_t ChangeState = 0x03dbb160;
 constexpr std::uintptr_t CapturePicture = 0x03a17390, AlternateCapturePicture = 0x03a174f0;
@@ -25,10 +27,12 @@ constexpr std::size_t GetNativeLayout = 0x28, LayoutRoot = 0x18, Grid = 0x580;
 constexpr std::size_t Rows = 0x210, RowCount = 0x208, PaneFlags = 0x58;
 constexpr std::size_t ShortcutHint = 0x570, HintInput = 0xa0;
 constexpr std::size_t InputRow = 0x10, InputKind = 0x14;
+constexpr std::size_t PageInputContext = 0x210, InputDisabled = 0x54, InputBlockMask = 0x58;
+constexpr std::size_t ApplicationMasks = 0x418, GlobalBlockMask = 0x10;
 constexpr std::size_t Controller = 0x30, Parameters = 0x28;
 constexpr std::size_t ModelMode = 0x50, ModelHandle = 0x6c;
 }
-constexpr unsigned WorkbenchModelMode = 2, BackMask = 0x20, PhoneShortcutKind = 5;
+constexpr unsigned WorkbenchModelMode = 2, ConfirmMask = 0x10, BackMask = 0x20, PhoneShortcutKind = 5;
 std::uintptr_t Main{};
 template<class T> T &At(void *object, std::size_t offset = 0) {
     return *reinterpret_cast<T *>(static_cast<std::byte *>(object) + offset);
@@ -114,14 +118,15 @@ enum class Phase { Idle, Queued, Starting, Showing, Closing, DrainBack };
 struct Session {
     void *phone{}, *layout{}, *surface{}, *gridPane{}, *scrollPane{}, *cursorPane{};
     void *controller{}, *parameters{};
+    void *focusedRow{};
     Phase phase{};
     unsigned frames{};
-    unsigned rejectedPresses{};
+    unsigned rejectedPresses{}, inputReports{};
     unsigned char gridFlags{}, scrollFlags{}, cursorFlags{}, savedHidden{};
     std::array<std::byte, 0x28> savedParameters{};
     std::uint64_t item{};
     int inputRow{-1};
-    bool backHeld{}, ownsRenderer{};
+    bool backHeld{}, confirmHeld{true}, ownsRenderer{};
 };
 std::array<Session, 8> Sessions{};
 Session *ForPhone(void *phone) {
@@ -138,10 +143,42 @@ int ShortcutInputRow(void *layout) {
     auto hint = At<void *>(layout, field::ShortcutHint);
     auto input = hint ? At<void *>(hint, field::HintInput) : nullptr;
     // MenuRecipePage creates this shortcut with kind 5 in native 02e936ec.
-    // It is not the Back hint used by the pocket page (kind 3). The row is
-    // shared by all buttons; B itself is read from the snapshot's BackMask.
+    // Requiring the pocket-page kind 3 here silently declined app previews.
+    // The row is shared by all buttons; B is read from the snapshot's BackMask.
     return input && At<unsigned>(input, field::InputKind) == PhoneShortcutKind &&
            At<unsigned>(input, field::InputRow) < 8 ? At<int>(input, field::InputRow) : -1;
+}
+bool RecipeRow(Session &s, void *source) {
+    auto grid = At<void *>(s.layout, field::Grid);
+    if (!grid || !source) return false;
+    const auto count = At<unsigned>(grid, field::RowCount);
+    const auto rows = At<void **>(grid, field::Rows);
+    if (!rows || !count || count > 512) return false;
+    for (unsigned i = 0; i < count; ++i) if (rows[i] == source) return true;
+    return false;
+}
+void FocusRecipe(void *phone, void *event) {
+    // Preserve the native scrolling-row -> recipe-index mapping and materials.
+    Native<void (*)(void *, void *)>(address::RecipeFocus)(phone, event);
+    if (auto s = ForPhone(phone)) {
+        auto source = event ? At<void *>(event, 8) : nullptr;
+        s->focusedRow = RecipeRow(*s, source) ? source : nullptr;
+    }
+}
+void LeaveRecipe(void *phone, void *event) {
+    Native<void (*)(void *, void *)>(address::RecipeLeave)(phone, event);
+    if (auto s = ForPhone(phone); s && event && s->focusedRow == At<void *>(event, 8))
+        s->focusedRow = nullptr;
+}
+bool InputBlocked(Session &s, unsigned blocked) {
+    // Mirror 03c4b880's page/global blocking before taking a new A press.
+    auto input = At<void *>(s.layout, field::PageInputContext);
+    if ((blocked & 1) || !input || At<unsigned char>(input, field::InputDisabled)) return true;
+    const auto mask = At<unsigned>(input, field::InputBlockMask);
+    if (!mask) return false;
+    auto app = *Native<void **>(address::Application);
+    auto masks = app ? At<void *>(app, field::ApplicationMasks) : nullptr;
+    return !masks || (mask & At<unsigned>(masks, field::GlobalBlockMask));
 }
 void Close(Session &s) {
     if (s.ownsRenderer) {
@@ -165,45 +202,34 @@ void Close(Session &s) {
     s.phase = Phase::DrainBack;
     Logging.Log("[QoL Enhancements/Core] DIY preview: grid restored; renderer released\n");
 }
-void PressRecipe(void *phone, void *event) {
-    auto s = ForPhone(phone);
-    if (!s || s->phase != Phase::Idle || !PhoneReady(phone) || !event) return;
-    // Refresh on press as shortcut routing can be assigned after binding.
-    s->inputRow = ShortcutInputRow(s->layout);
-    // Button row 5 is press; row 1 is focus-leave. Confirm only an actual
-    // recipe row, never category tabs, sort controls or an unrelated button.
-    auto grid = At<void *>(s->layout, field::Grid);
-    auto source = At<void *>(event, 8);
-    if (!grid || !source) return;
-    const auto rowCount = At<unsigned>(grid, field::RowCount);
-    const auto rows = At<void **>(grid, field::Rows);
-    if (!rows || !rowCount || rowCount > 512) return;
-    bool recipeRow = false;
-    for (unsigned i = 0; i < rowCount; ++i) if (rows[i] == source) { recipeRow = true; break; }
-    const auto count = At<unsigned>(phone, field::Recipes);
-    const auto selected = At<unsigned>(phone, field::Selection);
-    const auto recipes = At<void **>(phone, field::Recipes + 8);
-    if (!recipeRow || selected >= count || count > 4096 || !recipes || !recipes[selected] ||
-        At<std::uint16_t>(recipes[selected], 8) >= 0xfffe || !s->surface || !s->gridPane || s->inputRow < 0) {
-        if (s->rejectedPresses++ < 8)
+bool QueuePreview(Session &s) {
+    const auto count = At<unsigned>(s.phone, field::Recipes);
+    const auto selected = At<unsigned>(s.phone, field::Selection);
+    const auto recipes = At<void **>(s.phone, field::Recipes + 8);
+    const bool recipeRow = RecipeRow(s, s.focusedRow);
+    if (!PhoneReady(s.phone) || !recipeRow || selected >= count || count > 4096 || !recipes || !recipes[selected] ||
+        At<std::uint16_t>(recipes[selected], 8) >= 0xfffe || !s.surface || !s.gridPane) {
+        if (s.rejectedPresses++ < 8)
             Logging.Log("[QoL Enhancements/Core] DIY preview: A declined; recipe_row=%u selected=%u count=%u surface=%p grid=%p input_row=%d\n",
-                        unsigned(recipeRow), selected, count, s->surface, s->gridPane, s->inputRow);
-        return;
+                        unsigned(recipeRow), selected, count, s.surface, s.gridPane, s.inputRow);
+        return false;
     }
-    s->item = At<std::uint64_t>(recipes[selected], 8);
-    s->phase = Phase::Queued;
-    Logging.Log("[QoL Enhancements/Core] DIY preview: A queued; recipe_index=%u item=%u\n", selected, unsigned(s->item & 0xffff));
+    s.item = At<std::uint64_t>(recipes[selected], 8);
+    s.phase = Phase::Queued;
+    Logging.Log("[QoL Enhancements/Core] DIY preview: A queued from input; recipe_index=%u item=%u\n", selected, unsigned(s.item & 0xffff));
+    return true;
 }
-unsigned ReplacePress(void *layout) {
+unsigned ObserveFocus(void *layout) {
     const auto columns = At<unsigned>(layout, 0x430), rows = At<unsigned>(layout, 0x434);
     const auto entries = At<std::byte *>(layout, 0x438);
     if (!entries || columns > 64 || rows != 0x23) return 0;
     unsigned replaced{};
-    for (unsigned column = 0; column < columns; ++column) {
-        auto &callback = At<std::uintptr_t>(entries + (5 * columns + column) * 0x20, 0x10);
-        if (callback == Main + address::PhonePress) {
-            callback = reinterpret_cast<std::uintptr_t>(&PressRecipe); ++replaced;
-        } else if (callback == reinterpret_cast<std::uintptr_t>(&PressRecipe)) ++replaced;
+    for (unsigned row = 0; row < 2; ++row) for (unsigned column = 0; column < columns; ++column) {
+        auto &callback = At<std::uintptr_t>(entries + (row * columns + column) * 0x20, 0x10);
+        const auto native = Main + (row ? address::RecipeLeave : address::RecipeFocus);
+        const auto observer = reinterpret_cast<std::uintptr_t>(row ? &LeaveRecipe : &FocusRecipe);
+        if (callback == native) { callback = observer; ++replaced; }
+        else if (callback == observer) ++replaced;
     }
     return replaced;
 }
@@ -234,18 +260,32 @@ HOOK_DEFINE_TRAMPOLINE(BindPhoneRecipes) {
         if (s.scrollPane) s.scrollFlags = At<unsigned char>(s.scrollPane, field::PaneFlags);
         if (s.cursorPane) s.cursorFlags = At<unsigned char>(s.cursorPane, field::PaneFlags);
         s.inputRow = ShortcutInputRow(s.layout);
-        const auto pressBindings = ReplacePress(s.layout);
-        Logging.Log("[QoL Enhancements/Core] DIY preview: app bound; surface=%p grid=%p input_row=%d press_bindings=%u\n",
-                    s.surface, s.gridPane, s.inputRow, pressBindings);
+        const auto focusBindings = ObserveFocus(s.layout);
+        Logging.Log("[QoL Enhancements/Core] DIY preview: app bound; surface=%p grid=%p input_row=%d focus_bindings=%u\n",
+                    s.surface, s.gridPane, s.inputRow, focusBindings);
     }
 };
 bool PreviewInput(void *layout, void *snapshot, unsigned blocked) {
-    for (auto &s : Sessions) if (s.layout == layout && s.phase != Phase::Idle) {
-        if (!snapshot || s.inputRow < 0) return true;
+    for (auto &s : Sessions) if (s.layout == layout) {
+        if (s.phase == Phase::Idle) s.inputRow = ShortcutInputRow(s.layout);
+        if (!snapshot || s.inputRow < 0) return s.phase != Phase::Idle;
         const auto count = At<unsigned>(snapshot, 8);
         auto rows = At<std::byte *>(snapshot, 0x10);
-        if (!rows || count > 8 || unsigned(s.inputRow) >= count) return true;
+        if (!rows || count > 8 || unsigned(s.inputRow) >= count) return s.phase != Phase::Idle;
         auto row = rows + s.inputRow * 0x48;
+        const auto buttons = At<unsigned>(row);
+        const bool confirm = (buttons & ConfirmMask) != 0;
+        const bool confirmPress = confirm && !s.confirmHeld; s.confirmHeld = confirm;
+        if (s.phase == Phase::Idle) {
+            if (!confirmPress) return false;
+            if (s.inputReports++ < 8)
+                Logging.Log("[QoL Enhancements/Core] DIY preview: A input; state=%d pending=%d/%d focus=%p blocked=%u consumed=%x\n",
+                            At<int>(s.phone, field::State), At<int>(s.phone, field::Requests), At<int>(s.phone, field::Requests + 4),
+                            s.focusedRow, unsigned(InputBlocked(s, blocked)), At<unsigned>(row, 0x3c));
+            if (InputBlocked(s, blocked) || (At<unsigned>(row, 0x3c) & ConfirmMask) || !QueuePreview(s)) return false;
+            At<unsigned>(row, 0x3c) |= ConfirmMask;
+            return true;
+        }
         const bool held = (At<unsigned>(row) & BackMask) != 0;
         const bool press = held && !s.backHeld; s.backHeld = held;
         if (s.phase == Phase::DrainBack) {
@@ -324,7 +364,7 @@ HOOK_DEFINE_TRAMPOLINE(DeactivatePhoneRecipes) {
     static void Callback(void *phone) {
         if (auto s = ForPhone(phone)) {
             if (s->phase != Phase::Idle) Close(*s);
-            s->phase = Phase::Idle; s->backHeld = false;
+            s->phase = Phase::Idle; s->backHeld = false; s->confirmHeld = true;
         }
         Orig(phone);
     }
@@ -346,6 +386,8 @@ bool InstallRecipePreview() {
         {0x0027d1d0, {0xa9bd7bfd, 0xf9000bf5, 0xa9024ff4, 0x910003fd, 0xaa0003f4}},
         {0x03c66298, {0xf9402c00, 0xaa0203f5, 0xaa0103f4, 0xf9000fbf, 0xb40000a0}},
         {0x02e93798, {0x528000a8, 0x9a9f1102, 0x94231d66, 0x395ed2a8, 0xf902ba60}},
+        {0x02e96a80, {0xf9410808, 0xf942c109, 0xb4000789, 0xf940042b, 0xb400074b}},
+        {0x03c4b880, {0xd10203ff, 0xa9027bfd, 0xa9036ffc, 0xa90467fa, 0xa9055ff8}},
     };
     const auto &main = exl::util::GetMainModuleInfo();
     for (const auto &f : fingerprints) if (f.offset + sizeof(f.words) > main.m_Text.m_Size ||

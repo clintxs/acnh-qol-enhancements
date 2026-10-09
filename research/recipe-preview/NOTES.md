@@ -36,6 +36,22 @@ MenuRecipePage. The test now executes native shortcut setup rather than assignin
 a kind-3 descriptor. It fails against 0.3.33 and checks the corrected routing,
 including invalid/missing shortcuts and an input row assigned after binding.
 
+## 0.3.35 direct A input
+
+The live 0.3.34 log shows valid input_row=0 and press_bindings=1 but no A queued
+or declined. Injecting a row-5 event in the regression did not establish that
+native controller A generates that event. The early readiness guard also lacked
+logging, so absence of a log cannot distinguish those cases.
+
+A now comes from the shared snapshot (mask 10 hex); MenuRecipePage's actual
+virtual table entry 049E7F10 points to 03C58D24. Row-0/1 delegates are wrapped to
+observe focused recipe membership while invoking their original callbacks.
+Native 02E96A80 maps scrolled physical rows to the selected recipe; native view
+updates are retained. Row-5 delegates are untouched. Input activation requires a
+fresh press after release, a focused recipe, ready phone and unblocked/unconsumed
+input. Native 03C4B880's page/global blocker is mirrored before queuing. Diagnostics
+report A input before readiness rejection, including phone state and pending slots.
+
 ## Native bindings
 
 All addresses are main-module offsets in build FF1D1C05670DB6021C85B624A710B963.
@@ -76,21 +92,22 @@ output pointer (verified in 03C6627C). Native layout +18 is the root pane.
 Layout +580 is the grid controller. Grid count +208
 and row-pointer array +210 identify the actual pressed recipe row.
 
-Native row 5 dispatch translates raw source +18 to event +8 and raw kind +0
-to translated kind +14. Only existing callbacks equal to 02E99D94 are replaced.
-Focus movement cannot queue a model. Setup readiness requires phone state 3
-and both queued transitions equal -1. Press queues work; model calls happen on
-the following app update, outside the native button-dispatch stack.
+Native focus callbacks (row 0 enter, row 1 leave) are observed while their original
+functions run. Only native recipe focus/leave entries are replaced; row-5 press
+entries remain native. Focus movement cannot queue a model. Setup readiness
+requires phone state 3 and both queued transitions equal -1. A from the shared
+controller snapshot (mask 10 hex) queues work on a fresh unconsumed edge; model
+calls happen on the following app update, outside native input/dispatch stacks.
 
 Core installs one shared PageInput hook. A handler returns true only while its
 phone preview owns input; otherwise native input runs once. Pockets registers
 its existing Quick Store observer without installing a second hook. The phone
 shortcut at layout +570 → +A0 supplies the input row (+10) and native kind
-(+14, expected 5). It is not a Back hint; B is read from the input snapshot.
-Routing is refreshed on A, since initial binding can precede row assignment.
-Input snapshots have count +8 and rows +10, stride 48 hex, held
-buttons +0 and consumed buttons +3C. B mask 20 hex is consumed on press;
-all phone grid/category input is suppressed until B is released after closing.
+(+14, expected 5). Routing is refreshed while idle. Input snapshots have count
++8 and rows +10, stride 48 hex, held buttons +0 and consumed buttons +3C. B mask
+20 hex is consumed on press; grid/category input is suppressed until B is released
+after closing. Initial held A cannot open a preview on app entry. Page/global
+blocking follows 03C4B880: page input +54, +58 mask, application +418 → +10 mask.
 
 Per-resident sessions retain no workbench-page pointers or cloned virtual tables.
 Native phone deactivation releases the model and restores panes before the
@@ -150,8 +167,8 @@ page allocation. It costs approximately 1 MiB of BSS.
 
 ## Validation boundary
 
-Compiled hooks, resource transformation, actual native button dispatch, native
-Pane lookup and native item request/release bodies execute in ARM64 at two
+Compiled hooks, resource transformation, native focus mapping/button dispatch,
+snapshot A input, Pane lookup and item request/release bodies execute at two
 load addresses. Tests preserve original panes and a modified canvas/grid;
 check focus movement, missing capture, unrelated press, B consumption, held-B
 drain, renderer-busy/failed-allocation recovery, parameter restoration, repeated

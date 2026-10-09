@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.34 DIY shortcut input fix
+# Unified QoL validation — 0.3.35 DIY snapshot A-input prototype
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,35 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.35 DIY direct A-input activation
+
+The live 0.3.34 test still does nothing on A. Its synced log shows input_row=0,
+press_bindings=1 and valid capture/grid pointers, but no A queued/declined log.
+This proves the shortcut correction applied; it does not establish whether the
+native press callback is reached or an earlier readiness guard rejects it.
+Previous tests injected a row-5 dispatch event directly and therefore could not
+prove that a physical A press would reach that path.
+
+Activation now uses the shared PageInput snapshot's A mask (10 hex). The native
+MenuRecipePage virtual table entry at 049E7F10 is 03C58D24, confirming this page
+uses the shared hook. Native focus-enter and focus-leave delegates are observed;
+their original functions still run, including native scrolling-row to recipe
+index mapping. Row-5 press delegates remain untouched. Focus alone cannot queue
+a model. A must be released after app entry, and activation respects consumed
+buttons, page/global input blocking, phone readiness and focused recipe membership.
+A is consumed only if a request is queued; renderer work stays in the next frame.
+Input reports now precede readiness checks and include state/pending/focus/blocking.
+
+The ARM fixture sends A snapshots without synthesizing press events. Native focus
+mapping executes, including visible row 1 mapping to recipe 5 after scrolling,
+with the materials view builder modeled separately. Checks cover
+initial held A, focus leave/unrelated focus, blocked/consumed A, inactive phone and
+pending transitions, shortcut rows, queued input suppression, B consumption and
+reopen, missing capture/accessor, renderer failures and restoration at two bases.
+The native input blocker and focus entry are fingerprinted. GPU rendering, camera
+activation and entity allocation remain modeled; live visibility and B return are
+still unverified.
 
 ## 0.3.34 DIY A-button input routing
 

@@ -19,7 +19,7 @@ def layout_asset(name):
     return next(v for k, v in r.items() if k.endswith('/' + name + '.bflyt'))
 MENU = layout_asset('MenuRecipe')
 HOOKS = (0x267d64, 0x2e9cde0, 0x2e9fbb0, 0x2e9d538, 0x3c58d24)
-GUARDS = HOOKS + (0x32bd990, 0x32ba5e4, 0x3dbb160, 0x27d1d0, 0x3a17390, 0x3a174f0, 0x3c66298, 0x2e93798)
+GUARDS = HOOKS + (0x32bd990, 0x32ba5e4, 0x3dbb160, 0x27d1d0, 0x3a17390, 0x3a174f0, 0x3c66298, 0x2e93798, 0x2e96a80, 0x3c4b880)
 
 class PreviewMachine(Machine):
     def __init__(self, base):
@@ -63,6 +63,7 @@ class PreviewMachine(Machine):
         self.write(base+0x5549100,1,1)  # Native RTTI singleton already initialized.
         self.write(base+0x55ca7b8,1,1)
         self.write(base+0x55ca7b0,1,1); self.write(base+0x55ca7b4,1,1)
+        self.services[base+0x2e96b80] = ('preview','noop')  # Material view update, after native index mapping.
 
     def alloc(self, n=0x100):
         p = self.next; self.next += (n + 15) & ~15; return p
@@ -146,6 +147,8 @@ class PreviewMachine(Machine):
         self.write(panes['P_QolCapture_00']+0x100,panes['N_QolCapture_00'])
         row = self.alloc(); rows = self.alloc(); self.write(rows, row)
         self.write(grid + 0x208, 1, 4); self.write(grid + 0x210, rows)
+        self.write(grid+0x2e8,4,4); self.write(grid+0x3cc,1,4)
+        self.write(page+0x210,self.alloc())  # Unblocked native input context.
         setup=self.alloc(); self.invoke(self.base+0x2e936ec,page,setup)
         hint=self.read(page+0x570); key=self.read(hint+0xa0)
         assert self.read(key+0x14,4)==5 and self.read(key+0x10,4)==0
@@ -155,12 +158,18 @@ class PreviewMachine(Machine):
         for kind in range(35):
             self.write(entries + kind * 32, self.base + 0x49e8408)
             self.write(entries + kind * 32 + 8, phone)
-            self.write(entries + kind * 32 + 16, self.base + (0x2e99d94 if kind == 5 else 0x2e99d90))
+            self.write(entries + kind * 32 + 16, self.base + (0x2e96a80 if kind == 0 else 0x2e99d94 if kind == 5 else 0x2e99d90))
         recipes = self.alloc(); recipe = self.alloc(0xd0)
         self.write(recipes, recipe); self.write(recipe + 8, 0x0011223344550088)
         self.write(phone + 0x8a350, 1, 4); self.write(phone + 0x8a358, recipes)
         self.hook(0x2e9cde0, phone)
+        self.button(page,row,0)
         return phone, page, row, panes
+    @property
+    def model_events(self): return [e for e in self.events if e[0]!='native_input']
+    def confirm(self, page, resident=0):
+        self.input(page,0,resident=resident)
+        return self.input(page,0x10,resident=resident)
     def button(self, page, row, kind):
         event = self.alloc(0x20); self.write(event, kind, 4); self.write(event + 0x18, row)
         self.invoke(self.base + 0x375aa40, page, event)
@@ -219,67 +228,90 @@ for base in (0x7100000000, 0x7200000000):
     damaged = bytearray(MENU); struct.pack_into('<I', damaged, 24, 0xffffffff)
     assert m.patch(bytes(damaged)) == damaged
     phone, page, row, panes = m.phone()
-    assert 'input_row=0 press_bindings=1' in m.text
+    assert 'input_row=0 focus_bindings=2' in m.text
+    assert struct.unpack_from('<Q',RAW,0x49e7f10)[0]==0x3c58d24  # Actual MenuRecipePage input method.
     snapshot = bytes(m.u.mem_read(m.parameters+0x2c, 40))
-    for kind in (0, 1, 2, 4): m.button(page, row, kind); m.frame(phone)
-    assert not m.events and m.read(m.controller + 0x50, 4) == 0xffffffff
-    m.button(page, m.alloc(), 5); m.frame(phone); assert not m.events
-    m.button(page, row, 5); assert not m.events  # Queue after native dispatch.
-    m.input(page, 1); assert not m.events  # Navigation suppressed immediately.
+    # A held while the app opens must be released first. Focus/legacy press
+    # events alone must never queue a preview; no row-5 event is synthesized.
+    m.input(page,0x10); m.frame(phone); assert not m.model_events
+    for kind in (0,1,2,4,5): m.button(page,row,kind); m.frame(phone)
+    assert not m.model_events
+    m.confirm(page); m.frame(phone); assert not m.model_events  # Focus left the recipe.
+    m.button(page,m.alloc(),0); m.confirm(page); m.frame(phone); assert not m.model_events
+    m.button(page,row,0)
+    assert m.read(phone+0x218,4)==0  # Actual native mapping, not a fake selection write.
+    input_context=m.read(page+0x210)
+    # Blocked/consumed A, inactive phone, pending transitions and empty rows
+    # all preserve native input and leave the renderer untouched.
+    for blocked,consumed in ((1,0),(0,0x10)):
+        m.input(page,0); m.input(page,0x10,blocked=blocked,consumed=consumed); m.frame(phone)
+        assert not m.model_events
+    m.write(input_context+0x54,1,1); m.confirm(page); m.frame(phone); assert not m.model_events
+    m.write(input_context+0x54,0,1)
+    app=m.alloc(0x500); masks=m.alloc(); m.write(base+0x59f83f0,app); m.write(app+0x418,masks)
+    m.write(input_context+0x58,4,4); m.write(masks+0x10,4,4)
+    m.confirm(page); m.frame(phone); assert not m.model_events
+    m.write(masks+0x10,0,4)
+    m.write(phone+0x1b0,2,4); m.confirm(page); m.frame(phone); assert not m.model_events
+    m.write(phone+0x1b0,3,4); m.write(phone+0x1f0,1,4)
+    m.confirm(page); m.frame(phone); assert not m.model_events
+    m.write(phone+0x1f0,0xffffffff,4)
+    assert m.confirm(page)==0x10
+    assert not m.model_events  # Work is queued, not run from the input stack.
+    before=list(m.events); m.input(page,1); assert m.events==before
     m.frame(phone); m.frame(phone)
-    request = next(e[1] for e in m.events if e[0] == 'spawn')
-    assert struct.unpack('<IIIHHQ', request) == (0, 0x44550088, 0x00112233, 0xfffe, 0, 0)
-    assert m.read(panes['L_BtnList_00']+0x58,1) == 0xa2
-    assert m.read(panes['N_QolPreview_00']+0x58,1) == 0xa3
-    assert m.read(panes['N_Recipe_00']+0x58,1) == 0xa3
-    before = list(m.events); m.input(page, 2); assert m.events == before
-    assert m.input(page, 0x20) == 0x20; m.frame(phone)
+    request=next(e[1] for e in m.events if e[0]=='spawn')
+    assert struct.unpack('<IIIHHQ',request)==(0,0x44550088,0x00112233,0xfffe,0,0)
+    assert m.read(panes['L_BtnList_00']+0x58,1)==0xa2
+    assert m.read(panes['N_QolPreview_00']+0x58,1)==0xa3
+    assert m.read(panes['N_Recipe_00']+0x58,1)==0xa3
+    before=list(m.events); m.input(page,2); assert m.events==before
+    assert m.input(page,0x20)==0x20; m.frame(phone)
     assert ('release',2) in m.events
-    assert m.read(panes['L_BtnList_00']+0x58,1) == 0xa3
-    assert m.read(panes['N_QolPreview_00']+0x58,1) == 0xa2
-    assert bytes(m.u.mem_read(m.parameters+0x2c,40)) == snapshot and m.read(m.parameters+0x12,1) == 1
-    before = list(m.events); m.input(page,0x20); assert m.events == before
-    m.input(page,0); m.input(page,0); assert m.events[-1] == ('native_input', page)
-    # Native deactivation retains the existing app layout. Reopening can preview again.
-    m.hook(0x2e9d538,phone); m.button(page,row,5); m.frame(phone); m.frame(phone)
-    assert sum(e[0]=='spawn' for e in m.events) == 2
-    m.hook(0x2e9d538,phone); assert m.read(m.controller+0x6c,4) == 0
-    # Resource or renderer failure keeps the ordinary grid, without borrowed pages.
-    phone2,page2,row2,panes2 = m.phone(1,surface=False)
-    before=list(m.events); m.button(page2,row2,5); m.frame(phone2); assert m.events == before
-    unbound,unbound_page,unbound_row,unbound_panes = m.phone(3)
-    m.write(unbound_panes['P_QolCapture_00']+0x100,0)
-    m.hook(0x2e9cde0,unbound)
-    before=list(m.events); m.button(unbound_page,unbound_row,5); m.frame(unbound)
-    assert m.events == before  # Named panes alone do not prove capture binding.
+    assert m.read(panes['L_BtnList_00']+0x58,1)==0xa3
+    assert m.read(panes['N_QolPreview_00']+0x58,1)==0xa2
+    assert bytes(m.u.mem_read(m.parameters+0x2c,40))==snapshot and m.read(m.parameters+0x12,1)==1
+    before=list(m.events); m.input(page,0x20); assert m.events==before
+    m.input(page,0); m.input(page,0); assert m.events[-1]==('native_input',page)
+    m.hook(0x2e9d538,phone); m.confirm(page); m.frame(phone); m.frame(phone)
+    assert sum(e[0]=='spawn' for e in m.events)==2
+    m.hook(0x2e9d538,phone); assert m.read(m.controller+0x6c,4)==0
+    phone2,page2,row2,panes2=m.phone(1,surface=False)
+    before=m.model_events; m.confirm(page2); m.frame(phone2); assert m.model_events==before
+    unbound,unbound_page,unbound_row,unbound_panes=m.phone(3)
+    m.write(unbound_panes['P_QolCapture_00']+0x100,0); m.hook(0x2e9cde0,unbound)
+    m.button(unbound_page,unbound_row,0)
+    before=m.model_events; m.confirm(unbound_page); m.frame(unbound); assert m.model_events==before
     routed,routed_page,routed_row,routed_panes=m.phone(5)
-    hint=m.read(routed_page+0x570); key=m.read(hint+0xa0)
-    before=list(m.events)
-    # The old kind-3 fixture hid the live kind-5 rejection. Wrong/missing
-    # shortcuts still decline safely, and report why an actual A is declined.
-    m.write(key+0x14,3,4); m.hook(0x2e9cde0,routed)
-    m.button(routed_page,routed_row,5); m.frame(routed)
-    assert m.events==before and 'A declined;' in m.text
+    hint=m.read(routed_page+0x570); key=m.read(hint+0xa0); before=m.model_events
+    for kind,row_index in ((3,0),(5,8)):
+        m.write(key+0x14,kind,4); m.write(key+0x10,row_index,4)
+        m.hook(0x2e9cde0,routed); m.button(routed_page,routed_row,0)
+        m.confirm(routed_page); m.frame(routed); assert m.model_events==before
     m.write(routed_page+0x570,0); m.hook(0x2e9cde0,routed)
-    m.button(routed_page,routed_row,5); m.frame(routed); assert m.events==before
-    m.write(routed_page+0x570,hint); m.write(key+0x14,5,4); m.write(key+0x10,8,4)
-    m.hook(0x2e9cde0,routed); m.button(routed_page,routed_row,5); m.frame(routed)
-    assert m.events==before
-    # Routing assigned after bind must be refreshed by A. Use row 4 while
-    # the phone resident is 5 to ensure input is routed by the shortcut.
-    m.write(key+0x10,4,4); m.button(routed_page,routed_row,5); m.frame(routed); m.frame(routed)
+    m.confirm(routed_page); m.frame(routed); assert m.model_events==before
+    m.write(routed_page+0x570,hint); m.write(key+0x10,4,4)
+    routed_grid=m.read(routed_page+0x580); second_row=m.alloc(); visible_rows=m.alloc()
+    m.write(visible_rows,routed_row); m.write(visible_rows+8,second_row)
+    m.write(routed_grid+0x210,visible_rows); m.write(routed_grid+0x208,2,4)
+    m.write(routed_grid+0x430,1,4); m.write(routed_grid+0x3cc,6,4)
+    recipes=m.alloc(); recipe=m.alloc(0xd0)
+    for i in range(6): m.write(recipes+i*8,recipe)
+    m.write(recipe+8,0x00112233445500bb)
+    m.write(routed+0x8a350,6,4); m.write(routed+0x8a358,recipes)
+    m.button(routed_page,second_row,0)
+    assert m.read(routed+0x218,4)==5  # Second visible row after a four-item scroll.
+    m.confirm(routed_page,resident=4); m.frame(routed); m.frame(routed)
     assert m.read(m.controller+0x6c,4)==0x12345
-    m.input(routed_page,0x20,resident=0); m.frame(routed)
-    assert m.read(m.controller+0x6c,4)==0x12345
+    assert struct.unpack('<IIIHHQ',m.model_events[-1][1])[1:3]==(0x445500bb,0x00112233)
+    m.input(routed_page,0x20,resident=0); m.frame(routed); assert m.read(m.controller+0x6c,4)==0x12345
     assert m.input(routed_page,0x20,resident=4)==0x20; m.frame(routed)
     assert m.read(m.controller+0x6c,4)==0
     m.input(routed_page,0,resident=4)
-    print('PASS: native MenuRecipe shortcut kinds; A uses kind-5 routing, delayed/non-resident input row, safe missing/invalid shortcut')
+    print('PASS: snapshot A without press dispatch; native focus mapping/leave, held-A entry, blocked/consumed A, native shortcut routing and B return')
     bad_phone,bad_page,bad_row,bad_panes=m.phone(4)
     holder=m.read(bad_page+0x3f8); instance=m.read(holder)
-    accessor=m.read(instance+0x58); native=m.read(accessor+8)
-    original_root=m.read(native+0x18)
-    # Old 0.3.32 path used the wrapper's SafeString vtable as a Pane.
+    accessor=m.read(instance+0x58); native=m.read(accessor+8); original_root=m.read(native+0x18)
     old_root=m.read(instance+0x18); text=m.alloc(); m.u.mem_write(text,b'N_QolPreview_00\0')
     from unicorn import UcError
     for i,arg in enumerate((old_root,text,1)): m.u.reg_write(UC_ARM64_REG_X0+i,arg)
@@ -288,25 +320,19 @@ for base in (0x7100000000, 0x7200000000):
         assert m.u.reg_read(UC_ARM64_REG_PC)==base+0x27d21c
         print('PASS: old wrapper cast reproduces invalid child traversal at native FindPane')
     else: raise AssertionError('old wrapper cast should fault in native pane lookup')
-    m.write(native+0x18,old_root); m.hook(0x2e9cde0,bad_phone)
-    before=list(m.events); m.button(bad_page,bad_row,5); m.frame(bad_phone)
-    assert m.events==before  # Wrong/unbuilt roots are declined before native recursion.
-    m.write(native+0x18,original_root); m.write(instance+0x58,0)
-    m.hook(0x2e9cde0,bad_phone); m.button(bad_page,bad_row,5); m.frame(bad_phone)
-    assert m.events==before
-    m.write(instance+0x58,accessor); m.write(accessor+8,0)
-    m.hook(0x2e9cde0,bad_phone); m.button(bad_page,bad_row,5); m.frame(bad_phone)
-    assert m.events==before  # Accessor output can be absent during setup failure.
-    m.write(accessor+8,native); m.write(original_root+0x28,0)
-    m.hook(0x2e9cde0,bad_phone); m.button(bad_page,bad_row,5); m.frame(bad_phone)
-    assert m.events==before  # A named root with no child sentinel is not ready.
-    phone3,page3,row3,panes3 = m.phone(2)
-    m.write(m.controller+0x50,7,4); before=list(m.events)
-    m.button(page3,row3,5); m.frame(phone3); assert m.events == before
+    before=m.model_events
+    for location,value in ((native+0x18,old_root),(instance+0x58,0),(accessor+8,0),(original_root+0x28,0)):
+        previous=m.read(location); m.write(location,value); m.hook(0x2e9cde0,bad_phone)
+        m.button(bad_page,bad_row,0); m.confirm(bad_page); m.frame(bad_phone)
+        assert m.model_events==before
+        m.write(location,previous)
+    phone3,page3,row3,panes3=m.phone(2)
+    m.write(m.controller+0x50,7,4); before=m.model_events
+    m.confirm(page3); m.frame(phone3); assert m.model_events==before
     m.write(m.controller+0x50,0xffffffff,4); m.fail_spawn=True
-    m.button(page3,row3,5); m.frame(phone3); m.frame(phone3)
-    assert m.read(panes3['L_BtnList_00']+0x58,1) == 0xa3
-    assert m.read(panes3['N_QolPreview_00']+0x58,1) == 0xa2
+    m.confirm(page3); m.frame(phone3); m.frame(phone3)
+    assert m.read(panes3['L_BtnList_00']+0x58,1)==0xa3
+    assert m.read(panes3['N_QolPreview_00']+0x58,1)==0xa2
     # Execute native Pane lookup against a real-shaped intrusive pane tree.
     root=m.alloc(); child=m.alloc(); table=m.alloc(); text=m.alloc()
     m.u.mem_write(root+0xb0,b'RootPane\0'); m.u.mem_write(child+0xb0,b'N_QolPreview_00\0')
@@ -344,7 +370,7 @@ for base in (0x7100000000, 0x7200000000):
     m.invoke(base+0x32ba5e4,m.controller,2)
     assert m.read(m.controller+0x6c,4)==0 and m.read(m.controller+0x70,4)==0
     assert m.read(m.controller+0x8c)==0xfffe and m.read(m.controller+0x10,4)==0
-    print(f'PASS: compiled resource patch preserves native/modified layout; native press dispatch excludes focus-leave; scoped input/B consumption, direct model ABI, parameter restoration, repeated open, deactivation and unavailable renderer, ASLR {base:#x}')
+    print(f'PASS: compiled resource patch preserves native/modified layout; focus dispatch alone cannot preview; snapshot input/B consumption, direct model ABI, parameter restoration, repeated open, deactivation and unavailable renderer, ASLR {base:#x}')
 
 for guard in GUARDS:
     m=Machine(0x7100000000,{})
