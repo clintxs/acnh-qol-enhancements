@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.17 localized dialogue names
+# Unified QoL validation — 0.3.23 combined Shopping Card funds
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -511,3 +511,35 @@ Switch hardware and other emulators/game versions are not validated targets.
   cases pass, along with 6,916 localized name cases across all 14 supplied
   languages. These are local ARM checks; the new category still needs an Eden
   test with the actual mirror/storage/Niko/amiibo/stretching/drop-off prompts.
+
+
+## 0.3.23 combined Shopping Card funds
+
+This revision supersedes the earlier savings-only affordability and no-fallback
+notes. Shops, fitting/bag checkout and regular catalog orders now check the
+combined total and spend Savings -> pocket Bell bags -> Wallet. Sales still
+deposit to savings. Cash change/refunds use native routines and may repack
+remaining cash between wallet and ordinary bags. Capacity stays conservative.
+
+- Host policy: 5,040 boundary cases, all three source priorities, insufficient
+  combined funds unchanged, zero/exact/max amounts and debit/refund conservation.
+- Compiled callbacks: all eight residents, two bases, every supported payment
+  caller, 500k example, partial wallet fallback, change and overflow.
+- Actual native cash/savings wrappers, selection/debit/change, addition/overflow
+  and encrypted money writes execute at two bases for all eight residents.
+  Resident/parameter lookup and inventory iteration/insertion are modeled.
+  Ordinary non-money inventory items survive all cash operations.
+- HUD shows all sources and clamps the displayed target at 999,999,999. Full
+  funds remain spendable, including withdrawing a total above the display cap.
+  The original nine-digit layout and all color options remain compatible.
+- Native cash feedback is formatted silently while its card is visible; the
+  card's native transition supplies one animation/sound. Leaving card scope
+  restores native cash feedback. Existing silent pocket refresh coverage remains.
+
+Eden still needs mixed-funds purchase tests in Nook's Cranny, Able Sisters,
+fitting bag, Nook Stop and the phone app. Include full/near-full inventory,
+change, insufficient total, cancellation, multiple residents and sale proceeds.
+
+Release checks: the devkitA64 build and `tools/check.py core shopping fitting`
+passed. All five palette structure checks and suite manifest/resource checks
+passed; generated assets retain the previous nine-digit layout bytes.

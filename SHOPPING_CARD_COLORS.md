@@ -1,6 +1,6 @@
-# Shopping Card themes — QoL Enhancements 0.3.21 / ACNH 3.0.3
+# Shopping Card themes — QoL Enhancements 0.3.23 / ACNH 3.0.3
 
-Install the normal QoL Enhancements 0.3.21 Core and Shopping Card first.
+Install the normal QoL Enhancements 0.3.23 Core and Shopping Card first.
 This download contains optional appearance replacements, not a standalone mod.
 
 1. Fully close the game.
@@ -22,7 +22,8 @@ Hotel Blue uses the hotel ticket UI's blue counter, lighter blue card, navy
 border and red stripe, with cream details and outlines. Poki Red uses the Poki
 bag's light coral-red for the card, a deeper warm-red counter and border,
 cream details/outlines and a gold chip. Colors are based on the supplied
-screenshots. These options still display Bells and spend savings.
+screenshots. These options still display combined Bells and use the same payment priority.
+Balances at or above 999,999,999 display that cap; full funds remain spendable.
 Island takes its colors from the ACNH edition Switch: a turquoise-blue card
 (#6ABDC4) and mint-green strip (#95E2C5). The oval outline, card backing,
 balance and Bells bubble use the same blue as the card in revision 3.

@@ -1,9 +1,9 @@
-QoL Enhancements 0.3.22 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.23 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
-Shopping Card: recovery of the shared counter after it disappeared in 0.3.9.
-Native 16:9 placement; regular catalog self-orders use savings.
+Shopping Card: combined funds, Savings -> Pockets (Bell bags) -> Wallet.
+Native 16:9 placement; display caps at 999,999,999 without limiting spending.
 
 INSTALL
 Fully close ACNH. Disable the standalone Catalog Aware Shops, QoL Pockets
@@ -25,14 +25,14 @@ Catalog: catalog/recipe stars, catalog badges and furniture-variation markers.
 Pockets: Grab 5/10, direct storage withdrawal, Y-to-storage and footer hints.
 Faster Dialogue: faster default reveal; B/R boost; optional NPC/UI/unnamed boost.
 Fitting Room: Y toggles a shopping bag; native bulk checkout includes bag items.
-Shopping Card: Nook's Cranny/Able Sisters purchases use ABD savings; Nook's
+Shopping Card: Nook's Cranny/Able Sisters purchases use combined funds; Nook's
 sales deposit to savings and use the ordinary “Thank you! Please come again!”
 message. 0.3.3 removes the misleading pockets-full/wiring explanation. Includes
 fitting checkout and the optional fitting bag. Nook Shopping/catalog orders for
-yourself use savings at Nook Stop and through the phone app. Catalog gift
+yourself use combined funds at Nook Stop and through the phone app. Catalog gift
 orders have a separate native payment path and are not covered in this prototype.
 Always active when this module is enabled. No item, menu addition or unlock yet.
-The top-right display shows a green shopping card and full savings balance
+The top-right display shows a green shopping card and combined balance
 inside these shops and while the catalog is open; closing the catalog outside
 these shops restores ordinary Bells. The white English “Bells” badge
 has green text and sits at the lower right.
@@ -55,12 +55,20 @@ one more screen pixel at 1280 width and makes the border a lighter blue-green
 after the previous shade still appeared black in-game. Native size lookup and SDK
 relocation pass; the final cosmetic changes still need an Eden check.
 The Bells badge retains its shift about 16 screen pixels left at 1280-pixel width.
-Savings changes use native count-up/down animation and sound.
+Displayed balance changes use native count-up/down animation and sound.
+The display caps at 999,999,999. The full total remains available for purchases.
+The hidden native cash counter cannot duplicate the card animation/sound.
 Entering shops, switching residents and unchanged balances are silent.
 0.3.4 corrects the HUD path missed in 0.3.2–0.3.3, which
 left the regular in-shop counter showing cash. Pocket/price counters keep cash;
 0.3.2 fixes their false change animation/sound after closing pockets.
-Pocket Bells/Bell bags stay untouched. No cash fallback for insufficient savings.
+Purchases check savings + pocket Bell-bag items + wallet Bells before payment.
+Payment priority is Savings -> Pockets (Bell bags) -> Wallet. If the combined
+total is insufficient, no source is charged. For a 500,000-Bell price, 300,000
+savings + 200,000 in bags + 99,000 wallet leaves the wallet at 99,000 and the
+other two sources empty. Native denomination change may repack remaining cash
+between the wallet and ordinary Bell bags. Space checks conservatively do not
+assume spending bags will free slots; change can occupy those slots again.
 Tailor tickets still work. Native savings cap/deposit clamping still applies.
 Harv, other vendors, the drop-off box and ABD transfers retain normal behavior.
 No new save fields, SD files, MSBT replacements or permissions are required.
@@ -100,7 +108,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.22
+  version = 0.3.23
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.

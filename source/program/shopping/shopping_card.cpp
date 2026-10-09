@@ -1,6 +1,7 @@
 #include "lib.hpp"
 #include "shopping_card.hpp"
 #include "resource_budget.hpp"
+#include "payment_policy.hpp"
 #include <array>
 #include <cstring>
 
@@ -9,6 +10,7 @@ namespace {
 namespace address {
 constexpr std::uintptr_t ResourceSizeQuery = 0x03e3cad0;
 constexpr std::uintptr_t Wallet = 0x0257abf0, Debit = 0x0257b340;
+constexpr std::uintptr_t WalletSpace = 0x0257ad90, AddCash = 0x0257af90;
 constexpr std::uintptr_t BellDisplayUpdate = 0x0301b394, BellPageUpdate = 0x02b13bf0;
 constexpr std::uintptr_t StepNumber = 0x03353b14, NumberFeedback = 0x03025400, FormatNumber = 0x03025a4c;
 constexpr std::uintptr_t FindParameter = 0x02b12c24, SafeStringVtableGot = 0x04ab2020;
@@ -73,6 +75,25 @@ unsigned CurrentShop() {
     return stage == MarketSmall || stage == MarketLarge || stage == Tailor ? stage : 0;
 }
 bool Valid(const std::uint8_t *player) { return player && *player < 8; }
+bool ReadBalances(const std::uint8_t *player, Balances &balance) {
+    if (!Valid(player)) return false;
+    // Native accessors include resident lookup and tracked money reads.
+    // WalletSpace reports 99,999 minus wallet Bells, excluding Bell-bag items;
+    // Wallet reports their combined value. Calls from this module are outside
+    // the reviewed shop callsites, so the Wallet hook returns native cash.
+    const auto space = Fn<unsigned (*)(const std::uint8_t *)>(address::WalletSpace)(player);
+    const auto cash = Fn<unsigned (*)(const std::uint8_t *)>(address::Wallet)(player);
+    if (space > WalletLimit || cash < WalletLimit - space) return false;
+    balance.wallet = WalletLimit - space;
+    balance.pockets = cash - balance.wallet;
+    balance.savings = Fn<unsigned (*)(const std::uint8_t *)>(address::Savings)(player);
+    return ValidBalances(balance);
+}
+unsigned CombinedBalance(const std::uint8_t *player) {
+    Balances balance;
+    return ReadBalances(player, balance) ? TotalBells(balance) : 0;
+}
+
 // Exact BL return addresses, not broad address ranges. Shared helpers also
 // serve the ABD, pockets, storage, travel, Harv, HHP and other vendors.
 constexpr std::array WalletCallers{
@@ -177,14 +198,36 @@ std::uintptr_t BoundNumberPane(std::uintptr_t counter) {
 std::uintptr_t FindPane(std::uintptr_t root, const char *name) {
     return root ? Fn<std::uintptr_t (*)(std::uintptr_t, const char *, bool)>(address::FindPane)(root, name, true) : 0;
 }
+std::uintptr_t ShoppingCardPane(std::uintptr_t counter) {
+    auto root = BoundNumberPane(counter);
+    for (unsigned depth = 0; root && depth < 12; ++depth) {
+        if (const auto card = FindPane(root, "N_ShoppingCard_00")) return card;
+        root = Read<std::uintptr_t>(root, display::PaneParent);
+    }
+    return 0;
+}
+HOOK_DEFINE_TRAMPOLINE(CashNumberFeedback) {
+    static void Callback(std::uintptr_t counter, const void *event) {
+        const auto card = ShoppingCardPane(counter);
+        if (card && (Read<std::uint8_t>(card, display::PaneFlags) & 1)) {
+            // The combined counter supplies the one visible transition. Keep
+            // native cash text current without replaying its hidden animation
+            // and sound, including cash changes while the display is capped.
+            Fn<void (*)(std::uintptr_t, unsigned)>(address::FormatNumber)(
+                counter, Read<unsigned>(reinterpret_cast<std::uintptr_t>(event), 4));
+            return;
+        }
+        Orig(counter, event);
+    }
+};
 void ShowPane(std::uintptr_t pane, bool visible) {
     if (!pane) return;
     auto &flags = *reinterpret_cast<std::uint8_t *>(pane + display::PaneFlags);
     flags = (flags & ~1u) | unsigned(visible);
 }
 unsigned FormatSavings(char16_t (&output)[12], unsigned balance) {
-    // Savings uses a fixed nine-digit native cap. Fit the complete amount,
-    // including thousands separators, without the six-digit wallet counter.
+    // Match the native nine-digit presentation; affordability uses the full total.
+    balance = std::min(balance, SavingsLimit);
     char16_t reversed[12]{};
     unsigned length = 0, digits = 0;
     do {
@@ -244,7 +287,7 @@ unsigned AnimatedSavings(std::uintptr_t counter, unsigned balance, unsigned shop
     if (number.current != previous) {
         struct Event { int previous, current, descending; bool finished; };
         const Event event{previous, number.current, previous >= number.target, bool(number.finished)};
-        Fn<void (*)(std::uintptr_t, const Event *)>(address::NumberFeedback)(counter, &event);
+        CashNumberFeedback::Orig(counter, &event);
         // Feedback also formats T_Num_00. Restore that hidden cash text at once
         // so leaving the shop never exposes a stale savings amount. The native
         // cash controller's current/target/cache fields are never changed.
@@ -292,7 +335,7 @@ void UpdateSavingsDisplay(std::uintptr_t counter, const std::uint8_t *player, Di
     const bool wasActive = Read<std::uint8_t>(card, display::PaneFlags) & 1;
     if (active) {
         char16_t text[12]{};
-        const auto balance = Fn<unsigned (*)(const std::uint8_t *)>(address::Savings)(player);
+        const auto balance = std::min(CombinedBalance(player), SavingsLimit);
         // Only the regular HUD drives feedback, so an auxiliary counter cannot
         // double-play the same purchase sound. Its balance remains immediate.
         const auto shown = surface == DisplaySurface::Hud ? AnimatedSavings(counter, balance, shop, *player) : balance;
@@ -340,7 +383,7 @@ HOOK_DEFINE_TRAMPOLINE(ShopWallet) {
         // including outdoors. Its ordinary cash display calls remain untouched.
         if (Valid(player) && (caller == Main(catalog::WalletReturn) ||
                               (Contains(WalletCallers, caller) && CurrentShop())))
-            return Fn<unsigned (*)(const std::uint8_t *)>(address::Savings)(player);
+            return CombinedBalance(player);
         return Orig(player);
     }
 };
@@ -352,11 +395,19 @@ HOOK_DEFINE_TRAMPOLINE(ShopDebit) {
             Orig(player, amount);
             return;
         }
-        // The native shop confirmation checks this same account. Never fall back
-        // to pocket Bells if it is empty. Use the game's tracked encrypted-money
-        // writer; no raw save offsets or transient wallet swaps are involved.
-        Fn<void (*)(const std::uint8_t *, unsigned)>(address::Withdraw)(player, amount);
-        Logging.Log("[QoL Enhancements/Shopping Card] PURCHASE player=%u bells=%u\n", *player, amount);
+        Balances balance;
+        const auto plan = ReadBalances(player, balance) ? PlanPayment(balance, amount) : Payment{};
+        if (!plan.affordable) {
+            Logging.Log("[QoL Enhancements/Shopping Card] INSUFFICIENT player=%u bells=%u\n", *player, amount);
+            return;
+        }
+        if (plan.savings)
+            Fn<void (*)(const std::uint8_t *, unsigned)>(address::Withdraw)(player, plan.savings);
+        if (plan.cashDebit) Orig(player, plan.cashDebit);
+        if (plan.walletRefund)
+            Fn<void (*)(const std::uint8_t *, unsigned)>(address::AddCash)(player, plan.walletRefund);
+        Logging.Log("[QoL Enhancements/Shopping Card] PURCHASE player=%u bells=%u savings=%u pockets=%u wallet=%u\n",
+                    *player, amount, plan.savings, plan.pockets, plan.wallet);
     }
 };
 HOOK_DEFINE_TRAMPOLINE(ShopCapacity) {
@@ -376,9 +427,9 @@ HOOK_DEFINE_TRAMPOLINE(ShopPurchaseSpace) {
     static unsigned Callback(const std::uint8_t *player, unsigned bells, unsigned tickets) {
         const auto caller = reinterpret_cast<std::uintptr_t>(__builtin_return_address(0));
         if ((caller == Main(0x00f92560) || caller == Main(0x03114400)) && Valid(player) && CurrentShop()) {
-            // Payment from savings cannot free Bell-bag pocket slots. Preserve
-            // native empty-slot and tailor-ticket accounting with a zero Bell
-            // payment, or vanilla could accept a purchase it cannot deliver.
+            // Keep the conservative card-space preflight: do not promise slots
+            // freed by bag spending, because native change/refunds may reuse a
+            // slot. Preserve empty-slot and tailor-ticket accounting as before.
             bells = 0;
         }
         return Orig(player, bells, tickets);
@@ -401,7 +452,7 @@ HOOK_DEFINE_TRAMPOLINE(SaleMessage) {
 } // namespace
 unsigned AvailableBells(const std::uint8_t *player) {
     if (installed && Valid(player) && CurrentShop())
-        return Fn<unsigned (*)(const std::uint8_t *)>(address::Savings)(player);
+        return CombinedBalance(player);
     return Fn<unsigned (*)(const std::uint8_t *)>(address::Wallet)(player);
 }
 bool PrepareResources() {
@@ -445,8 +496,9 @@ bool Install() {
     CatalogOpened::InstallAtOffset(catalog::Open);
     CatalogClosed::InstallAtOffset(catalog::Close);
     CatalogDestroyed::InstallAtOffset(catalog::Destroy);
+    CashNumberFeedback::InstallAtOffset(address::NumberFeedback);
     installed = true;
-    Logging.Log("[QoL Enhancements/Shopping Card] READY: scoped counter resource budget; green savings display; always enabled in Nook's Cranny/Able Sisters/Nook Shopping; native savings\n");
+    Logging.Log("[QoL Enhancements/Shopping Card] READY: scoped counter resource budget; combined Bells display; savings -> pocket Bell bags -> wallet in Nook's Cranny/Able Sisters/Nook Shopping\n");
     return true;
 }
 } // namespace qol::shopping

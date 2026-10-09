@@ -487,3 +487,40 @@ Builders keep the same transforms, texture descriptors, smooth alpha coverage
 and allocation guard. Preview CLI choices now come from the palette registry;
 optional archive names expand hyphens to spaces for Hotel Blue and Poki Red.
 Package --revision 4 alongside previous downloads. Core remains 0.3.16.
+
+
+## 0.3.23 combined funds and native cash priority
+
+Affordability/HUD now combine Savings + pocket Bell-bag items + wallet Bells.
+The displayed target clamps to 999,999,999 (the original 24-byte UTF-16
+capacity), but transaction arithmetic uses the full unsigned total. The
+maximum supported total remains below INT32_MAX.
+
+Wallet `0257ABF0` already includes Bell bags. `0257AD90` returns wallet space
+(99,999 minus wallet Bells), letting the card separate sources without
+reading raw inventory or encrypted save fields. Native debit `0257B340` /
+`026FDDC0` spends wallet first, selects smallest Bell bags, and returns
+denomination change to the wallet. After withdrawing the savings portion,
+debit old wallet + required bag portion, then refund old wallet minus the
+intended wallet portion through native tracked addition `0257AF90` /
+`0257B0B0` / `026FD5C0`. Wallet-only fallback uses the ordinary debit alone.
+No temporary fake wallet balance or direct save/item write is used. Native
+addition can repack cash into ordinary 99,000-Bell bags when change plus the
+wallet refund exceeds 99,999; source balances then reflect native change.
+The explicit 500k example leaves the 99k wallet intact. Purchase records and
+item delivery remain in their original callers. Inventory space remains a
+conservative preflight; do not promise slots that change may refill.
+
+`03025400` is the native number-feedback callback. While that counter's
+shopping-card subtree is visible, its cash callback only formats the hidden
+cash text; the combined transition calls the original feedback directly.
+This avoids duplicate cash/card sounds and feedback above the display cap.
+Other currency counters and ordinary cash outside card scope retain feedback.
+
+Host tests cover 5,040 payment boundary combinations. Compiled ARM tests cover
+all residents, caller/room isolation, combined affordability, insufficient
+funds, change, display saturation and native feedback. The native cash fixture
+executes real cash/savings wrappers, debit, credit/overflow and encryption;
+resident/parameter lookup and inventory iteration/insertion are modeled.
+Live mixed-funds checkout in shops, fitting and both catalog entry points is
+still required. Clean uninstall remains ordinary native money/item state.

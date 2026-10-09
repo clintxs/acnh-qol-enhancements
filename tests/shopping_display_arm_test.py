@@ -24,6 +24,7 @@ class DisplayMachine(CardMachine):
         # Execute the ORIGINAL BellPage update as the trampoline target. This
         # catches wrong owner layouts that a stubbed auxiliary update missed.
         self.write(self.module.find('BellPageBalanceDisplay', 'OrigRef'), base + 0x2b13bf0)
+        self.write(self.module.find('CashNumberFeedback', 'OrigRef'), base + 0x3025400)
         self.write(self.hud + 0x218, self.wallet, 4)
         self.write(self.hud + 0x21c, self.wallet, 4)
         self.write(self.counter + 0x260, self.wallet, 4)
@@ -143,7 +144,7 @@ for base in (0x7100000000, 0x7200000000):
             m.write(m.owner + 0x230, player, 1)
             m.update()
             assert m.shown('N_ShoppingCard_00') and not m.shown('T_Num_00')
-            assert m.texts[-1] == f'{123456789 + player:,}'
+            assert m.texts[-1] == f'{123456789 + player + m.cash[player]["wallet"]:,}'
         m.native_refresh(0x2b13f10, 0x2b13ff4, 0x224, UC_ARM64_REG_X22)
         m.write(m.owner + 0x228, 0, 4)
         m.native_refresh(0x301b674, 0x301b7a0, 0x230, UC_ARM64_REG_X21)
@@ -152,7 +153,7 @@ for base in (0x7100000000, 0x7200000000):
     # Both cap and zero are visible in full; no stale amount after withdrawal.
     m.deposit(999999999)
     m.update(); assert m.texts[-1] == '999,999,999'
-    m.route(0x257b340, 0xb168b4, m.player, 999999999)
+    m.route(0x257b340, 0xb168b4, m.player, 999999999 + m.cash_total)
     m.update(); assert m.texts[-1] == '0'
     for stage in (0, 0xde45e2c6):
         m.write(m.info + 0x38, stage, 4)
@@ -194,7 +195,7 @@ for base in (0x7100000000, 0x7200000000):
             m.write(m.hud + 0x230, 7 - player, 1) # poison auxiliary player field
             m.update_hud()
             assert m.shown('N_ShoppingCard_00') and not m.shown('T_Num_00')
-            assert m.texts[-1] == f'{123456 + player:,}'
+            assert m.texts[-1] == f'{123456 + player + m.cash[player]["wallet"]:,}'
             assert m.read(m.counter + 0x290, 1) == 0
             assert m.read(m.hud + 0x218, 4) == m.wallet
         # Resident switches initialize silently; a subsequent purchase/sale
@@ -206,7 +207,7 @@ for base in (0x7100000000, 0x7200000000):
         # Route uses the explicit player context; select resident 0 for updates.
         m.write(m.player, 0, 1)
         m.route(0x257b340, 0xb168b4, m.player, 100)
-        expected = m.balance()
+        expected = m.balance() + m.cash_total
         m.update_hud()
         assert int(m.texts[-1].replace(',', '')) > expected
         assert m.feedback[-1] == ('Down', 2)
@@ -215,7 +216,7 @@ for base in (0x7100000000, 0x7200000000):
         assert m.formatted[-1] == m.wallet # hidden cash text restored
         assert m.read(m.counter + 0x260, 4) == m.wallet
         assert m.read(m.counter + 0x290, 1) == 0
-        m.deposit(200); expected = m.balance()
+        m.deposit(200); expected = m.balance() + m.cash_total
         m.update_hud()
         assert int(m.texts[-1].replace(',', '')) < expected
         assert m.feedback[-1] == ('Up', 1)
@@ -238,6 +239,7 @@ for base in (0x7100000000, 0x7200000000):
     m.write(m.info + 0x38, 0, 4); m.update_hud()
     assert not m.shown('N_ShoppingCard_00') and m.shown('T_Num_00')
     # Genuine pocket-money changes still use the original HUD amount animation.
+    m.write(m.player, m.read(m.hud + 0x224,1), 1)
     m.wallet += 100
     m.update_hud()
     assert m.read(m.counter + 0x290, 1) == 1
@@ -248,6 +250,9 @@ print('PASS: actual BellPage HUD and native number stepping/Up/Down/Finish feedb
 
 for base in (0x7100000000, 0x7200000000):
     m = DisplayMachine(base)
+    m.wallet = 0
+    m.write(m.hud + 0x218, 0, 4); m.write(m.hud + 0x21c, 0, 4)
+    m.write(m.counter + 0x260, 0, 4); m.write(m.counter + 0x264, 0, 4)
     m.deposit(999999999)
     m.update_hud()
     assert m.texts[-1] == '999,999,999' and not m.feedback
@@ -305,9 +310,9 @@ for base in (0x7100000000, 0x7200000000):
             before = list(m.feedback)
             m.update_hud()
             assert m.shown('N_ShoppingCard_00') and not m.shown('T_Num_00')
-            assert m.texts[-1] == f'{m.balance(player):,}' and m.feedback == before
+            assert m.texts[-1] == f'{m.balance(player) + m.cash_total:,}' and m.feedback == before
             m.route(0x257b340, 0x2b7f588, m.player, 1000)
-            m.settle_hud(m.balance(player))
+            m.settle_hud(m.balance(player) + m.cash_total)
             assert m.feedback[-1] == ('DownFinish', 4)
             before = list(m.feedback)
             m.update_hud(); assert m.feedback == before
@@ -319,7 +324,7 @@ for base in (0x7100000000, 0x7200000000):
             # also clears it even without the ordinary close notification.
             m.deposit(20, player)
             m.invoke(m.callbacks[0x2b70ffc], catalog); m.update_hud()
-            assert m.texts[-1] == f'{m.balance(player):,}' and m.feedback == before
+            assert m.texts[-1] == f'{m.balance(player) + m.cash_total:,}' and m.feedback == before
             if player % 2:
                 m.invoke(base + 0x2b67074, catalog, caller=base + 0x2b67078)
             else:
@@ -341,3 +346,41 @@ for base in (0x7100000000, 0x7200000000):
     # HUD cash refresh still compares pocket funds, preventing false ka-ching.
     m.native_refresh(0x2b13f10, 0x2b13ff4, 0x224, UC_ARM64_REG_X22)
 print('PASS: native catalog lifecycle and BellPage with independent UI contexts, eight residents, order feedback, silent reopen, close/direct/deleting teardown, resident isolation and unchanged cash refresh at two bases')
+
+# Combined funds and the display-only cap; the full amount remains spendable.
+for base in (0x7100000000,0x7200000000):
+    m = DisplayMachine(base)
+    m.deposit(300000)
+    m.cash[0]={'wallet':99000,'bags':[99000,99000,2000]}
+    m.update_hud(); assert m.texts[-1]=='599,000' and not m.feedback
+    m.route(0x257b340,0xb168b4,m.player,500000)
+    m.settle_hud(99000)
+    assert m.wallet==99000 and not m.bags and m.feedback[-1]==('DownFinish',4)
+    before=list(m.feedback)
+    m.route(0x257b340,0xb168b4,m.player,99001)
+    m.update_hud(); assert m.texts[-1]=='99,000' and m.feedback==before
+    m.deposit(999999999)
+    m.settle_hud(999999999)
+    m.cash[0]['bags']=[99000]*40
+    before=list(m.feedback)
+    m.update_hud(); assert m.texts[-1]=='999,999,999' and m.feedback==before
+    # Spending the excess above the displayed cap leaves it capped and silent.
+    total=m.balance()+m.cash_total
+    m.route(0x257b340,0x2b7f588,m.player,total-999999999)
+    m.update_hud(); assert m.texts[-1]=='999,999,999' and m.feedback==before
+    m.route(0x257b340,0x2b7f588,m.player,999999999)
+    m.settle_hud(0)
+print('PASS: combined HUD, 500k bags-first example, insufficient funds silent, nine-digit saturation without limiting spendable funds, full combined withdrawal at two bases')
+
+# Native cash callbacks remain formatted, but cannot duplicate card feedback.
+for base in (0x7100000000,0x7200000000):
+    m=DisplayMachine(base); m.deposit(1000); m.update_hud()
+    event=m.ram+0x7800
+    m.write(event,77777,4); m.write(event+4,77000,4)
+    m.write(event+8,1,4); m.write(event+12,1,1)
+    m.invoke(m.callbacks[0x3025400],m.counter,event)
+    assert m.formatted[-1]==77000 and not m.feedback
+    m.write(m.info+0x38,0,4); m.update_hud()
+    m.invoke(m.callbacks[0x3025400],m.counter,event)
+    assert m.feedback[-1]==('DownFinish',4)
+print('PASS: hidden native cash feedback suppressed while card visible; ordinary cash feedback restored outside card scope at two bases')

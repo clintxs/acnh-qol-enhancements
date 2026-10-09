@@ -53,7 +53,7 @@ def texture_names(sections):
     return [table[12+offset:table.index(0,12+offset)].decode('ascii')
             for offset in struct.unpack_from(f'<{count}I',table,12)]
 assert texture_names(new) == texture_names(old) + list(card.TEXTURES)
-print('PASS: hidden savings subtree; original panes/materials/fonts/animations intact, nine-digit amount, no MSBT lookup')
+print('PASS: hidden savings subtree; original panes/materials/fonts/animations intact, nine-digit combined amount, no MSBT lookup')
 
 label = new_panes['T_SavingsLabel_00']
 start = struct.unpack_from('<I', label, 100)[0]

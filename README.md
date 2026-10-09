@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.17 localized NPC dialogue matching** for ACNH **3.0.3 on Eden**. One Core
+**0.3.23 combined Shopping Card funds** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -13,8 +13,8 @@ for installation, version policy and user-facing limits.
 | Pockets | QoL Pockets Interactions 0.1.4 | Editable Grab 5/10 captions |
 | Faster Dialogue | C++ hook rewrite of Faster Interactions 0.3.0, with conditional NPC/UI boost | Optional personal configuration |
 | Fitting Room | Able Sisters Bag prototype 0.3.7 | Fitting row badge and original counter layout |
-| Amiibo | C++ hook rewrite of Amiibo Scan 1.0.0 | Configuration only |
-| Shopping Card | Always-enabled native savings routing prototype | Configuration + savings currency layout |
+| Faster Crafting | Automatic crafting/cooking speed ramp | Configuration only |
+| Shopping Card | Combined savings/cash routing prototype | Configuration + card currency layout |
 
 Faster tool-wheel animations and other workspace mods are not bundled in this
 six-feature suite. Historical source notes under `docs/` describe each
@@ -64,14 +64,19 @@ Ordinary GP-only callbacks retain their original context layout.
 Enable **Core** and **Shopping Card**, then fully restart ACNH. The card is
 always active inside both versions of Nook's Cranny and Able Sisters, and for
 Nook Shopping/catalog orders for yourself at Nook Stop or in the phone app. Purchases
-use the current player's ABD savings exclusively, even with empty pockets;
-pocket Bells and Bell bags stay untouched. Nook's counter sales go directly to
+check the current player's combined ABD savings, pocket Bell-bag items and wallet
+Bells. If that total covers the price, payment uses **Savings → Pockets (Bell
+bags) → Wallet**. A 500,000-Bell purchase with 300,000 savings, 200,000 in bags
+and 99,000 in the wallet leaves the wallet at 99,000 and empties the other two
+sources. The game’s native cash routines handle denomination change and may
+repack remaining cash between the wallet and ordinary Bell bags. Nook's
+counter sales go directly to
 savings and use the ordinary localized “Thank you! Please come again!” sale
 message. Version 0.3.3 replaces the wire message, which incorrectly explained
 that the player’s wallet and pockets were full. Native savings limits
 apply (999,999,999 Bells, including the usual deposit clamping at the cap).
-Insufficient savings does not fall back to cash. Existing affordability/error
-text may still refer to pocket Bells.
+An insufficient combined total leaves all three sources unchanged. Existing
+affordability/error text may still refer to pocket Bells.
 
 This includes native fitting-room purchases with or without the Fitting Room
 module. When Fitting Room is enabled, its bag preflight reads the same account
@@ -82,7 +87,8 @@ Bell bags frees pocket slots. Harv's Island, other vendors, the drop-off box,
 ABD transfers and ordinary pocket-money actions retain their existing paths.
 
 The top-right currency display uses a green shopping card and a separate
-savings amount inside the two shops and while the catalog is open. It fits the full 999,999,999-Bell balance;
+combined balance inside the two shops and while the catalog is open. The display
+saturates at **999,999,999**, while purchases still use the full combined funds;
 the prototype label is English (“Bells”), on a white badge with green text.
 The green oval has a thick white rim. The centered card has a dark edge and
 a white backing behind the oval; the white Bells badge sits at the lower right.
@@ -111,7 +117,7 @@ and makes the border a visibly lighter blue-green after the previous shade still
 appeared black in-game.
 Its final appearance still needs an Eden check.
 The badge remains shifted left by about 16 screen pixels at 1280-pixel width.
-Balance changes count up/down with the native increase/decrease/finish animation
+Displayed balance changes count up/down with the native increase/decrease/finish animation
 and sound feedback. First display, resident/room switches and unchanged balances
 stay silent. Outside those shops, closing the catalog returns to the ordinary Bells presentation. Pockets and other shared cash counters keep
 showing pocket Bells. The 0.3.2 change removes savings substitution from their
@@ -141,7 +147,7 @@ was followed by a catalog screenshot showing the savings presentation.
 Catalog checkout and the 0.3.16 icon adjustments still need live verification. Catalog gift orders use a separate
 native sending/payment path and are not covered by this prototype; their
 payment remains unchanged. Nook Stop and phone catalog purchases, insufficient
-savings, cancellation, order limits, delivery and screen transitions need live
+combined funds, cancellation, order limits, delivery and screen transitions need live
 verification.
 See [research and follow-up scope](research/shopping-card/NOTES.md).
 
@@ -162,7 +168,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.17
+version = 0.3.23
 base_speed = 2
 boost_speed = 4
 faster_ui = false
