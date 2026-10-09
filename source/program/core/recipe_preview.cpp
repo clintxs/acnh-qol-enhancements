@@ -45,6 +45,9 @@ constexpr std::size_t CraftButton = 0x598;
 constexpr std::size_t LayoutVisibilityController = 0x1b0;
 }
 constexpr std::size_t PreviewSize = 0x1c210, PreviewVtableSize = 0x2c0;
+// Native layout initialization (main+03759DD0) allocates 0x23 button-event
+// rows. Command-event tables use fewer rows; both share the delegate format.
+constexpr unsigned ButtonEventRows = 0x23, MaxCallbackColumns = 64;
 std::uintptr_t Main{};
 
 template<class T> T &At(void *object, std::size_t offset) {
@@ -132,7 +135,7 @@ void ReplaceCallback(void *layout, std::size_t rows, std::uintptr_t original,
     const auto columns = At<unsigned>(layout, rows);
     const auto count = At<unsigned>(layout, rows + 4);
     auto entries = At<std::byte *>(layout, rows + 8);
-    if (!entries || columns > 64 || count > 32) return;
+    if (!entries || columns > MaxCallbackColumns || count > ButtonEventRows) return;
     for (unsigned i = 0; i < columns * count; ++i) {
         auto &callback = At<std::uintptr_t>(entries + i * 0x20, 0x10);
         if (callback == Main + original) callback = replacement;

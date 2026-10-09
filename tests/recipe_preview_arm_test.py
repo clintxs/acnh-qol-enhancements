@@ -1,8 +1,9 @@
 """Exercise the compiled phone-preview integration against ACNH 3.0.3 code.
 
-UI allocation, async loading, rendering and animations are modeled. The native
-recipe copy, navigation, item lookup and craft-action dispatcher execute from
-main.raw. This is not a live Eden rendering/input test.
+UI allocation, async loading, rendering and animations are modeled. Native
+layout-table construction, confirmation translation/dispatch, recipe copy,
+navigation, item lookup and craft-action dispatch execute from main.raw.
+This is not a live Eden rendering/input test.
 """
 import struct
 from core_arm_test import Machine, RAW
@@ -25,6 +26,10 @@ class PreviewMachine(Machine):
         for offset in range(0x4a3b768, 0x4a3ba38, 8):
             value = struct.unpack_from('<Q', RAW, offset)[0]
             self.write(base + offset, base + value if value else 0)
+        for table in (0x49e8408, 0x4a5ef98):
+            for offset in (0, 8, 16):
+                self.write(base + table + offset,
+                           base + struct.unpack_from('<Q', RAW, table + offset)[0])
         self.boot(); self.activate()
         self.running = True
         self.next_preview = self.ram + 0x300000
@@ -53,6 +58,11 @@ class PreviewMachine(Machine):
         self.global_pointer(0x4ab2230, manager)
         self.layout_table = self.aux(0x200)
         self.write(self.layout_table + 0x140, self.stub('hidden'))
+        self.write(self.layout_table + 0x1a8, self.stub('button_source'))
+        self.write(self.layout_table + 0x1b8, base + 0x375ab74)
+        self.write(self.layout_table + 0x1c0, base + 0x375b8e0)
+        self.write(self.layout_table + 0x1c8, base + 0x2ab1d24)
+        self.write(self.layout_table + 0x1d0, self.stub('button_feedback'))
         self.button_table = self.aux(0x200)
         self.write(self.button_table + 0x140, self.stub('button_visibility'))
         self.visibility_table = self.aux()
@@ -113,12 +123,15 @@ class PreviewMachine(Machine):
         layout = self.layout()
         self.write(page + 0x210, layout)
         self.write(layout + 0x580, self.aux(0x500))
-        entries = self.aux(0xc0)
-        self.write(layout + 0x430, 1, 4)
-        self.write(layout + 0x434, 6, 4)
-        self.write(layout + 0x438, entries)
-        for i, function in enumerate((0x2e96a80, 0x2e99d90, 0, 0, 0, 0x2e99d94)):
-            self.write(entries + i * 0x20 + 0x10, self.base + function if function else 0)
+        # Execute the native table constructor. The original fixture invented
+        # six rows, masking the bug that rejected the game's 35-row table.
+        self.native_layout_tables(layout)
+        columns = self.read(layout + 0x430, 4)
+        entries = self.read(layout + 0x438)
+        for row, function in ((0, 0x2e96a80), (1, 0x2e99d90), (5, 0x2e99d94)):
+            self.write(entries + row * columns * 0x20, self.base + 0x49e8408)
+            self.write(entries + row * columns * 0x20 + 8, page)
+            self.write(entries + row * columns * 0x20 + 0x10, self.base + function)
         recipes = self.aux(count * 8)
         for i in range(count):
             recipe = self.aux(0xd0)
@@ -132,9 +145,31 @@ class PreviewMachine(Machine):
         self.write(page + 0x218, count - 1, 4)
         self.hook(0x2e9cde0, page)
         assert self.read(entries + 0x10) == self.base + 0x2e96a80
-        assert self.read(entries + 5 * 0x20 + 0x10) == self.base + 0x2e99d94
-        assert self.read(entries + 0x30) != self.base + 0x2e99d90
+        assert self.read(entries + 5 * columns * 0x20 + 0x10) == self.base + 0x2e99d94
+        assert self.read(entries + columns * 0x20 + 0x10) != self.base + 0x2e99d90
         return page
+
+    def native_layout_tables(self, layout):
+        # Only allocation and the final resource-bind virtual are modeled;
+        # table dimensions and delegate initialization execute in game code.
+        self.global_pointer(0x4ab2698, 0)
+        table = self.aux(0xd0)
+        self.write(table + 0xc8, self.stub('layout_resources'))
+        self.write(layout, table)
+        params = self.aux(0x30)
+        for offset, value in ((8, 1), (0xc, 1), (0x14, 1), (0x18, 2), (0x1c, 2)):
+            self.write(params + offset, value, 4)
+        self.write(params + 0x28, 1, 1)
+        self.native_actions[0x2478c0] = 'layout_allocate'
+        try:
+            self.invoke(self.base + 0x3759dd0, layout, params)
+        finally:
+            self.native_actions[0x2478c0] = 'allocate'
+        assert self.read(layout + 0x430, 4) == 2
+        assert self.read(layout + 0x434, 4) == 35
+        assert self.read(layout + 0x468, 4) == 2
+        assert self.read(layout + 0x46c, 4) == 5
+        self.write(layout, self.layout_table)
 
     def layout(self):
         layout = self.aux(0x600)
@@ -144,8 +179,11 @@ class PreviewMachine(Machine):
 
     def confirm(self, page):
         layout = self.read(page + 0x210)
-        entries = self.read(layout + 0x438)
-        self.invoke(self.read(entries + 0x30), page, 0)
+        # Feed a confirmation event through the real native translation,
+        # row/column dispatch and member-function delegate invocation.
+        event = self.aux(0x20)
+        self.write(event, 1, 4)
+        self.invoke(self.base + 0x375aa40, layout, event)
 
     def frame(self, page):
         self.hook(0x2e9fbb0, page)
@@ -189,7 +227,9 @@ class PreviewMachine(Machine):
         args = [self.reg(i) for i in range(4)]
         self.events.append((action, *args))
         result = 0
-        if action == 'allocate':
+        if action == 'layout_allocate':
+            result = self.aux(args[0])
+        elif action == 'allocate':
             assert args[0] == 0x1c210
             assert self.read(self.tls + 0xa8) == self.heap
             if not self.fail_allocation:
@@ -252,7 +292,8 @@ class PreviewMachine(Machine):
             assert self.read(args[1] + 0x48) == args[0]
         elif action.startswith('original_') or action in (
                 'lock', 'unlock', 'bind_preview', 'frame_preview', 'initialize_children',
-                'render_phone', 'refresh_grid', 'no_animation', 'item_init'):
+                'render_phone', 'refresh_grid', 'no_animation', 'item_init', 'layout_resources',
+                'button_source', 'button_feedback'):
             pass
         else:
             raise AssertionError(action)
@@ -395,4 +436,4 @@ if __name__ == '__main__':
         check_flow(base)
         check_lists(base)
         check_failures(base)
-    print('PASS: Core phone preview lifecycle, borrowed recipe/materials, native navigation/wrap, craft rejection, B return, reuse, teardown and fail-closed fingerprints at two ASLR bases')
+    print('PASS: native 35-row layout construction and confirmation dispatch, Core phone preview lifecycle, borrowed recipe/materials, native navigation/wrap, craft rejection, B return, reuse, teardown and fail-closed fingerprints at two ASLR bases')

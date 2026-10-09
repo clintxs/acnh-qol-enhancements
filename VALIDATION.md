@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.24 DIY recipe previews
+# Unified QoL validation — 0.3.25 DIY recipe preview input fix
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -575,3 +575,23 @@ layout/layering, rotation, physical input, B during loading, repeated app/phone
 closure and normal workbench crafting/cooking. The local harness does not
 establish those results. See `research/recipe-preview/NOTES.md` for native bindings
 and the live test list. No running game, installed mod folder or save was changed.
+
+## 0.3.25 DIY preview callback binding correction
+
+The user reported that A in the phone app did nothing in 0.3.24. The callback
+scanner rejected tables with more than 32 rows, but native layout initialization
+at main+03759DD0 creates 35 (0x23) button-event rows. Consequently it never
+replaced the phone's empty confirmation callback. The scanner now accepts the
+native row count while retaining bounded dimensions.
+
+The original test fixture supplied six rows and invoked the callback directly,
+so it missed this integration failure. The revised fixture executes the actual
+native layout-table constructor, asserts two columns/35 button rows and two
+columns/five command rows, and feeds confirmation through native translation
+(0375AB74), dispatch (0375AA40), and member-function delegates. Only allocation,
+resource binding, source-index lookup and focus feedback are modeled at those
+boundaries. The revised table fixture fails against the 0.3.24 executable and
+passes against 0.3.25. Preview lifecycle/navigation/material/craft-rejection and
+Core activation checks remain covered. The pinned Docker build and all host/Core
+checks pass, including all 64 optional-package combinations at two load bases.
+Live Eden input/rendering verification of this corrected build remains pending.

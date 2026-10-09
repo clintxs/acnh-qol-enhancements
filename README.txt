@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.24 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.25 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -90,7 +90,7 @@ this package does not supply an aspect-ratio patch.
 CORE SETTINGS / AMIIBO TIMEOUT
 DIY RECIPE PREVIEWS (CORE)
 
-New in 0.3.24. Select a recipe in the NookPhone DIY Recipes app to open the
+Added in 0.3.24, corrected in 0.3.25. Select a recipe in the NookPhone DIY Recipes app to open the
 workbench-style preview, with a larger rotatable model and required materials.
 The crafting button is hidden and crafting is disabled in this phone view.
 Left/right follows the app's current list, including filters and sorting, and
@@ -98,7 +98,8 @@ wraps at the ends. Press B to return to the app with its category, selected
 recipe and scroll position preserved. Normal workbench crafting is unchanged.
 This is built into Core; no additional feature folder or setting is required.
 
-This first integration candidate passes ARM execution checks. Live Eden checks
+0.3.25 fixes the callback-table limit that made A do nothing in 0.3.24.
+This integration candidate passes ARM execution checks. Live Eden checks
 of appearance, rotation, controls and resource loading remain pending.
 
 From 0.3.19, the amiibo timeout fix is built into Core and enabled by default.
@@ -121,7 +122,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.24
+  version = 0.3.25
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.

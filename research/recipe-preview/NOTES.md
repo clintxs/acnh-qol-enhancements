@@ -72,6 +72,12 @@ craft button and hide its layout root through its visibility controller at
 virtual tables and objects are never altered.
 
 Only the phone's row-1 confirmation delegate is replaced after native binding.
+Native layout-table construction at main+03759DD0 creates 0x23 (35) button-event
+rows with at least two columns, and five command-event rows. The 0.3.24 scanner
+mistakenly capped rows at 32 and therefore left the confirmation callback empty.
+Version 0.3.25 accepts the native button-row count. Tests now execute that native
+constructor and confirmation translation/dispatch (0375AB74/0375AA40), rather
+than inventing a smaller table and directly calling its confirmation callback.
 The preview's B command delegate is replaced after binding, forwarding other
 commands (including favorites) to the native handler. Native navigation and
 rotation delegates are retained. On return, refresh the phone's selected item
