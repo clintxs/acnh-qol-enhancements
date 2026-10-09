@@ -26,9 +26,8 @@ screenshots. These options still display Bells and spend savings.
 Island takes its colors from the ACNH edition Switch: a turquoise-blue card
 (#6ABDC4) and mint-green strip (#95E2C5). The oval outline, card backing,
 balance and Bells bubble use the same blue as the card in revision 3.
-Revision 4 matches the oval background to the pockets UI's cream (#FFF9E3),
-sampled from the supplied screenshot. The Bells caption retains its warm
-off-white (#F8F6EF).
+Revision 5 matches both the oval background and Bells caption to the pockets
+UI's cream (#FFF9E3), sampled from the supplied screenshot.
 The card has a darker blue-teal edge and white details. Its number material is
 separate from ordinary cash, so the native cash counter keeps its original cream digits.
 ADB Teal reproduces the working 0.3.16 layout exactly. All retain the same card
