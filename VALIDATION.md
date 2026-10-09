@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.38 DIY transparency and rotation
+# Unified QoL validation — 0.3.39 DIY visibility restoration
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,29 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.39 DIY visibility regression
+
+The user reports 0.3.38 no longer renders the model. Its synced log confirms
+Core 0.3.38, successful model allocation, flags=0/state=1 and release. Changing
+CaptureBGAlpha from 255 to zero was the only capture change from the visible
+0.3.37 build. Preserving source alpha therefore appears to hide the whole model:
+the source 3D pass does not provide usable item alpha for this compositing path.
+The previous native parser test established the flag change, but could not
+establish that the source framebuffer contained useful alpha.
+
+Restore CaptureBGAlpha=255, exactly as in 0.3.37 and native WorkBenchInfo, while
+retaining right-stick controls unchanged. The layout regression requires the
+opaque capture and fails against the 0.3.38 ELF. Native alpha parsing still runs
+for both branches, explicitly documented as insufficient to prove GPU visuals.
+The preview background remains black; background matching is unfinished.
+
+Core checks cover both load addresses, native rotation, B/deactivation/reopening,
+parameter/pane restoration, camera counters and all 64 module combinations.
+Build, ZIP manifest integrity and source parity are checked for this release.
+Restored visibility and rotation need a live Deck test. The log also ends with
+an Unmapped Read64 at 0x88 after release, with no PC/backtrace; its origin is not
+established by that line and these tests do not claim to explain it.
 
 ## 0.3.38 DIY transparency and right-stick rotation
 

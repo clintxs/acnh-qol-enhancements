@@ -6,9 +6,10 @@
 failed live tests with freezes, incorrect dispatch, missing models and app
 startup failures. Their implementation history remains in Git and VALIDATION.md.
 The user confirmed visible models in 0.3.37, including a wooden simple bed,
-after correcting capture order. 0.3.38 adds transparency and right-stick
-rotation; those changes still need live inspection. Left/right recipe navigation
-is deferred. Local tests alone do not establish rendered output.
+after correcting capture order. 0.3.38 added right-stick rotation, but its
+transparency change hid the whole model. 0.3.39 restores opaque capture while
+retaining rotation. Visibility and rotation still need live inspection; background
+matching and left/right recipe navigation remain unfinished.
 
 This implementation retains MenuRecipe's material panel. It adds a hidden
 capture surface to the loaded layout and temporarily hides the grid, scrollbar
@@ -161,7 +162,7 @@ The retained in-memory BFLYT inserts hidden N_QolCapture_00 as the first root
 child and appends a hidden N_QolPreview_00 parent containing P_QolCapture_00.
 Both siblings are explicitly shown after allocation and hidden on close. The
 pan1 capture carries author-defined
-DynamicCaptureOn=R10G10B10A2 and CaptureBGAlpha=0 (from 0.3.38). The pic1 references the
+DynamicCaptureOn=R10G10B10A2 and CaptureBGAlpha=255 (restored in 0.3.39). The pic1 references the
 capture by DynamicCaptureUseName and DynamicCaptureUseIndex=0 and a new
 Capture^t texture/material. usd1 entry offsets are relative to each entry.
 Native binding writes the capture pane to typed picture +100 or alternate
@@ -192,10 +193,13 @@ page allocation. It costs approximately 1 MiB of BSS.
 ## Transparency and rotation (0.3.38)
 
 03A2DAD4 sets capture flag +D2 bit 1 when CaptureBGAlpha is 255 and no
-CaptureBGColor is supplied. That forces an opaque framebuffer copy, producing
-0.3.37's black rectangle. Alpha 0 leaves this bit clear. Do not supply
-CaptureBGColor: that selects a clear instead of copying the rendered model.
-The original app background remains behind the late picture.
+CaptureBGColor is supplied. Alpha 0 leaves this bit clear. The native parser
+fixture proves that behavior, but does not establish useful alpha in the 3D
+framebuffer. The 0.3.38 live test made the whole item invisible despite successful
+loading; preserving source alpha therefore appears to hide its color output.
+0.3.39 restores alpha 255, as in the working 0.3.37 build and WorkBenchInfo.
+Do not supply CaptureBGColor: that selects a clear instead of copying the model.
+Matching the app background requires a different approach and is unfinished.
 
 Native 03C4BAC4 dispatches float axis pairs at snapshot row +4 + kind*8;
 kind 1 is right stick (+0C/+10), with consumed-axis bit 1 at row +40. Collect
@@ -229,5 +233,5 @@ callbacks and ReleaseModel against camera-counter fixtures; it verifies balanced
 references across B, reopening and deactivation. Native base app update executes
 and reverting its mode getter reproduces immediate mode reclamation. Passing
 tests establish the ABI/control flow covered above, **not a rendered item or a freeze-free live game**. The next Deck
-test must establish transparency, rotation feel, materials remaining visible, B
+test must establish restored visibility, rotation feel, materials remaining visible, B
 return, reopening and ordinary workbench/Quick Store behavior afterward.

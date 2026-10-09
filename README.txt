@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.38 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.39 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -90,11 +90,14 @@ this package does not supply an aspect-ratio patch.
 CORE SETTINGS / AMIIBO TIMEOUT
 DIY RECIPE PREVIEWS (CORE)
 
-The 0.3.37 Deck test confirms item models render inside the existing app.
-0.3.38 preserves capture transparency so the app's own background can show
-through. The RIGHT STICK now rotates the item: left/right turns it, up/down
-tilts it up to 60 degrees from its starting pose. A dead zone prevents drift.
-Reopening starts from the item's native pose.
+0.3.39 restores the opaque capture that rendered models in the 0.3.37 Deck
+test. The 0.3.38 transparency change made the whole item invisible despite
+successful loading. The preview still has a black background; matching the
+app background remains unfinished.
+
+RIGHT STICK rotation is retained: left/right turns the item, up/down tilts it
+up to 60 degrees from its starting pose. A dead zone prevents drift. Reopening
+starts from the native pose. Rotation still needs a visible in-game test.
 
 The DIY app keeps its existing materials panel. Press A on a recipe to open the
 3D preview in place of the grid; press B to return to the same grid. Category,
@@ -109,7 +112,7 @@ is unavailable, the original grid remains usable. Core and Pockets share their
 page-input hook so Quick Store can remain enabled.
 
 Local ARM checks pass, including native rotation and capture-alpha parsing.
-Transparency, rotation feel and 16:10 appearance in 0.3.38 still need an Eden
+Restored visibility, rotation feel and 16:10 appearance in 0.3.39 need an Eden
 test. Fully restart the game when updating.
 
 From 0.3.19, the amiibo timeout fix is built into Core and enabled by default.
@@ -132,7 +135,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.38
+  version = 0.3.39
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.

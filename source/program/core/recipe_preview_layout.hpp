@@ -49,9 +49,10 @@ inline unsigned UserData(std::byte *p, const char *stringKey, const char *value,
 inline unsigned Capture(std::byte *p) {
     Pane(p, "pan1", 84, CaptureName, 2, 850, 750);
     Write(p, 44, -430.0f); Write(p, 48, -64.0f);
-    // 03A2DAD4 sets the force-opaque bit only for alpha 255. Preserve the
-    // scene's alpha so the original app background shows through the picture.
-    return 84 + UserData(p + 84, "DynamicCaptureOn", "R10G10B10A2", "CaptureBGAlpha", 0);
+    // Match the native workbench's opaque copy. The live 3D framebuffer does
+    // not provide usable model alpha: preserving it hid the whole item in
+    // 0.3.38. Changing the black background needs a separate rendering path.
+    return 84 + UserData(p + 84, "DynamicCaptureOn", "R10G10B10A2", "CaptureBGAlpha", 255);
 }
 inline unsigned Surface(std::byte *p, unsigned material) {
     unsigned used = 0;

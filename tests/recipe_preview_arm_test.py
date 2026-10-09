@@ -267,7 +267,9 @@ def verify_layout(original, patched):
     name_offset, value_offset = struct.unpack_from('<II', usd, 12)
     assert usd[12+name_offset:].split(b'\0',1)[0] == b'DynamicCaptureOn'
     assert usd[12+value_offset:].split(b'\0',1)[0] == b'R10G10B10A2'
-    assert struct.unpack_from('<i', usd, 36)[0] == 0  # Preserve scene alpha; no opaque black rectangle.
+    # The live scene has no usable model alpha. Preserve the native workbench's
+    # opaque copy: alpha zero made the whole item disappear in 0.3.38.
+    assert struct.unpack_from('<i', usd, 36)[0] == 255
     capture = material_records(next(s for s in after if s[:4] == b'mat1'))[-1]
     assert struct.unpack_from('<I', capture, 28)[0] == 0x15
     assert struct.unpack_from('<I', capture, 32)[0] == 0x08040200
@@ -508,8 +510,9 @@ for base in (0x7100000000, 0x7200000000):
     assert m.read(m.controller+0x8c)==0xfffe and m.read(m.controller+0x10,4)==0
     print(f'PASS: compiled resource patch preserves native/modified layout; focus dispatch alone cannot preview; snapshot input/B consumption, direct model ABI, parameter restoration, repeated open, deactivation and unavailable renderer, ASLR {base:#x}')
 
-    # Execute native capture alpha parsing: 255 forces opacity; zero preserves
-    # framebuffer alpha without clearing away the already rendered item.
+    # Parsing alone cannot prove model visibility: zero preserves the source
+    # alpha, but the live 3D pass does not supply usable alpha for the item.
+    # Execute both parser branches and require 255 in the authored layout above.
     m.services[base+0x27e610]=('preview','capture_data')
     m.capture_alpha=m.alloc(); m.write(m.capture_alpha+4,12,4)
     flags=m.alloc()
@@ -517,7 +520,7 @@ for base in (0x7100000000, 0x7200000000):
         m.write(m.capture_alpha+12,alpha,4); m.write(flags,0,1)
         assert m.invoke(base+0x3a2dad4,0,0,0,flags)==0
         assert m.read(flags,1)==expected
-    print(f'PASS: native capture alpha parser preserves scene transparency without a background clear, ASLR {base:#x}')
+    print(f'PASS: native capture alpha parser; authored layout requires opaque model capture, ASLR {base:#x}')
 
 # Exercise native state transitions and camera reference counts, not only
 # modeled state-field writes. Delegate glue below supplies the fixture owner;

@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.38 DIY preview transparency and right-stick rotation** for ACNH **3.0.3 on Eden**. One Core
+**0.3.39 DIY preview visibility restoration** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -60,11 +60,14 @@ fingerprints only, checked before each feature's first hook.
 
 ## DIY Recipes app previews
 
-The 0.3.37 Deck test confirms item models now render inside the existing app.
-0.3.38 preserves the capture's transparency so the app's own background can show
-through, and adds **right-stick rotation**: left/right turns the item, up/down
-tilts it up to 60° from its starting pose. A small dead zone prevents drift.
-Reopening starts from the item's native pose.
+0.3.39 restores the opaque capture that rendered models in the 0.3.37 Deck
+test. The 0.3.38 transparency change made the entire item invisible even though
+it loaded successfully. The preview still has a black background; matching the
+app background remains unfinished.
+
+**Right-stick rotation** is retained: left/right turns the item, up/down tilts
+it up to 60° from its starting pose. A small dead zone prevents drift. Reopening
+starts from the item's native pose. Rotation still needs a visible in-game test.
 
 The existing DIY app keeps its materials panel, category, selection and scroll
 position. A opens the 3D preview in place of the grid; B releases the model and
@@ -78,8 +81,8 @@ If the capture binding or renderer is unavailable, the ordinary grid stays usabl
 Core and Pockets share one page-input hook, preserving Quick Store behavior.
 
 Compiled ARM checks cover native rotation and capture-alpha parsing, input
-scope, B consumption and restoration. **Transparency, rotation feel and 16:10
-appearance in 0.3.38 still need an Eden test.** See
+scope, B consumption and restoration. **Restored visibility, rotation feel and
+16:10 appearance in 0.3.39 still need an Eden test.** See
 `research/recipe-preview/NOTES.md` and `VALIDATION.md`.
 
 The Exlaunch SIMD context declaration now matches its assembly stack layout;
@@ -195,7 +198,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.38
+version = 0.3.39
 base_speed = 2
 boost_speed = 4
 faster_ui = false

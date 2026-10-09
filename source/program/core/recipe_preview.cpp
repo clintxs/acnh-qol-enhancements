@@ -507,7 +507,7 @@ bool InstallRecipePreview() {
     BindPhoneRecipes::InstallAtOffset(address::PhoneBind);
     UpdatePhoneRecipes::InstallAtOffset(address::PhoneFrame);
     DeactivatePhoneRecipes::InstallAtOffset(address::PhoneDeactivate);
-    Logging.Log("[QoL Enhancements/Core] DIY preview: READY; transparent capture; right stick rotates; A opens, B returns\n");
+    Logging.Log("[QoL Enhancements/Core] DIY preview: READY; opaque capture restored; right stick rotates; A opens, B returns\n");
     return true;
 }
 } // namespace qol::core
