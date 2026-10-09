@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.32 renderer-only DIY prototype
+# Unified QoL validation — 0.3.33 DIY layout-accessor loading fix
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,31 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.33 DIY app loading crash
+
+The newly synced log identifies Core 0.3.32 and a null execution fault during
+BindPhoneRecipes: project+78F8 returns from native FindPane, main+0027D228.
+Main base is 80DDD000; the alleged root 855D6770 is actually SafeString virtual
+table main+047F9770. The layout capture patch completed and no app-bound/model
+log was emitted. This pinpoints the wrapper cast, before preview activation.
+
+Page +3F8 is an array of layout-instance wrappers. Wrapper +18 is not a Pane.
+Native 03C6627C resolves the drawable layout through wrapper +58, accessor
+virtual +28 and an output pointer. The fix follows that API, checks the returned
+RootPane name and initialized child sentinel, and otherwise declines the preview.
+The accessor call-site instructions are included in compatibility validation.
+
+The revised ARM fixture models the wrapper's actual SafeString table and accessor
+separately. Native recursive Pane lookup now runs during compiled app binding,
+not only in an isolated lookup test. The old path faults as reported; the fixed
+path binds the capture/grid panes and passes A/B/reopen checks at both bases.
+Missing accessors and wrong/unbuilt roots decline without native traversal.
+Core installation/configuration combinations and the preview runtime are checked
+again; prior 0.3.32 suite regressions remain recorded below. Build, ZIP integrity,
+manifest hashes and source parity are checked for the new package.
+
+Live Eden confirmation of app loading, model visibility and B return is pending.
 
 ## 0.3.32 renderer-only DIY prototype
 

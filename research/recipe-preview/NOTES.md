@@ -14,6 +14,18 @@ capture surface to the loaded layout and temporarily hides the grid, scrollbar
 and cursor only after native item-model allocation returns a handle. It neither
 constructs a WorkCraftInfoSeq page nor loads WorkBenchInfo/WorkBenchBG resources.
 
+## 0.3.33 loading-crash correction
+
+The synced 0.3.32 log faults in native Pane lookup (main+0027D224, return
+0027D228) with the compiled Bind callback at project+78F8. Resolving the live
+main base 80DDD000 makes the supposed root 855D6770 equal main+047F9770:
+a SafeString virtual table. No model request has occurred. The regression now
+models the actual wrapper/accessor distinction and executes native recursive
+lookup during every compiled Bind, rather than replacing Find with a name map.
+It reproduces the old invalid traversal, then checks the accessor output path,
+invalid/unbuilt roots and missing accessors. Core declines lookup unless the
+returned root is named RootPane and its child-list sentinel is initialized.
+
 ## Native bindings
 
 All addresses are main-module offsets in build FF1D1C05670DB6021C85B624A710B963.
@@ -39,14 +51,18 @@ All addresses are main-module offsets in build FF1D1C05670DB6021C85B624A710B963.
 | 032BA5E4 / 032BA674 | Matching-mode release / handle cleanup |
 | 03DBB160 | Synchronous state transition: old exit, new entry |
 | 03A17390 / 03A174F0 | Picture type casts used by capture binding |
+| 03C66298 | Native wrapper +58 → accessor virtual +28 → output layout |
 | 03A145F0 | Resolve DynamicCaptureUseName/Index and bind picture to capture pane |
 
 ## Ownership and input
 
 Phone fields: resident byte +1F8, layout +210, selected index +218, recipe count
 +8A350 and pointer array +8A358. Recipe item data is eight bytes at record +8.
-Layout +3F8 points to a holder whose first pointer owns the native layout;
-its +18 is the root pane. Layout +580 is the grid controller. Grid count +208
+Layout +3F8 points to an array of layout-instance wrappers. The wrapper is
+**not** a native drawable layout: its +18 contains a SafeString virtual table.
+Wrapper +58 is an accessor whose virtual +28 writes the native layout to an
+output pointer (verified in 03C6627C). Native layout +18 is the root pane.
+Layout +580 is the grid controller. Grid count +208
 and row-pointer array +210 identify the actual pressed recipe row.
 
 Native row 5 dispatch translates raw source +18 to event +8 and raw kind +0

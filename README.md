@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.32 DIY recipe renderer prototype** for ACNH **3.0.3 on Eden**. One Core
+**0.3.33 DIY app loading crash fix** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -60,7 +60,11 @@ fingerprints only, checked before each feature's first hook.
 
 ## DIY Recipes app previews
 
-0.3.32 replaces the workbench-page experiment with a renderer-only prototype.
+0.3.33 corrects a loading crash in the 0.3.32 prototype. App setup now resolves
+the drawable layout through the native accessor instead of treating its wrapper
+as a layout. The regression reproduces the old invalid native pane traversal.
+
+This approach uses the item renderer directly within the existing DIY app.
 The existing DIY app keeps its materials panel, category, selection and scroll
 position. A on a recipe requests a stationary 3D item in the grid area; B releases
 the model and restores the grid. There is no crafting button or crafting action.
@@ -190,7 +194,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.32
+version = 0.3.33
 base_speed = 2
 boost_speed = 4
 faster_ui = false

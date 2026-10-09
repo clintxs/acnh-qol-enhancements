@@ -20,7 +20,8 @@ constexpr std::uintptr_t CapturePicture = 0x03a17390, AlternateCapturePicture = 
 namespace field {
 constexpr std::size_t Resident = 0x1f8, PhoneLayout = 0x210, Selection = 0x218;
 constexpr std::size_t Recipes = 0x8a350, State = 0x1b0, Requests = 0x1f0;
-constexpr std::size_t LayoutHolder = 0x3f8, LayoutRoot = 0x18, Grid = 0x580;
+constexpr std::size_t LayoutInstances = 0x3f8, LayoutAccessor = 0x58;
+constexpr std::size_t GetNativeLayout = 0x28, LayoutRoot = 0x18, Grid = 0x580;
 constexpr std::size_t Rows = 0x210, RowCount = 0x208, PaneFlags = 0x58;
 constexpr std::size_t BackHint = 0x570, HintInput = 0xa0;
 constexpr std::size_t Controller = 0x30, Parameters = 0x28;
@@ -38,6 +39,25 @@ void *UiContext() {
 }
 void *Find(void *root, const char *name) {
     return root ? Native<void *(*)(void *, const char *, bool)>(address::FindPane)(root, name, true) : nullptr;
+}
+void *PhoneRoot(void *page) {
+    // Page +3f8 is an array of layout-instance wrappers, not ui2d Layouts.
+    // Follow the accessor used by native 03c6627c: instance +58, virtual +28
+    // writes the drawable layout to an output pointer. Wrapper +18 is a
+    // SafeString virtual table; using it as a Pane crashed in FindPane.
+    auto instances = At<void **>(page, field::LayoutInstances);
+    auto instance = instances ? instances[0] : nullptr;
+    auto accessor = instance ? At<void *>(instance, field::LayoutAccessor) : nullptr;
+    auto methods = accessor ? At<void *>(accessor) : nullptr;
+    auto resolve = methods ? At<void (*)(void *, void **)>(methods, field::GetNativeLayout) : nullptr;
+    void *nativeLayout{};
+    if (resolve) resolve(accessor, &nativeLayout);
+    auto root = nativeLayout ? At<void *>(nativeLayout, field::LayoutRoot) : nullptr;
+    // The resource patch requires this root name. Decline a missing/unbuilt
+    // layout before native recursion can follow an invalid child list.
+    if (!root || std::memcmp(static_cast<std::byte *>(root) + 0xb0, "RootPane\0", 9) ||
+        !At<void *>(root, 0x20) || !At<void *>(root, 0x28)) return nullptr;
+    return root;
 }
 void Visible(void *pane, bool visible) {
     if (pane) At<unsigned char>(pane, field::PaneFlags) =
@@ -173,9 +193,7 @@ HOOK_DEFINE_TRAMPOLINE(BindPhoneRecipes) {
         auto &s = Sessions[resident]; s = {}; s.phone = phone;
         s.layout = At<void *>(phone, field::PhoneLayout);
         if (!s.layout) return;
-        const auto holder = At<void *>(s.layout, field::LayoutHolder);
-        const auto nativeLayout = holder ? At<void *>(holder) : nullptr;
-        const auto root = nativeLayout ? At<void *>(nativeLayout, field::LayoutRoot) : nullptr;
+        const auto root = PhoneRoot(s.layout);
         s.surface = Find(root, recipe_layout::SurfaceName);
         auto capture = Find(root, recipe_layout::CaptureName);
         auto picture = Find(root, recipe_layout::PictureName);
@@ -307,6 +325,7 @@ bool InstallRecipePreview() {
         {0x03a17390, {0xa9bd7bfd, 0xa90157f6, 0xa9024ff4, 0x910003fd, 0xd00085c8}},
         {0x03a174f0, {0xa9bd7bfd, 0xa90157f6, 0xa9024ff4, 0x910003fd, 0xd00085c8}},
         {0x0027d1d0, {0xa9bd7bfd, 0xf9000bf5, 0xa9024ff4, 0x910003fd, 0xaa0003f4}},
+        {0x03c66298, {0xf9402c00, 0xaa0203f5, 0xaa0103f4, 0xf9000fbf, 0xb40000a0}},
     };
     const auto &main = exl::util::GetMainModuleInfo();
     for (const auto &f : fingerprints) if (f.offset + sizeof(f.words) > main.m_Text.m_Size ||

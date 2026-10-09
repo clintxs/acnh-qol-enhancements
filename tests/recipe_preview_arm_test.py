@@ -19,7 +19,7 @@ def layout_asset(name):
     return next(v for k, v in r.items() if k.endswith('/' + name + '.bflyt'))
 MENU = layout_asset('MenuRecipe')
 HOOKS = (0x267d64, 0x2e9cde0, 0x2e9fbb0, 0x2e9d538, 0x3c58d24)
-GUARDS = HOOKS + (0x32bd990, 0x32ba5e4, 0x3dbb160, 0x27d1d0, 0x3a17390, 0x3a174f0)
+GUARDS = HOOKS + (0x32bd990, 0x32ba5e4, 0x3dbb160, 0x27d1d0, 0x3a17390, 0x3a174f0, 0x3c66298)
 
 class PreviewMachine(Machine):
     def __init__(self, base):
@@ -37,9 +37,11 @@ class PreviewMachine(Machine):
                              ('UpdatePhoneRecipes', 'frame'), ('DeactivatePhoneRecipes', 'deactivate'),
                              ('SharedPageInput', 'input')]:
             self.write(self.module.find(name, 'OrigRef'), self.stub(action))
-        for a, action in ((0x27d1d0, 'find'), (0x3dbb160, 'state'),
+        for a, action in ((0x3dbb160, 'state'),
                           (0x32bd990, 'spawn'), (0x32ba5e4, 'release'), (0x3a17390, 'typed'), (0x3a174f0, 'typed')):
             self.services[base + a] = ('preview', action)
+        self.pane_methods=self.alloc()
+        self.write(self.pane_methods+0xc0,self.stub('child_find'))
         self.controller = self.alloc(0x1200)
         self.parameters = self.alloc(0x2200)
         self.context = self.alloc()
@@ -72,8 +74,7 @@ class PreviewMachine(Machine):
         if pc not in self.services or self.services[pc][0] != 'preview':
             return super().service(u, pc, size, data)
         action = self.services[pc][1]; result = 0
-        if action == 'find': result = self.panes.get((self.reg(0), self.string(self.reg(1))), 0)
-        elif action == 'state':
+        if action == 'state':
             self.events.append(('state', self.reg(1)))
             self.write(self.reg(0) + 8, self.reg(1), 4)
         elif action == 'spawn':
@@ -91,8 +92,9 @@ class PreviewMachine(Machine):
             result = 1
         elif action == 'input': self.events.append(('native_input', self.reg(0)))
         elif action == 'typed': result = self.reg(0)
+        elif action == 'layout_access':
+            self.write(self.reg(1),self.read(self.reg(0)+8))
         elif action == 'source': result = 7
-        elif action == 'equals': result = int(self.string(self.reg(0)) == self.string(self.reg(1)))
         elif action == 'child_find':
             u.reg_write(UC_ARM64_REG_X2, 1); u.reg_write(UC_ARM64_REG_PC, self.base+0x27d1d0); return
         elif action == 'entity_create':
@@ -109,13 +111,27 @@ class PreviewMachine(Machine):
         self.write(phone + 0x1f8, resident, 1); self.write(phone + 0x210, page)
         self.write(phone + 0x1b0, 3, 4); self.write(phone + 0x1f0, 0xffffffffffffffff)
         self.write(page, self.dispatch); self.write(page + 0x580, grid)
-        holder = self.alloc(); native = self.alloc(); root = self.alloc()
-        self.write(page + 0x3f8, holder); self.write(holder, native); self.write(native + 0x18, root)
+        holder = self.alloc(); instance = self.alloc(0x300); native = self.alloc(); root = self.alloc(0x200)
+        accessor=self.alloc(); methods=self.alloc()
+        self.write(page+0x3f8,holder); self.write(holder,instance)
+        # Wrapper +18 contains a SafeString table, as in the crash, not a Pane.
+        self.write(instance+0x18,self.base+0x47f9770)
+        self.write(instance+0x58,accessor); self.write(accessor,methods)
+        self.write(accessor+8,native); self.write(methods+0x28,self.stub('layout_access'))
+        self.write(native+0x18,root); self.u.mem_write(root+0xb0,b'RootPane\0')
+        self.write(root,self.pane_methods); self.write(root+0x20,root+0x20); self.write(root+0x28,root+0x20)
         panes = {}
         for name in ('N_QolPreview_00', 'N_QolCapture_00', 'P_QolCapture_00', 'L_BtnList_00', 'L_ScrollBar_00', 'L_Cursor_00', 'N_Recipe_00'):
             pane = self.alloc(0x200); panes[name] = pane
             self.write(pane + 0x58, 0xa2 if name == 'N_QolPreview_00' else 0xa3, 1)
+            self.u.mem_write(pane+0xb0,name.encode()+b'\0'); self.write(pane,self.pane_methods)
+            self.write(pane+0x20,pane+0x20); self.write(pane+0x28,pane+0x20)
             if surface or name != 'N_QolPreview_00': self.panes[(root, name)] = pane
+        children=[v for (r,n),v in self.panes.items() if r==root]
+        for i,pane in enumerate(children):
+            self.write(pane+8,children[i-1]+8 if i else root+0x20)
+            self.write(pane+16,children[i+1]+8 if i+1<len(children) else root+0x20)
+        self.write(root+0x20,children[-1]+8); self.write(root+0x28,children[0]+8)
         self.write(panes['P_QolCapture_00']+0x100,panes['N_QolCapture_00'])
         row = self.alloc(); rows = self.alloc(); self.write(rows, row)
         self.write(grid + 0x208, 1, 4); self.write(grid + 0x210, rows)
@@ -222,6 +238,31 @@ for base in (0x7100000000, 0x7200000000):
     m.hook(0x2e9cde0,unbound)
     before=list(m.events); m.button(unbound_page,unbound_row,5); m.frame(unbound)
     assert m.events == before  # Named panes alone do not prove capture binding.
+    bad_phone,bad_page,bad_row,bad_panes=m.phone(4)
+    holder=m.read(bad_page+0x3f8); instance=m.read(holder)
+    accessor=m.read(instance+0x58); native=m.read(accessor+8)
+    original_root=m.read(native+0x18)
+    # Old 0.3.32 path used the wrapper's SafeString vtable as a Pane.
+    old_root=m.read(instance+0x18); text=m.alloc(); m.u.mem_write(text,b'N_QolPreview_00\0')
+    from unicorn import UcError
+    for i,arg in enumerate((old_root,text,1)): m.u.reg_write(UC_ARM64_REG_X0+i,arg)
+    try: m.call(base+0x27d1d0)
+    except UcError:
+        assert m.u.reg_read(UC_ARM64_REG_PC)==base+0x27d21c
+        print('PASS: old wrapper cast reproduces invalid child traversal at native FindPane')
+    else: raise AssertionError('old wrapper cast should fault in native pane lookup')
+    m.write(native+0x18,old_root); m.hook(0x2e9cde0,bad_phone)
+    before=list(m.events); m.button(bad_page,bad_row,5); m.frame(bad_phone)
+    assert m.events==before  # Wrong/unbuilt roots are declined before native recursion.
+    m.write(native+0x18,original_root); m.write(instance+0x58,0)
+    m.hook(0x2e9cde0,bad_phone); m.button(bad_page,bad_row,5); m.frame(bad_phone)
+    assert m.events==before
+    m.write(instance+0x58,accessor); m.write(accessor+8,0)
+    m.hook(0x2e9cde0,bad_phone); m.button(bad_page,bad_row,5); m.frame(bad_phone)
+    assert m.events==before  # Accessor output can be absent during setup failure.
+    m.write(accessor+8,native); m.write(original_root+0x28,0)
+    m.hook(0x2e9cde0,bad_phone); m.button(bad_page,bad_row,5); m.frame(bad_phone)
+    assert m.events==before  # A named root with no child sentinel is not ready.
     phone3,page3,row3,panes3 = m.phone(2)
     m.write(m.controller+0x50,7,4); before=list(m.events)
     m.button(page3,row3,5); m.frame(phone3); assert m.events == before
@@ -230,8 +271,6 @@ for base in (0x7100000000, 0x7200000000):
     assert m.read(panes3['L_BtnList_00']+0x58,1) == 0xa3
     assert m.read(panes3['N_QolPreview_00']+0x58,1) == 0xa2
     # Execute native Pane lookup against a real-shaped intrusive pane tree.
-    del m.services[base+0x27d1d0]
-    m.services[base+0x2606c0]=('preview','equals')
     root=m.alloc(); child=m.alloc(); table=m.alloc(); text=m.alloc()
     m.u.mem_write(root+0xb0,b'RootPane\0'); m.u.mem_write(child+0xb0,b'N_QolPreview_00\0')
     m.u.mem_write(text,b'N_QolPreview_00\0')
