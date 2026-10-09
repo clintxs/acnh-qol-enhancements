@@ -112,8 +112,9 @@ if palette.balance is not None:
     assert args.palette == 'island' and palette.background == palette.caption
     assert palette.background != (255,255,255,255)
     assert palette.counter == palette.face
-    assert palette.balance == palette.rim == palette.stripe
-    print('PASS: Island off-white oval/caption, blue card, matching mint balance/stripe/outline/badge, independent number material and unchanged native cash text')
+    assert palette.balance == palette.rim == palette.face
+    assert palette.stripe != palette.rim
+    print('PASS: Island off-white oval/caption, matching blue card/balance/outline/badge, mint stripe, independent number material and unchanged native cash text')
 else:
     assert number_material == native_number_material
 

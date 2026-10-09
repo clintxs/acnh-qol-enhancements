@@ -56,9 +56,9 @@ PALETTES = {
     # Poki bag sample #F8A486, paired with a deeper warm-red counter/edge.
     'poki-red': Palette((177,32,25,255), (255,241,195,255), (58,13,9,255),
                         (239,95,61,255), (255,241,195,255), (240,204,101,255)),
-    'island': Palette(ISLAND_BLUE, ISLAND_MINT, linear_rgba(63,142,150),
+    'island': Palette(ISLAND_BLUE, ISLAND_BLUE, linear_rgba(63,142,150),
                       ISLAND_BLUE, (255,255,255,255), (255,255,255,255),
-                      stripe=ISLAND_MINT, background=ISLAND_OFF_WHITE, balance=ISLAND_MINT,
+                      stripe=ISLAND_MINT, background=ISLAND_OFF_WHITE, balance=ISLAND_BLUE,
                       caption=ISLAND_OFF_WHITE),
 }
 
