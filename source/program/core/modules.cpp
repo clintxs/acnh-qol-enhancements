@@ -1,6 +1,7 @@
 #include "lib.hpp"
 #include "modules.hpp"
 #include "release.hpp"
+#include "settings.hpp"
 #include "program/shopping/shopping_card.hpp"
 #include "program/dialogue/settings.hpp"
 #include "program/catalog/game/build_profile.hpp"
@@ -17,7 +18,6 @@
 #include <cstdio>
 
 namespace able_bag { bool Install(); }
-namespace qol::amiibo { bool Install(); }
 namespace qol::crafting { bool Install(); }
 
 namespace qol::core {
@@ -48,7 +48,9 @@ bool InstallPockets() {
 }
 
 enum class LoadResult { Absent, Invalid, Ready };
-LoadResult LoadConfig(const ModuleDescription &module, Config &config, ConfigLayer layer) {
+// A null metadata pointer is used only for Core's optional settings files.
+// Feature modules still require their regular enabled/version marker.
+LoadResult LoadConfig(const ModuleDescription &module, Config *metadata, ConfigLayer layer) {
     const bool custom = layer == ConfigLayer::Custom;
     char path[160];
     std::snprintf(path, sizeof(path), "content:/qol-enhancements/config/%s%s.ini", module.slug,
@@ -69,7 +71,8 @@ LoadResult LoadConfig(const ModuleDescription &module, Config &config, ConfigLay
     if (valid && size) valid = nn::fs::ReadFile(file, 0, buffer, static_cast<unsigned long>(size)) == 0;
     nn::fs::CloseFile(file);
     const std::string_view input{buffer, valid ? static_cast<std::size_t>(size) : 0};
-    if (valid) valid = ParseConfig(input, config, layer, module.configure != nullptr);
+    if (valid) valid = ValidUtf8(input, true);
+    if (valid && metadata) valid = ParseConfig(input, *metadata, layer, module.configure != nullptr);
     if (valid && module.configure) {
         const auto warnings = module.configure(input);
         if (warnings) Logging.Log("[QoL Enhancements] WARNING: %s %sconfig issues=%u; invalid settings retain prior values\n",
@@ -78,16 +81,26 @@ LoadResult LoadConfig(const ModuleDescription &module, Config &config, ConfigLay
     return valid ? LoadResult::Ready : LoadResult::Invalid;
 }
 std::atomic<bool> ActivationStarted{false};
+Settings CorePreferences{};
+unsigned ConfigureCore(std::string_view input) { return ApplyCoreSettings(input, CorePreferences); }
+bool ActivateCoreSettings() {
+    const ModuleDescription core{"Core", "core", {}, nullptr, ConfigureCore};
+    for (const auto layer : {ConfigLayer::Module, ConfigLayer::Custom}) {
+        if (LoadConfig(core, nullptr, layer) == LoadResult::Invalid)
+            Logging.Log("[QoL Enhancements/Core] WARNING: %s config invalid/unreadable; retaining prior settings\n",
+                        layer == ConfigLayer::Custom ? "custom" : "regular");
+    }
+    return InstallAmiiboTimeout(CorePreferences.amiiboTimeoutFrames);
+}
 } // namespace
 
 // Minimum PACKAGE versions accepted by Core. Raise only when older assets
 // stop being compatible; release versions still advance with the whole suite.
-const std::array<ModuleDescription, 7> Modules{{
+const std::array<ModuleDescription, 6> Modules{{
     {"Catalog", "catalog", {0, 1, 0}, InstallCatalog},
     {"Pockets", "pockets", {0, 1, 0}, InstallPockets},
     {"Faster Dialogue", "faster-dialogue", {0, 1, 0}, dialogue::Install, dialogue::Configure},
     {"Fitting Room", "fitting-room", {0, 1, 0}, able_bag::Install},
-    {"Amiibo", "amiibo", {0, 1, 0}, amiibo::Install},
     {"Shopping Card", "shopping-card", {0, 3, 2}, shopping::Install, nullptr, shopping::PrepareResources},
     {"Faster Crafting", "faster-crafting", {0, 3, 18}, crafting::Install},
 }};
@@ -95,10 +108,10 @@ const std::array<ModuleDescription, 7> Modules{{
 void ActivateModules() {
     if (ActivationStarted.exchange(true)) return;
     Logging.Log("[QoL Enhancements] Core: %s; slot=subsdk6; configuration ready\n", ReleaseVersion);
-    unsigned installed = 0, errors = 0;
+    unsigned installed = 0, errors = !ActivateCoreSettings();
     for (const auto &module : Modules) {
         Config config{};
-        const auto loaded = LoadConfig(module, config, ConfigLayer::Module);
+        const auto loaded = LoadConfig(module, &config, ConfigLayer::Module);
         if (loaded == LoadResult::Absent) {
             Logging.Log("[QoL Enhancements] %s: not installed\n", module.name);
             continue;
@@ -117,7 +130,7 @@ void ActivateModules() {
         // All installed modules use the same overlay path and order, including
         // disabled modules: a personal enabled=true can re-enable their code.
         // An absent/invalid marker never reaches this optional read.
-        if (LoadConfig(module, config, ConfigLayer::Custom) == LoadResult::Invalid)
+        if (LoadConfig(module, &config, ConfigLayer::Custom) == LoadResult::Invalid)
             Logging.Log("[QoL Enhancements] WARNING: %s custom config invalid/unreadable; retaining regular config\n",
                         module.name);
         Logging.Log("[QoL Enhancements] %s: %u.%u.%u; enabled=%s; minimum=%u.%u.%u\n",

@@ -221,5 +221,5 @@ for base in (0x7100000000, 0x7200000000):
         bad = Machine(base, {'shopping-card': DEFAULT})
         bad.write(base + int(offset, 16), 0xdeadbeef, 4)
         bad.boot(); bad.activate()
-        assert len(bad.hooks) == 2 and 'Shopping Card] DISABLED' in bad.text
+        assert len(bad.hooks) == 3 and 'Shopping Card] DISABLED' in bad.text
 print('PASS: Shopping Card native savings, encrypted writes/cap, all 8 players, exact caller/room scope, native sale branch with ordinary success dialogue, fitting accessor, removal and all fingerprints at two ASLR bases')

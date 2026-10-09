@@ -17,7 +17,12 @@ assert {name.split('/')[0] for name in files if '/' in name} == {
 configs = [name for name in files if '/config/' in name]
 assert len(configs) == 7
 assert not any(name.endswith('/faster-dialogue.custom.ini') for name in files)
+core_config = f'{core}/romfs/qol-enhancements/config/core.ini'
+assert files[core_config] == (package.ROOT / 'modules/Core/romfs/qol-enhancements/config/core.ini').read_bytes()
+assert b'amiibo_timeout_frames = 9000\n' in files[core_config]
+assert not any('/amiibo.ini' in name or 'QoL Enhancements - Amiibo/' in name for name in files)
 for name in configs:
+    if name == core_config: continue
     assert files[name].decode() == f'enabled = true\nversion = {package.release_version()}\n'
 assert sum('/Layout/' in name for name in files) == 7
 reference = json.loads((Path(__file__).parent / 'baseline_hashes.json').read_text())
@@ -29,7 +34,7 @@ for name, digest in manifest.items(): assert hashlib.sha256(files[name]).hexdige
 # Resource generation must reproduce the current standalone modules exactly.
 for name, digest in reference['assets'].items():
     assert hashlib.sha256(files[name]).hexdigest() == digest, name
-print('PASS: eight mod folders, subsdk6 only, seven versioned configs, six unchanged resources plus green Shopping Card layout and SHA-256 manifest')
+print('PASS: seven mod folders, subsdk6 only, six versioned feature configs and default Core settings, six unchanged resources plus green Shopping Card layout and SHA-256 manifest')
 custom = package.custom_files()
 personal = [name for name in custom if '/config/' in name]
 assert len(personal) == 1 and personal[0].endswith('/faster-dialogue.custom.ini')

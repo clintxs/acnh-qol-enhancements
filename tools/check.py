@@ -25,7 +25,7 @@ def main():
     env = dict(os.environ)
     env['PYTHONPATH'] = str(ROOT.parent / 'Grab 5/working/python')
     with tempfile.TemporaryDirectory(prefix='qol-check-') as temporary:
-        for name in ('config_test', 'dialogue_settings_test', 'stack_menu_test', 'storage_policy_test', 'catalog_test', 'bag_policy_test'):
+        for name in ('config_test', 'core_settings_test', 'dialogue_settings_test', 'stack_menu_test', 'storage_policy_test', 'catalog_test', 'bag_policy_test'):
             exe = Path(temporary) / name
             subprocess.run(['c++', '-std=c++20', '-Wall', '-Wextra', '-Werror', '-I', str(ROOT / 'source'),
                             str(ROOT / 'tests' / f'{name}.cpp'), '-o', str(exe)], check=True)

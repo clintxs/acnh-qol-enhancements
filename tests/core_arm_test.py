@@ -8,16 +8,16 @@ from unicorn import Uc, UC_ARCH_ARM64, UC_MODE_ARM, UC_HOOK_CODE, UC_HOOK_MEM_WR
 from unicorn.arm64_const import *
 from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
-SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'amiibo', 'shopping-card', 'faster-crafting')
-COUNTS = (16, 16, 7, 11, 1, 10, 2)
-DEFAULT = b'enabled=true\nversion=0.3.18\n'
+SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'shopping-card', 'faster-crafting')
+COUNTS = (16, 16, 7, 11, 10, 2)
+DEFAULT = b'enabled=true\nversion=0.3.19\n'
 
 def expected_hook_count(machine, enabled):
     # The existing verbose-dialogue build adds a Catalog message trace hook.
     # Keep normal/diagnostic counts explicit; never infer them from installed hooks.
     trace_enabled = any('NookMessageTrace' in name for name in machine.module.symbols)
     resources = 'content:/qol-enhancements/config/shopping-card.ini' in machine.files
-    return 1 + int(resources) + sum(count for count, active in zip(COUNTS, enabled) if active) + (trace_enabled and enabled[0])
+    return 2 + int(resources) + sum(count for count, active in zip(COUNTS, enabled) if active) + (trace_enabled and enabled[0])
 
 class Machine:
     def __init__(self, base, files):
@@ -120,9 +120,9 @@ def check_all_subsets():
             m.activate()
             assert len(m.hooks) == expected_hook_count(m, flags), m.text
             assert 'BOOT_OK' in m.text and f'enabled_modules={sum(flags)} errors=0' in m.text, m.text
-            assert len(m.opened) == len(SLUGS) + sum(flags) and len(m.closed) == sum(flags)
+            assert len(m.opened) == 2 + len(SLUGS) + sum(flags) and len(m.closed) == sum(flags)
             assert m.read(base + 0xbc4140, 4) == 0x52803848
-            assert (base + 0xbc4144 in m.hooks) == flags[4]
+            assert base + 0xbc4144 in m.hooks
             assert m.read(base + 0x1af9ff0, 4) == 0x528c0049
             assert (m.read(base + 0x4a10398) != base + 0x3c58d24) == flags[3]
             if flags[2]:
@@ -133,7 +133,7 @@ def check_all_subsets():
             before = (len(m.hooks), len(m.opened), len(m.logs))
             m.activate()
             assert before == (len(m.hooks), len(m.opened), len(m.logs))
-    print('PASS: all 128 module subsets at two bases; deferred activation, isolated C++ hooks, C++ dialogue hooks, once-only reads')
+    print('PASS: all 64 module subsets at two bases; deferred activation, isolated C++ hooks, C++ dialogue hooks, once-only reads')
 
 def check_errors():
     for slug in SLUGS:
@@ -149,13 +149,13 @@ def check_errors():
             if b'version=0.4.0' in data:
                 assert 'BOOT_OK' in m.text and 'enabled_modules=1' in m.text
             else:
-                assert len(m.hooks) == 1 + (slug == 'shopping-card') and m.read(m.base + 0xbc4140, 4) == 0x52803848
+                assert len(m.hooks) == 2 + (slug == 'shopping-card') and m.read(m.base + 0xbc4140, 4) == 0x52803848
                 assert m.read(m.base + 0x1af9ff0, 4) == 0x528c0049
     for fault in ('open_error', 'read_error', 'size_error'):
         m = Machine(0x7100000000, {slug: DEFAULT for slug in SLUGS})
         setattr(m, fault, True)
         m.boot(); m.activate()
-        assert len(m.hooks) == 2 and 'BOOT_PARTIAL' in m.text
+        assert len(m.hooks) == 3 and 'BOOT_PARTIAL' in m.text
     # A startup conflict prevents even the Core discovery hook.
     m = Machine(0x7100000000, {})
     m.write(m.base + 0x37b5460, 0, 4)
@@ -168,33 +168,91 @@ def check_errors():
         m = Machine(0x7100000000, {'faster-dialogue': DEFAULT, 'amiibo': DEFAULT})
         m.write(m.base + offset, 0xdeadbeef, 4)
         m.boot(); m.activate()
-        assert 'Faster Dialogue] DISABLED' in m.text and 'Amiibo: ENABLED' in m.text
+        assert 'Faster Dialogue] DISABLED' in m.text and 'Amiibo timeout: READY' in m.text
         assert not any(m.base + offset in m.hooks for offset in (0x1afa00c, 0x1afdec0))
-    m = Machine(0x7100000000, {slug: b'enabled=true\nversion=0.1.0' for slug in SLUGS[:5]})
+    m = Machine(0x7100000000, {slug: b'enabled=true\nversion=0.1.0' for slug in SLUGS[:4]})
     m.boot(); m.activate()
-    assert len(m.hooks) == expected_hook_count(m, (True,) * 5) and 'BOOT_OK' in m.text and 'enabled_modules=5 errors=0' in m.text
+    assert len(m.hooks) == expected_hook_count(m, (True,) * 4) and 'BOOT_OK' in m.text and 'enabled_modules=4 errors=0' in m.text
     m = Machine(0x7100000000, {'amiibo': DEFAULT, 'faster-dialogue': DEFAULT})
     m.write(m.base + 0xbc4140, 0x52846508, 4) # Older standalone Amiibo payload.
     m.boot(); m.activate()
-    assert 'Amiibo] DISABLED' in m.text and 'Faster Dialogue: ENABLED' in m.text
+    assert 'Amiibo timeout: DISABLED' in m.text and 'Faster Dialogue: ENABLED' in m.text
     assert m.base + 0xbc4144 not in m.hooks
     print('PASS: minimum/future/disabled/malformed/oversize versions, file failures, startup and patch conflicts')
 
 def check_amiibo_hook():
+    configurations = (
+        ({}, 9000),
+        ({'core': b'amiibo_timeout_frames=1200'}, 1200),
+        ({'core': b'amiibo_timeout_frames=0'}, 0),
+        ({'core.custom': b'amiibo_timeout_frames=0'}, 0),
+        ({'core': b'amiibo_timeout_frames=1200', 'core.custom': b'amiibo_timeout_frames=1'}, 1),
+        ({'core': b'amiibo_timeout_frames=0', 'core.custom': b'amiibo_timeout_frames=9000'}, 9000),
+        ({'core': b'amiibo_timeout_frames=450', 'core.custom': b'# inherit'}, 450),
+        ({'core': b'amiibo_timeout_frames=65535'}, 65535),
+        ({'core': b'amiibo_timeout_frames=65536'}, 9000),
+        ({'core': b'amiibo_timeout_frames=-1'}, 9000),
+        ({'core': b'amiibo_timeout_frames=9,000'}, 9000),
+        ({'core': b'amiibo_timeout_frames=0\namiibo_timeout_frames=1'}, 9000),
+        ({'core': b'amiibo_timeout_frames=1200', 'core.custom': b'amiibo_timeout_frames=0\namiibo_timeout_frames=0'}, 1200),
+        ({'core': b'amiibo_timeout_frames=450', 'core.custom': b'amiibo_timeout_frames=bad'}, 450),
+        ({'core': b'amiibo_timeout_frames=0\n\xff'}, 9000),
+        ({'core': b'amiibo_timeout_frames=450', 'core.custom': b'amiibo_timeout_frames=0\n\xff'}, 450),
+        ({'core': b'x' * 4097, 'core.custom': b'amiibo_timeout_frames=600'}, 600),
+        ({'core': b'amiibo_timeout_frames=600', 'core.custom': b'x' * 4097}, 600),
+        ({'amiibo': b'enabled=false\nversion=0.3.18', 'amiibo.custom': b'enabled=false'}, 9000),
+    )
     for base in (0x7100000000, 0x7200000000):
-        m = Machine(base, {'amiibo': DEFAULT})
+        for files, frames in configurations:
+            m = Machine(base, files)
+            m.boot()
+            assert len(m.hooks) == 1 and not m.opened
+            m.activate()
+            assert len(m.hooks) == 1 + bool(frames) and 'BOOT_OK' in m.text, m.text
+            assert m.opened[:2] == ['content:/qol-enhancements/config/core.ini', 'content:/qol-enhancements/config/core.custom.ini']
+            assert not any('/amiibo.' in name for name in m.opened)
+            assert (base + 0xbc4144 in m.hooks) == bool(frames)
+            if frames:
+                assert f'frames={frames}' in m.text
+                registers = m.ram + 0x1000
+                m.write(registers + 8 * 8, 450)
+                m.u.reg_write(UC_ARM64_REG_X0, registers)
+                m.call(m.hooks[base + 0xbc4144])
+                assert m.read(registers + 8 * 8) == frames
+                m.u.mem_write(base + 0xbc4144, RAW[0xbc4144:0xbc4158])
+                m.u.reg_write(UC_ARM64_REG_X8, m.read(registers + 8 * 8))
+            else:
+                # Zero installs no hook: execute the original MOV 450 as well.
+                assert bytes(m.u.mem_read(base + 0xbc4140, 24)) == RAW[0xbc4140:0xbc4158]
+                m.u.emu_start(base + 0xbc4140, base + 0xbc4144, count=1)
+            actor = m.ram + 0x2000
+            m.u.reg_write(UC_ARM64_REG_X19, actor)
+            m.u.emu_start(base + 0xbc4144, base + 0xbc414c, count=10)
+            actual = frames or 450
+            assert m.read(actor + 0xf8, 2) == actual and m.read(actor + 0xf4, 4) == 0
+            # Execute unsigned native decrement and its expiry branch, including
+            # 65535 (above signed-halfword range) and the last remaining frame.
+            for remaining in (actual, 1):
+                m.write(actor + 0xf8, remaining, 2)
+                m.u.emu_start(base + 0xbc44b0, 0, count=5)
+                assert m.read(actor + 0xf8, 2) == remaining - 1
+                assert m.u.reg_read(UC_ARM64_REG_PC) == base + (0xbc44c4 if remaining == 1 else 0xbc4744)
+            before = (len(m.hooks), len(m.opened), len(m.logs))
+            m.activate()
+            assert before == (len(m.hooks), len(m.opened), len(m.logs))
+        # File failures retain defaults/prior settings, without disabling Core.
+        for fault in ('open', 'size', 'read'):
+            m = Machine(base, {'core': b'amiibo_timeout_frames=450', 'core.custom': b'amiibo_timeout_frames=0'})
+            m.custom_fault = fault
+            m.boot(); m.activate()
+            assert 'frames=450' in m.text and 'BOOT_OK' in m.text and 'WARNING:' in m.text
+        # Disabled means no fingerprint check or writes, even with a conflict.
+        m = Machine(base, {'core.custom': b'amiibo_timeout_frames=0', 'faster-dialogue': DEFAULT})
+        m.write(base + 0xbc4140, 0xdeadbeef, 4)
         m.boot(); m.activate()
-        registers = m.ram + 0x1000
-        m.write(registers + 8 * 8, 450)
-        m.u.reg_write(UC_ARM64_REG_X0, registers)
-        m.call(m.hooks[base + 0xbc4144])
-        assert m.read(registers + 8 * 8) == 9000
-        m.u.mem_write(base + 0xbc4144, RAW[0xbc4144:0xbc4158])
-        m.u.reg_write(UC_ARM64_REG_X8, m.read(registers + 8 * 8))
-        m.u.reg_write(UC_ARM64_REG_X19, m.ram + 0x2000)
-        m.u.emu_start(base + 0xbc4144, base + 0xbc414c, count=10)
-        assert m.read(m.ram + 0x20f8, 2) == 9000 and m.read(m.ram + 0x20f4, 4) == 0
-    print('PASS: compiled Amiibo C++ hook feeds the unchanged native timeout store at two bases')
+        assert 'BOOT_OK' in m.text and 'Faster Dialogue: ENABLED' in m.text
+        assert m.read(base + 0xbc4140, 4) == 0xdeadbeef and base + 0xbc4144 not in m.hooks
+    print('PASS: Core-only default amiibo hook; regular/custom precedence, absent Core config, 0 untouched native behavior, 1/450/9000/65535 native stores/countdown/expiry, invalid-file fallback, ignored legacy Amiibo files and once-only activation at two bases')
 
 def check_custom_preferences():
     for custom, summary in ((b'', 'base=2 boost=4 faster_ui=false faster_player=false npc_count=0'),
@@ -205,7 +263,7 @@ def check_custom_preferences():
         m = Machine(0x7100000000, {'faster-dialogue': DEFAULT, 'faster-dialogue.custom': custom})
         m.boot(); m.activate()
         assert summary in m.text and 'BOOT_OK' in m.text, m.text
-        assert len(m.opened) == len(SLUGS) + 1 and len(m.closed) == 2
+        assert len(m.opened) == 2 + len(SLUGS) + 1 and len(m.closed) == 2
     for fault in ('open', 'size', 'read'):
         m = Machine(0x7100000000, {'faster-dialogue': DEFAULT, 'faster-dialogue.custom': b'base_speed=4'})
         m.custom_fault = fault
@@ -218,7 +276,7 @@ def check_custom_preferences():
         if marker: files['faster-dialogue'] = marker
         m = Machine(0x7100000000, files)
         m.boot(); m.activate()
-        assert len(m.opened) == (len(SLUGS) + 1 if marker else len(SLUGS)) and len(m.hooks) == 1
+        assert len(m.opened) == 2 + (len(SLUGS) + 1 if marker else len(SLUGS)) and len(m.hooks) == 2
     print('PASS: missing/malformed/oversized/unreadable custom preferences preserve defaults')
 
 def check_config_layers():
@@ -245,7 +303,7 @@ def check_config_layers():
                 paths = [f'content:/qol-enhancements/config/{name}.ini' for name in SLUGS]
                 if regular is not None and b'version=' in regular:
                     paths.insert(SLUGS.index(slug) + 1, f'content:/qol-enhancements/config/{slug}.custom.ini')
-                assert m.opened == paths, m.opened
+                assert m.opened == ['content:/qol-enhancements/config/core.ini', 'content:/qol-enhancements/config/core.custom.ini'] + paths, m.opened
                 before = (len(m.opened), len(m.logs), len(m.hooks))
                 m.activate()
                 assert before == (len(m.opened), len(m.logs), len(m.hooks))
@@ -274,7 +332,7 @@ def check_config_layers():
             m = Machine(base, files)
             m.boot(); m.activate()
             assert 'base=2 boost=4 faster_ui=true faster_player=true npc_count=6' in m.text, m.text
-    print('PASS: shared regular/custom order, enabled/version overrides for all seven modules, atomic metadata, failure fallback, inheritance and settings parity at two bases')
+    print('PASS: shared regular/custom order, enabled/version overrides for all six modules, atomic metadata, failure fallback, inheritance and settings parity at two bases')
 
 if __name__ == '__main__':
     check_all_subsets()

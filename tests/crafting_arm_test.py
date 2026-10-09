@@ -144,7 +144,7 @@ def check():
             m = Machine(base, {'faster-crafting': DEFAULT, 'amiibo': DEFAULT})
             m.write(base + offset, 0xdeadbeef, 4)
             m.boot(); m.activate()
-            assert 'Faster Crafting] DISABLED' in m.text and 'Amiibo: ENABLED' in m.text
+            assert 'Faster Crafting] DISABLED' in m.text and 'Amiibo timeout: READY' in m.text
             assert not any(base + site in m.hooks for site in HOOKS)
     print(f'PASS: {cases} native crafting/cooking cases at two bases; native 3x cap, readiness/suspension/local-player gates, native exit resets, manual A when disabled, isolated layered config, unchanged input/counters, SIMD/GP preservation, atomic fingerprints')
 

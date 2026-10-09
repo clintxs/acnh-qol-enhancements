@@ -435,7 +435,7 @@ def main():
             print('PASS: bounded transition diagnostics survive repeated UI and identify NPC lookup failures')
         print(f'PASS {base:#x}: compiled SIMD adapter, native reveal/input/renderers, speaker switches, UI/NPC classification, held/release, dynamic rates')
     absent = DialogueMachine(0x7100000000, CUSTOM, enabled=False)
-    assert len(absent.opened) == len(SLUGS) and 'faster-dialogue.custom.ini' not in ''.join(absent.opened)
+    assert len(absent.opened) == len(SLUGS) + 2 and 'faster-dialogue.custom.ini' not in ''.join(absent.opened)
     print(f'PASS: {total:,} ARM cases; original parser/audio/emote boundaries retained, live-game testing pending')
 
 if __name__ == '__main__': main()
