@@ -55,7 +55,9 @@ for name, color in (('W_SavingsRim_00', bytes([255]*4)),
 for name, color, parent in (('P_CardEdge_00', card.INK, 'N_CardIcon_00'),
                             ('P_CardFace_00', bytes((84,183,120,255)), 'N_CardIcon_00'),
                             ('P_CardRim_00', bytes([255]*4), 'N_CardBacking_00')):
-    assert new_panes[name][84:100] == color * 4
+    pane = new_panes[name]
+    assert pane[84:100] == bytes([255]*16)
+    assert new_materials[struct.unpack_from('<H', pane, 100)[0]][40:44] == color
     assert tree[name] == parent
 print('PASS: dark card edge inside white backing; white native Bells badge with matching green caption')
 
@@ -75,7 +77,7 @@ print('PASS: thicker eight-unit oval rim, centered card, backing occluded by ova
 # Retain the live-confirmed recovery's compact budget. Rounded geometry uses
 # three native shape PICs instead of nine overlapping stepped rectangles.
 assert len(new_panes) == 29 and len(new) == 69
-assert len(modified[next(k for k in modified if k.endswith('.bflyt'))]) == 7444
+assert len(modified[next(k for k in modified if k.endswith('.bflyt'))]) == 7588
 shape = next(s for s in new if s[:4] == b'spi1')
 assert len(shape) == 60 and struct.unpack_from('<HH', shape, 8) == (3,0)
 for index, name in enumerate(('P_CardRim_00', 'P_CardEdge_00', 'P_CardFace_00')):

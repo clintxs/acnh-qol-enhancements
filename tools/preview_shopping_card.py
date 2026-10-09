@@ -37,6 +37,10 @@ sys.stdout.buffer.write(next(v for k,v in r.items() if k.endswith('.bflyt')))
     sections = layout_sections(data)
     panes = {pane_name(p): p for p in sections if p[:4] in (b'pic1', b'pan1')}
     shapes = next(p for p in sections if p[:4] == b'spi1')
+    material_table = next(p for p in sections if p[:4] == b'mat1')
+    count = struct.unpack_from('<H', material_table, 8)[0]
+    offsets = (*struct.unpack_from(f'<{count}I', material_table, 12), len(material_table))
+    materials = [material_table[a:b] for a,b in zip(offsets, offsets[1:])]
     scale = 4
     size = (160 * scale, 120 * scale)
 
@@ -60,7 +64,8 @@ sys.stdout.buffer.write(next(v for k,v in r.items() if k.endswith('.bflyt')))
                     for i in range(divisions + 1):
                         a = math.radians(angle + 90 * i / divisions)
                         polygon.append((cx + r * math.cos(a), cy + r * math.sin(a)))
-                ImageDraw.Draw(canvas).polygon(polygon, fill=tuple(p[84:88]))
+                material_index = struct.unpack_from('<H', p, 100)[0]
+                ImageDraw.Draw(canvas).polygon(polygon, fill=tuple(materials[material_index][40:44]))
                 continue
             x0,y0=int(np.floor(left)),int(np.floor(top))
             x1,y1=int(np.ceil(right)),int(np.ceil(bottom))

@@ -21,6 +21,7 @@ NUMBER = 'T_SavingsNum_00'
 GREEN = bytes((40, 116, 82, 255))
 CREAM = bytes((255, 241, 195, 255))
 INK = bytes((53, 57, 48, 255))
+CARD_COLORS = (bytes((255,255,255,255)), INK, bytes((84,183,120,255)))
 OVAL_CENTER = (-25, -2)
 OVAL_SIZE = (306, 128)
 RIM = 8
@@ -89,6 +90,16 @@ def edit_layout(data):
     solid[40:44] = bytes((255, 255, 255, 255))
     solid_index = len(records)
     records.append(bytes(solid))
+    shape_materials = []
+    for index, color in enumerate(CARD_COLORS):
+        # Native Picture geometry draws in material mode 2 (00283E38), which
+        # skips pane vertex colors. Give each silhouette its own foreground
+        # material color; sharing the white quad material made 0.3.11 all white.
+        shape_material = bytearray(solid)
+        shape_material[:28] = f'CardRound{index}'.encode().ljust(28, b'\0')
+        shape_material[40:44] = color
+        shape_materials.append(len(records))
+        records.append(bytes(shape_material))
     material = bytearray(sections[material_slot][:12])
     struct.pack_into('<H', material, 8, len(records))
     position = 12 + 4 * len(records)
@@ -116,8 +127,9 @@ def edit_layout(data):
         struct.pack_into('<3f', pane, 56, 0, 0, 0)
         struct.pack_into('<2f', pane, 68, 1, 1)
         struct.pack_into('<2f', pane, 76, width, height)
-        pane[84:100] = bytes(color) * 4
-        struct.pack_into('<HBB', pane, 100, solid_index, 0, int(shape is not None))
+        pane[84:100] = (white if shape is not None else bytes(color)) * 4
+        material_index = solid_index if shape is None else shape_materials[shape]
+        struct.pack_into('<HBB', pane, 100, material_index, 0, int(shape is not None))
         # PIC flag bit 0 selects native geometry. The shape index follows the
         # UV array; there are no UVs on these solid-color shapes (offset 104).
         if shape is not None:

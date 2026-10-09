@@ -1,6 +1,6 @@
 # Shopping Card — ACNH 3.0.3
 
-Prototype 0.3.11, October 8, 2026. Original mapped main SHA-256:
+Prototype 0.3.12, October 8, 2026. Original mapped main SHA-256:
 `b1ae8e2a0d82f9f38f711c132d1751b221baf9d6411b2be06ebc4bb502ac912d`.
 Build ID: `FF1D1C05670DB6021C85B624A710B963`.
 All implementation uses readable Exlaunch C++ hooks. No new game item or data
@@ -296,3 +296,34 @@ native parser/PIC-selection/mesh execution at two bases and bounded buffers.
 Its allocations and sin/cos imports are modeled, material/GPU/full-layout
 loading is not. The local raster preview cannot establish GPU antialiasing.
 Eden still needs to confirm this previously unused shape path renders properly.
+
+
+### Shape material colors (0.3.12)
+
+The user screenshot of 0.3.11 shows a white silhouette and detail bands rather
+than a colored card. The 0.3.11 tests verified shape decoding and triangles but
+stopped before material setup. Native Picture's shape drawing branch at 00283E0C
+passes color mode 2 to Material::SetupGpuConstantBuffer at 00278410, while the
+ordinary quad path uploads the pane's four corner colors. Shape mode skips those
+vertex colors entirely. The three silhouettes shared ShoppingCardSolid, whose
+foreground was white. Native material setup therefore produced white for all
+three despite dark/green pane colors. The preview incorrectly used pane colors.
+
+0.3.12 keeps the same shape records and geometry, adds three 44-byte solid-color
+materials (white/dark/green), and makes shape pane vertex colors white. Ordinary
+quad detail colors keep their working path. Original materials stay byte-identical;
+29 panes/69 sections/7,588 bytes. Native Material ctor at 002745C0 decodes the
+foreground RGBA from resource+28 (hex), via the color header at +20. Material's
+runtime foreground is at +0C. 00278BDC writes normalized foreground constants
+for the zero-texture path. Its fragment constant destination is the mapped GPU
+pool+38 pointer plus Material+34.
+
+The expanded shopping_shape_arm_test.py executes the real material constructor,
+Picture drawing setup (00283B50) from entry to return and native material/color
+routines at two bases. Shader initializers/selection, transforms, constant-buffer
+allocation, matrix binding and GPU upload are stubbed in addition to the earlier
+allocation/trig boundaries. Native half-width/half-height shader constants are
+also checked against the exported shape dimensions. Pink pane colors intentionally disagree
+with materials: the shape constants remain the correct white/dark/green. A white
+material override reproduces the old failure. This closes the color coverage gap;
+GPU drawing, full-layout loading and antialiasing still require an Eden playtest.

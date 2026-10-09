@@ -1,11 +1,11 @@
-# Unified QoL validation — 0.3.11 Shopping Card curved-icon prototype
+# Unified QoL validation — 0.3.12 Shopping Card material-color prototype
 
 Validated locally on October 8, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
 dialogue fix and subsequently the corrected 0.2.3 NPC diagnostic build work in Eden. The user also confirmed Nook’s Cranny transactions in Shopping Card 0.3.1.
 The user confirmed the corrected savings HUD in 0.3.4 and balance animation
 in 0.3.5 and the restored counter in 0.3.10. Configuration layering, the
-0.3.11 curved icon, aspect-ratio placement and Able Sisters still need a live check. No running game or save files were accessed by the
+0.3.12 icon-color correction, aspect-ratio placement and Able Sisters still need a live check. No running game or save files were accessed by the
 local tests below.
 
 ## Build and loader
@@ -161,6 +161,25 @@ compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
   layout constructor, material/shader setup or GPU drawing; an Eden playtest
   is required to establish appearance and continued visibility. Raster preview
   supersampling is illustrative and does not prove native antialiasing.
+
+- The user reported 0.3.11 no longer looked like a card. Its screenshot shows
+  white shapes/detail stripes with no green face or dark edge. Mesh-only tests
+  missed the native drawing path's color behavior: Picture's shape branch at
+  00283E0C selects material mode 2 and skips the quad vertex-color constants.
+  All three silhouettes shared the solid-white material, so their pane colors
+  could not supply the intended dark/green colors.
+- 0.3.12 adds a separate foreground material for each silhouette, with white
+  pane colors. Layout count stays 29 panes/69 sections; size is 7,588 bytes.
+  Tests execute native material decoding (002745C0), Picture drawing setup
+  (00283B50) from entry to return, material setup (00278410), and foreground constant writes (00278BDC)
+  at two ASLR bases. Deliberately conflicting pane colors leave the correct
+  normalized white/dark/green material constants; a shared-white material
+  reproduces the 0.3.11 failure. Existing mesh, index/area/guard checks remain.
+  Shader initialization/selection, transforms, constant-buffer allocation,
+  matrix binding and GPU upload/draw are modeled;
+  those CPU tests do not establish live appearance or antialiasing. The raster
+  preview now reads material colors for shapes instead of their ignored pane
+  colors. Eden verification remains pending.
 
 ## Conditional dialogue
 

@@ -1,7 +1,8 @@
 """Execute 3.0.3's shape-table reader, PIC shape selection and mesh generation.
 
-Only the heap and imported sinf/cosf services are modeled. This verifies native
-resource decoding and actual triangles, not the GPU shader or in-game rendering.
+Heap, imported sinf/cosf, renderer shader initialization, transform/constant
+allocation and GPU upload are modeled. This verifies native decoding, mesh and material color constants, not
+GPU drawing or in-game rendering.
 Run with the local main dump and tools/check.py's Unicorn Python environment.
 """
 from pathlib import Path
@@ -14,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 import build_shopping_card_layout as card
 from compression import zstd
 from layout_io import resources, layout_sections, pane_name
+from build_catalog_badge_layout import material_records
 
 RAW = (card.ROOT.parent / 'Grab 5/working/main.raw').read_bytes()
 # Fingerprints make this test refuse a different engine implementation.
@@ -23,11 +25,19 @@ archive = resources(zstd.decompress(next(iter(card.build().values()))))
 sections = layout_sections(next(v for k,v in archive.items() if k.endswith('.bflyt')))
 shape = next(s for s in sections if s[:4] == b'spi1')
 panes = {pane_name(s): s for s in sections if s[:4] == b'pic1'}
+materials = material_records(next(s for s in sections if s[:4] == b'mat1'))
 
 class ShapeMachine:
     SECTION_READER = 0x268550
     PIC_SHAPE_SELECTION = 0x282d9c
     PIC_MATERIAL_SETUP = 0x282e3c
+    MATERIAL_CONSTRUCTOR = 0x2745c0
+    PICTURE_DRAW_SETUP = 0x283b50
+    MATERIAL_DRAW_SETUP = 0x278410
+    # Renderer/shader initialization is outside this CPU color regression.
+    SHADER_INITIALIZERS = (0x275ae0, 0x275ce0, 0x275e48)
+    RENDERER_BOUNDARIES = (0x27d4c0, 0x27b240, 0x276c48, 0x284100,
+                           0x26520c, 0x265220)
     ALLOCATE = 0x267b30
     SINF = 0x3f03310
     COSF = 0x3f03320
@@ -64,6 +74,11 @@ class ShapeMachine:
             # Guard each allocation so overrun by mesh generation is observable.
             u.mem_write(pointer, bytes([0xcd]) * ((size + 31) & ~31))
             u.reg_write(UC_ARM64_REG_X0, pointer)
+        elif offset in self.SHADER_INITIALIZERS or offset in self.RENDERER_BOUNDARIES or pc == self.ram + 0xd200:
+            pass
+        elif offset == self.MATERIAL_DRAW_SETUP:
+            self.draw_modes.append(u.reg_read(UC_ARM64_REG_X3))
+            return  # Execute the real material setup and color-constant writes.
         elif offset in (self.SINF, self.COSF):
             value = struct.unpack('<f', struct.pack('<I', u.reg_read(UC_ARM64_REG_S0)))[0]
             value = math.sin(value) if offset == self.SINF else math.cos(value)
@@ -79,6 +94,46 @@ class ShapeMachine:
         self.u.emu_start(self.base + offset, stop, count=200000)
         assert self.u.reg_read(UC_ARM64_REG_PC) == stop
         assert self.u.reg_read(UC_ARM64_REG_SP) == self.ram + 0xfe000
+
+    def draw_color(self, pane, override=None):
+        resource, material, draw_info, pool, constants, vtable = (
+            self.ram + o for o in (0x7000, 0x8000, 0x9000, 0xa000, 0xb000, 0xd000))
+        record = bytearray(materials[struct.unpack_from('<H', pane, 100)[0]])
+        if override is not None:
+            record[40:44] = override
+        self.u.mem_write(resource, bytes(record))
+        self.u.mem_write(material, bytes(0x50))
+        for i, value in enumerate((material, 0, 0, resource, 0, self.ram + 0x6000)):
+            self.u.reg_write(UC_ARM64_REG_X0 + i, value)
+        self.run(self.MATERIAL_CONSTRUCTOR)
+        assert bytes(self.u.mem_read(material + 0xc, 4)) == record[40:44]
+        # Supply dynamic dispatch and mapped shader constants. Renderer shader
+        # selection/upload is modeled; material decoding/color writes are native.
+        self.write(material, vtable)
+        self.write(vtable + 0x20, self.base + self.MATERIAL_DRAW_SETUP)
+        self.write(material + 0x34, 0x400, 4)
+        self.write(draw_info + 0xc8, pool)
+        self.write(pool + 0x38, constants)
+        self.u.mem_write(constants, bytes([0xcd]) * 0x800)
+        pic = self.ram + 0x4000
+        self.write(pic + 0xd8, material)
+        self.write(pic, self.ram + 0xd100)
+        self.write(self.ram + 0xd1b8, self.ram + 0xd200)
+        self.write(pic + 0x58, 1, 1)
+        self.write(pic + 0x5a, 255, 1)
+        self.u.mem_write(pic + 0x50, pane[76:84])
+        # Deliberately disagree with the material: shape mode must ignore this.
+        self.u.mem_write(pic + 0xe0, bytes((255,0,128,255)) * 4)
+        self.draw_modes = []
+        self.u.reg_write(UC_ARM64_REG_X0, pic)
+        self.u.reg_write(UC_ARM64_REG_X1, draw_info)
+        self.run(self.PICTURE_DRAW_SETUP)
+        width, height = struct.unpack_from('<2f', pane, 76)
+        assert struct.unpack('<2f', self.u.mem_read(constants + 0x210, 8)) == (width / 2, height / 2)
+        assert self.draw_modes == [2]
+        # Mode 2 skips the quad's per-corner color constants entirely.
+        assert bytes(self.u.mem_read(constants + 0x1d0, 64)) == bytes([0xcd]) * 64
+        return struct.unpack('<4f', self.u.mem_read(constants + 0x400, 16))
 
     def build(self, pane):
         context, header, table = (self.ram + o for o in (0x1000, 0x2000, 0x3000))
@@ -148,6 +203,11 @@ class ShapeMachine:
         for pointer, size in self.allocations:
             padding = ((size + 31) & ~31) - size
             assert bytes(self.u.mem_read(pointer + size, padding)) == bytes([0xcd]) * padding
+        color = self.draw_color(pane)
+        assert all(math.isclose(a, b / 255, abs_tol=1e-6) for a,b in zip(color, card.CARD_COLORS[index]))
+        # Reproduce 0.3.11's shared-white-material failure through native setup:
+        # even non-white pane vertices cannot color a rounded shape.
+        assert self.draw_color(pane, bytes([255]*4)) == (1,1,1,1)
         return vertices, indices
 
 for base in (0x7100000000, 0x7302000000):
@@ -155,4 +215,4 @@ for base in (0x7100000000, 0x7302000000):
     for name in ('P_CardRim_00', 'P_CardEdge_00', 'P_CardFace_00'):
         counts = machine.build(panes[name])
         print(f'PASS: native spi1 reader/PIC selection/RoundRect mesh {name}: {counts}, base {base:#x}')
-print('PASS: three compact curved silhouettes, bounded mesh buffers, actual native corner circles; GPU/live display still requires playtest')
+print('PASS: native material decode/shape draw mode/color constants, separate white/dark/green silhouettes; shared-white-material failure reproduced; GPU/live display still requires playtest')
