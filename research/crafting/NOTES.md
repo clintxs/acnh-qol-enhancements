@@ -71,3 +71,32 @@ neither crafting hook installs and other modules still activate.
 Core regression exercises all 128 feature subsets and shared INI layering.
 These checks are local ARM execution, not an Eden play test. Crafting,
 customization and cooking need live confirmation.
+
+
+## Deferred UI follow-up — crafting quantity wrap (October 9, 2026)
+
+The user requests documenting this for later, without starting implementation.
+This concerns the crafting quantity selector, a separate interface from the
+DIY Recipes app previews. As reported, the selector starts at 1 and supports
+quantities from 1 through 10.
+
+Desired behavior:
+
+- A fresh downward input at 1 wraps to 10.
+- A fresh upward input at 10 wraps to 1.
+- Holding the joystick may scroll through the range, but must stop at the
+  endpoint instead of wrapping through it on input repeat. After reaching 10,
+  release/return the stick to neutral, then press up again to wrap to 1.
+  After reaching 1, release/return to neutral, then press down again to wrap
+  to 10. Continuing the same held gesture must never trigger another wrap.
+- Opening at the initial quantity of 1 permits a fresh downward input to
+  select 10 directly.
+
+Future acceptance examples: holding up from 1 reaches 10 and stays there;
+release then up selects 1. Holding down from 10 reaches 1 and stays there;
+release then down selects 10. Repeated held-input events at either boundary
+must not be mistaken for a fresh input.
+
+The native selector/input-repeat path, any recipe-dependent quantity limits,
+module placement and settings have not been investigated or selected. This
+entry records the intended interaction only; no runtime or release changes.
