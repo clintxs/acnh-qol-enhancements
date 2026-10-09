@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.40 DIY rotation and background
+# Unified QoL validation — 0.3.41 DIY render diagnostic
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,43 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.41 live render diagnostic
+
+The user reports no change with 0.3.40. The synced log confirms Core 0.3.40,
+right-stick snapshot input (consumed=0, blocked=0), queued Angle32 updates with
+ready=1/flags=1 and a non-null layer-color pointer. At the 30-frame report the
+pending bit remains set; continuing input means that line alone cannot prove
+whether the native pump ran or applied previous angles. The log does not record
+actual native update attempts or which clear passes occurred. It again ends with
+an Unmapped Read64 at 0x88 after release, without a PC/backtrace.
+
+The previous fixture explicitly invokes late dispatch and assigns entity phase
+1 after every phone frame. That proves native behavior in that fixture, not the
+live app's schedule or phase. Its requested layer-2 clear likewise does not
+prove that pass occurs in the live renderer. 0.3.41 adds observational C++ hooks:
+
+- Native 032B9FCC executes exactly once with its original arguments. During
+  preview ownership, count calls/attempts/applied pending updates and report the
+  first eight pending attempts, flags before/after, readiness, entity phase/stage.
+- The existing clear hook counts actual passes and matching layer-color clears,
+  reporting each distinct caller once (matching/nonmatching separated), bounded
+  to 16 process-lifetime entries. Reports include target, mask, color address and
+  original RGBA bits. No UI session data is accessed by a render worker.
+- Report totals after 30 preview frames and before release; remove both atomic
+  observation scopes before native cleanup. No extra native update is invoked,
+  no entity phase is changed and no additional rendering behavior is changed.
+
+Local checks execute the observer plus original native pump for rejected phase-0
+and successful phase-1 calls, verifying bounded logs, accurate counters and
+unchanged native results. Color diagnostics distinguish matched/unmatched clears
+and preserve original GPU/depth semantics. Unowned/released calls are unobserved.
+Existing tests still cover both bases, lifecycle, layout preservation and all 64
+module combinations. Build, package integrity and source parity are checked.
+This is a diagnostic release; rotation and background matching remain unfinished.
+The next live run should open one preview, hold the right stick for a few seconds,
+then press B. The synced log should distinguish missing scheduling, rejected
+native updates and a nonmatching clear path before another rendering change.
 
 ## 0.3.40 DIY deferred rotation and cream background
 

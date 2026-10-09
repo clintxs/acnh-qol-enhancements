@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.40 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.41 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -90,13 +90,15 @@ this package does not supply an aspect-ratio patch.
 CORE SETTINGS / AMIIBO TIMEOUT
 DIY RECIPE PREVIEWS (CORE)
 
-The 0.3.39 Deck test confirms models render again. 0.3.40 keeps opaque capture
-and sets the item-rendering background to #E5DFC7 while a preview is open.
-Other layers and depth/stencil settings retain their normal behavior.
+Models render, but the 0.3.40 live test still has a black background and no
+right-stick rotation. The log confirms right-stick input and queued angles.
+0.3.41 is a diagnostic build, NOT a confirmed fix. It observes actual native
+transform attempts and distinct color-clear passes, with bounded logs, without
+forcing entity updates or changing phases.
 
-RIGHT STICK rotation now uses the game's deferred transform update. Left/right
-turns the item; up/down tilts it up to 60 degrees from its starting pose. A dead
-zone prevents drift. Reopening starts from the native pose.
+The intended controls remain RIGHT STICK turning/tilting, with a dead zone and
+a 60-degree tilt limit. The intended background is #E5DFC7. Both remain
+unfinished in live play. Reopening starts from the native pose.
 
 The DIY app keeps its existing materials panel. Press A on a recipe to open the
 3D preview in place of the grid; press B to return to the same grid. Category,
@@ -110,9 +112,9 @@ layout or additional feature folder is used. If the capture binding or renderer
 is unavailable, the original grid remains usable. Core and Pockets share their
 page-input hook so Quick Store can remain enabled.
 
-Local ARM checks cover the deferred transform update and scoped graphics color
-clear. Rotation and the new background in 0.3.40 need an Eden test. Fully restart
-the game when updating.
+Local ARM checks cover native transform/clear behavior under explicitly modeled
+scheduling and diagnostics for rejected/successful calls. These do not establish
+the app's live rendering schedule or GPU output. Fully restart when updating.
 
 From 0.3.19, the amiibo timeout fix is built into Core and enabled by default.
 Remove the old “QoL Enhancements - Amiibo” folder when updating; its amiibo.ini
@@ -134,7 +136,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.40
+  version = 0.3.41
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.

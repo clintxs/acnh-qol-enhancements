@@ -20,6 +20,7 @@ constexpr std::uintptr_t Application = 0x059f83f0;
 constexpr std::uintptr_t CreateItemModel = 0x032bd990, ReleaseModel = 0x032ba5e4;
 constexpr std::uintptr_t ChangeState = 0x03dbb160;
 constexpr std::uintptr_t ClearRenderTarget = 0x038025b0, RenderLayers = 0x04abdb78;
+constexpr std::uintptr_t UpdateModelTransform = 0x032b9fcc, EntityManager = 0x04ab27c0;
 constexpr std::uintptr_t CapturePicture = 0x03a17390, AlternateCapturePicture = 0x03a174f0;
 }
 namespace field {
@@ -38,6 +39,7 @@ constexpr std::size_t ModelState = 0x10, BackgroundPage = 0x58, VisibilityPage =
 constexpr std::size_t ModelReady = 0x69, ModelFlags = 0x74, ModelAngles = 0x80;
 constexpr std::size_t RightStick = 0x0c, ConsumedAxes = 0x40;
 constexpr std::size_t LayerCount = 0x20, Layers = 0x28, LayerClearColor = 0x9c;
+constexpr std::size_t EntityPhase = 0x288, EntityStage = 0x5e8;
 }
 constexpr unsigned WorkbenchModelMode = 2, ConfirmMask = 0x10, BackMask = 0x20, PhoneShortcutKind = 5;
 constexpr unsigned RightStickMask = 2;
@@ -51,6 +53,9 @@ constexpr std::array<float, 4> PreviewBackground{229.0f / 255, 223.0f / 255, 199
 // The clear runs on a render worker. Publish only the color-field address;
 // that worker must not inspect the UI thread's mutable Session objects.
 std::atomic<const void *> PreviewClearColor{};
+std::atomic<void *> PreviewController{};
+std::atomic<unsigned> TransformCalls{}, TransformAttempts{}, TransformApplied{}, ClearCalls{}, ClearMatches{};
+std::array<std::atomic<std::uintptr_t>, 16> ReportedClearPasses{};
 std::uintptr_t Main{};
 template<class T> T &At(void *object, std::size_t offset = 0) {
     return *reinterpret_cast<T *>(static_cast<std::byte *>(object) + offset);
@@ -101,13 +106,57 @@ HOOK_DEFINE_TRAMPOLINE(ClearPreviewBackground) {
     static void Callback(float depth, void *buffer, void *command, int target,
                          unsigned mask, const void *color, unsigned stencil, void *viewport, bool apply) {
         const auto previewColor = PreviewClearColor.load(std::memory_order_acquire);
-        if (previewColor && color == previewColor && target == 0 && (mask & 1))
+        const bool matches = previewColor && color == previewColor && target == 0 && (mask & 1);
+        if (previewColor) {
+            ClearCalls.fetch_add(1, std::memory_order_relaxed);
+            if (matches) ClearMatches.fetch_add(1, std::memory_order_relaxed);
+            // Report each distinct native caller once, plus a matching pass.
+            // Workers use atomics only; the fixed table bounds diagnostic output.
+            const auto caller = reinterpret_cast<std::uintptr_t>(__builtin_return_address(0));
+            const auto key = caller | std::uintptr_t(matches);
+            for (auto &seen : ReportedClearPasses) {
+                auto value = seen.load(std::memory_order_relaxed);
+                if (value == key) break;
+                if (!value && seen.compare_exchange_strong(value, key, std::memory_order_relaxed)) {
+                    std::array<unsigned, 4> rgba{};
+                    if (color && (mask & 1)) std::memcpy(rgba.data(), color, sizeof(rgba));
+                    Logging.Log("[QoL Enhancements/Core] DIY preview: clear pass; caller=%lx color=%p target=%d mask=%x match=%u rgba=%08x/%08x/%08x/%08x\n",
+                                caller - Main, color, target, mask, unsigned(matches), rgba[0], rgba[1], rgba[2], rgba[3]);
+                    break;
+                }
+            }
+        }
+        if (matches)
             color = PreviewBackground.data();
         // Preserve depth/stencil, viewport and every other pass. Do not clear
         // the capture itself: its copy must retain the already rendered item.
         Orig(depth, buffer, command, target, mask, color, stencil, viewport, apply);
     }
 };
+HOOK_DEFINE_TRAMPOLINE(TraceModelTransform) {
+    static void Callback(void *controller) {
+        const bool owned = controller && controller == PreviewController.load(std::memory_order_acquire);
+        const auto before = owned ? At<unsigned char>(controller, field::ModelFlags) : 0;
+        if (owned) TransformCalls.fetch_add(1, std::memory_order_relaxed);
+        Orig(controller); // Observe native scheduling; never force an entity phase or retry.
+        if (!owned || !(before & TransformPending)) return;
+        const auto after = At<unsigned char>(controller, field::ModelFlags);
+        if (!(after & TransformPending)) TransformApplied.fetch_add(1, std::memory_order_relaxed);
+        if (TransformAttempts.fetch_add(1, std::memory_order_relaxed) >= 8) return;
+        auto storage = *Native<void **>(address::EntityManager);
+        auto manager = storage ? At<void *>(storage) : nullptr;
+        Logging.Log("[QoL Enhancements/Core] DIY preview: native transform; flags=%u->%u ready=%u entity_phase=%d entity_stage=%u\n",
+                    unsigned(before), unsigned(after), At<unsigned char>(controller, field::ModelReady),
+                    manager ? At<int>(manager, field::EntityPhase) : -99,
+                    manager ? At<unsigned>(manager, field::EntityStage) : 0xffffffffu);
+    }
+};
+void ReportRendererTrace() {
+    Logging.Log("[QoL Enhancements/Core] DIY preview: render trace; native_updates=%u pending_attempts=%u applied=%u clears=%u matched_clears=%u\n",
+                TransformCalls.load(std::memory_order_relaxed), TransformAttempts.load(std::memory_order_relaxed),
+                TransformApplied.load(std::memory_order_relaxed), ClearCalls.load(std::memory_order_relaxed),
+                ClearMatches.load(std::memory_order_relaxed));
+}
 // Layout::Build retains its resource pointer. Never give it a temporary vector
 // or overwrite a buffer that an existing layout can still reference. Capacity
 // exhaustion declines the feature, leaving the original resource untouched.
@@ -235,6 +284,8 @@ bool InputBlocked(Session &s, unsigned blocked) {
 void Close(Session &s) {
     s.stickX = s.stickY = 0;
     if (s.ownsRenderer) {
+        ReportRendererTrace();
+        PreviewController.store(nullptr, std::memory_order_release);
         PreviewClearColor.store(nullptr, std::memory_order_release);
         // Release only the handle/mode acquired by this phone. The native
         // state-1 exit balances camera/layers before state 0 resets ownership.
@@ -456,6 +507,12 @@ bool Begin(Session &s) {
     At<void *>(controller, field::BackgroundPage) = nullptr; // No background page owner.
     At<unsigned char>(controller, 0x68) = 0;
     s.ownsRenderer = true; s.frames = 0;
+    TransformCalls.store(0, std::memory_order_relaxed);
+    TransformAttempts.store(0, std::memory_order_relaxed);
+    TransformApplied.store(0, std::memory_order_relaxed);
+    ClearCalls.store(0, std::memory_order_relaxed);
+    ClearMatches.store(0, std::memory_order_relaxed);
+    PreviewController.store(controller, std::memory_order_release);
     const auto color = ItemLayerClearColor();
     PreviewClearColor.store(color, std::memory_order_release);
     Logging.Log("[QoL Enhancements/Core] DIY preview: background #E5DFC7; layer_color=%p\n", color);
@@ -475,6 +532,7 @@ HOOK_DEFINE_TRAMPOLINE(UpdatePhoneRecipes) {
         }
         if (s->phase == Phase::Showing) RotatePreview(*s);
         if (s->phase == Phase::Showing && ++s->frames == 30) {
+            ReportRendererTrace();
             Logging.Log("[QoL Enhancements/Core] DIY preview: renderer status; handle=%u flags=%u state=%d\n",
                         At<unsigned>(s->controller, field::ModelHandle),
                         At<unsigned char>(s->controller, 0x74), At<int>(s->controller, 0x10));
@@ -565,7 +623,8 @@ bool InstallRecipePreview() {
     UpdatePhoneRecipes::InstallAtOffset(address::PhoneFrame);
     DeactivatePhoneRecipes::InstallAtOffset(address::PhoneDeactivate);
     ClearPreviewBackground::InstallAtOffset(address::ClearRenderTarget);
-    Logging.Log("[QoL Enhancements/Core] DIY preview: READY; cream background; deferred right-stick rotation; A opens, B returns\n");
+    TraceModelTransform::InstallAtOffset(address::UpdateModelTransform);
+    Logging.Log("[QoL Enhancements/Core] DIY preview: READY; native render trace; A opens, B returns\n");
     return true;
 }
 } // namespace qol::core

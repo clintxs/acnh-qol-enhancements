@@ -19,8 +19,8 @@ def layout_asset(name):
     r = resources(zstd.decompress((ASSETS / (name + '.Nin_NX_NVN.zs')).read_bytes()))
     return next(v for k, v in r.items() if k.endswith('/' + name + '.bflyt'))
 MENU = layout_asset('MenuRecipe')
-HOOKS = (0x267d64, 0x2e9cde0, 0x2e9fbb0, 0x2e9d538, 0x3c58d24, 0x38025b0)
-GUARDS = HOOKS + (0x32bd990, 0x32ba5e4, 0x3dbb160, 0x27d1d0, 0x3a17390, 0x3a174f0, 0x3c66298, 0x2e93798, 0x2e96a80, 0x3c4b880, 0x2ea0754, 0x2b0c810, 0x32b9e08, 0x32ba000, 0x3c4bac4, 0x32b9fcc, 0x2b0e20c, 0x386d71c, 0x1513a48, 0x32be2b0, 0x32ba034)
+HOOKS = (0x267d64, 0x2e9cde0, 0x2e9fbb0, 0x2e9d538, 0x3c58d24, 0x38025b0, 0x32b9fcc)
+GUARDS = HOOKS + (0x32bd990, 0x32ba5e4, 0x3dbb160, 0x27d1d0, 0x3a17390, 0x3a174f0, 0x3c66298, 0x2e93798, 0x2e96a80, 0x3c4b880, 0x2ea0754, 0x2b0c810, 0x32b9e08, 0x32ba000, 0x3c4bac4, 0x2b0e20c, 0x386d71c, 0x1513a48, 0x32be2b0, 0x32ba034)
 
 class PreviewMachine(Machine):
     def __init__(self, base):
@@ -97,8 +97,16 @@ class PreviewMachine(Machine):
         self.entity_manager=manager
         component_methods=self.alloc(0x108); self.write(self.component,component_methods)
         self.write(component_methods+0x100,self.stub('accept'))  # Native position write boundary.
-        # Real late transform pump runs after the UI update, in a different
-        # entity-manager phase. The old direct setter must fail in UI phase 0.
+        # The fixture explicitly schedules a late transform pump in phase 1.
+        # The live app's scheduling/phase is NOT established by this fixture.
+        # Execute the observer and its original native pump, redirecting only
+        # the late-dispatch tail branch to stand in for Exlaunch's trampoline.
+        self.u.mem_write(base+0x32b9fcc,RAW[0x32b9fcc:0x32b9fcc+20])
+        self.write(self.module.find('TraceModelTransform','OrigRef'),base+0x32b9fcc)
+        tail=base+0x2b0e21c
+        delta=(self.hooks[base+0x32b9fcc]-tail)//4
+        assert -(1<<25)<=delta<(1<<25)
+        self.write(tail,0x14000000|(delta&0x3ffffff),4)
         self.write(self.controller+0x69,1,1)
         self.layer_manager=self.alloc(); self.layer_array=self.alloc()
         self.layers=[self.alloc(0xb0) for _ in range(3)]
@@ -654,6 +662,36 @@ for base in (0x7100000000, 0x7200000000):
     m.frame(phone)
     assert m.read(m.controller+0x50,4)==26 and m.read(m.controller+0x10,4)==3
     print(f'PASS: native phone/preview camera counts balance across B/reopen/deactivation; original mode getter reproduces reclamation, ASLR {base:#x}')
+
+# Diagnostics must describe failures as well as successful fixture updates;
+# they must not turn a rejected transform into a success or alter unowned calls.
+for base in (0x7100000000, 0x7200000000):
+    m=PreviewMachine(base)
+    phone,page,row,panes=m.phone()
+    m.hook(0x32b9fcc,m.controller)
+    assert m.read(m.module.find('TransformCalls'),4)==0
+    m.confirm(page); m.frame(phone); m.frame(phone)
+    m.write(m.controller+0x74,1,1)
+    m.write(m.entity_manager+0x288,0,4)
+    for _ in range(12): m.invoke(base+0x2b0e20c)
+    assert m.read(m.controller+0x74,1)==1 and m.read(m.model_entity+0x398,1)==0
+    lines=[s for s in m.logs if 'DIY preview: native transform;' in s]
+    assert len(lines)==8 and all('flags=1->1' in s and 'entity_phase=0' in s for s in lines)
+    m.write(m.entity_manager+0x288,1,4); m.invoke(base+0x2b0e20c)
+    assert m.read(m.controller+0x74,1)==0 and m.read(m.model_entity+0x398,1)==1
+    assert m.read(m.module.find('TransformApplied'),4)==1
+    for _ in range(12): m.clear()
+    m.clear(layer=1)
+    lines=[s for s in m.logs if 'DIY preview: clear pass;' in s]
+    assert len(lines)==2 and 'match=1' in lines[0] and 'match=0' in lines[1]
+    assert m.read(m.module.find('ClearCalls'),4)==13 and m.read(m.module.find('ClearMatches'),4)==12
+    m.input(page,0x20); m.frame(phone)
+    assert 'pending_attempts=13 applied=1 clears=13 matched_clears=12' in m.text
+    calls=m.read(m.module.find('TransformCalls'),4)
+    m.invoke(base+0x2b0e20c); m.clear()
+    assert m.read(m.module.find('TransformCalls'),4)==calls
+    assert m.read(m.module.find('ClearCalls'),4)==13
+    print(f'PASS: bounded render diagnostics observe native rejection/success and clear matches without forcing updates; scope ends before release, ASLR {base:#x}')
 
 for guard in GUARDS:
     m=Machine(0x7100000000,{})

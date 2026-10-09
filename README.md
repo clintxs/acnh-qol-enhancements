@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.40 DIY preview rotation and background** for ACNH **3.0.3 on Eden**. One Core
+**0.3.41 DIY preview render diagnostic** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -60,15 +60,16 @@ fingerprints only, checked before each feature's first hook.
 
 ## DIY Recipes app previews
 
-The 0.3.39 Deck test confirms models render again. 0.3.40 keeps that opaque
-capture and changes the item-rendering layer's background to **#E5DFC7** while
-an app preview is open. The change is scoped to that layer's color clear; its
-stored color, other layers and depth/stencil settings remain intact.
+Models render, but the 0.3.40 live test still shows a black background and no
+right-stick rotation. Its log confirms input reaches the preview and queues
+angles; it does not establish native transform application or a matching color
+clear. **0.3.41 is a diagnostic build, not a confirmed fix.** It records actual
+native update attempts and distinct clear passes, with bounded output, to locate
+where these changes are lost. It does not force entity updates or change phases.
 
-**Right-stick rotation** now queues the native transform update, including the
-item's transform invalidation step. Left/right turns the item; up/down tilts it
-up to 60° from its starting pose. A small dead zone prevents drift. Reopening
-starts from the item's native pose.
+The requested controls remain right-stick turning/tilting, with a small dead
+zone and a 60° tilt limit, and the intended background is **#E5DFC7**. These are
+still unfinished in live play. Reopening starts from the item's native pose.
 
 The existing DIY app keeps its materials panel, category, selection and scroll
 position. A opens the 3D preview in place of the grid; B releases the model and
@@ -81,10 +82,11 @@ installed aspect-ratio edits. No workbench layout or extra RomFS file is used.
 If the capture binding or renderer is unavailable, the ordinary grid stays usable.
 Core and Pockets share one page-input hook, preserving Quick Store behavior.
 
-Compiled ARM checks cover the deferred native rotation/transform update, scoped
-color clear through the graphics API boundary, input scope, B and restoration.
-**Rotation and the new background color in 0.3.40 still need an Eden test.** See
-`research/recipe-preview/NOTES.md` and `VALIDATION.md`.
+Compiled ARM checks cover native transform/clear behavior under explicitly
+modeled scheduling, input scope, B and restoration. Diagnostics are checked for
+both rejected and successful updates and stop observing before release. Those
+checks do not establish the DIY app's real rendering schedule or GPU output.
+See `research/recipe-preview/NOTES.md` and `VALIDATION.md`.
 
 The Exlaunch SIMD context declaration now matches its assembly stack layout;
 compile-time assertions and execution of the real adapter cover that correction.
@@ -199,7 +201,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.40
+version = 0.3.41
 base_speed = 2
 boost_speed = 4
 faster_ui = false

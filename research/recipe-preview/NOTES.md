@@ -9,7 +9,9 @@ The user confirmed visible models in 0.3.37, including a wooden simple bed,
 after correcting capture order. 0.3.38 added right-stick rotation, but its
 transparency change hid the whole model. 0.3.39 restores opaque capture and the user confirms visibility again, but
 rotation has no visible effect. 0.3.40 queues the native transform update and
-uses #E5DFC7 for the item-layer clear. These changes need a live test.
+uses #E5DFC7 for the item-layer clear. The user reports no visible change.
+0.3.41 observes actual native transform attempts and clear passes; it is a
+diagnostic release and does not claim to fix either behavior.
 Left/right recipe navigation remains unfinished.
 
 This implementation retains MenuRecipe's material panel. It adds a hidden
@@ -241,6 +243,31 @@ viewport and other targets/layers. A missing manager/layer leaves ordinary
 preview capture available. Capture alpha remains opaque; no capture clear is
 introduced. This reaches a graphics API call locally; live GPU color remains
 unverified.
+
+## Live schedule/clear observation (0.3.41)
+
+The synced 0.3.40 log establishes right-stick snapshot values and queued angles,
+not native application. Its flags=1 status can reflect continuous new input.
+The tests explicitly invoke 02B0E20C after the app frame and set entity phase 1;
+this scheduling is a fixture assumption, not live evidence. Likewise the clear
+fixture deliberately calls layer 2; it does not establish which live pass clears
+the preview background. Dynamic capture's native draw 03A2C7AC calls 03A2E5D0 on
+every visible draw, unlike static capture's dirty-flag branch at 03A2DF70.
+
+Observe 032B9FCC with a trampoline that always calls its original once. An atomic
+controller address scopes counters and eight before/after pending-bit reports;
+include native entity phase/stage without modifying either. The clear observer
+logs up to 16 distinct caller/match pairs with original color bits and arguments.
+It never reads mutable Sessions. The atomic scope ends before release; totals
+are printed from the UI update after 30 frames and before cleanup. The late-pump
+hook uses the existing verified entry fingerprint. No extra update is scheduled.
+
+The new fixture redirects native 02B0E20C's tail branch through the compiled
+observer and executes the original pump. Diagnostic checks require failures to
+remain failures, successful updates to remain successful, bounded output and
+scope removal before release. Live trace data is required before selecting a
+new entity-update or background-rendering path. Background/rotation remain
+unfinished, and the post-release unmapped-read origin remains unestablished.
 
 ## Validation boundary
 
