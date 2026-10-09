@@ -19,7 +19,7 @@ def layout_asset(name):
     r = resources(zstd.decompress((ASSETS / (name + '.Nin_NX_NVN.zs')).read_bytes()))
     return next(v for k, v in r.items() if k.endswith('/' + name + '.bflyt'))
 MENU = layout_asset('MenuRecipe')
-HOOKS = (0x267d64, 0x2e9cde0, 0x2e9fbb0, 0x2e9d538, 0x3c58d24, 0x39392b0, 0x32b9fcc, 0x32b9e08)
+HOOKS = (0x267d64, 0x2e9cde0, 0x2e9fbb0, 0x2e9d538, 0x3c58d24, 0x39392b0, 0x32b9fcc, 0x32b9e08, 0x6021a4, 0x39f63f0)
 GUARDS = HOOKS + (0x32bd990, 0x32ba5e4, 0x3dbb160, 0x27d1d0, 0x3a17390, 0x3a174f0, 0x3c66298, 0x2e93798, 0x2e96a80, 0x3c4b880, 0x2ea0754, 0x2b0c810, 0x32ba000, 0x3c4bac4, 0x2b0e20c, 0x32b9750, 0x1513a48, 0x32be2b0, 0x32ba034)
 
 class PreviewMachine(Machine):
@@ -125,11 +125,22 @@ class PreviewMachine(Machine):
         self.u.mem_write(base+0x38025b0,RAW[0x38025b0:0x38025b0+20])
         self.u.mem_write(base+0x39392b0,RAW[0x39392b0:0x39392b0+20])
         self.write(self.module.find('DrawPreviewLayer','OrigRef'),base+0x39392b0)
-        self.services[base+0x39f63f0]=('preview','layer_color')
+        self.write(self.module.find('DrawPreviewContents','OrigRef'),self.stub('layer_color'))
+        call=base+0x39393dc
+        delta=(self.hooks[base+0x39f63f0]-call)//4
+        self.write(call,0x94000000|(delta&0x3ffffff),4)
+        self.services[base+0x39393e0]=('preview','finish_layer')
+        self.u.mem_write(base+0x6021a4,RAW[0x6021a4:0x6021a4+20])
+        self.write(self.module.find('BuildPreviewMatrix','OrigRef'),base+0x6021a4)
+        self.write(self.component+0x48,self.model_entity)
+        tail=base+0x19283f8
+        delta=(self.hooks[base+0x6021a4]-tail)//4
+        self.write(tail,0x14000000|(delta&0x3ffffff),4)
         self.layer_renderer=self.alloc(0x250); layer_state=self.alloc()
         self.write(self.layer_renderer+0x248,layer_state)
         self.write(layer_state+8,1,4); self.write(layer_state+0x10,self.alloc(0x23c0))
         self.layer_context=self.alloc(0x3d8); self.write(self.layer_context+0x18,self.alloc())
+        self.write(self.layer_context+0x318,self.alloc())  # Native color-clear request.
         # Native matrix builder uses the game's Angle32 sine/cosine table.
         self.write(base+0x4ab2d00,base+struct.unpack_from('<Q',RAW,0x4ab2d00)[0])
         self.matrix=self.alloc(48)
@@ -205,6 +216,7 @@ class PreviewMachine(Machine):
         elif action == 'layer_color':
             self.layer_color=bytes(u.mem_read(self.reg(4),16))
             self.layer_mask=self.reg(3)
+        elif action == 'finish_layer':
             u.reg_write(UC_ARM64_REG_PC,self.base+0x3939528); return
         elif action == 'animation_pose':
             u.mem_write(self.reg(0),struct.pack('<2fI3If',0,0,0x3f800000,0x01000000,0x20000000,0x03000000,5))
@@ -304,9 +316,10 @@ class PreviewMachine(Machine):
         self.u.ctl_remove_cache(call,call+4)
         self.invoke(self.base+0x32b9510,self.controller)
         self.write(self.controller+0x338,0,1)
-    def drawable_matrix(self):
+    def drawable_matrix(self, component=None, protected=False):
         self.u.reg_write(UC_ARM64_REG_X8,self.matrix)
-        self.invoke(self.base+0x6021a4,self.component)
+        if protected: self.invoke(self.base+0x19283f0,component or self.component)
+        else: self.invoke(self.base+0x6021a4,component or self.component)
         return bytes(self.u.mem_read(self.matrix,48))
     def input(self, page, held, resident=0, blocked=0, consumed=0, left=(0,0), right=(0,0), consumed_axes=0):
         snapshot = self.alloc(); rows = self.alloc(8 * 0x48)
@@ -435,10 +448,13 @@ for base in (0x7100000000, 0x7200000000):
     assert m.read(panes['N_Recipe_00']+0x58,1)==0xa3
     # Native item layer clear reaches the GPU with the requested cream color;
     # other layers, target indices and depth/stencil must pass through intact.
-    cream=struct.pack('<4f',229/255,223/255,199/255,1)
+    cream=struct.pack('<4f',1.5950871,1.3879482,.8751216,1)
     black=struct.pack('<4f',0,0,0,1)
     m.clear(); assert m.gpu_colors[-1]==(0x12345678,0,cream,15)
+    native_draw_flags=m.layer_mask
+    assert native_draw_flags&1
     m.clear(layer=1); assert m.gpu_colors[-1][2]==black
+    assert m.layer_mask==native_draw_flags
     options=m.alloc(0x28); m.u.mem_write(options,bytes(range(40)))
     original_options=bytes(m.u.mem_read(options,40))
     m.clear(options=options); assert m.gpu_colors[-1][2]==cream
@@ -499,6 +515,20 @@ for base in (0x7100000000, 0x7200000000):
         m.write(owner,m.controller); m.write(m.controller+0x50,2,4)
         m.native_parameter_update()
         assert m.drawable_matrix()==rendered
+    # The displayed mesh has its own component. Reproduce a stale child pose
+    # while the controller actor has already accepted all queued transforms.
+    child=m.alloc(0x400); child_component=m.alloc(0x2c8)
+    m.u.mem_write(child_component,bytes(m.u.mem_read(m.component,0x2c8)))
+    m.write(child_component+0x48,child)
+    m.write(child+0x230,0x54321,4); m.write(child+0x234,0x12345,4)
+    m.u.mem_write(child_component+0x2bc,struct.pack('<3I',*pose))
+    stale=bytes(m.u.mem_read(child_component,0x2c8))
+    assert m.drawable_matrix(child_component)!=rendered
+    assert m.drawable_matrix(child_component,protected=True)==rendered
+    assert bytes(m.u.mem_read(child_component,0x2c8))==stale
+    m.write(child+0x234,0x98765,4)
+    assert m.drawable_matrix(child_component,protected=True)==m.drawable_matrix(child_component)
+    m.write(child+0x234,0x12345,4)
     m.frame(phone); assert angles()==changed  # No snapshot must not keep rotating.
     # Both directions, full turn wrap, bounded tilt and loaded/owned guards.
     m.input(page,0,right=(-1,0)); m.frame(phone); assert angles()==pose
@@ -529,6 +559,8 @@ for base in (0x7100000000, 0x7200000000):
     before=list(m.events); m.input(page,2); assert m.events==before
     assert m.input(page,0x20,right=(1,1))==0x20; m.frame(phone)
     assert ('release',2) in m.events
+    assert m.read(m.module.find('PreviewHandle'),4)==0
+    assert m.drawable_matrix(child_component,protected=True)==m.drawable_matrix(child_component)
     m.clear(); assert m.gpu_colors[-1][2]==black
     assert m.read(m.controller+0x50,4)==26 and m.read(m.controller+0x10,4)==3
     assert m.invoke(m.read(m.read(phone)+0x200),phone)==26
@@ -543,7 +575,7 @@ for base in (0x7100000000, 0x7200000000):
     assert angles()==pose  # Reopening starts from the item's native pose.
     m.hook(0x2e9d538,phone); assert m.read(m.controller+0x6c,4)==0
     assert m.read(panes['N_QolCapture_00']+0x58,1)==0xa2
-    print(f'PASS: native animation overwrite reproduced and prevented; changed drawable matrix and scoped cream GPU clear; right stick only; dead zone, turn/wrap, bounded tilt, load/owner/handle guards, unchanged position/materials and reopen, ASLR {base:#x}')
+    print(f'PASS: native animation overwrite reproduced and prevented; stale child drawable pose corrected without mutation and scoped HDR GPU clear; right stick only; dead zone, turn/wrap, bounded tilt, load/owner/handle guards, unchanged position/materials and reopen, ASLR {base:#x}')
     phone2,page2,row2,panes2=m.phone(1,surface=False)
     before=m.model_events; m.confirm(page2); m.frame(phone2); assert m.model_events==before
     unbound,unbound_page,unbound_row,unbound_panes=m.phone(3)
@@ -747,14 +779,18 @@ for base in (0x7100000000, 0x7200000000):
     assert m.read(m.module.find('TransformApplied'),4)==1
     for _ in range(12): m.clear()
     m.clear(layer=1)
-    lines=[s for s in m.logs if 'DIY preview: item layer draw matched;' in s]
+    lines=[s for s in m.logs if 'DIY preview: HDR background applied' in s]
     assert len(lines)==1
+    assert m.read(m.module.find('BackgroundApplied'),4)==12
+    assert all(m.read(m.module.find('LayerDrawScopes')+i*32)==0 for i in range(8))
     assert m.read(m.module.find('ClearCalls'),4)==13 and m.read(m.module.find('ClearMatches'),4)==12
     m.input(page,0x20); m.frame(phone)
     assert 'pending_attempts=13 applied=1 layer_draws=13 matched_layers=12' in m.text
     calls=m.read(m.module.find('TransformCalls'),4)
     m.invoke(base+0x2b0e20c); m.clear()
     assert m.read(m.module.find('TransformCalls'),4)==calls
+    assert m.read(m.module.find('BackgroundApplied'),4)==12
+    assert all(m.read(m.module.find('LayerDrawScopes')+i*32)==0 for i in range(8))
     assert m.read(m.module.find('ClearCalls'),4)==13
     print(f'PASS: bounded render diagnostics observe native rejection/success and clear matches without forcing updates; scope ends before release, ASLR {base:#x}')
 

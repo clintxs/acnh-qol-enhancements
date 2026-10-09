@@ -10,14 +10,14 @@ from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
 SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'shopping-card', 'faster-crafting')
 COUNTS = (16, 15, 7, 11, 11, 2)  # Pockets shares Core's page-input hook.
-DEFAULT = b'enabled=true\nversion=0.3.42\n'
+DEFAULT = b'enabled=true\nversion=0.3.43\n'
 
 def expected_hook_count(machine, enabled):
     # The existing verbose-dialogue build adds a Catalog message trace hook.
     # Keep normal/diagnostic counts explicit; never infer them from installed hooks.
     trace_enabled = any('NookMessageTrace' in name for name in machine.module.symbols)
     resources = 'content:/qol-enhancements/config/shopping-card.ini' in machine.files
-    return 10 + int(resources) + sum(count for count, active in zip(COUNTS, enabled) if active) + (trace_enabled and enabled[0])
+    return 12 + int(resources) + sum(count for count, active in zip(COUNTS, enabled) if active) + (trace_enabled and enabled[0])
 
 class Machine:
     def __init__(self, base, files):
@@ -150,13 +150,13 @@ def check_errors():
             if b'version=0.4.0' in data:
                 assert 'BOOT_OK' in m.text and 'enabled_modules=1' in m.text
             else:
-                assert len(m.hooks) == 10 + (slug == 'shopping-card') and m.read(m.base + 0xbc4140, 4) == 0x52803848
+                assert len(m.hooks) == 12 + (slug == 'shopping-card') and m.read(m.base + 0xbc4140, 4) == 0x52803848
                 assert m.read(m.base + 0x1af9ff0, 4) == 0x528c0049
     for fault in ('open_error', 'read_error', 'size_error'):
         m = Machine(0x7100000000, {slug: DEFAULT for slug in SLUGS})
         setattr(m, fault, True)
         m.boot(); m.activate()
-        assert len(m.hooks) == 11 and 'BOOT_PARTIAL' in m.text
+        assert len(m.hooks) == 13 and 'BOOT_PARTIAL' in m.text
     # A startup conflict prevents even the Core discovery hook.
     m = Machine(0x7100000000, {})
     m.write(m.base + 0x37b5460, 0, 4)
@@ -209,7 +209,7 @@ def check_amiibo_hook():
             m.boot()
             assert len(m.hooks) == 1 and not m.opened
             m.activate()
-            assert len(m.hooks) == 9 + bool(frames) and 'BOOT_OK' in m.text, m.text
+            assert len(m.hooks) == 11 + bool(frames) and 'BOOT_OK' in m.text, m.text
             assert m.opened[:2] == ['content:/qol-enhancements/config/core.ini', 'content:/qol-enhancements/config/core.custom.ini']
             assert not any('/amiibo.' in name for name in m.opened)
             assert (base + 0xbc4144 in m.hooks) == bool(frames)
@@ -277,7 +277,7 @@ def check_custom_preferences():
         if marker: files['faster-dialogue'] = marker
         m = Machine(0x7100000000, files)
         m.boot(); m.activate()
-        assert len(m.opened) == 2 + (len(SLUGS) + 1 if marker else len(SLUGS)) and len(m.hooks) == 10
+        assert len(m.opened) == 2 + (len(SLUGS) + 1 if marker else len(SLUGS)) and len(m.hooks) == 12
     print('PASS: missing/malformed/oversized/unreadable custom preferences preserve defaults')
 
 def check_config_layers():

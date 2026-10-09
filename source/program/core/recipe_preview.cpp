@@ -21,6 +21,7 @@ constexpr std::uintptr_t CreateItemModel = 0x032bd990, ReleaseModel = 0x032ba5e4
 constexpr std::uintptr_t ChangeState = 0x03dbb160;
 constexpr std::uintptr_t DrawModelLayer = 0x039392b0, RenderLayers = 0x04abdb78;
 constexpr std::uintptr_t SetModelRotation = 0x032b9e08;
+constexpr std::uintptr_t BuildModelMatrix = 0x006021a4, DrawLayerContents = 0x039f63f0;
 constexpr std::uintptr_t UpdateModelTransform = 0x032b9fcc, EntityManager = 0x04ab27c0;
 constexpr std::uintptr_t CapturePicture = 0x03a17390, AlternateCapturePicture = 0x03a174f0;
 }
@@ -40,8 +41,9 @@ constexpr std::size_t ModelState = 0x10, BackgroundPage = 0x58, VisibilityPage =
 constexpr std::size_t ModelReady = 0x69, ModelFlags = 0x74, ModelAngles = 0x80;
 constexpr std::size_t RightStick = 0x0c, ConsumedAxes = 0x40;
 constexpr std::size_t LayerCount = 0x20, Layers = 0x28, LayerClearColor = 0x9c;
-constexpr std::size_t DrawLayer = 0x3d0, DrawOptionsSize = 0x28;
-constexpr std::size_t DrawOptionsFlags = 0x10, DrawOptionsColor = 0x24;
+constexpr std::size_t DrawLayer = 0x3d0, RendererState = 0x248, DrawInfo = 0x18, DrawView = 8;
+constexpr std::size_t ComponentOwner = 0x48, ComponentAngles = 0x2bc, ComponentPoseSize = 0x2c8;
+constexpr std::size_t EntityHandle = 0x230, ParentHandle = 0x234;
 constexpr std::size_t EntityPhase = 0x288, EntityStage = 0x5e8;
 }
 constexpr unsigned WorkbenchModelMode = 2, ConfirmMask = 0x10, BackMask = 0x20, PhoneShortcutKind = 5;
@@ -52,11 +54,24 @@ constexpr float StickDeadZone = 0.15f, DegreesPerUpdate = 3.0f, MaximumTilt = 60
 constexpr float AngleUnitsPerDegree = 4294967296.0f / 360.0f;
 constexpr int PhoneModelMode = 26, PhoneModelState = 3;
 constexpr unsigned ItemRenderLayer = 2;
-constexpr unsigned PreviewBackground = 0xe5dfc7ff; // Native draw override packs RRGGBBAA.
+// Scene clear colors pass through the 3D color pipeline before UI capture.
+// An sRGB-normalized E5DFC7 clear measured CCC9C0 in the 0.3.42 screenshot.
+// These HDR values fit an inverse filmic curve to that observation. This is
+// an approximate display-color correction, pending live visual validation.
+constexpr std::array<float, 4> PreviewBackground{1.5950871f, 1.3879482f, 0.8751216f, 1.0f};
 // Layer drawing runs on a render worker. Publish only the layer identity;
 // that worker must not inspect the UI thread's mutable Session objects.
 std::atomic<const void *> PreviewClearColor{};
 std::atomic<void *> PreviewController{};
+std::atomic<unsigned> PreviewHandle{}, PreviewAngleZ{}, MatrixCalls{}, MatrixMatches{}, BackgroundApplied{};
+std::atomic<std::uint64_t> PreviewAngleXY{};
+// A command buffer is serially recorded. Scope the downstream color override
+// to this layer's synchronous call, using atomic slots for parallel workers.
+struct LayerDrawScope {
+    std::atomic<void *> command{}, renderer{}, info{};
+    std::atomic<unsigned> view{};
+};
+std::array<LayerDrawScope, 8> LayerDrawScopes{};
 std::atomic<unsigned> TransformCalls{}, TransformAttempts{}, TransformApplied{}, ClearCalls{}, ClearMatches{};
 
 std::uintptr_t Main{};
@@ -110,19 +125,65 @@ HOOK_DEFINE_TRAMPOLINE(DrawPreviewLayer) {
         const bool matches = published && layer &&
             static_cast<std::byte *>(layer) + field::LayerClearColor == published;
         if (published) ClearCalls.fetch_add(1, std::memory_order_relaxed);
-        if (!matches) { Orig(renderer, command, context, options); return; }
-        // 039392B0 copies layer +9c to its stack before 039F63F0 clears it.
-        // Comparing that later pointer with the layer field can never match.
-        // Use the native per-draw color override, scoped to the owned layer.
-        // No layer/global color is mutated, and nested draws get their own copy.
-        alignas(8) std::array<std::byte, field::DrawOptionsSize> overridden{};
-        if (options) std::memcpy(overridden.data(), options, overridden.size());
-        At<unsigned>(overridden.data(), field::DrawOptionsFlags) =
-            (At<unsigned>(overridden.data(), field::DrawOptionsFlags) & ~0x100u) | 8;
-        At<unsigned>(overridden.data(), field::DrawOptionsColor) = PreviewBackground;
-        if (ClearMatches.fetch_add(1, std::memory_order_relaxed) == 0)
-            Logging.Log("[QoL Enhancements/Core] DIY preview: item layer draw matched; background #E5DFC7\n");
-        Orig(renderer, command, context, overridden.data());
+        LayerDrawScope *scope = nullptr;
+        if (matches && command) for (auto &entry : LayerDrawScopes) {
+            void *empty = nullptr;
+            if (!entry.command.compare_exchange_strong(empty, reinterpret_cast<void *>(1), std::memory_order_acquire)) continue;
+            entry.renderer.store(At<void *>(renderer, field::RendererState), std::memory_order_relaxed);
+            auto info = At<void *>(context, field::DrawInfo);
+            entry.info.store(info ? static_cast<std::byte *>(info) + 0x60 : nullptr, std::memory_order_relaxed);
+            entry.view.store(At<unsigned char>(context, field::DrawView), std::memory_order_relaxed);
+            entry.command.store(command, std::memory_order_release);
+            scope = &entry; break;
+        }
+        if (matches) ClearMatches.fetch_add(1, std::memory_order_relaxed);
+        Orig(renderer, command, context, options); // Preserve native draw/clear flags.
+        if (scope) scope->command.store(nullptr, std::memory_order_release);
+    }
+};
+HOOK_DEFINE_TRAMPOLINE(DrawPreviewContents) {
+    static void Callback(void *renderer, void *command, unsigned view, unsigned flags,
+                         const void *color, void *info) {
+        for (auto &entry : LayerDrawScopes) {
+            if (entry.command.load(std::memory_order_acquire) != command || !command ||
+                entry.renderer.load(std::memory_order_relaxed) != renderer ||
+                entry.info.load(std::memory_order_relaxed) != info ||
+                entry.view.load(std::memory_order_relaxed) != view) continue;
+            if (BackgroundApplied.fetch_add(1, std::memory_order_relaxed) == 0)
+                Logging.Log("[QoL Enhancements/Core] DIY preview: HDR background applied for #E5DFC7 target\n");
+            color = PreviewBackground.data(); break;
+        }
+        Orig(renderer, command, view, flags, color, info);
+    }
+};
+void PublishPose(void *controller) {
+    const auto angles = static_cast<std::byte *>(controller) + field::ModelAngles;
+    PreviewAngleZ.store(At<unsigned>(angles, 8), std::memory_order_relaxed);
+    PreviewAngleXY.store(At<std::uint64_t>(angles), std::memory_order_release);
+    PreviewHandle.store(At<unsigned>(controller, field::ModelHandle), std::memory_order_release);
+}
+struct ModelMatrix { float values[12]; }; // ARM64 returns this 48-byte object through x8.
+HOOK_DEFINE_TRAMPOLINE(BuildPreviewMatrix) {
+    static ModelMatrix Callback(void *component) {
+        const auto handle = PreviewHandle.load(std::memory_order_acquire);
+        if (!handle || !component) return Orig(component);
+        MatrixCalls.fetch_add(1, std::memory_order_relaxed);
+        auto owner = At<void *>(component, field::ComponentOwner);
+        if (!owner || (At<unsigned>(owner, field::EntityHandle) != handle &&
+                       At<unsigned>(owner, field::ParentHandle) != handle)) return Orig(component);
+        // Item mesh transforms copy the controller actor through 019282FC.
+        // Build from the owned pose at the actual matrix boundary, even when
+        // the phone has not scheduled that child-component update. Do not
+        // mutate shared entity/component memory or invoke scene updates.
+        alignas(16) std::array<std::byte, field::ComponentPoseSize> pose{};
+        std::memcpy(pose.data(), component, pose.size());
+        At<std::uint64_t>(pose.data(), field::ComponentAngles) = PreviewAngleXY.load(std::memory_order_acquire);
+        At<unsigned>(pose.data(), field::ComponentAngles + 8) = PreviewAngleZ.load(std::memory_order_relaxed);
+        if (PreviewHandle.load(std::memory_order_acquire) != handle) return Orig(component);
+        if (MatrixMatches.fetch_add(1, std::memory_order_relaxed) == 0)
+            Logging.Log("[QoL Enhancements/Core] DIY preview: drawable matrix matched; entity=%u parent=%u\n",
+                        At<unsigned>(owner, field::EntityHandle), At<unsigned>(owner, field::ParentHandle));
+        return Orig(pose.data());
     }
 };
 HOOK_DEFINE_TRAMPOLINE(SetPreviewRotation) {
@@ -157,10 +218,11 @@ HOOK_DEFINE_TRAMPOLINE(TraceModelTransform) {
     }
 };
 void ReportRendererTrace() {
-    Logging.Log("[QoL Enhancements/Core] DIY preview: render trace; native_updates=%u pending_attempts=%u applied=%u layer_draws=%u matched_layers=%u\n",
+    Logging.Log("[QoL Enhancements/Core] DIY preview: render trace; native_updates=%u pending_attempts=%u applied=%u layer_draws=%u matched_layers=%u matrices=%u matched_matrices=%u backgrounds=%u\n",
                 TransformCalls.load(std::memory_order_relaxed), TransformAttempts.load(std::memory_order_relaxed),
                 TransformApplied.load(std::memory_order_relaxed), ClearCalls.load(std::memory_order_relaxed),
-                ClearMatches.load(std::memory_order_relaxed));
+                ClearMatches.load(std::memory_order_relaxed), MatrixCalls.load(std::memory_order_relaxed),
+                MatrixMatches.load(std::memory_order_relaxed), BackgroundApplied.load(std::memory_order_relaxed));
 }
 // Layout::Build retains its resource pointer. Never give it a temporary vector
 // or overwrite a buffer that an existing layout can still reference. Capacity
@@ -290,6 +352,7 @@ void Close(Session &s) {
     s.stickX = s.stickY = 0;
     if (s.ownsRenderer) {
         ReportRendererTrace();
+        PreviewHandle.store(0, std::memory_order_release);
         PreviewController.store(nullptr, std::memory_order_release);
         PreviewClearColor.store(nullptr, std::memory_order_release);
         // Release only the handle/mode acquired by this phone. The native
@@ -411,6 +474,7 @@ void RotatePreview(Session &s) {
     std::memcpy(static_cast<std::byte *>(s.controller) + field::ModelAngles, angles.data(), sizeof(angles));
     At<unsigned char>(s.controller, field::ModelFlags) |= TransformPending;
     s.tilt = tilt;
+    PublishPose(s.controller);
     if (s.rotationReports++ < 4)
         Logging.Log("[QoL Enhancements/Core] DIY preview: rotation queued; yaw=%08x pitch=%08x ready=%u flags=%u\n",
                     angles[1], angles[0], At<unsigned char>(s.controller, field::ModelReady),
@@ -515,6 +579,9 @@ bool Begin(Session &s) {
     TransformApplied.store(0, std::memory_order_relaxed);
     ClearCalls.store(0, std::memory_order_relaxed);
     ClearMatches.store(0, std::memory_order_relaxed);
+    MatrixCalls.store(0, std::memory_order_relaxed);
+    MatrixMatches.store(0, std::memory_order_relaxed);
+    BackgroundApplied.store(0, std::memory_order_relaxed);
     PreviewController.store(controller, std::memory_order_release);
     const auto color = ItemLayerClearColor();
     PreviewClearColor.store(color, std::memory_order_release);
@@ -554,6 +621,7 @@ HOOK_DEFINE_TRAMPOLINE(UpdatePhoneRecipes) {
         Native<void (*)(void *, const ItemRequest *)>(address::CreateItemModel)(s->controller, &request);
         if (!At<unsigned>(s->controller, field::ModelHandle)) { Close(*s); return; }
         std::memcpy(s->initialAngles.data(), static_cast<std::byte *>(s->controller) + field::ModelAngles, sizeof(s->initialAngles));
+        PublishPose(s->controller);
         s->tilt = s->stickX = s->stickY = 0;
         Visible(s->gridPane, false); Visible(s->scrollPane, false); Visible(s->cursorPane, false);
         Visible(s->capture, true); Visible(s->surface, true); s->phase = Phase::Showing;
@@ -596,6 +664,8 @@ bool InstallRecipePreview() {
         {0x032b9fcc, {0xd100c3ff, 0xa9017bfd, 0xa9024ff4, 0x910043fd, 0x3941d008}},
         {0x02b0e20c, {0xf0015948, 0x91064108, 0xf9400108, 0xf9401900, 0x141eaf6c}},
         {0x039392b0, {0xd10203ff, 0x6d032beb, 0x6d0423e9, 0xa9057bfd, 0xa90657f6}},
+        {0x006021a4, {0xb942b00c, 0x12005d8f, 0xb942bc09, 0xb942c00b, 0xb942c40a}},
+        {0x039f63f0, {0x6db63bef, 0x6d0133ed, 0x6d022beb, 0x6d0323e9, 0xa9047bfd}},
         {0x032b9750, {0xaa1403e1, 0x940001ad, 0x9000f3c8, 0x91240108, 0xf9400108}},
         {0x01513a48, {0xd101c3ff, 0x6d012beb, 0x6d0223e9, 0xa9037bfd, 0xa9045ff8}},
         {0x032be2b0, {0xb9406c09, 0x34000629, 0xa9be7bfd, 0xa9014ff4, 0x910003fd}},
@@ -628,7 +698,9 @@ bool InstallRecipePreview() {
     DrawPreviewLayer::InstallAtOffset(address::DrawModelLayer);
     SetPreviewRotation::InstallAtOffset(address::SetModelRotation);
     TraceModelTransform::InstallAtOffset(address::UpdateModelTransform);
-    Logging.Log("[QoL Enhancements/Core] DIY preview: READY; protected native pose and item-layer color; A opens, B returns\n");
+    BuildPreviewMatrix::InstallAtOffset(address::BuildModelMatrix);
+    DrawPreviewContents::InstallAtOffset(address::DrawLayerContents);
+    Logging.Log("[QoL Enhancements/Core] DIY preview: READY; drawable pose and HDR background correction; A opens, B returns\n");
     return true;
 }
 } // namespace qol::core

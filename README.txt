@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.42 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.43 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -90,13 +90,14 @@ this package does not supply an aspect-ratio patch.
 CORE SETTINGS / AMIIBO TIMEOUT
 DIY RECIPE PREVIEWS (CORE)
 
-0.3.42 protects the right-stick pose from native parameter animation and sets
-#E5DFC7 through the native item-layer color override. The previous live trace
-confirmed queued transforms succeeded, but the color hook never matched
-because the game copies the color first.
+0.3.43 applies the right-stick pose at the displayed mesh's native matrix
+builder, including child components with stale cached angles. The previous
+build applied controller transforms but still showed no visible rotation.
 
-Local native-code checks reproduce and prevent the pose overwrite, verify the
-drawable matrix changes, and follow the copied color to the graphics clear.
+The background targets #E5DFC7 using an approximate HDR correction fitted to
+the supplied screenshot. The actual color pipeline and on-screen match remain
+unverified. Native draw flags are preserved. Local checks cover the stale child
+pose, unchanged entity memory, scoped color substitution and lifecycle.
 Rotation and background STILL REQUIRE A STEAM DECK TEST.
 
 RIGHT STICK turns/tilts, with a dead zone and 60-degree tilt limit. Reopening
@@ -138,7 +139,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.42
+  version = 0.3.43
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.

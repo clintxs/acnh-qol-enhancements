@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.42 DIY pose and background fix
+# Unified QoL validation — 0.3.43 DIY drawable pose and background correction
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,35 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.43 displayed mesh pose and HDR clear
+
+The 0.3.42 live log reports every queued transform applied, layer matches each
+frame, and successful B/reopen/release. The user reports no visible rotation;
+the supplied screenshot has a uniform background around CCC9C0, not E5DFC7.
+Neither controller updates nor matching layer draws establish displayed output.
+
+Native 019282FC copies a parent's transform into a separate item mesh component;
+019283F0 then uses 006021A4 to build that mesh's matrix. The previous fixture
+only built the controller actor's matrix. The revised fixture gives the mesh
+stale angles and executes the actual mesh matrix entry. A hook at 006021A4
+substitutes an atomic preview pose in a local component copy, scoped by owner
+handle +230 or parent handle +234. Tests check the complete matrix, unchanged
+source bytes, unrelated parent handles and scope removal on B. Live evidence
+does not yet establish whether this matrix boundary runs in the phone preview;
+new bounded counters record matrix calls and ownership matches.
+
+The background now overrides float RGBA at 039F63F0 during its enclosing owned
+layer draw. Original options and native clear flags pass unchanged. Atomic
+command/renderer/view/draw-info slots scope the synchronous substitution and
+are cleared after return; unrelated layers and calls pass through. HDR values
+(1.5950871, 1.3879482, .8751216, 1) approximate an inverse ACES-style filmic
+curve fitted per channel to the screenshot. This is an empirical experiment,
+not an established game tonemap or proof of exact display RGB. Tests verify
+scoping, native argument preservation and GPU clear values, not pixel output.
+The live test must verify visible right-stick rotation, background match,
+B/reopening and ordinary workbench behavior. The old Unmapped Read64 at 0x88
+still appears after release without a PC; its origin remains unestablished.
 
 ## 0.3.42 native pose and color paths
 

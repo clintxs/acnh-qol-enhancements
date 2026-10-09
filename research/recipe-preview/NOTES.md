@@ -312,6 +312,41 @@ Deck test must confirm the selected render layer reaches the captured model,
 rotation persists, and B/reopening remain stable. The prior post-release
 unmapped-read origin remains unestablished.
 
+## Displayed mesh matrix and display-color experiment (0.3.43)
+
+0.3.42 still does not rotate visibly. Every logged pending update succeeds and
+layer draw matches each frame. The screenshot's flat background is CCC9C0
+(sampled away from edges), despite the normalized E5DFC7 scene clear.
+
+019282FC resolves the parent handle at owner +234 through 0061CB58, with own
+handle +230 supplied for access validation. It copies parent transform +68
+position, base angles +2B0, scale and extra angles +2BC to the displayed mesh's
+component. 019283F0 tail-calls 006021A4 to build its matrix. Parent-only matrix
+tests miss this handoff. 0.3.43 hooks 006021A4 (48-byte return through x8),
+matching the preview handle against the component owner's +230/+234. It passes
+a local 0x2C8-byte copy with the atomic preview extra angles to the original.
+No shared component writes, registry traversal or additional entity ticks occur.
+The test deliberately leaves the mesh's angles stale and runs 019283F0 through
+the hook, then verifies the full output matrix and unchanged component bytes.
+This is a reproduced failure mode, not a confirmed live cause. Matrix call and
+match counters are needed to establish that the live preview uses this boundary.
+
+Scene clear RGB and final display RGB differ. 0.3.43 removes the packed-byte
+options override, retaining original native draw flags; 039392B0 derives those
+flags partly from whether a color override exists. A 039F63F0 hook substitutes
+float HDR clear values only during the enclosing owned layer draw. Eight atomic
+slots key command buffer, renderer state, view and draw-info. Exhaustion skips
+the substitution. Slots clear on synchronous return; unrelated passes retain
+their arguments. The first substitution and totals are logged.
+
+The float values are empirical: inverse the ACES approximation
+(x*(2.51*x+.03))/(x*(2.43*x+.59)+.14), fit each channel's exposure to normalized
+E5DFC7 -> screenshot CCC9C0, then invert the requested E5DFC7 display target.
+This produces approximately (1.5950871, 1.3879482, .8751216). The game's actual
+curve has not been identified; screenshot compression, exposure and render-target
+clamping can invalidate the approximation. Do not describe this as exact RGB
+or a confirmed background fix. Only a new live screenshot can validate it.
+
 ## Validation boundary
 
 Compiled hooks, resource transformation, native focus mapping/button dispatch,
