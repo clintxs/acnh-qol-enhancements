@@ -1,11 +1,11 @@
-# Unified QoL validation — 0.3.10 Shopping Card recovery prototype
+# Unified QoL validation — 0.3.11 Shopping Card curved-icon prototype
 
 Validated locally on October 8, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
 dialogue fix and subsequently the corrected 0.2.3 NPC diagnostic build work in Eden. The user also confirmed Nook’s Cranny transactions in Shopping Card 0.3.1.
 The user confirmed the corrected savings HUD in 0.3.4 and balance animation
-in 0.3.5. Configuration layering, the 0.3.10 counter recovery, aspect-ratio placement
-and Able Sisters still need a live check. No running game or save files were accessed by the
+in 0.3.5 and the restored counter in 0.3.10. Configuration layering, the
+0.3.11 curved icon, aspect-ratio placement and Able Sisters still need a live check. No running game or save files were accessed by the
 local tests below.
 
 ## Build and loader
@@ -114,7 +114,7 @@ compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
   resolves both direct/group text adapters, shows full zero/cap balances,
   restores cash panes outside supported shops, and tolerates absent resources.
   Native text setting, typed parameter lookup and pane lookup are modeled;
-  0.3.10 recovery still needs Eden verification; the user confirmed the
+  0.3.10 recovery was confirmed in Eden; the user confirmed the
   balance animation in 0.3.5.
 - 0.3.5 tests execute native 03353B14 number stepping and 03025400 feedback
   through its Up/Down/Finish animation dispatch and positional sound setup,
@@ -145,8 +145,22 @@ compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
   The original 1920x1080 canvas/root and the catalog lifecycle hooks remain.
   Local ARM regressions verify cash presentation outside supported contexts,
   savings presentation within them, amount feedback and teardown. These model
-  the layout/engine boundaries and cannot establish live recovery. The earlier
-  stepped icon corners are restored; smoother rendering remains unresolved.
+  the layout/engine boundaries. The user subsequently confirmed the restored
+  counter works. That recovery retained the earlier stepped icon corners.
+
+- 0.3.11 uses native `spi1` shape resources and PIC flag bit 0, with three
+  RoundRectShape records for white backing/dark edge/green face. The component
+  shrinks to 29 panes/69 sections/7,444 bytes, below the live-confirmed recovery's
+  budget. Original panes, materials, textures and animations are preserved.
+- A new ARM test executes the original section reader at 00268550, PIC shape
+  selection at 00282D9C, shape resolver/constructor and RoundRect mesh generation
+  from the exported resource at two ASLR bases. Only allocation and imported
+  sinf/cosf are modeled; loader relocations are supplied. Each silhouette yields
+  84 vertices and 210 indices, with checked radius normalization, corner-circle
+  positions, index bounds and allocation guards. It does not execute the full
+  layout constructor, material/shader setup or GPU drawing; an Eden playtest
+  is required to establish appearance and continued visibility. Raster preview
+  supersampling is illustrative and does not prove native antialiasing.
 
 ## Conditional dialogue
 

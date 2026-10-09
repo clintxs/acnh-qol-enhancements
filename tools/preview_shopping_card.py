@@ -5,6 +5,7 @@ Native oval, font and animation rendering still require an Eden playtest.
 """
 from pathlib import Path
 import argparse
+import math
 import sys
 import struct
 from PIL import Image, ImageDraw
@@ -33,7 +34,9 @@ sys.stdout.buffer.write(next(v for k,v in r.items() if k.endswith('.bflyt')))
     data = subprocess.check_output([args.layout_python, '-c', code], cwd=ROOT)
     sys.path.insert(0, str(ROOT / 'tools'))
     from layout_io import layout_sections, pane_name
-    panes = {pane_name(p): p for p in layout_sections(data) if p[:4] in (b'pic1', b'pan1')}
+    sections = layout_sections(data)
+    panes = {pane_name(p): p for p in sections if p[:4] in (b'pic1', b'pan1')}
+    shapes = next(p for p in sections if p[:4] == b'spi1')
     scale = 4
     size = (160 * scale, 120 * scale)
 
@@ -45,6 +48,20 @@ sys.stdout.buffer.write(next(v for k,v in r.items() if k.endswith('.bflyt')))
             w,h = struct.unpack_from('<2f', p,76)
             left=(x-w/2+80)*scale; top=(60-y-h/2)*scale
             right=left+w*scale; bottom=top+h*scale
+            if p[103] & 1:
+                index = struct.unpack_from('<I', p, 104)[0]
+                offset = struct.unpack_from('<I', shapes, 12 + 4 * index)[0]
+                kind, reserved, radius, divisions = struct.unpack_from('<HHII', shapes, offset)
+                assert kind == 1 and not reserved
+                r = radius * scale
+                polygon = []
+                for cx, cy, angle in ((right-r,top+r,-90), (right-r,bottom-r,0),
+                                      (left+r,bottom-r,90), (left+r,top+r,180)):
+                    for i in range(divisions + 1):
+                        a = math.radians(angle + 90 * i / divisions)
+                        polygon.append((cx + r * math.cos(a), cy + r * math.sin(a)))
+                ImageDraw.Draw(canvas).polygon(polygon, fill=tuple(p[84:88]))
+                continue
             x0,y0=int(np.floor(left)),int(np.floor(top))
             x1,y1=int(np.ceil(right)),int(np.ceil(bottom))
             xx,yy=np.meshgrid(np.arange(x0,x1)+.5,np.arange(y0,y1)+.5)

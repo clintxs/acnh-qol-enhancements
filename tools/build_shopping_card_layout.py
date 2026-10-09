@@ -27,6 +27,18 @@ RIM = 8
 CARD_CENTER = (-25, 52)
 BADGE_SHIFT = 24  # Retain the requested ~16 screen-pixel label shift.
 CARD_ANGLE = 6  # Slight tilt after the native HUD parent's -3-degree rotation.
+# nn::ui2d::RoundRectShape resource: type, reserved, radius, corner subdivisions.
+# Verified against 3.0.3's section reader (0x268550), shape resolver (0x2649c0),
+# Picture resource constructor (0x282d30), and RoundRect constructor (0x28db20).
+CARD_RADII = (15, 9, 6)
+CORNER_DIVISIONS = 16
+
+
+def shape_section():
+    records = [struct.pack('<HHII', 1, 0, radius, CORNER_DIVISIONS) for radius in CARD_RADII]
+    offsets = [12 + 4 * len(records) + 12 * i for i in range(len(records))]
+    body = struct.pack('<HH', len(records), 0) + struct.pack('<3I', *offsets) + b''.join(records)
+    return struct.pack('<4sI', b'spi1', 8 + len(body)) + body
 
 
 def rename(section, name):
@@ -86,6 +98,7 @@ def edit_layout(data):
     material.extend(b''.join(records))
     struct.pack_into('<I', material, 4, len(material))
     sections[material_slot] = bytes(material)
+    sections.insert(material_slot + 1, shape_section())
 
     group = rename(panes['N_Pos_01'], CARD)
     group[8] = 2  # Starts hidden even if Core/module is disabled.
@@ -95,29 +108,27 @@ def edit_layout(data):
     backing = rename(icon, 'N_CardBacking_00')
     opening, closing = struct.pack('<4sI', b'pas1', 8), struct.pack('<4sI', b'pae1', 8)
     pieces, rim_pieces = [], []
-    def rectangle(x, y, width, height, color, output=pieces, prefix='P_CardShape'):
-        pane = rename(panes['P_Icon_00'][:104], f'{prefix}_{len(output):02}')
+    def rectangle(x, y, width, height, color, output=pieces, prefix='P_CardShape', shape=None):
+        index = sum(pane_name(p).startswith(prefix + '_') for p in output)
+        pane = rename(panes['P_Icon_00'][:104], f'{prefix}_{index:02}')
         pane[8:12] = bytes((3, 0, 255, 0))
         struct.pack_into('<3f', pane, 44, x, y, 0)
         struct.pack_into('<3f', pane, 56, 0, 0, 0)
         struct.pack_into('<2f', pane, 68, 1, 1)
         struct.pack_into('<2f', pane, 76, width, height)
         pane[84:100] = bytes(color) * 4
-        struct.pack_into('<HBB', pane, 100, solid_index, 0, 0)
+        struct.pack_into('<HBB', pane, 100, solid_index, 0, int(shape is not None))
+        # PIC flag bit 0 selects native geometry. The shape index follows the
+        # UV array; there are no UVs on these solid-color shapes (offset 104).
+        if shape is not None:
+            pane.extend(struct.pack('<I', shape))
         struct.pack_into('<I', pane, 4, len(pane))
         output.append(bytes(pane))
     # The white backing is drawn BEFORE the oval, so its lower outline is
     # occluded by the oval. The dark edge belongs to the foreground card icon.
-    for width, height in ((94, 54), (90, 62), (82, 66)):
-        rectangle(0, 0, width, height, white, rim_pieces, 'P_CardRim')
-    # Recovery: use the small, previously displayed silhouette. The entire
-    # counter disappeared live after the 0.3.9 dense-alpha-band change.
-    # Keep this resource at the known working complexity until native loading
-    # and rendering of a replacement icon can be verified.
-    for width, height in ((82, 42), (78, 50), (70, 54)):
-        rectangle(0, 0, width, height, INK)
-    for width, height in ((76, 38), (72, 44), (66, 48)):
-        rectangle(0, 0, width, height, (84, 183, 120, 255))
+    rectangle(0, 0, 94, 66, white, rim_pieces, 'P_CardRim', shape=0)
+    rectangle(0, 0, 82, 54, INK, prefix='P_CardEdge', shape=1)
+    rectangle(0, 0, 76, 48, (84, 183, 120, 255), prefix='P_CardFace', shape=2)
     rectangle(0, 10, 76, 8, CREAM)
     rectangle(-23, -7, 14, 12, (240, 204, 101, 255))
     rectangle(16, -12, 22, 3, CREAM)
@@ -143,7 +154,7 @@ def edit_layout(data):
                 insertion = i
     assert insertion is not None and not parents
     sections[insertion:insertion] = additions
-    # Recovery budget derived from the previously displayed 0.3.7 layout.
+    # Stay below the pane/section budget of the live-confirmed 0.3.10 recovery.
     # This is a conservative project guard, not a claimed native engine limit.
     assert sum(s[:4] in PANE_TYPES for s in sections) <= 35
     assert len(sections) <= 74

@@ -1,6 +1,6 @@
 # Shopping Card — ACNH 3.0.3
 
-Prototype 0.3.10, October 8, 2026. Original mapped main SHA-256:
+Prototype 0.3.11, October 8, 2026. Original mapped main SHA-256:
 `b1ae8e2a0d82f9f38f711c132d1751b221baf9d6411b2be06ebc4bb502ac912d`.
 Build ID: `FF1D1C05670DB6021C85B624A710B963`.
 All implementation uses readable Exlaunch C++ hooks. No new game item or data
@@ -263,3 +263,36 @@ A future extension must trace the actual accepted send and its affordability
 checks together before redirecting shared mail/event money routines. The ABD,
 Poki conversion, ordinary letter fees and other shared transactions must retain
 their original sources. Nook Stop and phone orders still require an Eden playtest.
+
+
+### Compact rounded card geometry (0.3.11)
+
+The user confirmed 0.3.10 restores the counter. Its three overlapping rectangles
+per silhouette explain the large steps at the card corners. A replacement can
+use engine-supported geometry without expanding the layout or editing BNTX.
+
+In the supplied 3.0.3 main, 00268550 recognizes section tag `spi1` and stores
+its resource pointer at BuildResourceSet+18. 002649C0 resolves a shape index via
+u32 offsets at section+0C. A round-rectangle entry is `<HHII>`: type 1,
+reserved 0, integer radius, integer corner subdivisions. The section includes
+a count/reserved pair at +08 and offsets relative to its start at +0C.
+No vanilla layout in the supplied dump uses this feature; it is supported by
+the compiled ui2d engine. These field interpretations are verified for this
+build only, not asserted as a general BFLYT specification.
+
+The Picture resource constructor at 00282D30 reads UV count at resource+66
+and flag byte +67. Bit 0 selects a shape index u32 following the UV array
+(+68 when count is zero). 00282EE8 looks up the shape, normalizes radius by
+picture width/height and constructs RoundRectShape at 0028DB20. That object
+has normalized corner diameters at +40/+44 and subdivisions at +48. Native
+virtual buffer initialization at 0028E6A4 generates vertices and indices.
+
+The three silhouette PICs are 108 bytes each, zero UVs/flag 1/index 0..2.
+Dimensions/radii are 94x66/15 (white), 82x54/9 (dark), and 76x48/6 (green),
+with 16 corner subdivisions. White backing stays behind the oval; front card
+and stripe/chip/text details retain the same centered transform. New component:
+29 panes, 69 sections, 7,444 bytes. Check shopping_shape_arm_test.py for actual
+native parser/PIC-selection/mesh execution at two bases and bounded buffers.
+Its allocations and sin/cos imports are modeled, material/GPU/full-layout
+loading is not. The local raster preview cannot establish GPU antialiasing.
+Eden still needs to confirm this previously unused shape path renders properly.

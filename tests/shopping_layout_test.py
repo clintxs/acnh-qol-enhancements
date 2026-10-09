@@ -28,7 +28,7 @@ for section in new:
 assert not parents and tree[card.CARD] == 'N_Pos_01'
 assert tree[card.NUMBER] == tree['N_CardBells_00'] == card.CARD
 assert tree['T_SavingsLabel_00'] == tree['W_CardBellBase_00'] == 'N_CardBells_00'
-assert all(tree[f'P_CardShape_{i:02}'] == 'N_CardIcon_00' for i in range(10))
+assert all(tree[f'P_CardShape_{i:02}'] == 'N_CardIcon_00' for i in range(4))
 number = new_panes[card.NUMBER]
 assert struct.unpack_from('<H', number, 84)[0] == 24 # 11 characters plus terminator
 assert struct.unpack_from('<I', number, 128)[0] == 0 # no MSBT lookup
@@ -36,8 +36,8 @@ assert struct.unpack_from('<2f', number, 76)[0] == 260
 old_materials = material_records(next(s for s in old if s[:4] == b'mat1'))
 new_materials = material_records(next(s for s in new if s[:4] == b'mat1'))
 assert new_materials[:len(old_materials)] == old_materials
-assert all(a == b for a,b in zip([s for s in old if s[:4] not in PANE_TYPES | {b'pas1', b'pae1', b'mat1'}],
-                               [s for s in new if s[:4] not in PANE_TYPES | {b'pas1', b'pae1', b'mat1'}]))
+original_sections = PANE_TYPES | {b'pas1', b'pae1', b'mat1', b'spi1'}
+assert [s for s in old if s[:4] not in original_sections] == [s for s in new if s[:4] not in original_sections]
 for key in original:
     if not key.endswith('.bflyt'): assert modified[key] == original[key]
 print('PASS: savings subtree hidden by default; original panes/materials/animations/textures intact, vector card and full nine-digit text capacity, no MSBT lookup')
@@ -52,10 +52,11 @@ for name, color in (('W_SavingsRim_00', bytes([255]*4)),
     for offset in (128, 168):
         index = struct.unpack_from('<H', new_panes[name], offset)[0]
         assert new_materials[index][40:44] == color
-for i in range(3):
-    assert new_panes[f'P_CardShape_{i:02}'][84:100] == card.INK * 4
-    assert new_panes[f'P_CardRim_{i:02}'][84:100] == bytes([255]*16)
-    assert tree[f'P_CardRim_{i:02}'] == 'N_CardBacking_00'
+for name, color, parent in (('P_CardEdge_00', card.INK, 'N_CardIcon_00'),
+                            ('P_CardFace_00', bytes((84,183,120,255)), 'N_CardIcon_00'),
+                            ('P_CardRim_00', bytes([255]*4), 'N_CardBacking_00')):
+    assert new_panes[name][84:100] == color * 4
+    assert tree[name] == parent
 print('PASS: dark card edge inside white backing; white native Bells badge with matching green caption')
 
 fill = new_panes['W_SavingsBase_00']
@@ -71,22 +72,19 @@ assert struct.unpack_from('<f', icon, 44)[0] == struct.unpack_from('<f', fill, 4
 assert struct.unpack_from('<f', new_panes['N_CardBells_00'], 44)[0] == 96
 print('PASS: thicker eight-unit oval rim, centered card, backing occluded by oval, Bells badge retains the requested shift left')
 
-# Regression contract: the recovery BFLYT is byte-identical to the previously
-# displayed 0.3.7 layout after normalizing the sole intentional badge shift.
-# Compare exported bytes to a recorded hash; a geometry-only preview cannot
-# establish native layout loading/rendering (the 0.3.9 regression).
-import hashlib
-baseline = bytearray(modified[next(k for k in modified if k.endswith('.bflyt'))])
-position = 20
-while position < len(baseline):
-    size = struct.unpack_from('<I', baseline, position + 4)[0]
-    if baseline[position:position+4] == b'pan1' and pane_name(baseline[position:position+size]) == 'N_CardBells_00':
-        struct.pack_into('<f', baseline, position + 44, 120)
-    position += size
-assert hashlib.sha256(baseline).hexdigest() == '6a7cf50ae9bb8cc32f1188d5933d5ed5679e7211f20b80e6d01cbc33b55c4eaf'
-assert len(new_panes) == 35 and len(new) == 74
-assert len(baseline) == 7996
+# Retain the live-confirmed recovery's compact budget. Rounded geometry uses
+# three native shape PICs instead of nine overlapping stepped rectangles.
+assert len(new_panes) == 29 and len(new) == 69
+assert len(modified[next(k for k in modified if k.endswith('.bflyt'))]) == 7444
+shape = next(s for s in new if s[:4] == b'spi1')
+assert len(shape) == 60 and struct.unpack_from('<HH', shape, 8) == (3,0)
+for index, name in enumerate(('P_CardRim_00', 'P_CardEdge_00', 'P_CardFace_00')):
+    p = new_panes[name]
+    assert len(p) == 108 and p[102:104] == bytes((0,1))
+    assert struct.unpack_from('<I', p, 104)[0] == index
+    offset = struct.unpack_from('<I', shape, 12 + index * 4)[0]
+    assert struct.unpack_from('<HHII', shape, offset) == (1,0,card.CARD_RADII[index],16)
 canvas = next(s for s in new if s[:4] == b'lyt1')
 assert struct.unpack_from('<2f', canvas, 12) == (1920,1080)
 assert struct.unpack_from('<3f', new_panes['RootPane'],44) == (0,0,0)
-print('PASS: recovery matches displayed 0.3.7 layout bytes except badge X; 35 panes/74 sections, native 16:9 canvas/root, original cash resources and controls preserved')
+print('PASS: compact native shapes, 29 panes/69 sections, native 16:9 canvas/root, original cash resources and controls preserved')
