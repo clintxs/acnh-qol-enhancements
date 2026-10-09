@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.31 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.32 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -90,21 +90,21 @@ this package does not supply an aspect-ratio patch.
 CORE SETTINGS / AMIIBO TIMEOUT
 DIY RECIPE PREVIEWS (CORE)
 
-Added in 0.3.24, updated through 0.3.31. Select a recipe in the NookPhone DIY Recipes app to open the
-workbench-style preview, with a larger rotatable model and required materials.
-The crafting button is hidden and crafting is disabled in this phone view.
-Left/right follows the app's current list, including filters and sorting, and
-wraps at the ends. Press B to return to the app with its category, selected
-recipe and scroll position preserved. Normal workbench crafting is unchanged.
-This is built into Core; no additional feature folder or setting is required.
+0.3.32 replaces the workbench-page experiment with a renderer-only prototype.
+The DIY app keeps its existing materials panel. Press A on a recipe to request a
+stationary 3D model in place of the grid; press B to return to the same grid.
+Category, selection and scroll position are retained. This view has no crafting
+button or crafting action. Rotation and left/right recipe navigation are not
+implemented yet; the first test is whether the model appears and B exits safely.
 
-0.3.31 fixes the app-loading crash introduced by button hiding in 0.3.30.
-It now hides the button through its actual named pane, resolving both direct
-text and grouped text bindings. The background, model-loading requests and
-corrected B return wait remain. Installed layouts, including layout mods,
-remain in use. Closing/reopening reuses the prepared pages.
-This integration candidate passes ARM execution checks. Live Eden checks
-of appearance, rotation, controls and resource loading remain pending.
+Core adds a small capture surface to the loaded MenuRecipe layout in memory,
+preserving existing panes and installed layout/aspect-ratio edits. No workbench
+layout or additional feature folder is used. If the capture binding or renderer
+is unavailable, the original grid remains usable. Core and Pockets share their
+page-input hook so Quick Store can remain enabled.
+
+Local ARM checks pass; live rendering, model placement and 16:10 appearance
+still need an Eden test. Fully restart the game when updating.
 
 From 0.3.19, the amiibo timeout fix is built into Core and enabled by default.
 Remove the old “QoL Enhancements - Amiibo” folder when updating; its amiibo.ini
@@ -126,7 +126,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.31
+  version = 0.3.32
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.

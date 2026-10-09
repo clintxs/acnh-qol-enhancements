@@ -261,7 +261,9 @@ for base in (0x7100000000, 0x7200000000):
         bad = Machine(base, {'shopping-card': DEFAULT})
         bad.write(base + int(offset, 16), 0xdeadbeef, 4)
         bad.boot(); bad.activate()
-        assert len(bad.hooks) == 6 and 'Shopping Card] DISABLED' in bad.text
+        # Pane lookup is also a DIY renderer guard: damaging it declines both.
+        expected = 3 if int(offset, 16) == 0x27d1d0 else 8
+        assert len(bad.hooks) == expected and 'Shopping Card] DISABLED' in bad.text, (offset, bad.text)
 print('PASS: Shopping Card native savings, encrypted writes/cap, all 8 players, exact caller/room scope, native sale branch with ordinary success dialogue, fitting accessor, removal and all fingerprints at two ASLR bases')
 
 # Exercise compiled combined payment, source priority and actual encrypted

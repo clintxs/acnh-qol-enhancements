@@ -1,209 +1,136 @@
-# DIY Recipes app preview — ACNH 3.0.3
+# DIY Recipes renderer prototype — ACNH 3.0.3
 
-The phone app and workbench use separate pages. `MenuRecipePage` has an empty
-recipe-confirm callback; `WorkCraftInfoSeq` is the page that owns the large
-workbench item preview. Reusing that page retains native material rendering,
-model loading/rotation, recipe-specific display rules and shoulder navigation.
+## Scope and evidence
+
+0.3.32 retires the 0.3.24–0.3.31 workbench-page transplant. Those versions
+failed live tests with freezes, incorrect dispatch, missing models and app
+startup failures. Their implementation history remains in Git and VALIDATION.md.
+A stationary model inside the existing app is now the first milestone. Rotation
+and left/right navigation are deliberately deferred until live model rendering
+and B return work. No live success is claimed by the local checks.
+
+This implementation retains MenuRecipe's material panel. It adds a hidden
+capture surface to the loaded layout and temporarily hides the grid, scrollbar
+and cursor only after native item-model allocation returns a handle. It neither
+constructs a WorkCraftInfoSeq page nor loads WorkBenchInfo/WorkBenchBG resources.
 
 ## Native bindings
 
-All addresses are offsets from the loaded main module.
+All addresses are main-module offsets in build FF1D1C05670DB6021C85B624A710B963.
 
-| Address | Role |
+| Offset | Observed role |
 |---|---|
-| 02E9CDE0 | Phone layout callback binding |
-| 02E99D90 | Empty phone recipe-confirm callback (row 1) |
-| 02E96A80 | Phone selection callback (row 0; retained) |
-| 02E99D94 | Separate phone row-5 callback (retained) |
-| 02E99D98 | Phone B/favorite command callback (retained) |
-| 02E9FBB0 | Phone per-frame model/icon update |
-| 02E9D538 | Phone deactivation (retains owned pages) |
-| 03479AB8 | Native workbench child construction reference |
-| 03492B50 | Common preview page constructor |
-| 04A3B778 | Concrete workbench preview virtual table |
-| 034930B0 | Preview callback binding |
-| 03492FEC | Preview B/favorite command callback |
-| 034940E0 | Preview per-frame model update |
-| 034942F0 | Native preview state table initialization (initial state 0) |
-| 03494768 | Initial-state update (no automatic idle transition) |
-| 034949A8 | Preview appear entry |
-| 03494B08 | Appear update: request cDisplayList (5) |
-| 03494FF0 | Recipe selection entry: count, model/material load, animation |
-| 0349530C | Recipe selection update: wait for animation, then request play (3) |
-| 03495408 | Return-to-list entry: reverse animation/reset |
-| 0349553C | Display-list update: no-op, awaits owner selection |
-| 034947D0 | Idle entry: clear borrowed dataset and model requests |
-| 034969D0 | Native left/right index wrapping and item-change notification |
-| 03473AAC | Refresh preview count from dataset |
-| 03473C74 | Copy recipe data, including six material records |
-| 03494D00 | Native preview action dispatcher |
-| 0376890C | Page resource initialization |
-| 03769260 | Activate a child registered with its parent |
-| 03768C7C | Remove/clean up an active child |
-| 0376D9A0 | UI manager initialization: build pages, then shrink heap |
-| 037C75D4 | ExpHeap adjustment (heap virtual +0x28) |
-| 03363544 | Item-icon constructor (270 per preview) |
-| 03DBAC90 | Allocate state callback/name arrays from explicit/current heap |
-| 03DBAF40 | State-name assignment; null names fault at 03DBB0EC |
-| 02B0C720 | Page update: native state update, then page virtual +0x1A0 |
-| 02B0E370 | Post-update visitor: consume deferred request, enter state, reset actions |
-| 04AB2698 | GOT pointer to heap-manager singleton storage |
-| 04AB3350 | GOT pointer to thread-manager singleton storage |
+| 00267D64 | nn::ui2d::Layout::Build, resource pointer x6, options x7, ninth bool on stack |
+| 0026803C | Layout loader: resource-accessor virtual +50, then Layout::Build |
+| 0027D1D0 | Recursive native Pane name lookup |
+| 02E9CDE0 | MenuRecipe callback binding |
+| 02E96A80 | Recipe focus-enter/selection callback, row 0 |
+| 02E99D90 | Empty focus-leave callback, row 1; **not recipe confirm** |
+| 02E99D94 | Empty recipe press callback, row 5 |
+| 02E99D98 | Existing phone B/favorite command callback |
+| 02E9FBB0 | Phone per-frame update |
+| 02E9D538 | Phone deactivation; retains page/layout for reopening |
+| 0375AA40 / 0375AB74 | Native button dispatch / raw-event translation |
+| 03C58D24 | Common page input, shared with Pockets Quick Store |
+| 04AB2230 | GOT → singleton storage → UI context |
+| 032B78A8 / 032B9210 | UI3D controller construction / initialization |
+| 032B8270 / 032B85D0 | Model state-1 entry/exit: balance camera and scene layers |
+| 032BD990 | Item request, accepts controller mode 2 and null background page |
+| 032BA5E4 / 032BA674 | Matching-mode release / handle cleanup |
+| 03DBB160 | Synchronous state transition: old exit, new entry |
+| 03A17390 / 03A174F0 | Picture type casts used by capture binding |
+| 03A145F0 | Resolve DynamicCaptureUseName/Index and bind picture to capture pane |
 
-## Data and ownership
+## Ownership and input
 
-The phone page is 0xF6380 bytes. Its selected index is at +0x218. Its current
-recipe dataset is at +0x8A350: 32-bit count and recipe-pointer array at +8.
-The preview page is 0x1C210 bytes, has count/index at +0x260/+0x264, layout at
-+0x1C1F8 and dataset pointer at +0x1C200. Recipe records have stride 0xD0, item
-data at +8 and six material entries at +0x2C with stride 0x18. Native copying
-omits alignment padding; it is not a raw 0xD0-byte memcpy.
+Phone fields: resident byte +1F8, layout +210, selected index +218, recipe count
++8A350 and pointer array +8A358. Recipe item data is eight bytes at record +8.
+Layout +3F8 points to a holder whose first pointer owns the native layout;
+its +18 is the root pane. Layout +580 is the grid controller. Grid count +208
+and row-pointer array +210 identify the actual pressed recipe row.
 
-The implementation borrows the phone's dataset while its input is suspended. It does not reconstruct a recipe catalog, sort by recipe ID or move
-the app's selection. A child is allocated on the native UI heap, registered in
-the parent's pending-child list, initialized and activated through the native
-page API. Version 0.3.27 prepares the child from the native page-initialization
-hook, before the UI manager shrinks its construction heap. Identification uses
-only MenuRecipePage's vtable (049E8178). Its child remains at lifecycle 2 until
-confirmation queues activation; there are no first-selection allocations.
-The synced 0.3.26 log showed a nonnull manager heap rejecting the page allocation.
-The earlier null-TLS reproduction did not establish the live allocation history.
-The native heap test now reproduces rejection after ExpHeap::adjust.
-The app's layout roots are never toggled; failed preparation leaves it usable.
-Version 0.3.26 explicitly selects manager+0xB8, current TLS+0xA8 or the heap
-manager's default heap (+8), and allocates via heap virtual+0x30, alignment 8.
-Native state-machine construction skips allocation if TLS exists but its heap
-is null; it does not inherit the default in that case. The old early return
-for a null manager heap could therefore crash while initializing the first
-icon's state names. The supplied 0.3.25 crash resolves to this null-array site;
-the native regression reproduces it with null TLS and checks the corrected
-scope. Live heap values were unavailable in that log. The prior libc allocation
-also bypassed native heap ownership and is no longer used for this page.
-Phone deactivation removes an active child, cancels unfinished transitions and
-queues idle for its next activation. It retains the session and owned child;
-02E9D538 removes the layout from its rendering registry but does not destroy
-the page. A new phone initialization resets the resident session before
-preparing a new child, so a replacement UI manager never borrows an old page.
-An already removed child is not removed twice. Native ownership frees page,
-layout, model and dialog allocations. Sessions are separate for each resident.
+Native row 5 dispatch translates raw source +18 to event +8 and raw kind +0
+to translated kind +14. Only existing callbacks equal to 02E99D94 are replaced.
+Focus movement cannot queue a model. Setup readiness requires phone state 3
+and both queued transitions equal -1. Press queues work; model calls happen on
+the following app update, outside the native button-dispatch stack.
 
-Native state 0 is cInit, 1 cIdle, 2 cAppear, 3 cPlay, 4 cChangePlay and 5
-cDisplayList. The two deferred request slots at +0x1F0/+0x1F4 are selected by
-byte +0x200. Version 0.3.28 accepts settled state 0 as well as 1 before lending
-the dataset and requesting appearance, and retains the native virtual +0xF0
-layout-readiness check. Native 034942F0 initializes state 0;
-03494768 only updates a capability flag and never requests state 1. Waiting
-for state 1 therefore stalls forever on a new page. On reuse, wait for idle
-entry to finish because it clears borrowed data. The former activation fixture
-incorrectly forced state 1, hiding this failure.
+Core installs one shared PageInput hook. A handler returns true only while its
+phone preview owns input; otherwise native input runs once. Pockets registers
+its existing Quick Store observer without installing a second hook. The phone
+Back hint at layout +570 → +A0 supplies the input row (+10) and native kind
+(+14, B=3). Input snapshots have count +8 and rows +10, stride 48 hex, held
+buttons +0 and consumed buttons +3C. B mask 20 hex is consumed on press;
+all phone grid/category input is suppressed until B is released after closing.
 
-The synced 0.3.28 log reaches `activated; state=0 lifecycle=3` and `appear
-requested`, with no subsequent selection message or crash backtrace. Its
-appearance wait incorrectly expected state 3. Native cAppear update 03494B08
-unconditionally requests state 5 when the current request slot is empty.
-State 5's update 0349553C is a return instruction: the owner must set +0x264
-and request state 4. Only state 4's update requests state 3 after the selection
-animation completes. Version 0.3.29 waits for settled state 5 and follows this
-native sequence. A native execution regression against 0.3.28 records
-2 -> 5 -> 5 -> 5 -> 5, reproducing the suspended-input stall. Corrected code
-records 2 -> 5 -> 4 -> 3 -> 3. Earlier flow fixtures manually settled at 3 after
-appearance, concealing this second stall; they now settle at 5.
+Per-resident sessions retain no workbench-page pointers or cloned virtual tables.
+Native phone deactivation releases the model and restores panes before the
+original deactivation. Reopening retains the bound session; a new Bind resets it.
 
-Child activation clears parent +0x164 for the current frame. The native manager
-subsequently traverses the page tree (03768DB0), advances lifecycle 3 to 4 and
-recomputes update flags. It does not permanently pause the parent. Preview
-transitions run from its own update override. After B's hide animation and idle
-reset, detach from the parent's own update after child iteration returns.
-Native removal at lifecycle 3 unlinks immediately; at lifecycle 4 it marks 5
-for the manager's deferred sweep. Retain the initialized child for reuse. Its
-layout layer is one above the phone's. Open through the normal appear request,
-then select the app's index. B requests state 5 and waits for its hide animation
-before returning to idle and restoring input. This avoids the native full-screen
-disappear path, which also manipulates the parent crafting screen/global dialogs.
+## Renderer and request ABI
 
-The preview gets a private copy of its virtual table (including ABI headers).
-Override layout binding and model update, return no craft focus target at
-virtual slot +0x220, and return false from craftability slot +0x288. The latter
-blocks action 2 in the actual native dispatcher before inventory/dialog/craft
-code. Clear pending craft events as an additional defense. Disable the nested
-craft button and hide its layout root through its visibility controller at
-+0x1B0; merely disabling it leaves a visible grey button. Native workbench
-virtual tables and objects are never altered.
+UI context +28 is a **parameter store**, not the renderer. UI context +30 is
+the 11C8-byte model controller. It must be idle (state +10=0, mode +50=-1,
+handle +6C=0) before acquisition. Mode 2 is the native workbench item profile.
+Controller +58 is the requested background page, +60 the active visibility
+page, +68 the mode flag, +69 camera-enabled, +70 model type, +74 loading flags,
++8C item data and +9C recipe index.
 
-Only the phone's row-1 confirmation delegate is replaced after native binding.
-Native layout-table construction at main+03759DD0 creates 0x23 (35) button-event
-rows with at least two columns, and five command-event rows. The 0.3.24 scanner
-mistakenly capped rows at 32 and therefore left the confirmation callback empty.
-Version 0.3.25 accepts the native button-row count. Tests now execute that native
-constructor and confirmation translation/dispatch (0375AB74/0375AA40), rather
-than inventing a smaller table and directly calling its confirmation callback.
-The preview's B command delegate is replaced after binding, forwarding other
-commands (including favorites) to the native handler. Native navigation and
-rotation delegates are retained. On return, refresh the phone's selected item
-and visible grid cells so favorite changes are reflected.
+Publish the item to parameters +2C, show it through +12, set flags +40=100,
+recipe +42=FFFE, +44=0, update flag +48=1 and dirty +2140=1. Save and restore
++12 and the complete +2C..+53 range. Request controller state 1 synchronously
+through 03DBB160(controller+8, 1); wait until the next app frame to create:
 
-## Verification boundary
+```cpp
+struct ItemRequest { // 24 bytes, AArch64 alignment
+    uint32_t display;              // 0
+    uint32_t itemLow, itemHigh;
+    uint16_t recipe, padding;       // FFFE, 0
+    void* visibilityPage;           // nullptr
+};
+```
 
-Instruction fingerprints cover all four hook sites and relevant native
-construction, binding, state/data and teardown code before installing any of
-this feature's hooks. A mismatch disables only the preview feature. Core's
-amiibo fix and optional modules still activate independently.
+032BD990 sets type 4, requests entity kind 42 hex, copies item data and sets
+loading flags. The null visibility-page branch is valid native code. Release
+uses 032BA5E4(controller, 2), which checks mode, removes the handle and transitions
+to state 0. The state-1 exit balances camera/layer changes; state-0 entry resets
+mode and background pointers. Do not merely clear the handle or mode.
 
-`tests/recipe_preview_arm_test.py` runs the compiled C++ at two ASLR bases.
-It executes native heap shrink/allocation, preview state-table initialization,
-initial-state updates, child activation/removal and callback registration, with
-engine service boundaries modeled. An initial-state regression preserves native
-state 0 through activation and checks that compiled code requests appearance.
-It also executes the native page-update virtual, deferred-request visitor, and
-state entry/update/exit handlers through appearance, selection, play, B return,
-idle cleanup and reuse. Type identification, icon/detail refresh, sound and
-animation services are modeled; native state transitions are not. The native
-manager scheduler and renderer remain modeled. It executes base/common page, 270 icon and state-machine constructors with
-manager/current/default heaps, modeling their allocation and string services.
-It models asynchronous readiness, rendering and animations,
-and executes the native recipe copy, list count, next/previous navigation,
-item lookup, command forwarding and craft-action dispatcher. It covers empty
-and invalid selections, allocation failure, repeated confirmation, reuse,
-per-resident separation, cleanup, and fingerprint conflicts.
+## Capture layout
 
-Live Eden verification remains required. Check furniture, tools, clothing,
-wallpaper/flooring and cooking recipes; rotate using the workbench controls;
-navigate a one-item filter and a multi-item sorted/favorites list; test B during
-loading and after navigation; repeatedly reopen/close both the app and phone;
-then verify normal workbench crafting/cooking and favorites still work. Native
-resource loading, UI layering and rendering are not proven by the ARM harness.
+The retained in-memory BFLYT appends a hidden N_QolPreview_00 parent containing
+N_QolCapture_00 and P_QolCapture_00. The pan1 capture carries author-defined
+DynamicCaptureOn=R10G10B10A2 and CaptureBGAlpha=255. The pic1 references the
+capture by DynamicCaptureUseName and DynamicCaptureUseIndex=0 and a new
+Capture^t texture/material. usd1 entry offsets are relative to each entry.
+Native binding writes the capture pane to typed picture +100 or alternate
+picture +130. Missing binding declines A before taking renderer ownership.
 
+The patch validates section sizes, hierarchy, names and table offsets. It adds
+records to texture/material tables while preserving all existing indices and
+record bytes, and preserves all other sections byte for byte. No installed
+aspect-ratio layout file is replaced. The authored surface is 850×750 at
+(-430,-64) in the native layout coordinate space; its suitability for different
+items and 16:10 still requires live inspection.
 
-### 0.3.30: info page is not the model owner
+Layout::Build retains the BFLYT pointer. A bounded cache of 16 aligned 64 KiB
+buffers persists for the process lifetime; buffers are never recycled over live
+layouts. Concurrent loads do not block; contention, invalid data or cache
+exhaustion returns the original resource. This uses static memory, not UI heap
+page allocation. It costs approximately 1 MiB of BSS.
 
-- 03479AB8 constructs info, list and WorkCraftBgSeq siblings. BG's concrete
-  vtable is 04A3B1B8, size 0x220, common page ctor 03768244, state vtable GOT
-  04AD4738, layout +0x218, appearance mode +0x210 (1 = info). The inline factory
-  initializes the base/state fields before InitializePage; Core mirrors it.
-- Info child +0x1c1e8 is WorkBenchNumSelectSeq (03473E60), not model rendering.
-- Owner 0347A600 reads resident +0x1f8, info +0x220, recipe-pointer array +0x230,
-  optional list +0x210. It publishes item/model flags through UI singleton
-  04AB2230 -> +0x28 and requests reload at model +0x2140. Core supplies a
-  temporary read-only owner view and restores the previous model context.
-- Native layers BG=14 and info=23 must remain around the 3D scene/capture;
-  phone-relative info layering is removed now that the source layout is hidden.
-- Button roots are button+0x2e0, root visibility controller +0x1b0. The old
-  button+0x1b0 interpretation was wrong. See native 03471FF0.
-- Info state 5 does not hide the root. Match 0349530C's channel-3 busy query
-  after 03495408 reverses content; then idle and detach on the parent update.
-- Actual rendering, dynamic capture, aspect-ratio mod interaction and physical
-  controller rotation still need live Eden verification.
+## Validation boundary
 
+Compiled hooks, resource transformation, actual native button dispatch, native
+Pane lookup and native item request/release bodies execute in ARM64 at two
+load addresses. Tests preserve original panes and a modified canvas/grid;
+check focus movement, missing capture, unrelated press, B consumption, held-B
+drain, renderer-busy/failed-allocation recovery, parameter restoration, repeated
+open and deactivation. Each integration fingerprint is corrupted individually.
+Core tests cover all 64 optional-module combinations and shared hook ownership.
 
-### 0.3.31 correction: +0x2e0 holds text bindings
-
-The 0.3.30 +0x2e0/root interpretation above was incorrect. Synced crash Core
-return +0x85ec is BindPreview's guessed visibility virtual; its target is heap
-data. Native 03471FF0 uses the first entry as a text binding. Follow +0x48 to
-adapter, +8 to payload, +0x18 to method table, +0x5e0 to text setter. SetPaneText
-(03C1B588) payload is a Pane; SetGroupText (03C47B90) payload is a group, which
-requires bounded member traversal. This is already verified by Fitting Room's
-PricePane. Walk the resolved caption's parents to RootPane/L_CraftBtn_00, then
-clear Pane +0x58 bit 0. RootPane here belongs to the button's caption layout.
-The corrected fixture reproduces 0.3.30's crash before rebuilding, then tests
-direct/group binding and unknown setter handling with the corrected binary.
+GPU capture, native UI factory construction, camera activation and scene/entity
+allocation are modeled boundaries. Passing tests establish the ABI/control flow
+covered above, **not a rendered item or a freeze-free live game**. The next Deck
+test must establish model visibility, materials remaining visible, B return,
+reopening and ordinary workbench/Quick Store behavior afterward.

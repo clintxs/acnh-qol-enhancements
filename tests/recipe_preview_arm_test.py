@@ -1,1039 +1,283 @@
-"""Exercise the compiled phone-preview integration against ACNH 3.0.3 code.
+"""Renderer-only spike: execute compiled hooks and native button dispatch.
 
-UI allocation, async loading, rendering and animations are modeled. Native
-heap shrink/allocation, child activation/removal, page/icon/state construction,
-layout-table construction, confirmation dispatch, page updates/deferred requests,
-recipe state handlers, recipe copy, navigation, item lookup and craft-action
-dispatch execute from main.raw.
-This is not a live Eden rendering/input test.
+The real 3.0.3 delegate translation/dispatch and model request/release bodies
+run in ARM64. GPU rendering, scene allocation, camera state changes and layout
+construction are explicitly modeled; these checks cannot establish live visuals.
 """
+from pathlib import Path
+from compression import zstd
+import sys
 import struct
-from core_arm_test import Machine, RAW
+from core_arm_test import Machine, RAW, DEFAULT
 from unicorn.arm64_const import *
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
+from build_catalog_badge_layout import resources, layout_sections, pane_name, PANE_TYPES, material_records
 
-HOOKS = (0x2e9cde0, 0x2e9fbb0, 0x2e9d538, 0x376890c)
-GUARDS = (0x2e9cf2c, 0x2e9cfe8, 0x3492b50, 0x34930b0, 0x3493430,
-          0x34940e0, 0x3492fec, 0x3494d8c, 0x34947d0, 0x3495408,
-          0x346fdb0, 0x3473ac8, 0x376890c, 0x3769260, 0x3768c7c, 0x3492e74,
-          0x3494b08, 0x349530c, 0x3768244, 0x347a600, 0x346d1e0,
-          0x34920a4, 0x3491f34, 0x3491f54)
-
+ASSETS = Path(__file__).resolve().parents[2] / 'vanilla-3.0.3/Layout'
+def layout_asset(name):
+    r = resources(zstd.decompress((ASSETS / (name + '.Nin_NX_NVN.zs')).read_bytes()))
+    return next(v for k, v in r.items() if k.endswith('/' + name + '.bflyt'))
+MENU = layout_asset('MenuRecipe')
+HOOKS = (0x267d64, 0x2e9cde0, 0x2e9fbb0, 0x2e9d538, 0x3c58d24)
+GUARDS = HOOKS + (0x32bd990, 0x32ba5e4, 0x3dbb160, 0x27d1d0, 0x3a17390, 0x3a174f0)
 
 class PreviewMachine(Machine):
     def __init__(self, base):
-        self.running = False
-        self.originals = {}
+        self.next = base + 0x10210000
         self.events = []
-        super().__init__(base, {})
-        self.u.mem_map(self.ram + 0x200000, 0x600000)
-        # The real loader relocates these vtables/GOT entries before startup.
-        for offset in list(range(0x4a3b768, 0x4a3ba38, 8)) + list(range(0x4a3b1b8, 0x4a3b3d0, 8)):
-            value = struct.unpack_from('<Q', RAW, offset)[0]
-            self.write(base + offset, base + value if value else 0)
-        for table in (0x49e8408, 0x4a5ef98):
-            for offset in (0, 8, 16):
-                self.write(base + table + offset,
-                           base + struct.unpack_from('<Q', RAW, table + offset)[0])
+        self.panes = {}
+        self.fail_spawn = False
+        # Also execute the shared dispatcher with Pockets/Fitting Room installed.
+        files = {'pockets': DEFAULT, 'fitting-room': DEFAULT} if base == 0x7200000000 else {}
+        super().__init__(base, files)
+        self.u.mem_map(self.ram + 0x200000, 0x800000)
         self.boot(); self.activate()
-        self.running = True
-        self.next_preview = self.ram + 0x300000
-        self.next_aux = self.ram + 0x400000
-        self.fail_allocation = False
-        self.heap_sealed = False
-        self.prepared = {}
-        self.dispatching_confirmation = False
-        self.updating_preview = False
-        self.hidden = False
-        self.ready = True
-        self.reloads = []
-        self.sounds = []
-        self.tls = self.aux(0x200)
-        self.heap = self.aux()
-        heap_table = self.aux()
-        self.write(heap_table + 0x30, self.stub('heap_allocate'))
-        self.write(self.heap, heap_table)
-        self.previous_heap = self.aux()
-        self.write(self.tls + 0xa8, self.previous_heap)
-        self.thread_manager = self.aux()
-        self.write(self.thread_manager + 0x68, 7, 4)
-        self.global_pointer(0x4ab3350, self.thread_manager)
-        self.game = self.aux(0x500)
-        resource = self.aux()
-        self.write(self.game + 0x418, resource)
-        self.write(resource + 0xc, 123, 4)
-        self.global_pointer(0x4ab2718, self.game)
-        for offset in (0x4ab2020, 0x4ac39b0, 0x4ab3170):
-            self.write(base + offset, self.aux())
-        self.context = self.aux()
-        self.model = self.aux(0x2200)
-        self.u.mem_write(self.model + 0x2c, bytes(range(0x28)))
-        self.write(self.model + 0x12, 1, 1)
-        self.model_snapshot = bytes(self.u.mem_read(self.model + 0x2c, 0x28))
-        manager = self.aux()
-        self.write(manager + 0x30, self.context)
-        self.write(manager + 0x28, self.model)
-        self.global_pointer(0x4ab2230, manager)
-        self.layout_table = self.aux(0x200)
-        self.write(self.layout_table + 0x120, self.stub('layout_visibility'))
-        self.write(self.layout_table + 0x140, self.stub('hidden'))
-        self.write(self.layout_table + 0x148, self.stub('ready'))
-        self.write(self.layout_table + 0x1a8, self.stub('button_source'))
-        self.write(self.layout_table + 0x1b8, base + 0x375ab74)
-        self.write(self.layout_table + 0x1c0, base + 0x375b8e0)
-        self.write(self.layout_table + 0x1c8, base + 0x2ab1d24)
-        self.write(self.layout_table + 0x1d0, self.stub('button_feedback'))
-        self.button_table = self.aux(0x200)
-        self.write(self.button_table + 0x140, self.stub('button_visibility'))
-        self.button_roots = []
-        self.group_button_text = False
-        self.native_actions = {
-            0x3768244: 'base_construct', 0x346d47c: 'no_animation',
-            0x346eb74: 'no_animation',
-            0x3491e88: 'background_ready', 0x3492010: 'show_background',
-            0x241c840: 'resident_model_refresh',
-            0x2478c0: 'allocate', 0x3492b50: 'construct', 0x376890c: 'initialize',
-            0x3493c20: 'initialize_children', 0x3769260: 'activate_child',
-            0x3768c7c: 'remove_child', 0x3f03880: 'lock', 0x3f038c0: 'unlock',
-            0x3f033a0: 'tls', 0x2af0d30: 'layout_visibility',
-            0x34930b0: 'bind_preview', 0x34940e0: 'frame_preview',
-            0x2b0c960: 'show_preview',
-            0x2e96b80: 'render_phone', 0x335b620: 'refresh_grid',
-            0x346fdb0: 'reload', 0x346ea1c: 'no_animation',
-            0x346eac8: 'no_animation', 0x267d4ac: 'item_init', 0x32ba168: 'sound',
-        }
+        assert all(base + a in self.hooks for a in HOOKS)
+        for name, action in [('BuildRecipeLayout', 'build'), ('BindPhoneRecipes', 'bind'),
+                             ('UpdatePhoneRecipes', 'frame'), ('DeactivatePhoneRecipes', 'deactivate'),
+                             ('SharedPageInput', 'input')]:
+            self.write(self.module.find(name, 'OrigRef'), self.stub(action))
+        for a, action in ((0x27d1d0, 'find'), (0x3dbb160, 'state'),
+                          (0x32bd990, 'spawn'), (0x32ba5e4, 'release'), (0x3a17390, 'typed'), (0x3a174f0, 'typed')):
+            self.services[base + a] = ('preview', action)
+        self.controller = self.alloc(0x1200)
+        self.parameters = self.alloc(0x2200)
+        self.context = self.alloc()
+        self.write(self.context + 0x30, self.controller)
+        self.write(self.context + 0x28, self.parameters)
+        slot = self.alloc(); self.write(slot, self.context); self.write(base + 0x4ab2230, slot)
+        self.write(self.controller + 0x50, 0xffffffff, 4)
+        self.u.mem_write(self.parameters + 0x2c, bytes(range(40)))
+        self.write(self.parameters + 0x12, 1, 1)
+        for off in (0, 8, 16):
+            self.write(base + 0x49e8408 + off, base + struct.unpack_from('<Q', RAW, 0x49e8408 + off)[0])
+        self.dispatch = self.alloc(0x200)
+        for off, target in ((0x1a8, self.stub('source')), (0x1b8, base + 0x375ab74),
+                            (0x1c0, self.stub('noop')), (0x1c8, self.stub('accept')), (0x1d0, self.stub('noop'))):
+            self.write(self.dispatch + off, target)
 
-    def aux(self, size=0x100):
-        pointer = self.next_aux
-        self.next_aux += (size + 15) & ~15
-        return pointer
-
+    def alloc(self, n=0x100):
+        p = self.next; self.next += (n + 15) & ~15; return p
     def stub(self, action):
-        pointer = self.aux(0x10)
-        self.services[pointer] = ('preview', action)
-        return pointer
-
-    def global_pointer(self, offset, value):
-        storage = self.aux()
-        self.write(storage, value)
-        self.write(self.base + offset, storage)
-
+        p = self.alloc(0x10); self.services[p] = ('preview', action); return p
     def invoke(self, address, *args):
-        for i, arg in enumerate(args):
-            self.u.reg_write(UC_ARM64_REG_X0 + i, arg)
-        self.call(address)
+        for i, v in enumerate(args): self.u.reg_write(UC_ARM64_REG_X0 + i, v)
+        try: self.call(address)
+        except Exception:
+            print('ARM fault', hex(self.u.reg_read(UC_ARM64_REG_PC)), hex(self.u.reg_read(UC_ARM64_REG_LR)), [hex(self.reg(i)) for i in range(8)])
+            raise
         return self.reg(0)
+    def hook(self, address, *args): return self.invoke(self.hooks[self.base + address], *args)
+    def service(self, u, pc, size, data):
+        if pc not in self.services or self.services[pc][0] != 'preview':
+            return super().service(u, pc, size, data)
+        action = self.services[pc][1]; result = 0
+        if action == 'find': result = self.panes.get((self.reg(0), self.string(self.reg(1))), 0)
+        elif action == 'state':
+            self.events.append(('state', self.reg(1)))
+            self.write(self.reg(0) + 8, self.reg(1), 4)
+        elif action == 'spawn':
+            request = bytes(u.mem_read(self.reg(1), 24)); self.events.append(('spawn', request))
+            if not self.fail_spawn: self.write(self.reg(0) + 0x6c, 0x12345, 4)
+        elif action == 'release':
+            self.events.append(('release', self.reg(1)))
+            self.write(self.reg(0) + 0x6c, 0, 4)
+            self.write(self.reg(0) + 0x50, 0xffffffff, 4)
+            self.write(self.reg(0) + 0x10, 0, 4)
+        elif action == 'build':
+            pointer = self.reg(6)
+            n = self.read(pointer + 12, 4)
+            self.built = bytes(u.mem_read(pointer, n)); self.build_pointer = pointer
+            result = 1
+        elif action == 'input': self.events.append(('native_input', self.reg(0)))
+        elif action == 'typed': result = self.reg(0)
+        elif action == 'source': result = 7
+        elif action == 'equals': result = int(self.string(self.reg(0)) == self.string(self.reg(1)))
+        elif action == 'child_find':
+            u.reg_write(UC_ARM64_REG_X2, 1); u.reg_write(UC_ARM64_REG_PC, self.base+0x27d1d0); return
+        elif action == 'entity_create':
+            self.entity_request = bytes(u.mem_read(self.reg(1), 0x30)); result = 0x12345
+        elif action == 'zero': result = 0
+        elif action == 'copy':
+            u.mem_write(self.reg(0),bytes(u.mem_read(self.reg(1),self.reg(2)))); result=self.reg(0)
+        elif action == 'accept': result = 1
+        elif action in ('noop', 'bind', 'frame', 'deactivate'): pass
+        else: raise AssertionError(action)
+        u.reg_write(UC_ARM64_REG_X0, result); u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
+    def phone(self, resident=0, surface=True):
+        phone = self.alloc(0xf6380); page = self.alloc(0x600); grid = self.alloc(0x600)
+        self.write(phone + 0x1f8, resident, 1); self.write(phone + 0x210, page)
+        self.write(phone + 0x1b0, 3, 4); self.write(phone + 0x1f0, 0xffffffffffffffff)
+        self.write(page, self.dispatch); self.write(page + 0x580, grid)
+        holder = self.alloc(); native = self.alloc(); root = self.alloc()
+        self.write(page + 0x3f8, holder); self.write(holder, native); self.write(native + 0x18, root)
+        panes = {}
+        for name in ('N_QolPreview_00', 'N_QolCapture_00', 'P_QolCapture_00', 'L_BtnList_00', 'L_ScrollBar_00', 'L_Cursor_00', 'N_Recipe_00'):
+            pane = self.alloc(0x200); panes[name] = pane
+            self.write(pane + 0x58, 0xa2 if name == 'N_QolPreview_00' else 0xa3, 1)
+            if surface or name != 'N_QolPreview_00': self.panes[(root, name)] = pane
+        self.write(panes['P_QolCapture_00']+0x100,panes['N_QolCapture_00'])
+        row = self.alloc(); rows = self.alloc(); self.write(rows, row)
+        self.write(grid + 0x208, 1, 4); self.write(grid + 0x210, rows)
+        hint = self.alloc(); key = self.alloc(); self.write(page + 0x570, hint); self.write(hint + 0xa0, key)
+        self.write(key + 0x14, 3, 4); self.write(key + 0x10, resident, 4)
+        entries = self.alloc(35 * 0x20)
+        self.write(page + 0x430, 1, 4); self.write(page + 0x434, 35, 4); self.write(page + 0x438, entries)
+        for kind in range(35):
+            self.write(entries + kind * 32, self.base + 0x49e8408)
+            self.write(entries + kind * 32 + 8, phone)
+            self.write(entries + kind * 32 + 16, self.base + (0x2e99d94 if kind == 5 else 0x2e99d90))
+        recipes = self.alloc(); recipe = self.alloc(0xd0)
+        self.write(recipes, recipe); self.write(recipe + 8, 0x0011223344550088)
+        self.write(phone + 0x8a350, 1, 4); self.write(phone + 0x8a358, recipes)
+        self.hook(0x2e9cde0, phone)
+        return phone, page, row, panes
+    def button(self, page, row, kind):
+        event = self.alloc(0x20); self.write(event, kind, 4); self.write(event + 0x18, row)
+        self.invoke(self.base + 0x375aa40, page, event)
+    def frame(self, phone): self.hook(0x2e9fbb0, phone)
+    def input(self, page, held, resident=0, blocked=0, consumed=0):
+        snapshot = self.alloc(); rows = self.alloc(8 * 0x48)
+        self.write(snapshot + 8, 8, 4); self.write(snapshot + 0x10, rows)
+        self.write(rows + resident * 0x48, held, 4); self.write(rows + resident * 0x48 + 0x3c, consumed, 4)
+        self.hook(0x3c58d24, page, snapshot, blocked)
+        return self.read(rows + resident * 0x48 + 0x3c, 4)
+    def patch(self, content):
+        pointer = self.alloc(len(content)); self.u.mem_write(pointer, content)
+        self.hook(0x267d64, 0, 0, 0, 0, 0, 0, pointer, 0)
+        assert bytes(self.u.mem_read(pointer, len(content))) == content
+        return self.built
 
-    def hook(self, offset, *args):
-        return self.invoke(self.hooks[self.base + offset], *args)
-
-    def settle(self, page, state):
-        self.write(page + 0x1b0, state, 4)
-        self.write(page + 0x1f0, 0xffffffffffffffff)
-        self.write(page + 0x200, 0, 1)
-
-    def phone(self, resident=0, count=3, prepare=True):
-        self.heap_sealed = False
-        page = self.ram + 0x10000 + resident * 0x100000
-        self.u.mem_write(page, bytes(0xf6380))
-        self.write(page + 0x1f8, resident, 1)
-        self.settle(page, 3)
-        self.write(page, self.base + 0x49e8178)
-        self.write(page + 0x164, 1, 1)
-        # Native lists are circular sentinel lists; nodes use native offsets.
-        self.write(page + 0x50, page + 0x50)
-        self.write(page + 0x58, page + 0x50)
-        self.write(page + 0x64, 0x28, 4)
-        self.write(page + 0x68, page + 0x68)
-        self.write(page + 0x70, page + 0x68)
-        self.write(page + 0x7c, 0x38, 4)
-        for head in (0x128, 0x140):
-            self.write(page + head, page + head)
-            self.write(page + head + 8, page + head)
-        manager = self.aux()
-        self.write(manager + 0xb8, self.heap)
-        self.write(page + 0x98, manager)
-        layout = self.layout()
-        self.write(page + 0x210, layout)
-        self.write(layout + 0x3ec, 7, 4)
-        self.write(layout + 0x580, self.aux(0x500))
-        # Execute the native table constructor. The original fixture invented
-        # six rows, masking the bug that rejected the game's 35-row table.
-        self.native_layout_tables(layout)
-        columns = self.read(layout + 0x430, 4)
-        entries = self.read(layout + 0x438)
-        for row, function in ((0, 0x2e96a80), (1, 0x2e99d90), (5, 0x2e99d94)):
-            self.write(entries + row * columns * 0x20, self.base + 0x49e8408)
-            self.write(entries + row * columns * 0x20 + 8, page)
-            self.write(entries + row * columns * 0x20 + 0x10, self.base + function)
-        recipes = self.aux(count * 8)
-        for i in range(count):
-            recipe = self.aux(0xd0)
-            data = bytearray((j + i * 13) & 255 for j in range(0xd0))
-            struct.pack_into('<H', data, 0, 100 + i)
-            struct.pack_into('<Q', data, 8, 200 + i)
-            self.u.mem_write(recipe, bytes(data))
-            self.write(recipes + i * 8, recipe)
-        self.write(page + 0x8a350, count, 4)
-        self.write(page + 0x8a358, recipes)
-        self.write(page + 0x218, count - 1, 4)
-        if prepare: self.prepare(page)
-        self.hook(0x2e9cde0, page)
-        assert self.read(entries + 0x10) == self.base + 0x2e96a80
-        assert self.read(entries + 5 * columns * 0x20 + 0x10) == self.base + 0x2e99d94
-        assert self.read(entries + columns * 0x20 + 0x10) != self.base + 0x2e99d90
-        return page
-
-    def prepare(self, page):
-        preview = self.next_preview
-        self.hook(0x376890c, page, 0)
-        if self.next_preview != preview: self.prepared[page] = preview
-        self.heap_sealed = True  # Native manager calls ExpHeap::adjust afterward.
-
-    def background(self, phone):
-        node = self.read(phone + 0x50)
-        return node - self.read(phone + 0x64, 4)
-
-    def native_layout_tables(self, layout):
-        # Only allocation and the final resource-bind virtual are modeled;
-        # table dimensions and delegate initialization execute in game code.
-        self.global_pointer(0x4ab2698, 0)
-        table = self.aux(0xd0)
-        self.write(table + 0xc8, self.stub('layout_resources'))
-        self.write(layout, table)
-        params = self.aux(0x30)
-        for offset, value in ((8, 1), (0xc, 1), (0x14, 1), (0x18, 2), (0x1c, 2)):
-            self.write(params + offset, value, 4)
-        self.write(params + 0x28, 1, 1)
-        self.native_actions[0x2478c0] = 'layout_allocate'
-        try:
-            self.invoke(self.base + 0x3759dd0, layout, params)
-        finally:
-            self.native_actions[0x2478c0] = 'allocate'
-        assert self.read(layout + 0x430, 4) == 2
-        assert self.read(layout + 0x434, 4) == 35
-        assert self.read(layout + 0x468, 4) == 2
-        assert self.read(layout + 0x46c, 4) == 5
-        self.write(layout, self.layout_table)
-
-    def layout(self):
-        layout = self.aux(0x600)
-        self.write(layout, self.layout_table)
-        self.write(layout + 0x210, self.aux())
-        return layout
-
-    def confirm(self, page):
-        layout = self.read(page + 0x210)
-        # Feed a confirmation event through the real native translation,
-        # row/column dispatch and member-function delegate invocation.
-        event = self.aux(0x20)
-        self.write(event, 1, 4)
-        self.dispatching_confirmation = True
-        try:
-            self.invoke(self.base + 0x375aa40, layout, event)
-        finally:
-            self.dispatching_confirmation = False
-
-    def frame(self, page):
-        assert self.read(page + 0x164, 1), "native scheduler pauses parent updates"
-        self.hook(0x2e9fbb0, page)
-
-    def preview_frame(self, preview):
-        assert self.read(preview + 0xa8, 4) == 3
-        self.updating_preview = True
-        try:
-            self.invoke(self.read(self.read(preview) + 0x1a0), preview)
-        finally:
-            self.updating_preview = False
-
-    def open(self, page):
-        self.confirm(page)
-        self.frame(page)  # Activate the child already prepared during app setup.
-        preview = self.prepared[page]
-        assert self.read(self.tls + 0xa8) == self.previous_heap
-        if self.read(preview + 0x1f0, 4) == 1:
-            # Native state processing precedes the page's own frame callback.
-            # App deactivation queues idle to cancel an unfinished transition.
-            self.settle(preview, 1)
-        background = self.background(page)
-        if self.read(background + 0x1f0, 4) == 1:
-            self.settle(background, 1)
-        self.preview_frame(preview)
-        assert self.read(preview + 0x1f0, 4) == 2
-        assert self.read(preview + 0x1c200) == page + 0x8a350
-        # cAppear parks in cDisplayList (5), awaiting its owner's selection.
-        self.settle(preview, 5)
-        self.preview_frame(preview)
-        assert self.read(preview + 0x264, 4) == self.read(page + 0x218, 4)
-        assert self.read(preview + 0x1f0, 4) == 4
-        self.settle(preview, 3)
-        self.preview_frame(preview)
-        return preview
-
-    def service(self, u, pc, size, user):
-        if not self.running:
-            service = self.services.get(pc)
-            super().service(u, pc, size, user)
-            if service and service[0] == 'install' and self.reg(0) == self.ram + 0x200:
-                target = next(reversed(self.hooks)) - self.base
-                original = self.ram + 0x500 + len(self.originals) * 0x10
-                self.originals[original] = target
-                u.reg_write(UC_ARM64_REG_X0, original)
-            return
-        action = self.native_actions.get(pc - self.base)
-        if pc in self.originals:
-            action = 'original_' + hex(self.originals[pc])
-            if self.originals[pc] == 0x376890c:
-                action = 'initialize'
-        if self.services.get(pc, (None,))[0] == 'preview':
-            action = self.services[pc][1]
-        if action is None:
-            if pc in self.services:
-                return super().service(u, pc, size, user)
-            # Execute real native code, including the recipe-copy/navigation
-            # functions and read-only craft-action dispatch.
-            return
-        args = [self.reg(i) for i in range(4)]
-        self.events.append((action, *args))
-        result = 0
-        if action == 'layout_allocate':
-            result = self.aux(args[0])
-        elif action == 'heap_allocate':
-            assert not self.heap_sealed, 'allocation after UI heap shrink'
-            assert args[0] == self.heap and args[2] == 8
-            u.reg_write(UC_ARM64_REG_X0, args[1])
-            return self.service(u, self.base + 0x2478c0, size, user)
-        elif action == 'allocate':
-            assert not self.dispatching_confirmation, 'page allocation inside button dispatch'
-            assert args[0] in (0x1c210, 0x220)
-            assert self.read(self.tls + 0xa8) == self.heap
-            if not self.fail_allocation:
-                if args[0] == 0x220:
-                    result = self.aux(0x220)
-                else:
-                    result = self.next_preview
-                    self.next_preview += 0x1d000
-        elif action == 'tls':
-            assert args[0] == 7
-            result = self.tls
-        elif action == 'base_construct':
-            self.settle(args[0], 0)
-        elif action == 'background_ready':
-            result = int(self.ready and self.read(args[0] + 0x1b0, 4) < 2)
-        elif action == 'show_background':
-            self.write(args[0] + 0x1f0, 2, 4)
-        elif action == 'construct':
-            page, name, params = args[:3]
-            assert self.string(self.read(name + 8)) == 'WorkCraftInfoSeq'
-            assert self.read(params + 8, 4) == 123
-            assert self.read(params + 0xc, 2) == 1
-            self.write(page + 0x1f8, self.read(params + 0xe, 1), 1)
-            self.settle(page, 0)
-            self.write(page + 0x1c1c8, 0xffffffff, 4)
-            self.write(page + 0x1c1cc, 0xffffffff, 4)
-            self.write(page + 0x38, 0)
-            self.write(page + 0x40, 0)
-        elif action == 'initialize':
-            page = args[0]
-            if self.read(page) == self.base + 0x49e8178:
-                u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
-                return
-            assert self.read(page + 0x48) != 0 and self.read(page + 0x98) != 0
-            layout = self.layout()
-            if self.read(page) == self.base + 0x4a3b1b8:
-                self.write(layout + 0x3ec, 14, 4)
-                self.write(page + 0x218, layout)
-                self.settle(page, 0)
-                u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
-                return
-            self.write(layout + 0x3ec, 23, 4)
-            self.write(page + 0x1c1f8, layout)
-            button = self.aux(0x400)
-            self.write(button, self.button_table)
-            bindings, binding = self.aux(), self.aux(0x200)
-            adapter, methods = self.aux(), self.aux(0x600)
-            root, caption = self.aux(0xc0), self.aux(0xc0)
-            self.button_roots.append(root)
-            self.u.mem_write(root + 0xb0, b'RootPane\0')
-            self.u.mem_write(caption + 0xb0, b'T_Text_00\0')
-            self.write(root + 0x58, 0x91, 1)
-            self.write(caption + 0x58, 0x91, 1)
-            self.write(caption + 0x18, root)
-            self.write(methods + 0x5e0, self.base + 0x3c1b588)
-            payload = caption
-            if self.group_button_text:
-                group, member, group_methods = self.aux(), self.aux(), self.aux(0x600)
-                self.write(group + 0x10, 1, 4)
-                self.write(group + 0x14, 0, 4)
-                self.write(group + 8, member)
-                self.write(member + 8, group)
-                self.write(member + 0x10, caption)
-                self.write(member + 0x18, methods)
-                self.write(group_methods + 0x5e0, self.base + 0x3c47b90)
-                payload, methods = group, group_methods
-            self.write(adapter + 8, payload)
-            self.write(adapter + 0x18, methods)
-            self.write(binding + 0x48, adapter)
-            self.write(bindings, binding)
-            self.write(button + 0x2e0, bindings)
-            # Reproduce the old bad cast: binding+0x1b0 is a heap object,
-            # whose apparent virtual+0x20 leads to data, not executable code.
-            bogus, bogus_table = self.aux(), self.aux()
-            self.write(bogus, bogus_table)
-            self.write(bogus_table + 0x20, binding)
-            self.write(binding + 0x1b0, bogus)
-            self.write(button + 0x1b0, bogus)
-            self.write(layout + 0x598, button)
-            entries = self.aux(0x20)
-            self.write(layout + 0x468, 1, 4)
-            self.write(layout + 0x46c, 1, 4)
-            self.write(layout + 0x470, entries)
-            self.write(entries + 0x10, self.base + 0x3492fec)
-            # Run the compiled vtable override at the native bind boundary.
-            u.reg_write(UC_ARM64_REG_PC, self.read(self.read(page) + 0xd0))
-            return
-        elif action == 'activate_child':
-            assert self.read(args[1] + 0x48) == args[0]
-            assert self.read(args[1] + 0xa8, 4) == 2
-            self.write(args[0] + 0x164, 0, 1)
-            self.write(args[1] + 0xa8, 3, 4)
-            # Activation does not change the recipe state. A new preview is
-            # still cInit (0); only a previously closed one is cIdle (1).
-        elif action == 'show_preview':
-            # Model generic UI activation, execute the real preview request.
-            u.reg_write(UC_ARM64_REG_PC, self.base + 0x3494090)
-            return
-        elif action == 'layout_visibility':
-            assert not self.dispatching_confirmation, 'source layout changed inside button dispatch'
-            assert args[1] in (0, 1)
-        elif action == 'button_visibility':
-            assert args[1:3] == [0, 0]
-        elif action == 'content_animation':
-            result = self.content_animation
-        elif action == 'animation_property':
-            assert self.read(args[1] + 8, 4) == 3
-        elif action == 'animation_busy':
-            result = int(self.animation_busy)
-        elif action == 'hidden':
-            result = int(self.hidden)
-        elif action == 'ready':
-            result = int(self.ready)
-        elif action == 'reload':
-            self.reloads.append(args[1])
-        elif action == 'sound':
-            assert args[0] == self.context
-            self.sounds.append(self.read(args[1], 8))
-        elif action == 'remove_child':
-            assert not self.updating_preview, 'removal invalidates native child-update iterator'
-            assert self.read(args[1] + 0x48) == args[0]
-            self.write(args[1] + 0xa8, 2, 4)
-        elif action.startswith('original_') or action in (
-                'lock', 'unlock', 'bind_preview', 'frame_preview', 'initialize_children',
-                'render_phone', 'refresh_grid', 'no_animation', 'item_init', 'layout_resources',
-                'button_source', 'button_feedback', 'resident_model_refresh'):
-            pass
+def verify_layout(original, patched):
+    before = layout_sections(original); after = layout_sections(patched)
+    oldpanes = {pane_name(s): s for s in before if s[:4] in PANE_TYPES}
+    newpanes = {pane_name(s): s for s in after if s[:4] in PANE_TYPES}
+    assert all(newpanes[n] == s for n, s in oldpanes.items())
+    assert not newpanes['N_QolPreview_00'][8] & 1
+    assert newpanes['N_QolCapture_00'][8] & 1
+    for tag in (b'mat1', b'txl1'):
+        old = next(s for s in before if s[:4] == tag); new = next(s for s in after if s[:4] == tag)
+        count = struct.unpack_from('<H', old, 8)[0]
+        assert struct.unpack_from('<H', new, 8)[0] == count + 1
+        if tag == b'mat1': assert material_records(new)[:-1] == material_records(old)
         else:
-            raise AssertionError(action)
-        u.reg_write(UC_ARM64_REG_X0, result)
-        u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
+            def names(s, n):
+                return [s[12+struct.unpack_from('<I', s, 12+4*i)[0]:].split(b'\0',1)[0] for i in range(n)]
+            assert names(new, count) == names(old, count)
+            assert names(new, count+1)[-1] == b'Capture^t'
+    assert all(s in after for s in before if s[:4] not in (b'mat1', b'txl1'))
+    # Check the author-defined user data with the format's entry-relative ABI.
+    usd = next(after[i+1] for i,s in enumerate(after) if s[:4] == b'pan1' and pane_name(s) == 'N_QolCapture_00')
+    name_offset, value_offset = struct.unpack_from('<II', usd, 12)
+    assert usd[12+name_offset:].split(b'\0',1)[0] == b'DynamicCaptureOn'
+    assert usd[12+value_offset:].split(b'\0',1)[0] == b'R10G10B10A2'
+    capture = material_records(next(s for s in after if s[:4] == b'mat1'))[-1]
+    assert struct.unpack_from('<I', capture, 28)[0] == 0x15
+    assert struct.unpack_from('<I', capture, 32)[0] == 0x08040200
+    assert len(capture) == 84
 
-
-class NativeHeapMachine(PreviewMachine):
-    """Execute expandable-heap construction/allocation/adjust, with a parent stub."""
-    def __init__(self, base):
-        super().__init__(base)
-        self.global_pointer(0x4ab2698, 0)
-        for offset in range(0x4a64448, 0x4a64558, 8):
-            pointer = struct.unpack_from('<Q', RAW, offset)[0]
-            if 0 < pointer < 0x3f07000:
-                self.write(base + offset, base + pointer)
-        self.native_actions[0x37ca450] = 'heap_base'
-
-    def service(self, u, pc, size, user):
-        action = getattr(self, 'native_actions', {}).get(pc - self.base)
-        if self.services.get(pc, (None,))[0] == 'preview':
-            action = self.services[pc][1]
-        if action in ('heap_base', 'parent_resize'):
-            if action == 'heap_base':
-                # Model base heap bookkeeping unrelated to its free blocks.
-                # The concrete heap builds/manages its own lists natively.
-                heap = self.reg(0)
-                for offset, value in ((0x30, self.reg(3)), (0x38, self.reg(4)),
-                                      (0x40, self.reg(2))):
-                    self.write(heap + offset, value)
-                self.write(heap + 0x88, self.reg(5), 4)
-            else:
-                u.reg_write(UC_ARM64_REG_X0, 1)
-            u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
-            return
-        super().service(u, pc, size, user)
-
-
-def check_native_heap_shrink(base):
-    m = NativeHeapMachine(base)
-    heap = m.invoke(base + 0x37c6ffc, m.ram + 0x500000, 0x100000, 0, 0)
-    parent, table = m.aux(), m.aux()
-    m.write(table + 0x48, m.stub('parent_resize'))
-    m.write(parent, table)
-    m.write(heap + 0x40, parent)
-    # Same page size and alignment as the preview/native page factories.
-    assert m.invoke(base + 0x37c77a0, heap, 0x1c210, 8) != 0
-    original_size = m.read(heap + 0x38)
-    assert m.invoke(base + 0x37c75d4, heap) < original_size
-    assert m.invoke(base + 0x37c77a0, heap, 0x1c210, 8) == 0
-
-
-class NativeLifecycleMachine(PreviewMachine):
-    """Run actual child activation/deactivation and active-list ownership."""
-    def __init__(self, base):
-        super().__init__(base)
-        self.native_actions.pop(0x3769260)
-        self.native_actions.pop(0x3768c7c)
-        self.native_actions.update({0x2b0c4c8: 'activate_begin',
-                                    0x2b0c51c: 'activate_end',
-                                    0x2b0c528: 'deactivate_begin',
-                                    0x2b0c534: 'deactivate_end',
-                                    0x37695c0: 'register_updates',
-                                    0x3769930: 'unregister_updates'})
-
-    def service(self, u, pc, size, user):
-        action = getattr(self, 'native_actions', {}).get(pc - self.base)
-        if action in ('activate_begin', 'activate_end', 'deactivate_begin',
-                      'deactivate_end', 'register_updates', 'unregister_updates'):
-            if action == 'deactivate_begin':
-                assert not self.updating_preview, 'removal invalidates native child-update iterator'
-                self.events.append(('remove_child', self.read(self.reg(0) + 0x48), self.reg(0)))
-            u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
-            return
-        super().service(u, pc, size, user)
-
-
-class NativeConstructorMachine(PreviewMachine):
-    """Execute common/base page constructors; model engine service boundaries."""
-    def __init__(self, base):
-        super().__init__(base)
-        # Relocate the GOT pointers needed by the real game constructors,
-        # retaining singleton/fixture replacements already set by the harness.
-        for offset in range(0x4ab2000, 0x4ae1000, 8):
-            pointer = struct.unpack_from('<Q', RAW, offset)[0]
-            if 0 < pointer < 0x6000000 and self.read(base + offset) == pointer:
-                self.write(base + offset, base + pointer)
-        for table in (struct.unpack_from('<Q', RAW, 0x4ab2d80)[0] + 16, 0x4a2b208):
-            for offset in range(0, 0x100, 8):
-                pointer = struct.unpack_from('<Q', RAW, table + offset)[0]
-                if 0 < pointer < 0x3f07000:
-                    self.write(base + table + offset, base + pointer)
-        self.native_actions.pop(0x3492b50)
-        self.native_actions.pop(0x3768244)
-        self.native_actions.update({0x3b5a110: 'page_name', 0x37e18e4: 'mutex_init',
-                                    0x3f04450: 'memset'})
-        # String assignment is the only service modeled inside the actual
-        # icon/state-machine constructors; state allocation executes natively.
-        string_table = self.aux()
-        self.write(string_table + 0x10, self.stub('page_name'))
-        self.write(string_table + 0x18, self.stub('string_validate'))
-        self.write(base + 0x4ab2020, string_table - 0x10)
-        self.heap_manager = self.aux()
-        self.write(self.heap_manager + 8, self.heap)
-        self.write(base + 0x59e7790, self.thread_manager)
-
-    def service(self, u, pc, size, user):
-        action = getattr(self, 'native_actions', {}).get(pc - self.base)
-        if self.services.get(pc, (None,))[0] == 'preview':
-            action = self.services[pc][1]
-        if action in ('page_name', 'mutex_init', 'string_validate', 'memset'):
-            if action == 'page_name':
-                self.write(self.reg(0) + 8, self.read(self.reg(1) + 8))
-            elif action == 'memset':
-                u.mem_write(self.reg(0), bytes([self.reg(1) & 255]) * self.reg(2))
-            u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
-            return
-        if action == 'heap_allocate':
-            assert not self.heap_sealed, 'allocation after UI heap shrink'
-            assert self.reg(0) == self.heap and self.reg(2) == 8
-            u.reg_write(UC_ARM64_REG_X0, self.reg(1))
-            return self.service(u, self.base + 0x2478c0, size, user)
-        if action == 'allocate' and self.reg(0) == 0x1c210:
-            self.events.append(('allocate', self.reg(0)))
-            pointer = self.next_preview
-            self.next_preview += 0x1d000
-            u.reg_write(UC_ARM64_REG_X0, pointer)
-            u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
-            return
-        if action == 'allocate' and self.reg(0) != 0x1c210:
-            assert not self.dispatching_confirmation
-            pointer = self.aux(self.reg(0))
-            u.reg_write(UC_ARM64_REG_X0, pointer)
-            u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
-            return
-        super().service(u, pc, size, user)
-
-
-class NativeActivationMachine(NativeConstructorMachine):
-    """Execute activation and update registration, retaining native page state."""
-    def __init__(self, base):
-        super().__init__(base)
-        self.native_actions.pop(0x3769260)
-        self.native_actions.pop(0x3768c7c)
-        self.native_actions[0x264bce0] = 'no_animation'  # Resident capability query.
-
-    def service(self, u, pc, size, user):
-        if pc == self.base + 0x3c5c660:
-            # Rendering service boundary; actual activation begin/end wrappers,
-            # recursive update eligibility and callback-list registration run.
-            self.events.append(('register_layout', self.reg(0)))
-            u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
-            return
-        super().service(u, pc, size, user)
-
-
-def check_native_startup(base):
-    m = NativeActivationMachine(base)
-    phone = m.phone()
-    preview = m.prepared[phone]
-    # Execute the actual preview state-table initializer. The resource-loading
-    # boundary normally invokes this before the manager seals its heap.
-    m.heap_sealed = False
-    m.write(m.tls + 0xa8, m.heap)
-    m.write(base + 0x59e7600, m.heap_manager)
-    m.write(base + 0x4ab2698, base + 0x59e7600)
-    for offset in range(0, 0x18, 8):
-        pointer = struct.unpack_from('<Q', RAW, 0x4a3d900 + offset)[0]
-        m.write(base + 0x4a3d900 + offset, base + pointer)
-    m.invoke(base + 0x34942f0, preview, preview + 0x1a8)
-    m.write(m.tls + 0xa8, m.previous_heap)
-    m.heap_sealed = True
-    assert m.read(preview + 0x1b0, 4) == 0
-    assert m.read(preview + 0x1f0) == 0xffffffffffffffff
-    names = m.read(preview + 0x1e8)
-    assert m.string(m.read(names + 8)) == 'cInit'
-    assert m.string(m.read(names + 0x18)) == 'cIdle'
-    # The start-state update only sets a resident capability flag. It does
-    # not transition to idle, even after multiple updates.
-    for frame in range(3):
-        m.write(preview + 0x1b4, frame, 4)
-        m.invoke(base + 0x3494768, preview)
-        assert m.read(preview + 0x1b0, 4) == 0
-        assert m.read(preview + 0x1f0) == 0xffffffffffffffff
-    # Exercise both callback-list registration paths without replacing them
-    # with no-ops, as the previous lifecycle fixture did.
-    m.write(preview + 0x120, 3, 4)
-    m.confirm(phone)
-    m.frame(phone)
-    assert m.read(preview + 0xa8, 4) == 3
-    assert m.read(preview + 0x1b0, 4) == 0
-    assert m.read(phone + 0x138, 4) == 1
-    assert m.read(phone + 0x150, 4) == 1
-    assert m.read(phone + 0x130) == preview + 0xb0
-    assert m.read(phone + 0x148) == preview + 0xe8
-    m.ready = False
-    m.preview_frame(preview)
-    assert m.read(preview + 0x1f0) == 0xffffffffffffffff
-    assert m.read(preview + 0x1c200) == 0
-    m.ready = True
-    m.preview_frame(preview)
-    assert m.read(preview + 0x1f0, 4) == 2, 'new preview must appear from cInit'
-    assert m.read(preview + 0x1c200) == phone + 0x8a350
-    assert 'activated; state=0 lifecycle=3' in m.text
-    # Remove through the actual native API and verify sentinel/list recovery.
-    m.invoke(base + 0x3768c7c, phone, preview)
-    assert m.read(phone + 0x138, 4) == 0
-    assert m.read(phone + 0x150, 4) == 0
-    assert m.read(phone + 0x128) == phone + 0x128
-    assert m.read(phone + 0x140) == phone + 0x140
-    m.invoke(base + 0x3768c7c, phone, m.background(phone))
-    assert m.read(phone + 0x78, 4) == 0
-
-
-class NativeTransitionMachine(NativeActivationMachine):
-    """Execute page updates, deferred requests, and native recipe state handlers."""
-    def __init__(self, base):
-        super().__init__(base)
-        # Model only type identification and UI services, never the state
-        # table, state entries/updates/exits, or deferred-request processing.
-        self.native_actions.update({0x34740cc: 'preview_type',
-                                    0x346d510: 'preview_type',
-                                    0x346ee40: 'refresh_recipe_icons',
-                                    0x346ec1c: 'refresh_recipe_details',
-                                    0x346eb74: 'no_animation',
-                                    0x346e9c0: 'no_animation',  # Sound target pane.
-                                    0x346f350: 'clear_recipe_icons',
-                                    0x32bd990: 'detail_sound',
-                                    0x32ba890: 'detail_sound'})
-        # This singleton aliases the UI-context GOT in the real loader.
-        storage = self.read(base + 0x4ab2230)
-        self.write(base + 0x5639190, self.read(storage))
-        for offset in (0x4ab7c40, 0x4ac7280):
-            self.write(self.read(base + offset), 1, 1)
-
-    def initialize_states(self, preview):
-        self.heap_sealed = False
-        self.write(self.tls + 0xa8, self.heap)
-        self.write(self.base + 0x59e7600, self.heap_manager)
-        self.write(self.base + 0x4ab2698, self.base + 0x59e7600)
-        for offset in range(0, 0x18, 8):
-            pointer = struct.unpack_from('<Q', RAW, 0x4a3d900 + offset)[0]
-            self.write(self.base + 0x4a3d900 + offset, self.base + pointer)
-        self.invoke(self.base + 0x34942f0, preview, preview + 0x1a8)
-        background = self.background(self.read(preview + 0x48))
-        for offset in range(0, 0x18, 8):
-            pointer = struct.unpack_from('<Q', RAW, 0x4a3d518 + offset)[0]
-            self.write(self.base + 0x4a3d518 + offset, self.base + pointer)
-        self.invoke(self.base + 0x34920a4, background, background + 0x1a8)
-        self.write(self.tls + 0xa8, self.previous_heap)
-        self.heap_sealed = True
-        layout = self.read(preview + 0x1c1f8)
-        self.write(self.read(layout + 0x210) + 0x48, self.aux())
-        for offset in (0x570, 0x578, 0x580, 0x588):
-            self.write(layout + offset, self.aux())
-
-    def preview_frame(self, preview):
-        assert self.read(preview + 0xa8, 4) == 3
-        # Manager scheduling is modeled; execute its page-update virtual and
-        # post-update visitor, including both real deferred-request slots.
-        self.write(preview + 0x164, 1, 1)
-        background = self.background(self.read(preview + 0x48))
-        self.write(background + 0x164, 1, 1)
-        self.invoke(self.base + 0x2b0c720, background)
-        self.invoke(self.base + 0x2b0e370, 0, background)
-        self.updating_preview = True
-        try:
-            self.invoke(self.base + 0x2b0c720, preview)
-        finally:
-            self.updating_preview = False
-        self.invoke(self.base + 0x2b0e370, 0, preview)
-
-    def service(self, u, pc, size, user):
-        action = getattr(self, 'native_actions', {}).get(pc - self.base)
-        if action in ('preview_type', 'refresh_recipe_icons', 'refresh_recipe_details',
-                      'clear_recipe_icons', 'detail_sound'):
-            self.events.append((action, self.reg(0)))
-            u.reg_write(UC_ARM64_REG_X0, int(action == 'preview_type'))
-            u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
-            return
-        super().service(u, pc, size, user)
-
-
-def check_native_opening(base):
-    m = NativeTransitionMachine(base)
-    phone = m.phone()
-    preview = m.prepared[phone]
-    m.initialize_states(preview)
-    m.confirm(phone)
-    m.frame(phone)
-    states = []
-    for _ in range(5):
-        m.preview_frame(preview)
-        states.append(m.read(preview + 0x1b0, 4))
-    assert states == [2, 5, 4, 3, 3], states
-    assert m.read(preview + 0x264, 4) == m.read(phone + 0x218, 4)
-    assert m.reloads == [m.read(phone + 0x218, 4)]
-    assert 'DIY preview: showing' in m.text
-    assert m.read(preview + 0x1f0) == 0xffffffffffffffff
-    assert m.read(m.read(m.read(preview + 0x1c1f8) + 0x210) + 0x54, 1) == 0
-    # B follows the actual play exit -> display-list entry -> idle entry.
-    layout = m.read(preview + 0x1c1f8)
-    callback = m.read(m.read(layout + 0x470) + 0x10)
-    event = m.aux()
-    m.write(event + 0x10, 0, 4)
-    assert m.invoke(callback, preview, event) == 1
-    states = []
-    for _ in range(3):
-        m.preview_frame(preview)
-        states.append(m.read(preview + 0x1b0, 4))
-    assert states == [5, 1, 1], states
-    assert m.read(preview + 0x1c200) == 0  # Native idle clears the borrowed list.
-    m.frame(phone)
-    assert m.read(preview + 0xa8, 4) == 2
-    assert m.read(m.read(m.read(phone + 0x210) + 0x210) + 0x54, 1) == 0
-    # Reuse the same page and native state table, beginning from real cIdle.
-    allocated = m.next_preview
-    m.confirm(phone)
-    m.frame(phone)
-    states = []
-    for _ in range(5):
-        m.preview_frame(preview)
-        states.append(m.read(preview + 0x1b0, 4))
-    assert states == [2, 5, 4, 3, 3], states
-    assert m.next_preview == allocated
-
-
-def check_native_constructor(base, heap_source):
-    m = NativeConstructorMachine(base)
-    phone = m.phone(prepare=False)
-    m.write(base + 0x59e7600, m.heap_manager)
-    m.write(base + 0x4ab2698, base + 0x59e7600)
-    if heap_source != 'manager':
-        m.write(m.read(phone + 0x98) + 0xb8, 0)
-    previous = m.heap if heap_source == 'current' else 0
-    m.write(m.tls + 0xa8, previous)
-    layout = m.read(phone + 0x210)
-    preview = m.next_preview
-    guard = bytes([0xa5]) * 32
-    m.u.mem_write(preview + 0x1c210, guard)
-    m.prepare(phone)
-    assert m.read(m.read(layout + 0x210) + 0x54, 1) == 0
-    assert m.read(phone + 0x164, 1) == 1
-    assert m.read(preview + 0xa8, 4) == 2
-    assert m.read(m.read(preview + 0x1c1f8) + 0x3ec, 4) == 23
-    assert m.read(m.read(m.background(phone) + 0x218) + 0x3ec, 4) == 14
-    assert m.next_preview == preview + 0x1d000
-    assert m.read(preview + 0x48) == phone
-    assert m.read(preview + 0x50) == preview + 0x50
-    assert m.read(preview + 0x58) == preview + 0x50
-    assert m.read(preview + 0x64, 4) == 0x28
-    assert m.read(preview + 0x7c, 4) == 0x38
-    assert m.read(preview + 0x1f8, 1) == 0
-    # Every one of the 270 icons must receive its native state arrays.
-    for index in range(270):
-        state = preview + 0x278 + index * 0x1a8 + 0xf8
-        assert m.read(state + 0x28, 4) == 2
-        assert m.read(state + 0x38, 4) == 2
-        assert m.read(state + 0x30) and m.read(state + 0x40)
-        names = m.read(state + 0x40)
-        assert m.string(m.read(names + 8)) == 'cPlay'
-        assert m.string(m.read(names + 0x18)) == 'cDelete'
-    assert bytes(m.u.mem_read(preview + 0x1c210, 32)) == guard
-    assert m.read(m.tls + 0xa8) == previous
-
-
-def check_native_heap_dependency(base):
-    # Reproduce the crash site independently of the integration: with an
-    # initialized heap manager but null current TLS heap, the native icon
-    # constructor skips allocation and then dereferences the absent names.
-    from unicorn import UcError
-    m = NativeConstructorMachine(base)
-    m.write(base + 0x59e7600, m.heap_manager)
-    m.write(base + 0x4ab2698, base + 0x59e7600)
-    m.write(m.tls + 0xa8, 0)
-    try:
-        m.invoke(base + 0x3363544, m.aux(0x1a8), 0)
-    except UcError:
-        assert m.u.reg_read(UC_ARM64_REG_PC) == base + 0x3dbb0ec
-    else:
-        raise AssertionError('native null-heap crash was not reproduced')
-
-
-def check_flow(base, machine=PreviewMachine):
-    m = machine(base)
-    phone = m.phone()
-    original_index = m.read(phone + 0x218, 4)
-    preview = m.open(phone)
-    layout = m.read(preview + 0x1c1f8)
-    selected = m.read(phone + 0x218, 4)
-    record = m.read(m.read(phone + 0x8a358) + selected * 8)
-    assert m.read(m.model + 0x2c) == m.read(record + 8)
-    assert m.read(m.model + 0x42, 2) == m.read(record, 2)
-    assert m.read(m.model + 0x12, 1) == 0
-    assert m.read(m.model + 0x2140, 4) == 1
-    assert all(m.read(root + 0x58, 1) == 0x90 for root in m.button_roots)
-    table = m.read(preview)
-    native_table = bytes(m.u.mem_read(base + 0x4a3b778, 0x2c0))
-    assert table != base + 0x4a3b778
-    assert m.invoke(m.read(table + 0x220), preview) == 0
-    assert m.invoke(m.read(table + 0x288), preview, 0) == 0
-    m.invoke(m.read(table + 0x1a0), preview)
-
-    # Real native list count, left/right wrapping, item lookup and 0xd0-byte
-    # recipe copy, including every material slot, use the borrowed app list.
-    m.invoke(base + 0x3473aac, preview)
-    assert m.read(preview + 0x260, 4) == 3
-    output = m.aux(0xd0)
-    for direction, expected in ((1, 0), (255, 2), (255, 1), (1, 2)):
-        m.invoke(base + 0x34969d0, preview, direction)
-        assert m.read(preview + 0x264, 4) == expected
-        assert m.reloads[-1] == expected
-        m.preview_frame(preview)
-        recipe = m.read(m.read(phone + 0x8a358) + expected * 8)
-        assert m.read(m.model + 0x2c) == m.read(recipe + 8)
-        assert m.read(m.model + 0x42, 2) == m.read(recipe, 2)
-        assert m.sounds[-1] == 200 + expected
-        m.invoke(base + 0x3473c74, preview, expected, output)
-        record = m.read(m.read(phone + 0x8a358) + expected * 8)
-        # The native copy intentionally omits alignment padding between
-        # material records. Compare all semantic bytes, not that padding.
-        spans = [(0, 0x2a), (0xbc, 2), (0xc0, 5), (0xc8, 4)]
-        spans += [(0x2c + material * 0x18, 0x16) for material in range(6)]
-        for offset, size in spans:
-            assert bytes(m.u.mem_read(output + offset, size)) == bytes(m.u.mem_read(record + offset, size))
-    # The actual native action dispatcher must reject crafting before any
-    # inventory, dialog, crafting actor or save routine can run.
-    m.write(preview + 0x1c1cc, 2, 4)
-    m.invoke(base + 0x3494d00, preview)
-    assert m.read(preview + 0x1f0, 8) == 0xffffffffffffffff
-    m.invoke(m.read(table + 0x1a0), preview)
-    assert m.read(preview + 0x1c1cc, 4) == 0xffffffff
-
-    event = m.aux()
-    entries = m.read(layout + 0x470)
-    callback = m.read(entries + 0x10)
-    assert callback != base + 0x3492fec
-    m.write(event + 0x10, 3, 4)
-    assert m.invoke(callback, preview, event) == 1
-    assert m.read(preview + 0x1c1cc, 4) == 3
-    m.write(event + 0x10, 0, 4)
-    assert m.invoke(callback, preview, event) == 1
-    m.preview_frame(preview)
-    assert m.read(preview + 0x1f0, 4) == 5
-    m.settle(preview, 5)
-    m.hidden = False  # Layout root stays visible after the reverse animation.
-    animation, animation_table, methods = m.aux(), m.aux(), m.aux()
-    m.write(animation, animation_table)
-    m.write(animation_table + 0x20, m.stub('animation_property'))
-    m.write(animation + 8, m.aux())
-    m.write(animation + 0x18, methods)
-    m.write(methods + 0x50, m.stub('animation_busy'))
-    m.content_animation = animation
-    m.native_actions[0x346eb74] = 'content_animation'
-    m.animation_busy = True
-    m.preview_frame(preview)
-    assert m.read(preview + 0x1f0, 4) == 0xffffffff
-    m.animation_busy = False
-    m.preview_frame(preview)
-    assert m.read(preview + 0x1f0, 4) == 1
-    m.native_actions[0x346eb74] = 'no_animation'
-    # Native idle entry clears the borrowed data and selection.
-    m.write(preview + 0x1c200, 0)
-    m.settle(preview, 1)
-    m.preview_frame(preview)
-    assert m.read(preview + 0xa8, 4) == 3
-    m.frame(phone)  # Detach only after native child-update iteration returns.
-    phone_layout = m.read(phone + 0x210)
-    assert m.read(m.read(phone_layout + 0x210) + 0x54, 1) == 0
-    assert m.read(phone + 0x218, 4) == original_index
-    assert m.read(phone + 0x1b0, 4) == 3
-    allocations = len([e for e in m.events if e[0] == 'allocate'])
-    assert m.read(phone + 0x164, 1) == 1
-    assert m.read(preview + 0xa8, 4) == 2
-    assert m.read(phone + 0x78, 4) == 0
-    assert [e[2] for e in m.events if e[0] == 'layout_visibility'] == [0, 1]
-    assert bytes(m.u.mem_read(m.model + 0x2c, 0x28)) == m.model_snapshot
-    assert m.read(m.model + 0x12, 1) == 1
-    m.open(phone)
-    m.confirm(phone); m.confirm(phone)
-    assert len([e for e in m.events if e[0] == 'allocate']) == allocations
-    m.hook(0x2e9d538, phone)
-    assert len([e for e in m.events if e[0] == 'remove_child']) == 4
-    assert bytes(m.u.mem_read(base + 0x4a3b778, 0x2c0)) == native_table
-
-
-def check_button_pane_types(base):
+for base in (0x7100000000, 0x7200000000):
     m = PreviewMachine(base)
-    m.group_button_text = True
-    phone = m.phone()
-    preview = m.open(phone)
-    assert all(m.read(root + 0x58, 1) == 0x90 for root in m.button_roots)
-    button = m.read(m.read(preview + 0x1c1f8) + 0x598)
-    binding = m.read(m.read(button + 0x2e0))
-    adapter = m.read(binding + 0x48)
-    methods = m.read(adapter + 0x18)
-    root = m.button_roots[0]
-    m.write(root + 0x58, 0x91, 1)
-    # Unknown binding types must be skipped rather than cast to a Pane.
-    m.write(methods + 0x5e0, 0xdeadbeef)
-    m.preview_frame(preview)
-    assert m.read(root + 0x58, 1) == 0x91
+    verify_layout(MENU, m.patch(MENU)); ptr = m.build_pointer
+    assert m.patch(MENU) and m.build_pointer == ptr
+    wide = bytearray(MENU)
+    # A modified display height and moved grid must survive byte for byte.
+    struct.pack_into('<f', wide, 20+16, 1200)
+    grid = next(s for s in layout_sections(MENU) if s[:4] == b'prt1' and pane_name(s) == 'L_BtnList_00')
+    struct.pack_into('<f', wide, MENU.index(grid)+48, 47.5)
+    verify_layout(bytes(wide), m.patch(bytes(wide)))
+    other = layout_asset('WorkBenchInfo'); assert m.patch(other) == other
+    damaged = bytearray(MENU); struct.pack_into('<I', damaged, 24, 0xffffffff)
+    assert m.patch(bytes(damaged)) == damaged
+    phone, page, row, panes = m.phone()
+    snapshot = bytes(m.u.mem_read(m.parameters+0x2c, 40))
+    for kind in (0, 1, 2, 4): m.button(page, row, kind); m.frame(phone)
+    assert not m.events and m.read(m.controller + 0x50, 4) == 0xffffffff
+    m.button(page, m.alloc(), 5); m.frame(phone); assert not m.events
+    m.button(page, row, 5); assert not m.events  # Queue after native dispatch.
+    m.input(page, 1); assert not m.events  # Navigation suppressed immediately.
+    m.frame(phone); m.frame(phone)
+    request = next(e[1] for e in m.events if e[0] == 'spawn')
+    assert struct.unpack('<IIIHHQ', request) == (0, 0x44550088, 0x00112233, 0xfffe, 0, 0)
+    assert m.read(panes['L_BtnList_00']+0x58,1) == 0xa2
+    assert m.read(panes['N_QolPreview_00']+0x58,1) == 0xa3
+    assert m.read(panes['N_Recipe_00']+0x58,1) == 0xa3
+    before = list(m.events); m.input(page, 2); assert m.events == before
+    assert m.input(page, 0x20) == 0x20; m.frame(phone)
+    assert ('release',2) in m.events
+    assert m.read(panes['L_BtnList_00']+0x58,1) == 0xa3
+    assert m.read(panes['N_QolPreview_00']+0x58,1) == 0xa2
+    assert bytes(m.u.mem_read(m.parameters+0x2c,40)) == snapshot and m.read(m.parameters+0x12,1) == 1
+    before = list(m.events); m.input(page,0x20); assert m.events == before
+    m.input(page,0); m.input(page,0); assert m.events[-1] == ('native_input', page)
+    # Native deactivation retains the existing app layout. Reopening can preview again.
+    m.hook(0x2e9d538,phone); m.button(page,row,5); m.frame(phone); m.frame(phone)
+    assert sum(e[0]=='spawn' for e in m.events) == 2
+    m.hook(0x2e9d538,phone); assert m.read(m.controller+0x6c,4) == 0
+    # Resource or renderer failure keeps the ordinary grid, without borrowed pages.
+    phone2,page2,row2,panes2 = m.phone(1,surface=False)
+    before=list(m.events); m.button(page2,row2,5); m.frame(phone2); assert m.events == before
+    unbound,unbound_page,unbound_row,unbound_panes = m.phone(3)
+    m.write(unbound_panes['P_QolCapture_00']+0x100,0)
+    m.hook(0x2e9cde0,unbound)
+    before=list(m.events); m.button(unbound_page,unbound_row,5); m.frame(unbound)
+    assert m.events == before  # Named panes alone do not prove capture binding.
+    phone3,page3,row3,panes3 = m.phone(2)
+    m.write(m.controller+0x50,7,4); before=list(m.events)
+    m.button(page3,row3,5); m.frame(phone3); assert m.events == before
+    m.write(m.controller+0x50,0xffffffff,4); m.fail_spawn=True
+    m.button(page3,row3,5); m.frame(phone3); m.frame(phone3)
+    assert m.read(panes3['L_BtnList_00']+0x58,1) == 0xa3
+    assert m.read(panes3['N_QolPreview_00']+0x58,1) == 0xa2
+    # Execute native Pane lookup against a real-shaped intrusive pane tree.
+    del m.services[base+0x27d1d0]
+    m.services[base+0x2606c0]=('preview','equals')
+    root=m.alloc(); child=m.alloc(); table=m.alloc(); text=m.alloc()
+    m.u.mem_write(root+0xb0,b'RootPane\0'); m.u.mem_write(child+0xb0,b'N_QolPreview_00\0')
+    m.u.mem_write(text,b'N_QolPreview_00\0')
+    m.write(root+0x28,child+8); m.write(child+8,root+0x20); m.write(child+16,root+0x20)
+    m.write(child+0x28,child+0x20); m.write(child,table)
+    m.write(table+0xc0,m.stub('child_find'))
+    assert m.invoke(base+0x27d1d0,root,text,1)==child
+    m.u.mem_write(text,b'Missing\0'); assert m.invoke(base+0x27d1d0,root,text,1)==0
+    # Native item-model creation consumes the same 24-byte request used by
+    # the compiled integration. Only scene allocation and parameter queries
+    # are modeled. Item copying/type/flags and the no-background path are native.
+    del m.services[base+0x32bd990]
+    for a,action in ((0x32bb4ec,'noop'),(0x150cc10,'zero'),(0x6402e0,'entity_create'),(0x3f04470,'copy')):
+        m.services[base+a]=('preview',action)
+    strings=m.alloc(); empty=m.alloc(); m.u.mem_write(empty,b'\0')
+    m.write(strings+0x18,m.stub('noop'))
+    m.write(base+0x5643418,strings); m.write(base+0x5643420,empty)
+    for got in (0x4ab2f70,0x4ab2bc0): m.write(base+got,strings-16)
+    entity_slot=m.alloc(); entity=m.alloc(); camera_slot=m.alloc()
+    m.write(entity_slot,entity); m.write(base+0x4ab27c0,entity_slot); m.write(base+0x4ab2200,camera_slot)
+    params_table=m.alloc(0x200); m.write(params_table+0x168,m.stub('zero')); m.write(m.controller+0x7d0,params_table)
+    m.write(m.controller+0x50,2,4); m.write(m.controller+0x6c,0,4)
+    native_request=m.alloc(); m.u.mem_write(native_request,struct.pack('<IIIHHQ',0,0x44550088,0x00112233,0xfffe,0,0))
+    m.invoke(base+0x32bd990,m.controller,native_request)
+    assert m.read(m.controller+0x6c,4)==0x12345 and m.read(m.controller+0x70,4)==4
+    assert m.read(m.controller+0x8c)==0x0011223344550088
+    assert m.read(m.controller+0x60)==0 and m.read(m.controller+0x74,1)&3==3
+    assert struct.unpack_from('<I',m.entity_request,4)[0]==0x42
+    # Native release has no background-page dependency. An absent scene
+    # manager models scene teardown; native code still clears its own handle.
+    del m.services[base+0x32ba5e4]
+    default_item=m.alloc(); m.write(default_item,0xfffe); m.write(base+0x4ab37e0,default_item)
+    m.write(entity_slot,0); m.write(m.controller+0x10,1,4)
+    m.invoke(base+0x32ba5e4,m.controller,2)
+    assert m.read(m.controller+0x6c,4)==0 and m.read(m.controller+0x70,4)==0
+    assert m.read(m.controller+0x8c)==0xfffe and m.read(m.controller+0x10,4)==0
+    print(f'PASS: compiled resource patch preserves native/modified layout; native press dispatch excludes focus-leave; scoped input/B consumption, direct model ABI, parameter restoration, repeated open, deactivation and unavailable renderer, ASLR {base:#x}')
 
-
-def check_lists(base):
-    for count in (1, 4):
-        m = PreviewMachine(base)
-        phone = m.phone(count=count)
-        array = m.read(phone + 0x8a358)
-        records = [m.read(array + i * 8) for i in range(count)]
-        # A filtered/sorted view can have arbitrary ordering. Navigation must
-        # follow the current pointer array, never recipe IDs or a full catalog.
-        for i, record in enumerate(reversed(records)):
-            m.write(array + i * 8, record)
-        preview = m.open(phone)
-        m.invoke(base + 0x3473aac, preview)
-        for direction, expected in ((1, 0), (255, count - 1)):
-            m.invoke(base + 0x34969d0, preview, direction)
-            assert m.read(preview + 0x264, 4) == expected
-            assert m.sounds[-1] == 200 + count - 1 - expected
-    m = PreviewMachine(base)
-    first, second = m.phone(0), m.phone(1)
-    first_preview = m.open(first)
-    second_preview = m.open(second)
-    assert first_preview != second_preview
-    assert m.read(first_preview + 0x1c200) == first + 0x8a350
-    assert m.read(second_preview + 0x1c200) == second + 0x8a350
-    m.hook(0x2e9d538, first)
-    assert [e[2] for e in m.events if e[0] == 'remove_child'] == [first_preview, m.background(first)]
-    m.preview_frame(second_preview)
-    assert m.read(second_preview + 0x1c200) == second + 0x8a350
-    # A child already removed by native teardown must not be removed twice.
-    m.write(second_preview + 0xa8, 2, 4)
-    m.hook(0x2e9d538, second)
-    assert len([e for e in m.events if e[0] == 'remove_child']) == 3
-
-
-def check_app_reopening(base):
-    m = PreviewMachine(base)
-    phone = m.phone()
-    preview = m.open(phone)
-    allocated = m.next_preview
-    for unfinished in (False, True):
-        if unfinished: m.write(preview + 0x1f0, 4, 4)
-        m.hook(0x2e9d538, phone)
-        assert m.read(preview + 0x1f0, 4) == 1
-        assert m.read(preview + 0x1f4, 4) == 0xffffffff
-        m.write(phone + 0x164, 1, 1)  # Manager re-enables the reopened app.
-        assert m.open(phone) == preview
-        assert m.next_preview == allocated
-    # A replacement manager can construct a different page for this resident.
-    # Resource binding must still replace A before initialization assigns it.
-    m.hook(0x2e9d538, phone)
-    replacement = m.phone(resident=1, prepare=False)
-    m.write(replacement + 0x1f8, 0, 1)
-    m.hook(0x2e9cde0, replacement)
-    m.prepare(replacement)
-    assert m.open(replacement) != preview
-
-
-def check_failures(base):
-    for case in ('empty', 'invalid_index', 'unavailable_item', 'allocation', 'no_heap', 'busy'):
-        m = PreviewMachine(base)
-        phone = m.phone(prepare=False)
-        if case == 'empty': m.write(phone + 0x8a350, 0, 4)
-        if case == 'invalid_index': m.write(phone + 0x218, 99, 4)
-        if case == 'unavailable_item':
-            record = m.read(m.read(phone + 0x8a358) + 16)
-            m.write(record + 8, 0xfffe, 2)
-        if case == 'allocation': m.fail_allocation = True
-        if case == 'no_heap':
-            m.write(m.read(phone + 0x98) + 0xb8, 0)
-            m.write(m.tls + 0xa8, 0)
-        m.prepare(phone)
-        constructed = len([e for e in m.events if e[0] == 'construct'])
-        if case == 'busy': m.write(phone + 0x1f0, 5, 4)
-        m.confirm(phone)
-        m.frame(phone)
-        layout = m.read(phone + 0x210)
-        assert m.read(m.read(layout + 0x210) + 0x54, 1) == 0
-        assert len([e for e in m.events if e[0] == 'construct']) == constructed
-        assert not any(e[0] == 'layout_visibility' for e in m.events)
-        assert m.read(phone + 0x164, 1) == 1
-    for offset in HOOKS + GUARDS:
-        m = Machine(base, {})
-        m.write(base + offset, 0, 4)
-        m.boot(); m.activate()
-        assert 'DIY preview: DISABLED' in m.text
-        assert not any(base + hook in m.hooks for hook in HOOKS)
-        assert base + 0xbc4144 in m.hooks
-
-
-if __name__ == '__main__':
-    for base in (0x7100000000, 0x7200000000):
-        check_native_opening(base)
-        check_native_startup(base)
-        check_native_heap_shrink(base)
-        check_native_heap_dependency(base)
-        for heap_source in ('manager', 'current', 'default'):
-            check_native_constructor(base, heap_source)
-        check_flow(base)
-        check_flow(base, NativeLifecycleMachine)
-        check_button_pane_types(base)
-        check_lists(base)
-        check_app_reopening(base)
-        check_failures(base)
-    print('PASS: native model item requests/navigation and context restoration, BG/info render ordering, typed craft-button text/group bindings and pane visibility, busy return animation with visible layout root; native preview page updates/deferred requests/state handlers through 0/1 -> 2 -> 5 -> 4 -> 3, B return and reuse; native cInit initialization/update, child activation/update registration/removal, heap shrink/allocation failure, preparation before shrink, null-heap crash reproduction, page/270-icon/state constructors with manager/current/default heaps, 35-row layout construction and confirmation dispatch; Core preview lifecycle, borrowed recipe/materials, native navigation/wrap, craft rejection, teardown and fail-closed fingerprints at two ASLR bases')
+for guard in GUARDS:
+    m=Machine(0x7100000000,{})
+    m.write(m.base+guard,0xdeadbeef,4); m.boot(); m.activate()
+    assert all(m.base+a not in m.hooks for a in HOOKS)
+    assert 'DIY preview: DISABLED' in m.text
+print('PASS: all renderer/layout/input fingerprints reject the entire integration atomically')
+m=Machine(0x7100000000,{'pockets':DEFAULT})
+m.write(m.base+0x32bd990,0xdeadbeef,4); m.boot(); m.activate()
+assert m.base+0x3c58d24 in m.hooks and m.base+0x2e9cde0 not in m.hooks
+assert 'QUICK_STORE_READY' in m.text and 'DIY preview: DISABLED' in m.text
+print('PASS: Pockets owns shared page input when the DIY integration declines installation')

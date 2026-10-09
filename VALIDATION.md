@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.31 DIY preview startup crash
+# Unified QoL validation — 0.3.32 renderer-only DIY prototype
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,53 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.32 renderer-only DIY prototype
+
+The user rejected replacing the DIY app with the workbench browser because it
+would remove the app's immediately visible materials. This version removes the
+previous workbench detail/background child pages and their private virtual table.
+A now queues a native UI3D item request for a newly authored capture surface in
+the existing app; B releases the renderer and restores the grid. This milestone
+has a stationary model only. Rotation and recipe navigation remain unfinished.
+
+The in-memory MenuRecipe transformation preserves existing section/pane bytes
+and existing texture/material indices. A modified canvas and grid position are
+checked alongside vanilla data. BFLYT buffers persist for native layout lifetime
+in a bounded static cache; missing bindings, malformed data, unavailable renderer
+or failed model allocation leave/restore the grid. Binding validation uses the
+native picture types and actual dynamic-capture pointer, not just pane names.
+No workbench RomFS layout is loaded or packaged for this feature.
+
+The row-5 native press callback is used; row 1 is focus-leave and remains native.
+The actual 3.0.3 button translation/dispatch bodies execute against the compiled
+callback at two ASLR bases. Focus movement and unrelated button presses cannot
+queue the preview. Native Pane lookup and item-request/release bodies execute,
+including the null-background branch and handle/item/type cleanup. Camera state
+transitions, entity allocation, layout construction and GPU rendering remain
+modeled. Compiled hooks cover input suppression, B consumption and held-button
+release, saved parameter/pane restoration, renderer busy/missing/capture-unbound
+failures, repeated preview/deactivation, and individual fingerprint rejection.
+
+An initial combined-module check exposed a duplicate PageInput hook with Pockets.
+Core and Quick Store now register handlers with one shared, fingerprinted hook.
+All 64 module combinations at two bases pass installation checks. Preview runtime
+also runs with Pockets and Fitting Room installed; Pockets can independently own
+the input hook if a DIY renderer guard prevents preview installation. Its existing
+Quick Store runtime fixture executes through the shared dispatcher. The ELF test
+loaders now size mapped memory from segment sizes, including the new retained
+resource buffers, and keep import stubs beyond BSS.
+
+Validation: pinned Docker build with networking disabled; all groups from
+`python3 tools/check.py` (Core, Shopping Card, dialogue, crafting, Pockets,
+Fitting Room, Catalog); ZIP integrity and per-file SHA256 manifest verification.
+
+Live Eden validation remains required: open the app without pressing A, move
+focus without opening a preview, press A on the Flimsy axe and a furniture item,
+verify a model replaces the grid while materials remain visible, press/release B
+and navigate again, repeat and close/reopen the app. Check the installed 16:10
+layout, ordinary workbench rendering/crafting afterward, and Pockets Quick Store.
+Local checks do not establish model visibility or a freeze-free live exit.
 
 ## Build and loader
 
@@ -20,7 +67,7 @@ by the local tests below.
   configuration reads. Activation executes the real compiled registry/parser and
   installers; a second activation performs no additional reads or installations.
 - Full suite installs 70 disjoint modeled hook ranges (Core discovery 1,
-  DIY preview 4, Catalog 16, Pockets 16, Faster Dialogue 7, Fitting Room 11,
+  DIY preview 4 + shared page input 1, Catalog 16, Pockets 15, Faster Dialogue 7, Fitting Room 11,
   Amiibo 1, Faster Crafting 2, Shopping Card 11 behavior + 1 allocation support), plus the private
   fitting input vtable entry. No embedded binary replacement arrays, IPS or
   dialogue code-cave helper remain in the collection.

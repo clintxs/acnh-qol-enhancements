@@ -47,7 +47,9 @@ class Machine:
         self.base=base;self.mod=base+0x7000000;self.ram=0x710000000
         self.u=Uc(UC_ARCH_ARM64,UC_MODE_ARM)
         self.u.mem_map(base,(len(raw)+4095)&~4095);self.u.mem_write(base,raw)
-        self.u.mem_map(self.mod,0x90000)
+        image_size=max(va+memsz for typ,flags,off,va,pa,sz,memsz,align in
+                       (struct.unpack_from('<IIQQQQQQ',elf,u64(elf,32)+i*u16(elf,54)) for i in range(u16(elf,56))) if typ==1)
+        self.u.mem_map(self.mod,(image_size+4095)&~4095)
         self.imports={}
         for i in range(u16(elf,56)):
             typ,flags,off,va,pa,sz,memsz,align=struct.unpack_from('<IIQQQQQQ',elf,u64(elf,32)+i*u16(elf,54))
@@ -74,10 +76,11 @@ class Machine:
         for name,off in [('BuildStackMenu',0x307e7e0),('MapStackAction',0x307d490),
                          ('ResolveStackCaption',0x19f59b0),('ResolveStackPostAction',0x19f5b80),
                          ('EnterStorageCommand',0x316dd58),('UpdateStorageCommand',0x316deec),
-                         ('QuickStoreInput',0x3c58d24),
+                         ('SharedPageInput',0x3c58d24),
                          ('QuickStorePlay',0x308aa80),('QuickStoreCommand',0x308c5f8),
                          ('BuildPocketStorageHint',0x3094fb4)]:
             self.write(self.mod+symbol(name,'s_FnPtr'),base+off)
+        self.write(self.mod+symbol('InputHandlers'),self.mod+symbol('15QuickStoreInput'))
         self.adapter(0x3076480,'AdjustSourceCount',0x51000401,0x3076484,0x80000)
         self.adapter(0x30764f0,'AdjustDestinationCount',None,0x30764f4,0x80200,0x19f2bc0)
         self.adapter(0x308c764,'DispatchStackAction',0xd63f0100,0x308c768,0x80400)
@@ -535,7 +538,7 @@ for base in (0x80000000,0x1234500000):
         events.clear();transferred.clear();confirmations.clear();taps.clear();tap_prepares.clear()
     def y_input(buttons=0,blocked=0,consumed=0,row=0):
         h.write(rows+row*0x48,buttons,4);h.write(rows+row*0x48+0x3c,consumed,4)
-        h.put(0,page);h.put(1,snapshot);h.put(2,blocked);h.run(h.callback('QuickStoreInput'))
+        h.put(0,page);h.put(1,snapshot);h.put(2,blocked);h.run(h.callback('SharedPageInput'))
         assert native_inputs[-1]==(page,snapshot,blocked)
     def transition():
         h.write(pocket+0x200,0,1);h.put(19,pocket)

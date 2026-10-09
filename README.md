@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.31 DIY recipe preview startup crash fix** for ACNH **3.0.3 on Eden**. One Core
+**0.3.32 DIY recipe renderer prototype** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -60,31 +60,22 @@ fingerprints only, checked before each feature's first hook.
 
 ## DIY Recipes app previews
 
-0.3.31 corrects the startup crash introduced by craft-button hiding in 0.3.30.
-The button's text-binding records were mistaken for layout roots. Core now
-resolves the caption's typed pane binding (including text groups), walks to the
-button's named root, and clears only its native visibility flag. The updated
-fixture reproduces the previous crash and checks both binding types.
+0.3.32 replaces the workbench-page experiment with a renderer-only prototype.
+The existing DIY app keeps its materials panel, category, selection and scroll
+position. A on a recipe requests a stationary 3D item in the grid area; B releases
+the model and restores the grid. There is no crafting button or crafting action.
+Rotation and left/right recipe navigation are not implemented in this first step.
 
-The native background, model-loading requests, render ordering and corrected
-B animation wait remain. Installed WorkBenchBG/WorkBenchInfo layout replacements
-remain in use; live model rendering, rotation and 16:10 appearance need retesting.
+Core adds a small capture surface to the **loaded MenuRecipe layout in memory**.
+Existing panes, animations and material/texture indices are preserved, including
+installed aspect-ratio edits. No workbench layout or extra RomFS file is used.
+If the capture binding or renderer is unavailable, the ordinary grid stays usable.
+Core and Pockets share one page-input hook, preserving Quick Store behavior.
 
-Both pages are prepared during app setup, before the UI heap shrinks. App
-reopening reuses them; preparation failure leaves the app available.
-
-Core's new integration candidate opens the native workbench detail page when
-you select a recipe in the NookPhone app. It displays the larger rotatable model
-and materials, hides the crafting button, and rejects crafting actions. Native
-left/right navigation uses the app's current filtered/sorted recipe list. B
-returns to the same app category, selection and scroll position.
-
-The implementation lives in `source/program/core/recipe_preview.cpp`; it creates
-phone-owned native info/background pages, with a private info virtual table. Existing workbench pages
-keep their normal behavior. It requires no additional RomFS layout or optional
-module. ARM execution checks cover the integration and native navigation/data
-paths; visible layout, rotation/input and resource loading still require live
-Eden verification. See `research/recipe-preview/NOTES.md` and `VALIDATION.md`.
+Compiled ARM checks cover native button dispatch, model request/release, input
+scope, B consumption and restoration. **Live model rendering and 16:10 appearance
+remain unverified**; this release is a test of that first milestone, not a completed
+preview feature. See `research/recipe-preview/NOTES.md` and `VALIDATION.md`.
 
 The Exlaunch SIMD context declaration now matches its assembly stack layout;
 compile-time assertions and execution of the real adapter cover that correction.
@@ -199,7 +190,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.31
+version = 0.3.32
 base_speed = 2
 boost_speed = 4
 faster_ui = false

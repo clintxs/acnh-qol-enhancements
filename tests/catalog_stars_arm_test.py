@@ -44,7 +44,9 @@ assert len(ids)==527
 class Stars(NativeQuery):
     def __init__(self,base):
         super().__init__(base)
-        self.mod=base+0x7000000; self.u.mem_map(self.mod,0x60000)
+        image_size=max(va+memsz for typ,flags,off,va,pa,sz,memsz,align in
+                       (struct.unpack_from('<IIQQQQQQ',elf,u64(elf,32)+i*u16(elf,54)) for i in range(u16(elf,56))) if typ==1)
+        self.mod=base+0x7000000; self.u.mem_map(self.mod,(image_size+4095)&~4095)
         for i in range(u16(elf,56)):
             typ,flags,off,va,pa,sz,memsz,align=struct.unpack_from('<IIQQQQQQ',elf,u64(elf,32)+i*u16(elf,54))
             if typ==1: self.u.mem_write(self.mod+va,elf[off:off+sz])

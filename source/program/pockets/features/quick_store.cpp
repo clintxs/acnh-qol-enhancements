@@ -1,5 +1,6 @@
 #include "quick_store.hpp"
 #include "program/pockets/game/stack_bindings.hpp"
+#include "program/core/page_input.hpp"
 #include <array>
 #include <cstring>
 
@@ -16,7 +17,7 @@ constexpr std::uintptr_t InputBindingVtable = 0x04a070d8;
 constexpr std::uintptr_t PocketInputCallback = 0x03088724;
 constexpr std::uintptr_t PocketPageVtable = 0x04a06b00;
 constexpr std::uintptr_t ApplicationGlobal = 0x059f83f0;
-constexpr std::uintptr_t Input = 0x03c58d24, Play = 0x0308aa80, Command = 0x0308c5f8;
+constexpr std::uintptr_t Play = 0x0308aa80, Command = 0x0308c5f8;
 constexpr std::uintptr_t BuildMenu = 0x03088df0, OwnHome = 0x02815598;
 constexpr std::uintptr_t Capacity = 0x02572e00, Item = 0x02577ea0;
 constexpr std::uintptr_t ButtonFeedback = 0x03c66950;
@@ -551,15 +552,13 @@ void HandleQuickStoreInput(void *page, void *inputSnapshot, unsigned blocked) {
     }
 }
 
-HOOK_DEFINE_TRAMPOLINE(QuickStoreInput) {
-    static void Callback(void *page, void *inputSnapshot, unsigned blocked) {
-        // The native page's final pass (03c4bb20) blanket-consumes every button.
-        // Check before it, respecting upstream consumption and simultaneous
-        // A/B/X/navigation. Always run the original exactly once afterward.
-        HandleQuickStoreInput(page, inputSnapshot, blocked);
-        Orig(page, inputSnapshot, blocked);
-    }
-};
+bool QuickStoreInput(void *page, void *inputSnapshot, unsigned blocked) {
+    // The native page's final pass (03c4bb20) blanket-consumes every button.
+    // Check before it, respecting upstream consumption and simultaneous
+    // A/B/X/navigation. Always run the original exactly once afterward.
+    HandleQuickStoreInput(page, inputSnapshot, blocked);
+    return false;
+}
 
 HOOK_DEFINE_TRAMPOLINE(QuickStoreCommand) {
     static void Callback(void *owner) {
@@ -630,7 +629,6 @@ bool InstallQuickStore() {
         std::array<std::uint32_t, 5> words;
     };
     constexpr std::array checks{
-        Check{address::Input, {0xf9410800, 0xb4000060, 0x12000042, 0x17ffcad4, 0xd65f03c0}},
         Check{address::Play, {0xa9ba7bfd, 0xa9016ffc, 0x910003fd, 0xa90267fa, 0xa9035ff8}},
         Check{address::Command, {0xa9bd7bfd, 0xf9000bf5, 0xa9024ff4, 0x910003fd, 0x91407008}},
         Check{address::BuildMenu, {0xd10383ff, 0xa9087bfd, 0xa9096ffc, 0xa90a67fa, 0xa90b5ff8}},
@@ -651,7 +649,10 @@ bool InstallQuickStore() {
             return false;
         }
     }
-    QuickStoreInput::InstallAtOffset(address::Input);
+    if (!qol::core::RegisterPageInput(QuickStoreInput)) {
+        Logging.Log("[QoL Enhancements/Pockets] QUICK_STORE_DISABLED shared input unavailable\n");
+        return false;
+    }
     QuickStoreCommand::InstallAtOffset(address::Command);
     QuickStorePlay::InstallAtOffset(address::Play);
     Logging.Log("[QoL Enhancements/Pockets] QUICK_STORE_READY Y uses native Put in Storage\n");

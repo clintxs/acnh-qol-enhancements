@@ -8,9 +8,13 @@ class Module:
     def __init__(self,machine,folder,address):
         self.folder,self.address=folder,address
         e=(ROOT/folder/'project.elf').read_bytes();u=machine.u
-        u.mem_map(address,0x100000)
-        for i in range(u16(e,56)):
-            typ,flags,off,va,pa,sz,ms,al=struct.unpack_from('<IIQQQQQQ',e,u64(e,32)+i*u16(e,54))
+        segments=[struct.unpack_from('<IIQQQQQQ',e,u64(e,32)+i*u16(e,54)) for i in range(u16(e,56))]
+        # Match the ELF memory size, including .bss. Imports live after the
+        # image so larger retained UI-resource buffers cannot overwrite stubs.
+        image_size=(max(va+ms for typ,flags,off,va,pa,sz,ms,al in segments if typ==1)+0xfff)&~0xfff
+        mapped_size=image_size+0x10000
+        u.mem_map(address,mapped_size)
+        for typ,flags,off,va,pa,sz,ms,al in segments:
             if typ==1:u.mem_write(address+va,e[off:off+sz])
         sections=[struct.unpack_from('<IIQQQQIIQQ',e,u64(e,40)+i*u16(e,58)) for i in range(u16(e,60))]
         self.symbols={};tables={}
@@ -33,7 +37,7 @@ class Module:
                     if sec:value=address+val+addend
                     else:
                         if name not in imports:
-                            imports[name]=address+0xf0000+16*len(imports)
+                            imports[name]=address+image_size+16*len(imports)
                             machine.services[imports[name]]=('import',name)
                         value=imports[name]+addend
                 else:raise AssertionError(typ)
@@ -44,7 +48,7 @@ class Module:
         for off,value in ((0,machine.base),(8,0x5800000),(16,machine.base),(24,0x3f07000),
                           (32,machine.base+0x3f07000),(40,0x81e000),
                           (48,machine.base+0x4725000),(56,0x18e1000),
-                          (72,address),(80,0x100000),(88,address),(96,0x100000)):
+                          (72,address),(80,mapped_size),(88,address),(96,mapped_size)):
             machine.write(main+off,value)
         machine.services[self.find('SvcLogger','LogRaw')]=('log',folder)
         machine.services[self.find('nx64','10InitializeEv')]=('initialize',folder)

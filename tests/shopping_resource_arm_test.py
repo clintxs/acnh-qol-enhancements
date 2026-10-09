@@ -96,5 +96,5 @@ for base in (0x7100000000,0x7200000000):
     conflict = Machine(base,{'shopping-card':DEFAULT})
     conflict.write(base+QUERY,0xdeadbeef,4)
     conflict.boot();conflict.activate()
-    assert len(conflict.hooks) == 5 and 'resource support unavailable' in conflict.text
+    assert len(conflict.hooks) == 7 and 'resource support unavailable' in conflict.text
     print(f'PASS: native RSTC lookup plus compiled floor, exact scope, larger overrides/flags, missing table, disabled behavior, removal and conflict, base {base:#x}')
