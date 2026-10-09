@@ -1,6 +1,6 @@
 # Shopping Card — ACNH 3.0.3
 
-Prototype 0.3.8, October 8, 2026. Original mapped main SHA-256:
+Prototype 0.3.9, October 8, 2026. Original mapped main SHA-256:
 `b1ae8e2a0d82f9f38f711c132d1751b221baf9d6411b2be06ebc4bb502ac912d`.
 Build ID: `FF1D1C05670DB6021C85B624A710B963`.
 All implementation uses readable Exlaunch C++ hooks. No new game item or data
@@ -148,8 +148,26 @@ its texture/filter/UV/shader setup. Their nested sizes give a six-unit white
 rim and three-unit dark rim with concentric corners. The backing remains behind
 the oval; four small rectangular decorations remain on the card face. The whole
 Bells badge moves 24 layout units left (about 16 screen pixels at 1280 width),
-keeping the caption centered in its white badge. Rendered edge quality still
-needs live verification.
+keeping the caption centered in its white badge. The user’s 0.3.8 screenshots
+show a collapsed card, so preserving the mask setup was insufficient: these
+window materials/frame settings cannot be treated as arbitrary rounded rectangles.
+
+0.3.9 removes those three windows. Each layer is now a filled silhouette of
+ordinary untextured PIC quads: central band plus 0.75-unit-or-finer corner bands,
+with one-unit vertex-alpha ramps along the outline. The same layer dimensions,
+radii, colors, draw order and transforms remain. The three layers total 255
+small quads, plus four decoration quads, sharing one solid material. This uses
+the same primitive path as the previously working vector icon, with much finer
+curves and alpha feathering. Check native frame pacing as well as edge quality.
+The exported geometry is rasterized by tools/preview_shopping_card.py for local
+inspection. This preview is not a native window/font/animation renderer.
+
+The default resource retains its original 1920×1080 canvas, root and anchors.
+There is no 16:10 height offset to undo for 16:9. A future verified placement
+adjustment for a 16:10 mod should be an optional replacement layout, merged into
+the Shopping Card module after suite updates. Do not assume an additional +60
+root shift is needed: a containing HUD/aspect mod may already adjust placement.
+Both aspect ratios still require live checks before publication.
 
 ## Deferred design
 

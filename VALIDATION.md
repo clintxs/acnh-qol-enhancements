@@ -1,10 +1,10 @@
-# Unified QoL validation — 0.3.8 Shopping Card prototype
+# Unified QoL validation — 0.3.9 Shopping Card prototype
 
 Validated locally on October 8, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
 dialogue fix and subsequently the corrected 0.2.3 NPC diagnostic build work in Eden. The user also confirmed Nook’s Cranny transactions in Shopping Card 0.3.1.
 The user confirmed the corrected savings HUD in 0.3.4 and balance animation
-in 0.3.5. The configuration layering, 0.3.8 layout/display corrections and Able Sisters
+in 0.3.5. The configuration layering, 0.3.9 icon repair and aspect-ratio placement and Able Sisters
 still need a live check. No running game or save files were accessed by the
 local tests below.
 
@@ -114,7 +114,7 @@ compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
   resolves both direct/group text adapters, shows full zero/cap balances,
   restores cash panes outside supported shops, and tolerates absent resources.
   Native text setting, typed parameter lookup and pane lookup are modeled;
-  0.3.8 appearance still needs Eden verification; the user confirmed the
+  0.3.9 appearance still needs Eden verification; the user confirmed the
   balance animation in 0.3.5.
 - 0.3.5 tests execute native 03353B14 number stepping and 03025400 feedback
   through its Up/Down/Finish animation dispatch and positional sound setup,
@@ -131,12 +131,19 @@ compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
   24-byte amount buffer, and uses native rounded-window textures/vector shapes.
   The eight-unit oval rim, centered card transform, dark foreground card
   edge, separate white backing behind the oval and right-hand Bells badge
-  are checked. 0.3.8 also checks three centered native rounded windows for the
-  white backing, dark edge and green face, their frame dimensions/materials,
-  preserved native mask/filter/UV setup, removal of stepped silhouettes, and
-  a 24-layout-unit (about 16-screen-pixel) badge shift left. The badge text
-  material matches the main green fill. No MSBT lookup is attached to the savings text.
-  Structural checks do not establish rendered edge quality.
+  are checked. The 0.3.8 frame-field tests passed but did not establish rendered
+  shape validity: the user reported a flattened/mangled icon. 0.3.9 replaces
+  the three card windows with ordinary untextured PIC quads. Tests decode those
+  exported quads and check full height/width, opaque interiors, round corner
+  cutouts and transparent-to-opaque edge gradients at the contour. The existing
+  24-layout-unit (about 16-screen-pixel) badge shift remains. Original resources
+  and all original pane transforms are preserved, including the 1920x1080
+  canvas and root position; no 16:10-specific height offset is added.
+  A local preview renders the exported PIC geometry and shows a complete card
+  with both outlines. Its oval is illustrative; it does not emulate the native
+  window renderer, fonts, full HUD placement or animation. Native rendering,
+  performance and placement at both 16:9 and 16:10 still require live checks.
+  No MSBT lookup is attached to the savings text.
 
 ## Conditional dialogue
 
@@ -273,8 +280,12 @@ Switch hardware and other emulators/game versions are not validated targets.
    Close/reopen pockets repeatedly without a transaction; verify no false
    sound/amount animation. Check green savings display at zero and large
    balances, thicker white oval outline, centered dark-edged card and its white
-   backing visible only above the oval; check smooth dark/white card corners
+   backing visible only above the oval; check the repaired full-height card
+   and smooth dark/white corners
    and the lower-right white Bells badge with green text shifted left about 16 pixels.
+   Check at 1280x720 (16:9) and 1280x800 (16:10 with the existing aspect mod),
+   including top/right margins, clipping, icon proportions and frame pacing.
+   Keep any later 16:10 placement correction separate from the default package.
    Verify purchases count down with ka-ching, sales count up, rapid changes settle
    correctly, and first entry/resident changes stay silent. Check leaving both
    shops restores cash; pockets still show cash.
