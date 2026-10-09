@@ -433,3 +433,14 @@ Switch hardware and other emulators/game versions are not validated targets.
 - Package as a separate r2 archive, preserving revision 1 and the 0.3.16 suite.
   The packager verifies the green restore option against the original release
   and verifies every ZIP entry after writing. Core remains 0.3.16.
+
+### Color options revision 3 — requested #F9C687 face
+
+- Use the user's selected sRGB #F9C687 (249,198,135), converted to linear
+  RGBA (242,144,62,255), for the gold card face. Only this palette entry changes.
+- Existing gold layout checks pass. Comparison with the r2 optional archive
+  confirms identical layout/resources, texture descriptors and alpha coverage;
+  only the foreground card's RGB pixels differ. The decoded face center
+  converts back to exactly #F9C687. The exported preview was inspected.
+- The r3 archive preserves previous downloads and includes the byte-identical
+  green restore option. Core remains 0.3.16; live appearance remains pending.

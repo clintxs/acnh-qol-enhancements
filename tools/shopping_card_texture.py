@@ -25,13 +25,13 @@ class Palette:
 
 # Linear RGBA, as used by the native materials and RGBA8_UNORM textures.
 # Gold/cream are the original T_Bell_00 and W_BaseL_00LT material colors.
-# Gold's lighter card face matches the bell bag in the supplied screenshot:
-# approximately sRGB (249,191,116), converted to linear (242,133,45).
+# Gold's card face uses the requested sRGB #F9C687 (249,198,135),
+# converted to linear (242,144,62) for the native texture material.
 PALETTES = {
     'green': Palette((40,116,82,255), (255,255,255,255), (12,50,42,255),
                      (84,183,120,255), (255,241,195,255), (240,204,101,255)),
     'gold': Palette((130,97,16,255), (255,241,195,255), (70,48,6,255),
-                    (242,133,45,255), (255,241,195,255), (240,204,101,255)),
+                    (242,144,62,255), (255,241,195,255), (240,204,101,255)),
 }
 
 

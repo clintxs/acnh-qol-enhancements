@@ -461,3 +461,12 @@ card face. Retain the existing counter palette, border, stripe, details and
 chip. This changes only foreground color pixels; serialized geometry, alpha
 coverage and original resources remain identical to revision 1. The optional
 packager accepts --revision 2 to preserve old archives without changing Core.
+
+
+### Gold revision 3: user-selected #F9C687
+
+Use the user's color-picker selection sRGB #F9C687 (249,198,135), converting
+to linear RGBA (242,144,62,255) before writing the RGBA8_UNORM card face.
+This replaces the screenshot estimate from revision 2. Other palette fields,
+geometry, texture settings and the green default are unchanged. Package with
+--revision 3 and retain all previous archives.
