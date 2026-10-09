@@ -1,6 +1,6 @@
 # Shopping Card — ACNH 3.0.3
 
-Prototype 0.3.14, October 8, 2026. Original mapped main SHA-256:
+Prototype 0.3.15, October 8, 2026. Original mapped main SHA-256:
 `b1ae8e2a0d82f9f38f711c132d1751b221baf9d6411b2be06ebc4bb502ac912d`.
 Build ID: `FF1D1C05670DB6021C85B624A710B963`.
 All implementation uses readable Exlaunch C++ hooks. No new game item or data
@@ -411,3 +411,14 @@ The texture test now runs actual SDK RelocationTable::Relocate at SDK+81A90
 its model. NSO sections are independently decompressed/hash-verified. Native
 texture-name traversal also passes. GPU initialization and live visibility
 remain unverified until the next Eden playtest.
+
+
+### Card detail polish (0.3.15)
+
+The user confirmed 0.3.14 works. Move both decorative card-detail lines up six
+layout units (approximately four screen pixels at 1280 width): centers -12/-19
+become -6/-13. This centers the pair vertically within the area below the stripe.
+Change the border's linear RGBA from (10,12,8,255) to (5,18,16,255), a dark
+blue-green that complements the green face. These are foreground texture pixel
+changes only; white backing, pane transforms, dimensions, texture formats,
+resource allocation support and transaction/display hooks remain unchanged.

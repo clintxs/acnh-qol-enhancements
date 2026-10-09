@@ -1,12 +1,13 @@
-# Unified QoL validation — 0.3.14 Shopping Card resource-budget correction
+# Unified QoL validation — 0.3.15 Shopping Card icon polish
 
 Validated locally on October 8, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
 dialogue fix and subsequently the corrected 0.2.3 NPC diagnostic build work in Eden. The user also confirmed Nook’s Cranny transactions in Shopping Card 0.3.1.
 The user confirmed the corrected savings HUD in 0.3.4 and balance animation
-in 0.3.5 and the restored counter in 0.3.10. Configuration layering, the
-0.3.14 resource-budget correction, aspect-ratio placement and Able Sisters still need a live check. No running game or save files were accessed by the
-local tests below.
+in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
+Configuration layering, the 0.3.15 icon polish, aspect-ratio placement and Able
+Sisters still need a live check. No running game or save files were accessed
+by the local tests below.
 
 ## Build and loader
 
@@ -226,6 +227,13 @@ compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
   absent packages install no hook. Core subset/metadata/overlay tests cover
   this exception without enabling transactions or savings presentation.
   Actual live counter visibility and GPU rendering still need an Eden check.
+
+- The user confirmed 0.3.14 works. 0.3.15 changes only foreground texture
+  pixels: detail-line centers move from Y -12/-19 to -6/-13 and the border
+  changes from linear RGBA (10,12,8,255) to (5,18,16,255), a dark blue-green.
+  Original textures, backing, layout structure, allocation support and payment
+  behavior stay unchanged. Existing packaged-pixel checks follow the new centers;
+  the exported texture preview is inspected before packaging.
 
 ## Conditional dialogue
 

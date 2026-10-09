@@ -11,7 +11,7 @@ CANVAS = (128, 96)
 WIDTH, HEIGHT = (size * PIXELS_PER_UNIT for size in CANVAS)
 NAMES = ('QoLShoppingCardBacking^w', 'QoLShoppingCardIcon^w')
 WHITE = (255, 255, 255, 255)
-INK = (10, 12, 8, 255)
+INK = (5, 18, 16, 255)
 FACE = (84, 183, 120, 255)
 CREAM = (255, 241, 195, 255)
 CHIP = (240, 204, 101, 255)
@@ -37,7 +37,7 @@ def color_at(x, y, backing):
             color = CREAM
         elif inside(x + 23, y + 7, 14, 12):
             color = CHIP
-        elif inside(x - 16, y + 12, 22, 3) or inside(x - 9, y + 19, 36, 3):
+        elif inside(x - 16, y + 6, 22, 3) or inside(x - 9, y + 13, 36, 3):
             color = CREAM
     return color
 
