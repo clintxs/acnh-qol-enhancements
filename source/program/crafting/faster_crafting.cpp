@@ -10,19 +10,25 @@ constexpr std::uintptr_t CraftingMashRate = 0x022fc6bc;
 constexpr std::uintptr_t CookingMashRate = 0x02279a14;
 } // namespace address
 constexpr std::uintptr_t ActorStateFrames = 0x1c04;
-constexpr unsigned RampFrames = 30;
+constexpr unsigned RampFrames = 60;
 
 float AutomaticRate(unsigned elapsedFrames) {
-    // Sample 1 + 2 * log(1 + 9*t) / log(10), t = frame/30. A small constant
+    // Sample 1 + 2 * log(1 + 9*t) / log(10), t = frame/60. A small constant
     // table avoids a runtime math-library dependency in the injected module.
     // Starts at 1x, rises quickly, then eases into the native maximum of 3x.
     static constexpr float rates[RampFrames + 1]{
-        1.000000000f, 1.227886705f, 1.408239965f, 1.557507202f, 1.684845362f,
-        1.795880017f, 1.894316063f, 1.982723388f, 2.062957834f, 2.136403448f,
-        2.204119983f, 2.266936911f, 2.325515663f, 2.380392160f, 2.432006687f,
-        2.480725379f, 2.526855987f, 2.570659670f, 2.612359948f, 2.652149605f,
-        2.690196080f, 2.726645720f, 2.761627185f, 2.795254183f, 2.827627705f,
-        2.858837851f, 2.888965344f, 2.918082785f, 2.946255707f, 2.973543469f,
+        1.000000000f, 1.121395681f, 1.227886705f, 1.322736004f, 1.408239965f,
+        1.486076097f, 1.557507202f, 1.623507722f, 1.684845362f, 1.742135725f,
+        1.795880017f, 1.846491748f, 1.894316063f, 1.939644032f, 1.982723388f,
+        2.023766722f, 2.062957834f, 2.100456706f, 2.136403448f, 2.170921459f,
+        2.204119983f, 2.236096193f, 2.266936911f, 2.296720022f, 2.325515663f,
+        2.353387219f, 2.380392160f, 2.406582756f, 2.432006687f, 2.456707564f,
+        2.480725379f, 2.504096896f, 2.526855987f, 2.549033931f, 2.570659670f,
+        2.591760035f, 2.612359948f, 2.632482600f, 2.652149605f, 2.671381143f,
+        2.690196080f, 2.708612084f, 2.726645720f, 2.744312545f, 2.761627185f,
+        2.778603405f, 2.795254183f, 2.811591761f, 2.827627705f, 2.843372951f,
+        2.858837851f, 2.874032215f, 2.888965344f, 2.903646071f, 2.918082785f,
+        2.932283465f, 2.946255707f, 2.960006743f, 2.973543469f, 2.986872461f,
         3.000000000f,
     };
     return rates[elapsedFrames < RampFrames ? elapsedFrames : RampFrames];

@@ -29,7 +29,8 @@ the state's mash counter when actor+17ac is clear:
 The original calculation clamps this counter to a 1..3 floating-point rate.
 In 0.3.20 the callback replaces S0 immediately before its native store with a
 logarithmic 1..3 ramp: `1 + 2*log(1 + 9*t)/log(10)`, where
-`t = min(actor.stateFrames, 30)/30`. A 31-entry float table supplies the curve
+`t = min(actor.stateFrames, 60)/60`. Version 0.3.21 stretches the ramp from
+30 to 60 updates. A 61-entry float table supplies the curve
 without a runtime math library. Native instructions store the rate and pass it
 to animation setter 03750760. No counter, input bits or unrelated animation
 rates are overwritten. While enabled the automatic curve owns the rate,
@@ -40,7 +41,7 @@ and 022b176c) call common state initialization 02275730, whose 022758a8 resets
 that counter to zero. Both registered update wrappers increment it after the
 inner update if the state has not changed: 022a6bec..022a6bf4 and
 022b1830..022b1838. Their suspension/animation-busy returns precede these
-increments. Thus each action restarts at 1x, reaches 3x after 30 updates,
+increments. Thus each action restarts at 1x, reaches 3x after 60 updates,
 and uses its own actor's counter without global ramp state or extra hooks.
 Recipe readiness can still force 1x even while the native counter advances.
 This is game-update timing, not wall-clock timing; FPS mods may change its

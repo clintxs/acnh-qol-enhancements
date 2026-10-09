@@ -11,11 +11,12 @@ from unicorn.arm64_const import *
 
 HOOKS = (0x22fc6bc, 0x2279a14)
 GUARDS = (0x22fc63c, 0x2279998, 0x22758a8, 0x22a6bec, 0x22b1830)
+RAMP_FRAMES = 60
 GP = [globals()[f'UC_ARM64_REG_X{i}'] for i in range(31)]
 Q = [globals()[f'UC_ARM64_REG_Q{i}'] for i in range(32)]
 
 def ramp(frame):
-    return 1. + 2. * math.log1p(9. * min(frame, 30) / 30.) / math.log(10.)
+    return 1. + 2. * math.log1p(9. * min(frame, RAMP_FRAMES) / RAMP_FRAMES) / math.log(10.)
 
 class CraftingMachine(Machine):
     def __init__(self, base, files):
@@ -79,7 +80,7 @@ class CraftingMachine(Machine):
             u.emu_stop()
 
     def run(self, cooking=False, count=0, pressed=False, blocked=False, remote=False,
-            ready=True, suspended=False, busy=False, playing=True, elapsed=30):
+            ready=True, suspended=False, busy=False, playing=True, elapsed=RAMP_FRAMES):
         self.u.mem_write(self.obj, bytes(0x2000))
         self.u.mem_write(self.player, bytes(0x1800))
         self.u.mem_write(self.animation, bytes(0x100))
@@ -157,7 +158,7 @@ def check():
                 m.write(m.obj + 0x1c04, 500, 4)
                 assert m.native_frame_step(0x22758a8, 1) == 0
                 previous, previous_gain = None, None
-                for frame in range(36):
+                for frame in range(RAMP_FRAMES + 6):
                     for pressed, ready in itertools.product((False, True), repeat=2):
                         m.run(cooking=cooking, pressed=pressed, ready=ready, elapsed=frame)
                         cases += 1
@@ -190,6 +191,6 @@ def check():
             m.boot(); m.activate()
             assert 'Faster Crafting] DISABLED' in m.text and 'Amiibo timeout: READY' in m.text
             assert not any(base + site in m.hooks for site in HOOKS)
-    print(f'PASS: {cases} native crafting/cooking cases at two bases; logarithmic 30-frame 1..3x ramp, saturation/restarts, native frame reset/increments, readiness/suspension/local-player gates, native exit resets, manual A when disabled, isolated layered config, unchanged input/counters, SIMD/GP preservation, atomic fingerprints')
+    print(f'PASS: {cases} native crafting/cooking cases at two bases; logarithmic 60-frame 1..3x ramp, saturation/restarts, native frame reset/increments, readiness/suspension/local-player gates, native exit resets, manual A when disabled, isolated layered config, unchanged input/counters, SIMD/GP preservation, atomic fingerprints')
 
 if __name__ == '__main__': check()

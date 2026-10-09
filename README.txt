@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.20 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.21 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -100,7 +100,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.20
+  version = 0.3.21
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.
@@ -123,9 +123,9 @@ are supported. Versions use numeric major.minor.patch.
 FASTER CRAFTING / COOKING
 New in 0.3.18. Install Core plus “QoL Enhancements - Faster Crafting”.
 Enabled by default, independently of Faster Dialogue. The existing native
-mash-A maximum (3x) is reached with a logarithmic ramp from 1x over 30
-state updates, restarting for each crafting/cooking action (new in 0.3.20).
-Speed is about 2.20x after 10 updates, 2.48x after 15, and 3x after 30.
+mash-A maximum (3x) is reached with a logarithmic ramp from 1x over 60
+state updates, restarting for each crafting/cooking action.
+Speed is about 2.20x after 20 updates, 2.48x after 30, and 3x after 60.
 Suspended/busy updates pause the native counter. This counts game updates,
 not wall-clock time. No synthetic A presses, menu confirmations, skips or
 recipe/item changes. Native animation gates and exit resets remain active.
