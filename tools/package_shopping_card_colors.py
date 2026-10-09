@@ -9,6 +9,12 @@ from package import release_version
 
 ROOT = Path(__file__).resolve().parents[1]
 FOLDER = 'QoL Enhancements - Shopping Card'
+COLOR_LABELS = {
+    'green': 'ADB Teal',
+    'gold': 'Bell Gold',
+    'hotel-blue': 'Hotel Blue',
+    'poki-red': 'Poki Red',
+}
 
 
 def main():
@@ -26,7 +32,7 @@ def main():
     files = {'README.md': (ROOT / 'SHOPPING_CARD_COLORS.md').read_bytes()}
     for name in card.PALETTES:
         for path, data in card.build(name).items():
-            files[f'{name.replace("-", " ").title()}/{FOLDER}/{path}'] = data
+            files[f'{COLOR_LABELS[name]}/{FOLDER}/{path}'] = data
             if name == 'green':
                 # The fallback must restore the user's known-working release,
                 # rather than a newly regenerated approximation of that art.
