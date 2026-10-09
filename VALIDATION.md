@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.25 DIY recipe preview input fix
+# Unified QoL validation — 0.3.26 DIY recipe preview construction fix
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -595,3 +595,49 @@ passes against 0.3.25. Preview lifecycle/navigation/material/craft-rejection and
 Core activation checks remain covered. The pinned Docker build and all host/Core
 checks pass, including all 64 optional-package combinations at two load bases.
 Live Eden input/rendering verification of this corrected build remains pending.
+
+
+## 0.3.26 DIY preview construction/heap correction
+
+The user reported a freeze on Flimsy axe with the phone grid still visible.
+Their 0.3.25 Eden log shows a null instruction call, LR=83F1E0F8. With main
+base 80163000, the native frames resolve to 03DBB0F8 (state-name assignment),
+03363648 (first item-icon constructor), and 03492CAC (preview constructor).
+The state-name array pointer is null before layout/resource binding occurs.
+
+Native state initialization at 03DBAC90 uses TLS+0xA8 when a thread record
+exists; it does not fall back to the default heap when that field is null.
+A phone UI manager can inherit its heap (manager+0xB8 is null). The old scope
+then left TLS unchanged and used libc malloc for the page. A null current TLS
+heap reproduces a null array read at 03DBB0EC, immediately before the null call
+in the supplied backtrace. The log does not contain the live heap values, so
+this reproduces a sufficient cause rather than establishing allocation history.
+
+The revised scope chooses the manager heap, then the current TLS heap, then
+the heap manager's default heap. It restores the previous TLS value even when
+that value was null. The page itself uses heap virtual+0x30 with alignment 8,
+matching native page factories. Missing heaps/allocation failure restore phone
+input instead of entering construction. Confirmation queues the operation;
+creation and layout visibility changes run after native input dispatch returns.
+Bounded stage messages identify heap selection and construction/binding/loading
+progress if live verification exposes another dependency.
+
+The regression executes actual native base/common preview construction, all
+270 icon constructors, their state-machine allocations and state-name setting.
+Only allocation backends, string assignment and low-level mutex/memory services
+are modeled in this constructor path. It reproduces the original null-heap
+fault independently, then checks successful construction using manager,
+current and default heaps at both load bases. It verifies state arrays/names,
+page bounds/ownership and TLS restoration. The previous model had stubbed out
+icon construction and therefore missed this dependency.
+
+The pinned devkitA64 Docker build passes with `-Wall -Werror`.
+`python3 tools/check.py core` passes all host checks, all 64 module combinations
+at two load bases, configuration/compatibility tests and the expanded native
+preview regressions. Suite/source/custom ZIP integrity and suite SHA256 manifest
+checks pass. Older release archives are preserved.
+
+Live Eden verification of 0.3.26 remains pending. This fixes the reproduced
+construction dependency; it does not prove rendering, rotation, asynchronous
+resource loading or actual controller/B behavior in Eden. No installed mod,
+running game or save was changed.

@@ -1,7 +1,7 @@
 """Exercise the compiled phone-preview integration against ACNH 3.0.3 code.
 
 UI allocation, async loading, rendering and animations are modeled. Native
-layout-table construction, confirmation translation/dispatch, recipe copy,
+page/icon/state construction, layout-table construction, confirmation dispatch, recipe copy,
 navigation, item lookup and craft-action dispatch execute from main.raw.
 This is not a live Eden rendering/input test.
 """
@@ -35,11 +35,15 @@ class PreviewMachine(Machine):
         self.next_preview = self.ram + 0x300000
         self.next_aux = self.ram + 0x400000
         self.fail_allocation = False
+        self.dispatching_confirmation = False
         self.hidden = True
         self.reloads = []
         self.sounds = []
         self.tls = self.aux(0x200)
         self.heap = self.aux()
+        heap_table = self.aux()
+        self.write(heap_table + 0x30, self.stub('heap_allocate'))
+        self.write(self.heap, heap_table)
         self.previous_heap = self.aux()
         self.write(self.tls + 0xa8, self.previous_heap)
         self.thread_manager = self.aux()
@@ -183,13 +187,18 @@ class PreviewMachine(Machine):
         # row/column dispatch and member-function delegate invocation.
         event = self.aux(0x20)
         self.write(event, 1, 4)
-        self.invoke(self.base + 0x375aa40, layout, event)
+        self.dispatching_confirmation = True
+        try:
+            self.invoke(self.base + 0x375aa40, layout, event)
+        finally:
+            self.dispatching_confirmation = False
 
     def frame(self, page):
         self.hook(0x2e9fbb0, page)
 
     def open(self, page):
         self.confirm(page)
+        self.frame(page)  # Page construction follows the completed input event.
         preview = self.next_preview - 0x1d000
         assert self.read(self.tls + 0xa8) == self.previous_heap
         self.frame(page)
@@ -229,7 +238,12 @@ class PreviewMachine(Machine):
         result = 0
         if action == 'layout_allocate':
             result = self.aux(args[0])
+        elif action == 'heap_allocate':
+            assert args[0] == self.heap and args[2] == 8
+            u.reg_write(UC_ARM64_REG_X0, args[1])
+            return self.service(u, self.base + 0x2478c0, size, user)
         elif action == 'allocate':
+            assert not self.dispatching_confirmation, 'page allocation inside button dispatch'
             assert args[0] == 0x1c210
             assert self.read(self.tls + 0xa8) == self.heap
             if not self.fail_allocation:
@@ -276,6 +290,7 @@ class PreviewMachine(Machine):
             u.reg_write(UC_ARM64_REG_PC, self.base + 0x3494090)
             return
         elif action == 'layout_visibility':
+            assert not self.dispatching_confirmation, 'source layout changed inside button dispatch'
             assert args[1] in (0, 1)
         elif action == 'button_visibility':
             assert args[1:3] == [0, 0]
@@ -299,6 +314,119 @@ class PreviewMachine(Machine):
             raise AssertionError(action)
         u.reg_write(UC_ARM64_REG_X0, result)
         u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
+
+
+class NativeConstructorMachine(PreviewMachine):
+    """Execute common/base page constructors; model engine service boundaries."""
+    def __init__(self, base):
+        super().__init__(base)
+        # Relocate the GOT pointers needed by the real game constructors,
+        # retaining singleton/fixture replacements already set by the harness.
+        for offset in range(0x4ab2000, 0x4ae1000, 8):
+            pointer = struct.unpack_from('<Q', RAW, offset)[0]
+            if 0 < pointer < 0x6000000 and self.read(base + offset) == pointer:
+                self.write(base + offset, base + pointer)
+        for table in (struct.unpack_from('<Q', RAW, 0x4ab2d80)[0] + 16, 0x4a2b208):
+            for offset in range(0, 0x100, 8):
+                pointer = struct.unpack_from('<Q', RAW, table + offset)[0]
+                if 0 < pointer < 0x3f07000:
+                    self.write(base + table + offset, base + pointer)
+        self.native_actions.pop(0x3492b50)
+        self.native_actions.update({0x3b5a110: 'page_name', 0x37e18e4: 'mutex_init',
+                                    0x3f04450: 'memset'})
+        # String assignment is the only service modeled inside the actual
+        # icon/state-machine constructors; state allocation executes natively.
+        string_table = self.aux()
+        self.write(string_table + 0x10, self.stub('page_name'))
+        self.write(string_table + 0x18, self.stub('string_validate'))
+        self.write(base + 0x4ab2020, string_table - 0x10)
+        self.heap_manager = self.aux()
+        self.write(self.heap_manager + 8, self.heap)
+        self.write(base + 0x59e7790, self.thread_manager)
+
+    def service(self, u, pc, size, user):
+        action = getattr(self, 'native_actions', {}).get(pc - self.base)
+        if self.services.get(pc, (None,))[0] == 'preview':
+            action = self.services[pc][1]
+        if action in ('page_name', 'mutex_init', 'string_validate', 'memset'):
+            if action == 'page_name':
+                self.write(self.reg(0) + 8, self.read(self.reg(1) + 8))
+            elif action == 'memset':
+                u.mem_write(self.reg(0), bytes([self.reg(1) & 255]) * self.reg(2))
+            u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
+            return
+        if action == 'heap_allocate':
+            assert self.reg(0) == self.heap and self.reg(2) == 8
+            u.reg_write(UC_ARM64_REG_X0, self.reg(1))
+            return self.service(u, self.base + 0x2478c0, size, user)
+        if action == 'allocate' and self.reg(0) == 0x1c210:
+            self.events.append(('allocate', self.reg(0)))
+            pointer = self.next_preview
+            self.next_preview += 0x1d000
+            u.reg_write(UC_ARM64_REG_X0, pointer)
+            u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
+            return
+        if action == 'allocate' and self.reg(0) != 0x1c210:
+            assert not self.dispatching_confirmation
+            pointer = self.aux(self.reg(0))
+            u.reg_write(UC_ARM64_REG_X0, pointer)
+            u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
+            return
+        super().service(u, pc, size, user)
+
+
+def check_native_constructor(base, heap_source):
+    m = NativeConstructorMachine(base)
+    phone = m.phone()
+    m.write(base + 0x59e7600, m.heap_manager)
+    m.write(base + 0x4ab2698, base + 0x59e7600)
+    if heap_source != 'manager':
+        m.write(m.read(phone + 0x98) + 0xb8, 0)
+    previous = m.heap if heap_source == 'current' else 0
+    m.write(m.tls + 0xa8, previous)
+    layout = m.read(phone + 0x210)
+    preview = m.next_preview
+    guard = bytes([0xa5]) * 32
+    m.u.mem_write(preview + 0x1c210, guard)
+    m.confirm(phone)
+    assert not any(event[0] == 'allocate' for event in m.events)
+    assert m.read(m.read(layout + 0x210) + 0x54, 1) == 0
+    m.frame(phone)
+    assert m.next_preview == preview + 0x1d000
+    assert m.read(preview + 0x48) == phone
+    assert m.read(preview + 0x50) == preview + 0x50
+    assert m.read(preview + 0x58) == preview + 0x50
+    assert m.read(preview + 0x64, 4) == 0x28
+    assert m.read(preview + 0x7c, 4) == 0x38
+    assert m.read(preview + 0x1f8, 1) == 0
+    # Every one of the 270 icons must receive its native state arrays.
+    for index in range(270):
+        state = preview + 0x278 + index * 0x1a8 + 0xf8
+        assert m.read(state + 0x28, 4) == 2
+        assert m.read(state + 0x38, 4) == 2
+        assert m.read(state + 0x30) and m.read(state + 0x40)
+        names = m.read(state + 0x40)
+        assert m.string(m.read(names + 8)) == 'cPlay'
+        assert m.string(m.read(names + 0x18)) == 'cDelete'
+    assert bytes(m.u.mem_read(preview + 0x1c210, 32)) == guard
+    assert m.read(m.tls + 0xa8) == previous
+
+
+def check_native_heap_dependency(base):
+    # Reproduce the crash site independently of the integration: with an
+    # initialized heap manager but null current TLS heap, the native icon
+    # constructor skips allocation and then dereferences the absent names.
+    from unicorn import UcError
+    m = NativeConstructorMachine(base)
+    m.write(base + 0x59e7600, m.heap_manager)
+    m.write(base + 0x4ab2698, base + 0x59e7600)
+    m.write(m.tls + 0xa8, 0)
+    try:
+        m.invoke(base + 0x3363544, m.aux(0x1a8), 0)
+    except UcError:
+        assert m.u.reg_read(UC_ARM64_REG_PC) == base + 0x3dbb0ec
+    else:
+        raise AssertionError('native null-heap crash was not reproduced')
 
 
 def check_flow(base):
@@ -408,7 +536,7 @@ def check_lists(base):
 
 
 def check_failures(base):
-    for case in ('empty', 'invalid_index', 'unavailable_item', 'allocation', 'busy'):
+    for case in ('empty', 'invalid_index', 'unavailable_item', 'allocation', 'no_heap', 'busy'):
         m = PreviewMachine(base)
         phone = m.phone()
         if case == 'empty': m.write(phone + 0x8a350, 0, 4)
@@ -417,8 +545,12 @@ def check_failures(base):
             record = m.read(m.read(phone + 0x8a358) + 16)
             m.write(record + 8, 0xfffe, 2)
         if case == 'allocation': m.fail_allocation = True
+        if case == 'no_heap':
+            m.write(m.read(phone + 0x98) + 0xb8, 0)
+            m.write(m.tls + 0xa8, 0)
         if case == 'busy': m.write(phone + 0x1f0, 5, 4)
         m.confirm(phone)
+        m.frame(phone)
         layout = m.read(phone + 0x210)
         assert m.read(m.read(layout + 0x210) + 0x54, 1) == 0
         assert not any(e[0] == 'construct' for e in m.events)
@@ -433,7 +565,10 @@ def check_failures(base):
 
 if __name__ == '__main__':
     for base in (0x7100000000, 0x7200000000):
+        check_native_heap_dependency(base)
+        for heap_source in ('manager', 'current', 'default'):
+            check_native_constructor(base, heap_source)
         check_flow(base)
         check_lists(base)
         check_failures(base)
-    print('PASS: native 35-row layout construction and confirmation dispatch, Core phone preview lifecycle, borrowed recipe/materials, native navigation/wrap, craft rejection, B return, reuse, teardown and fail-closed fingerprints at two ASLR bases')
+    print('PASS: native null-heap crash reproduction, page/270-icon/state constructors with manager/current/default heaps, native 35-row layout construction and confirmation dispatch, Core phone preview lifecycle, borrowed recipe/materials, native navigation/wrap, craft rejection, B return, reuse, teardown and fail-closed fingerprints at two ASLR bases')

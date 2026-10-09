@@ -36,6 +36,11 @@ All addresses are offsets from the loaded main module.
 | 03769260 | Activate a child registered with its parent |
 | 03768C7C | Remove/clean up an active child |
 | 02AF0D30 | Set layout-root visibility |
+| 03363544 | Item-icon constructor (270 per preview) |
+| 03DBAC90 | Allocate state callback/name arrays from explicit/current heap |
+| 03DBAF40 | State-name assignment; null names fault at 03DBB0EC |
+| 04AB2698 | GOT pointer to heap-manager singleton storage |
+| 04AB3350 | GOT pointer to thread-manager singleton storage |
 
 ## Data and ownership
 
@@ -50,7 +55,17 @@ The implementation borrows the phone's dataset while its input and layout are
 suspended. It does not reconstruct a recipe catalog, sort by recipe ID or move
 the app's selection. A child is allocated on the native UI heap, registered in
 the parent's pending-child list, initialized and activated through the native
-page API. Parent cleanup removes the active child before clearing the session;
+page API. Creation is queued until phone button dispatch completes.
+Version 0.3.26 explicitly selects manager+0xB8, current TLS+0xA8 or the heap
+manager's default heap (+8), and allocates via heap virtual+0x30, alignment 8.
+Native state-machine construction skips allocation if TLS exists but its heap
+is null; it does not inherit the default in that case. The old early return
+for a null manager heap could therefore crash while initializing the first
+icon's state names. The supplied 0.3.25 crash resolves to this null-array site;
+the native regression reproduces it with null TLS and checks the corrected
+scope. Live heap values were unavailable in that log. The prior libc allocation
+also bypassed native heap ownership and is no longer used for this page.
+Parent cleanup removes the active child before clearing the session;
 an already removed child is not cleaned up twice. Native ownership frees page,
 layout, model and dialog allocations. Sessions are separate for each resident.
 
@@ -91,7 +106,9 @@ this feature's hooks. A mismatch disables only the preview feature. Core's
 amiibo fix and optional modules still activate independently.
 
 `tests/recipe_preview_arm_test.py` runs the compiled C++ at two ASLR bases.
-It models UI allocation, asynchronous readiness, rendering and animations,
+It executes base/common page, 270 icon and state-machine constructors with
+manager/current/default heaps, modeling their allocation and string services.
+It models asynchronous readiness, rendering and animations,
 and executes the native recipe copy, list count, next/previous navigation,
 item lookup, command forwarding and craft-action dispatcher. It covers empty
 and invalid selections, allocation failure, repeated confirmation, reuse,

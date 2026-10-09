@@ -20,7 +20,6 @@ constexpr std::uintptr_t PreviewVtable = 0x04a3b778;
 constexpr std::uintptr_t InitializePage = 0x0376890c;
 constexpr std::uintptr_t ActivateChild = 0x03769260;
 constexpr std::uintptr_t RemoveChild = 0x03768c7c;
-constexpr std::uintptr_t Allocate = 0x002478c0;
 constexpr std::uintptr_t GetTls = 0x03f033a0;
 constexpr std::uintptr_t Lock = 0x03f03880;
 constexpr std::uintptr_t Unlock = 0x03f038c0;
@@ -28,6 +27,7 @@ constexpr std::uintptr_t LayoutVisible = 0x02af0d30;
 constexpr std::uintptr_t StringVtable = 0x04ab2020;
 constexpr std::uintptr_t PageParamsVtable = 0x04ac39b0;
 constexpr std::uintptr_t ThreadManager = 0x04ab3350;
+constexpr std::uintptr_t HeapManager = 0x04ab2698;
 constexpr std::uintptr_t Game = 0x04ab2718;
 constexpr std::uintptr_t PreviewName = 0x03f6ecaf; // WorkCraftInfoSeq (page name).
 }
@@ -65,7 +65,7 @@ void *Global(std::uintptr_t offset) { return *Native<void **>(offset); }
 
 // The phone keeps its list alive and unchanged while the preview borrows it.
 // Each resident gets a separate session; no native workbench object is modified.
-enum class Phase { Idle, Loading, Appearing, Selecting, Showing, Closing, Restoring };
+enum class Phase { Idle, Queued, Loading, Appearing, Selecting, Showing, Closing, Restoring };
 struct Session {
     void *phone{};
     void *preview{};
@@ -142,11 +142,13 @@ void ReplaceCallback(void *layout, std::size_t rows, std::uintptr_t original,
     }
 }
 void BindPreview(void *preview) {
+    Logging.Log("[QoL Enhancements/Core] DIY preview: binding layout\n");
     Native<void (*)(void *)>(address::PreviewBind)(preview);
     auto layout = At<void *>(preview, field::PreviewLayout);
     if (layout) ReplaceCallback(layout, 0x468, address::PreviewInput,
                                 reinterpret_cast<std::uintptr_t>(&PreviewInput));
     HideCraftButton(preview);
+    Logging.Log("[QoL Enhancements/Core] DIY preview: layout bound\n");
 }
 void UpdatePreview(void *preview) {
     Native<void (*)(void *)>(address::PreviewFrame)(preview);
@@ -157,25 +159,38 @@ void UpdatePreview(void *preview) {
         At<int>(preview, field::PreviewAction) = -1;
 }
 
-// Native page construction allocates from its UI manager's heap, including
-// nested model/layout resources. Match its TLS heap scope and restore it.
+// Native state-machine constructors use TLS+0xa8 when TLS exists, even when
+// that heap is null. Phone callbacks need an explicit inherited/default heap;
+// otherwise the first icon's state-name allocation is skipped and crashes.
 class UiHeapScope {
     void *tls{};
     void *previous{};
+    void *heap{};
 public:
     explicit UiHeapScope(void *manager) {
-        auto heap = At<void *>(manager, 0xb8);
-        if (!heap) return;
         auto managerSlot = Global(address::ThreadManager);
         auto threadManager = managerSlot ? At<void *>(managerSlot, 0) : nullptr;
         if (!threadManager) return;
         tls = Native<void *(*)(unsigned)>(address::GetTls)(At<unsigned>(threadManager, 0x68));
-        if (tls) {
-            previous = At<void *>(tls, 0xa8);
-            At<void *>(tls, 0xa8) = heap;
+        if (!tls) return;
+        previous = At<void *>(tls, 0xa8);
+        heap = At<void *>(manager, 0xb8);
+        if (!heap) heap = previous;
+        if (!heap) {
+            auto heapSlot = Global(address::HeapManager);
+            auto heapManager = heapSlot ? At<void *>(heapSlot, 0) : nullptr;
+            if (heapManager) heap = At<void *>(heapManager, 8);
         }
+        if (heap) At<void *>(tls, 0xa8) = heap;
+        Logging.Log("[QoL Enhancements/Core] DIY preview: heap=%p previous=%p manager_heap=%p\n",
+                    heap, previous, At<void *>(manager, 0xb8));
     }
     ~UiHeapScope() { if (tls) At<void *>(tls, 0xa8) = previous; }
+    void *Allocate(std::size_t size) const {
+        // Match the native page factory's heap and alignment. The libc malloc
+        // fallback is for startup before the game's heap manager exists.
+        return heap ? Virtual<void *>(heap, 0x30, size, 8) : nullptr;
+    }
 };
 struct StringRef { void *vtable; const char *text; };
 struct PageParams {
@@ -193,7 +208,8 @@ bool CreatePreview(Session &session) {
     auto manager = At<void *>(session.phone, field::Manager);
     if (!manager) return false;
     UiHeapScope heap(manager);
-    auto preview = Native<void *(*)(std::size_t)>(address::Allocate)(PreviewSize);
+    Logging.Log("[QoL Enhancements/Core] DIY preview: allocating page\n");
+    auto preview = heap.Allocate(PreviewSize);
     if (!preview) return false;
     const StringRef name{static_cast<std::byte *>(Global(address::StringVtable)) + 0x10,
                          Native<const char *>(address::PreviewName)};
@@ -202,6 +218,7 @@ bool CreatePreview(Session &session) {
                             At<unsigned>(At<void *>(game, 0x418), 0xc), 1,
                             At<unsigned char>(session.phone, field::Resident), 0, -1};
     Native<void (*)(void *, const StringRef *, const PageParams *)>(address::PreviewConstructor)(preview, &name, &params);
+    Logging.Log("[QoL Enhancements/Core] DIY preview: page constructed\n");
     At<void *>(preview, 0) = PreviewTable.data() + 2;
     At<void *>(preview, field::PreviewLayout) = nullptr;
     At<void *>(preview, field::PreviewRecipes) = nullptr;
@@ -225,10 +242,14 @@ bool CreatePreview(Session &session) {
     Native<void (*)(void *)>(address::Unlock)(mutex);
     At<void *>(preview, field::Manager) = manager;
     At<unsigned>(preview, field::Lifecycle) = 1;
+    Logging.Log("[QoL Enhancements/Core] DIY preview: initializing page\n");
     Native<void (*)(void *, const PageParams *)>(address::InitializePage)(preview, &params);
     At<unsigned>(preview, field::Lifecycle) = 2;
+    Logging.Log("[QoL Enhancements/Core] DIY preview: creating child pages\n");
     Virtual(preview, 0x48);
+    Logging.Log("[QoL Enhancements/Core] DIY preview: activating page\n");
     Native<void (*)(void *, void *)>(address::ActivateChild)(phone, preview);
+    Logging.Log("[QoL Enhancements/Core] DIY preview: page active\n");
     return true;
 }
 
@@ -241,13 +262,11 @@ void ConfirmRecipe(void *phone, void *) {
     if (!count || selected >= count || !recipes || !recipes[selected] ||
         At<short>(recipes[selected], 8) == -2) return;
     session->closeRequested = false;
-    session->phase = Phase::Loading;
-    SuspendPhone(*session, true);
-    if (!session->preview && !CreatePreview(*session)) {
-        session->phase = Phase::Idle;
-        SuspendPhone(*session, false);
-        Logging.Log("[QoL Enhancements/Core] DIY preview: could not create native page\n");
-    }
+    // This delegate runs inside native button-event dispatch. Finish dispatch
+    // before constructing pages or changing the source layout's visibility.
+    session->phase = Phase::Queued;
+    Logging.Log("[QoL Enhancements/Core] DIY preview: opening queued; resident=%u recipe_index=%u\n",
+                At<unsigned char>(phone, field::Resident), selected);
 }
 
 HOOK_DEFINE_TRAMPOLINE(BindPhoneRecipes) {
@@ -267,7 +286,18 @@ HOOK_DEFINE_TRAMPOLINE(UpdatePhoneRecipes) {
     static void Callback(void *phone) {
         Orig(phone);
         auto session = PhoneSession(phone);
-        if (!session || session->phase == Phase::Idle || !session->preview) return;
+        if (!session || session->phase == Phase::Idle) return;
+        if (session->phase == Phase::Queued) {
+            session->phase = Phase::Loading;
+            SuspendPhone(*session, true);
+            if (!session->preview && !CreatePreview(*session)) {
+                session->phase = Phase::Idle;
+                SuspendPhone(*session, false);
+                Logging.Log("[QoL Enhancements/Core] DIY preview: could not create native page\n");
+            }
+            return;
+        }
+        if (!session->preview) return;
         auto preview = session->preview;
         auto layout = At<void *>(preview, field::PreviewLayout);
         switch (session->phase) {
@@ -276,16 +306,23 @@ HOOK_DEFINE_TRAMPOLINE(UpdatePhoneRecipes) {
                 At<void *>(preview, field::PreviewRecipes) = static_cast<std::byte *>(phone) + field::PhoneRecipes;
                 Virtual(preview, 0xa8);
                 session->phase = Phase::Appearing;
+                Logging.Log("[QoL Enhancements/Core] DIY preview: appear requested\n");
             }
             break;
         case Phase::Appearing:
             if (Settled(preview, 3)) {
                 At<unsigned>(preview, field::PreviewSelection) = At<unsigned>(phone, field::PhoneSelection);
-                if (Request(preview, 4)) session->phase = Phase::Selecting;
+                if (Request(preview, 4)) {
+                    session->phase = Phase::Selecting;
+                    Logging.Log("[QoL Enhancements/Core] DIY preview: recipe selection requested\n");
+                }
             }
             break;
         case Phase::Selecting:
-            if (Settled(preview, 3)) session->phase = Phase::Showing;
+            if (Settled(preview, 3)) {
+                session->phase = Phase::Showing;
+                Logging.Log("[QoL Enhancements/Core] DIY preview: showing\n");
+            }
             break;
         case Phase::Showing:
             if (session->closeRequested && Settled(preview, 3) && Request(preview, 5))
@@ -305,7 +342,7 @@ HOOK_DEFINE_TRAMPOLINE(UpdatePhoneRecipes) {
                     Native<void (*)(void *, unsigned)>(address::GridRefresh)(grid, 2);
             }
             break;
-        case Phase::Idle: break;
+        case Phase::Idle: case Phase::Queued: break;
         }
     }
 };
