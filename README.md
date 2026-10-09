@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.35 DIY app direct A-input prototype** for ACNH **3.0.3 on Eden**. One Core
+**0.3.36 DIY app renderer reservation fix** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -60,11 +60,12 @@ fingerprints only, checked before each feature's first hook.
 
 ## DIY Recipes app previews
 
-0.3.35 reads A directly from the app's controller snapshot. The previous build
-bound its callback but still did nothing in the live test. Recipe focus is
-observed while preserving native selection/material updates; focus alone cannot
-open a preview. Opening requires a fresh, unconsumed A press on a focused recipe.
-The loading-crash and shortcut-routing corrections are retained.
+0.3.36 fixes the renderer reservation that prevented A from opening a preview.
+The DIY app already owns mode 26/state 3; Core temporarily borrows it for an item
+model and restores the phone's reservation on B. The app's outer update keeps
+the temporary item profile while the preview is active. Recipe focus and fresh
+A input preserve native selection/material updates. Other occupied renderer
+modes still decline the request and leave the grid usable.
 
 This approach uses the item renderer directly within the existing DIY app.
 The existing DIY app keeps its materials panel, category, selection and scroll
@@ -196,7 +197,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.35
+version = 0.3.36
 base_speed = 2
 boost_speed = 4
 faster_ui = false

@@ -10,7 +10,7 @@ from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
 SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'shopping-card', 'faster-crafting')
 COUNTS = (16, 15, 7, 11, 11, 2)  # Pockets shares Core's page-input hook.
-DEFAULT = b'enabled=true\nversion=0.3.35\n'
+DEFAULT = b'enabled=true\nversion=0.3.36\n'
 
 def expected_hook_count(machine, enabled):
     # The existing verbose-dialogue build adds a Catalog message trace hook.
@@ -32,6 +32,7 @@ class Machine:
         self.u.mem_write(base, RAW)
         self.ram = base + 0x10000000
         self.u.mem_map(self.ram, 0x200000)
+        self.write(base + 0x49e8378, base + 0x2ea0754)
         self.write(base + 0x4a06740, base + 0x30742d0)
         self.write(base + 0x4a10398, base + 0x3c58d24)
         self.module = Module(self, 'qol-enhancements', base + 0x7000000)

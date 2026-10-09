@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.35 DIY snapshot A-input prototype
+# Unified QoL validation — 0.3.36 DIY renderer reservation fix
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,40 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.36 DIY renderer reservation
+
+The synced 0.3.35 log confirms physical A reaches the preview with the correct
+recipe, state 3, no pending transition and no input blocking. Every request is
+then refused by the idle-only renderer guard. Native MenuRecipe virtual +200
+(slot 049E8378, function 02EA0754) returns mode 26. The base app update
+02B0C720 invokes PhoneFrame and then reserves that mode in controller state 3.
+Thus an active app is not an idle renderer, and merely allowing mode 26 would
+let the outer update reclaim it immediately after preview activation.
+
+Core accepts only an empty mode 26/state 3 phone reservation or an idle
+mode -1/state 0 controller, with no handle/background/visibility page. It saves
+the original reservation, changes to item mode 2/state 1 through native
+ChangeState, and reports mode 2 through the phone's writable virtual-table slot
+while that session owns the renderer. The original tiny getter stays untouched.
+B and phone deactivation release the item through native ReleaseModel and
+restore mode 26/state 3 when borrowed. Parameters and panes are restored; other
+renderer owners are refused with their actual mode/state/handle in the log.
+The native app subsequently releases its own reservation during normal closure.
+
+The ARM fixture now executes the native outer app update. Reverting only the
+mode getter reproduces immediate renderer reclamation. Separate lifecycle cases
+execute native ChangeState, state 0/1/3 callbacks and ReleaseModel, with delegate
+glue, scene allocation and mutex/GPU operations modeled. Camera reference counts
+remain balanced across B, reopening and deactivation at both load addresses.
+The mode slot and relevant instructions are guarded before installation; a
+slot conflict leaves all DIY hooks uninstalled. Existing input/layout/ABI checks
+and all optional-module combinations pass. Build and ZIP integrity, manifest
+hashes and source parity are checked for this package.
+
+Live model rendering, placement and B behavior still require an Eden test.
+Rotation and left/right recipe navigation remain deferred until this stationary
+preview milestone works in-game.
 
 ## 0.3.35 DIY direct A-input activation
 

@@ -1,8 +1,9 @@
 """Renderer-only spike: execute compiled hooks and native button dispatch.
 
 The real 3.0.3 delegate translation/dispatch and model request/release bodies
-run in ARM64. GPU rendering, scene allocation, camera state changes and layout
-construction are explicitly modeled; these checks cannot establish live visuals.
+run in ARM64. GPU rendering, scene allocation and layout construction are
+modeled; native camera state callbacks run in the lifecycle fixture. These
+checks cannot establish live visuals.
 """
 from pathlib import Path
 from compression import zstd
@@ -19,7 +20,7 @@ def layout_asset(name):
     return next(v for k, v in r.items() if k.endswith('/' + name + '.bflyt'))
 MENU = layout_asset('MenuRecipe')
 HOOKS = (0x267d64, 0x2e9cde0, 0x2e9fbb0, 0x2e9d538, 0x3c58d24)
-GUARDS = HOOKS + (0x32bd990, 0x32ba5e4, 0x3dbb160, 0x27d1d0, 0x3a17390, 0x3a174f0, 0x3c66298, 0x2e93798, 0x2e96a80, 0x3c4b880)
+GUARDS = HOOKS + (0x32bd990, 0x32ba5e4, 0x3dbb160, 0x27d1d0, 0x3a17390, 0x3a174f0, 0x3c66298, 0x2e93798, 0x2e96a80, 0x3c4b880, 0x2ea0754, 0x2b0c810)
 
 class PreviewMachine(Machine):
     def __init__(self, base):
@@ -48,7 +49,12 @@ class PreviewMachine(Machine):
         self.write(self.context + 0x30, self.controller)
         self.write(self.context + 0x28, self.parameters)
         slot = self.alloc(); self.write(slot, self.context); self.write(base + 0x4ab2230, slot)
-        self.write(self.controller + 0x50, 0xffffffff, 4)
+        # Native DIY app reserves mode 26/state 3 even without a model.
+        self.write(self.controller + 0x50, 26, 4)
+        self.write(self.controller + 0x10, 3, 4)
+        self.write(base + 0x5639190, self.context)
+        callback=self.alloc(); self.write(callback+0x10,self.stub('zero'))
+        self.write(self.controller+0x1190,callback)
         self.u.mem_write(self.parameters + 0x2c, bytes(range(40)))
         self.write(self.parameters + 0x12, 1, 1)
         for off in (0, 8, 16):
@@ -120,6 +126,10 @@ class PreviewMachine(Machine):
         u.reg_write(UC_ARM64_REG_X0, result); u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
     def phone(self, resident=0, surface=True):
         phone = self.alloc(0xf6380); page = self.alloc(0x600); grid = self.alloc(0x600)
+        methods=self.alloc(0x208); self.write(phone,methods)
+        self.write(methods+0x1a0,self.hooks[self.base+0x2e9fbb0])
+        self.write(methods+0x200,self.read(self.base+0x49e8378))
+        self.write(methods+0xe0,self.stub('accept'))
         self.write(phone + 0x1f8, resident, 1); self.write(phone + 0x210, page)
         self.write(phone + 0x1b0, 3, 4); self.write(phone + 0x1f0, 0xffffffffffffffff)
         self.write(page, self.dispatch); self.write(page + 0x580, grid)
@@ -173,7 +183,7 @@ class PreviewMachine(Machine):
     def button(self, page, row, kind):
         event = self.alloc(0x20); self.write(event, kind, 4); self.write(event + 0x18, row)
         self.invoke(self.base + 0x375aa40, page, event)
-    def frame(self, phone): self.hook(0x2e9fbb0, phone)
+    def frame(self, phone): self.invoke(self.base+0x2b0c720,phone)
     def input(self, page, held, resident=0, blocked=0, consumed=0):
         snapshot = self.alloc(); rows = self.alloc(8 * 0x48)
         self.write(snapshot + 8, 8, 4); self.write(snapshot + 0x10, rows)
@@ -260,6 +270,8 @@ for base in (0x7100000000, 0x7200000000):
     assert not m.model_events  # Work is queued, not run from the input stack.
     before=list(m.events); m.input(page,1); assert m.events==before
     m.frame(phone); m.frame(phone)
+    assert m.read(m.controller+0x50,4)==2 and m.read(m.controller+0x10,4)==1
+    assert m.invoke(m.read(m.read(phone)+0x200),phone)==2
     request=next(e[1] for e in m.events if e[0]=='spawn')
     assert struct.unpack('<IIIHHQ',request)==(0,0x44550088,0x00112233,0xfffe,0,0)
     assert m.read(panes['L_BtnList_00']+0x58,1)==0xa2
@@ -268,6 +280,8 @@ for base in (0x7100000000, 0x7200000000):
     before=list(m.events); m.input(page,2); assert m.events==before
     assert m.input(page,0x20)==0x20; m.frame(phone)
     assert ('release',2) in m.events
+    assert m.read(m.controller+0x50,4)==26 and m.read(m.controller+0x10,4)==3
+    assert m.invoke(m.read(m.read(phone)+0x200),phone)==26
     assert m.read(panes['L_BtnList_00']+0x58,1)==0xa3
     assert m.read(panes['N_QolPreview_00']+0x58,1)==0xa2
     assert bytes(m.u.mem_read(m.parameters+0x2c,40))==snapshot and m.read(m.parameters+0x12,1)==1
@@ -308,7 +322,7 @@ for base in (0x7100000000, 0x7200000000):
     assert m.input(routed_page,0x20,resident=4)==0x20; m.frame(routed)
     assert m.read(m.controller+0x6c,4)==0
     m.input(routed_page,0,resident=4)
-    print('PASS: snapshot A without press dispatch; native focus mapping/leave, held-A entry, blocked/consumed A, native shortcut routing and B return')
+    print('PASS: native base frame preserves temporary item mode and restores phone mode 26/state 3; snapshot A without press dispatch; native focus mapping/leave, held-A entry, blocked/consumed A, native shortcut routing and B return')
     bad_phone,bad_page,bad_row,bad_panes=m.phone(4)
     holder=m.read(bad_page+0x3f8); instance=m.read(holder)
     accessor=m.read(instance+0x58); native=m.read(accessor+8); original_root=m.read(native+0x18)
@@ -329,10 +343,25 @@ for base in (0x7100000000, 0x7200000000):
     phone3,page3,row3,panes3=m.phone(2)
     m.write(m.controller+0x50,7,4); before=m.model_events
     m.confirm(page3); m.frame(phone3); assert m.model_events==before
-    m.write(m.controller+0x50,0xffffffff,4); m.fail_spawn=True
+    m.write(m.controller+0x50,26,4); m.write(m.controller+0x10,3,4)
+    for occupied in (0x6c,0x58,0x60):
+        m.write(m.controller+occupied,1,4 if occupied==0x6c else 8)
+        m.confirm(page3); m.frame(phone3); assert m.model_events==before
+        m.write(m.controller+occupied,0,4 if occupied==0x6c else 8)
+    m.fail_spawn=True
     m.confirm(page3); m.frame(phone3); m.frame(phone3)
     assert m.read(panes3['L_BtnList_00']+0x58,1)==0xa3
     assert m.read(panes3['N_QolPreview_00']+0x58,1)==0xa2
+    assert m.read(m.controller+0x50,4)==26 and m.read(m.controller+0x10,4)==3
+    # The genuinely idle controller path remains supported. Check restoration
+    # before the outer app frame legitimately acquires its usual mode again.
+    m.input(page3,0); m.fail_spawn=False
+    m.write(m.controller+0x50,0xffffffff,4); m.write(m.controller+0x10,0,4)
+    m.confirm(page3); m.frame(phone3); m.frame(phone3)
+    assert 'renderer acquired; previous_mode=-1 previous_state=0' in m.text
+    m.input(page3,0x20); m.hook(0x2e9fbb0,phone3)
+    assert m.read(m.controller+0x50,4)==0xffffffff and m.read(m.controller+0x10,4)==0
+    m.frame(phone3); assert m.read(m.controller+0x50,4)==26
     # Execute native Pane lookup against a real-shaped intrusive pane tree.
     root=m.alloc(); child=m.alloc(); table=m.alloc(); text=m.alloc()
     m.u.mem_write(root+0xb0,b'RootPane\0'); m.u.mem_write(child+0xb0,b'N_QolPreview_00\0')
@@ -372,6 +401,51 @@ for base in (0x7100000000, 0x7200000000):
     assert m.read(m.controller+0x8c)==0xfffe and m.read(m.controller+0x10,4)==0
     print(f'PASS: compiled resource patch preserves native/modified layout; focus dispatch alone cannot preview; snapshot input/B consumption, direct model ABI, parameter restoration, repeated open, deactivation and unavailable renderer, ASLR {base:#x}')
 
+# Exercise native state transitions and camera reference counts, not only
+# modeled state-field writes. Delegate glue below supplies the fixture owner;
+# native state callbacks, ChangeState and model release execute unchanged.
+for base in (0x7100000000, 0x7200000000):
+    m=PreviewMachine(base)
+    del m.services[base+0x3dbb160]; del m.services[base+0x32ba5e4]
+    entries=m.alloc(4*0x40); methods=m.alloc()
+    enter=m.alloc(); leave=m.alloc()
+    m.u.mem_write(enter,struct.pack('<III',0xf9400810,0xf9400400,0xd61f0200))
+    m.u.mem_write(leave,struct.pack('<III',0xf9401010,0xf9400400,0xd61f0200))
+    m.write(methods,enter); m.write(methods+0x10,leave)
+    noop=m.stub('noop')
+    for state,begin,end in ((0,base+0x32b8218,noop),(1,base+0x32b8270,base+0x32b85d0),
+                            (2,noop,noop),(3,base+0x32b8924,base+0x32b89d8)):
+        row=entries+state*0x40
+        for off,value in ((0,methods),(8,m.controller),(0x10,begin),(0x20,end)): m.write(row+off,value)
+    m.write(m.controller+0x30,4,4); m.write(m.controller+0x38,entries)
+    host_slot=m.alloc(); host=m.alloc(0x400); scene=m.alloc()
+    m.write(host_slot,host); m.write(host+0x330,scene); m.write(scene+8,4,4)
+    m.write(base+0x4ab2720,host_slot); m.write(base+0x59ed670,host)
+    camera=m.alloc(); counters=m.alloc()
+    m.write(camera+0x68,counters); m.write(counters+0x3c,1,4) # Phone state 3 already entered.
+    m.write(base+0x5131900,camera)
+    for native in (0x3f03880,0x3f038c0): m.services[base+native]=('preview','noop')
+    entity_slot=m.alloc(); m.write(base+0x4ab27c0,entity_slot)
+    default_item=m.alloc(); m.write(default_item,0xfffe); m.write(base+0x4ab37e0,default_item)
+    phone,page,row,panes=m.phone()
+    assert m.invoke(m.read(base+0x49e8378),m.alloc(0x200))==26 # Unbound phone is native.
+    for deactivate in (False,False,True):
+        m.confirm(page); m.frame(phone); m.frame(phone)
+        assert m.read(m.controller+0x50,4)==2 and m.read(m.controller+0x10,4)==1
+        assert m.read(m.controller+0x69,1)==1 and m.read(counters+0x3c,4)==1
+        if deactivate: m.hook(0x2e9d538,phone)
+        else: m.input(page,0x20); m.frame(phone); m.input(page,0)
+        assert m.read(m.controller+0x50,4)==26 and m.read(m.controller+0x10,4)==3
+        assert m.read(m.controller+0x6c,4)==0 and m.read(m.controller+0x69,1)==0
+        assert m.read(counters+0x3c,4)==1
+    # Original mode getter demonstrably takes the renderer back after the
+    # preview frame. This is the native outer-frame behavior old tests missed.
+    m.confirm(page); m.frame(phone)
+    m.write(m.read(phone)+0x200,base+0x2ea0754)
+    m.frame(phone)
+    assert m.read(m.controller+0x50,4)==26 and m.read(m.controller+0x10,4)==3
+    print(f'PASS: native phone/preview camera counts balance across B/reopen/deactivation; original mode getter reproduces reclamation, ASLR {base:#x}')
+
 for guard in GUARDS:
     m=Machine(0x7100000000,{})
     m.write(m.base+guard,0xdeadbeef,4); m.boot(); m.activate()
@@ -383,3 +457,10 @@ m.write(m.base+0x32bd990,0xdeadbeef,4); m.boot(); m.activate()
 assert m.base+0x3c58d24 in m.hooks and m.base+0x2e9cde0 not in m.hooks
 assert 'QUICK_STORE_READY' in m.text and 'DIY preview: DISABLED' in m.text
 print('PASS: Pockets owns shared page input when the DIY integration declines installation')
+
+# A changed mode slot must decline atomically before any DIY hook is installed.
+m=Machine(0x7100000000,{})
+m.write(m.base+0x49e8378,m.base+0x2ea075c); m.boot(); m.activate()
+assert all(m.base+a not in m.hooks for a in HOOKS)
+assert 'renderer mode slot mismatch' in m.text
+print('PASS: renderer mode vtable conflict leaves the DIY integration disabled')

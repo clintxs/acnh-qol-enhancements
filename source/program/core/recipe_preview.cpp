@@ -12,6 +12,7 @@ namespace address {
 constexpr std::uintptr_t BuildLayout = 0x00267d64, FindPane = 0x0027d1d0;
 constexpr std::uintptr_t PhoneBind = 0x02e9cde0, PhoneFrame = 0x02e9fbb0;
 constexpr std::uintptr_t PhoneDeactivate = 0x02e9d538;
+constexpr std::uintptr_t PhoneRendererModeSlot = 0x049e8378, PhoneRendererMode = 0x02ea0754;
 constexpr std::uintptr_t RecipeFocus = 0x02e96a80, RecipeLeave = 0x02e99d90;
 constexpr std::uintptr_t PageInput = 0x03c58d24, UiContext = 0x04ab2230;
 constexpr std::uintptr_t Application = 0x059f83f0;
@@ -31,8 +32,10 @@ constexpr std::size_t PageInputContext = 0x210, InputDisabled = 0x54, InputBlock
 constexpr std::size_t ApplicationMasks = 0x418, GlobalBlockMask = 0x10;
 constexpr std::size_t Controller = 0x30, Parameters = 0x28;
 constexpr std::size_t ModelMode = 0x50, ModelHandle = 0x6c;
+constexpr std::size_t ModelState = 0x10, BackgroundPage = 0x58, VisibilityPage = 0x60;
 }
 constexpr unsigned WorkbenchModelMode = 2, ConfirmMask = 0x10, BackMask = 0x20, PhoneShortcutKind = 5;
+constexpr int PhoneModelMode = 26, PhoneModelState = 3;
 std::uintptr_t Main{};
 template<class T> T &At(void *object, std::size_t offset = 0) {
     return *reinterpret_cast<T *>(static_cast<std::byte *>(object) + offset);
@@ -126,6 +129,7 @@ struct Session {
     std::array<std::byte, 0x28> savedParameters{};
     std::uint64_t item{};
     int inputRow{-1};
+    int savedModelMode{-1};
     bool backHeld{}, confirmHeld{true}, ownsRenderer{};
 };
 std::array<Session, 8> Sessions{};
@@ -134,6 +138,15 @@ Session *ForPhone(void *phone) {
     const auto resident = At<unsigned char>(phone, field::Resident);
     if (resident >= Sessions.size()) return nullptr;
     auto &s = Sessions[resident]; return s.phone == phone ? &s : nullptr;
+}
+int PhoneRendererMode(void *phone) {
+    // The native base frame (02b0c720) asks virtual +200 AFTER PhoneFrame.
+    // It normally reserves mode 26/state 3, even with no model. While the
+    // preview owns mode 2, report that profile so the base cannot reclaim it.
+    // Replace only MenuRecipe's writable vtable slot, not the shared tiny
+    // constant-return function (a trampoline would overlap its next function).
+    auto s = ForPhone(phone);
+    return s && s->ownsRenderer ? WorkbenchModelMode : PhoneModelMode;
 }
 bool PhoneReady(void *phone) {
     return At<int>(phone, field::State) == 3 && At<int>(phone, field::Requests) == -1 &&
@@ -185,13 +198,21 @@ void Close(Session &s) {
         // Release only the handle/mode acquired by this phone. The native
         // state-1 exit balances camera/layers before state 0 resets ownership.
         auto context = UiContext();
-        if (context && At<void *>(context, field::Controller) == s.controller &&
-            At<unsigned>(s.controller, field::ModelMode) == WorkbenchModelMode)
+        const bool stillOwned = context && At<void *>(context, field::Controller) == s.controller &&
+            At<unsigned>(s.controller, field::ModelMode) == WorkbenchModelMode;
+        if (stillOwned)
             Native<void (*)(void *, unsigned)>(address::ReleaseModel)(s.controller, WorkbenchModelMode);
-        if (context && At<void *>(context, field::Parameters) == s.parameters) {
+        if (stillOwned && At<void *>(context, field::Parameters) == s.parameters) {
             std::memcpy(static_cast<std::byte *>(s.parameters) + 0x2c, s.savedParameters.data(), s.savedParameters.size());
             At<unsigned char>(s.parameters, 0x12) = s.savedHidden;
             At<unsigned>(s.parameters, 0x2140) = 1;
+        }
+        if (stillOwned && s.savedModelMode == PhoneModelMode) {
+            At<int>(s.controller, field::ModelMode) = PhoneModelMode;
+            // State 1 exit and state 3 entry balance the camera reference
+            // counts. Restore the phone reservation before its next frame.
+            Native<void (*)(void *, unsigned)>(address::ChangeState)(
+                static_cast<std::byte *>(s.controller) + 8, PhoneModelState);
         }
     }
     if (s.ownsRenderer && s.gridPane) At<unsigned char>(s.gridPane, field::PaneFlags) = s.gridFlags;
@@ -308,9 +329,23 @@ bool Begin(Session &s) {
     auto context = UiContext();
     auto controller = context ? At<void *>(context, field::Controller) : nullptr;
     auto parameters = context ? At<void *>(context, field::Parameters) : nullptr;
-    if (!controller || !parameters || At<int>(controller, field::ModelMode) != -1 ||
-        At<unsigned>(controller, field::ModelHandle) || At<int>(controller, 0x10) != 0) return false;
+    if (!controller || !parameters) {
+        Logging.Log("[QoL Enhancements/Core] DIY preview: missing renderer; context=%p controller=%p parameters=%p\n",
+                    context, controller, parameters);
+        return false;
+    }
+    const auto mode = At<int>(controller, field::ModelMode);
+    const auto state = At<int>(controller, field::ModelState);
+    const bool available = (mode == -1 && state == 0) || (mode == PhoneModelMode && state == PhoneModelState);
+    if (!available || At<unsigned>(controller, field::ModelHandle) ||
+        At<void *>(controller, field::BackgroundPage) || At<void *>(controller, field::VisibilityPage)) {
+        Logging.Log("[QoL Enhancements/Core] DIY preview: renderer refused; mode=%d state=%d handle=%u background=%p visibility=%p\n",
+                    mode, state, At<unsigned>(controller, field::ModelHandle),
+                    At<void *>(controller, field::BackgroundPage), At<void *>(controller, field::VisibilityPage));
+        return false;
+    }
     s.controller = controller; s.parameters = parameters;
+    s.savedModelMode = mode;
     s.savedHidden = At<unsigned char>(parameters, 0x12);
     std::memcpy(s.savedParameters.data(), static_cast<std::byte *>(parameters) + 0x2c, s.savedParameters.size());
     At<unsigned char>(parameters, 0x12) = 0;
@@ -321,11 +356,12 @@ bool Begin(Session &s) {
     At<unsigned>(parameters, 0x48) = 1;
     At<unsigned>(parameters, 0x2140) = 1;
     At<unsigned>(controller, field::ModelMode) = WorkbenchModelMode;
-    At<void *>(controller, 0x58) = nullptr; // No background page owner.
+    At<void *>(controller, field::BackgroundPage) = nullptr; // No background page owner.
     At<unsigned char>(controller, 0x68) = 0;
     s.ownsRenderer = true; s.frames = 0;
     Native<void (*)(void *, unsigned)>(address::ChangeState)(static_cast<std::byte *>(controller) + 8, 1);
     s.phase = Phase::Starting;
+    Logging.Log("[QoL Enhancements/Core] DIY preview: renderer acquired; previous_mode=%d previous_state=%d\n", mode, state);
     return true;
 }
 HOOK_DEFINE_TRAMPOLINE(UpdatePhoneRecipes) {
@@ -388,6 +424,8 @@ bool InstallRecipePreview() {
         {0x02e93798, {0x528000a8, 0x9a9f1102, 0x94231d66, 0x395ed2a8, 0xf902ba60}},
         {0x02e96a80, {0xf9410808, 0xf942c109, 0xb4000789, 0xf940042b, 0xb400074b}},
         {0x03c4b880, {0xd10203ff, 0xa9027bfd, 0xa9036ffc, 0xa90467fa, 0xa9055ff8}},
+        {0x02b0c810, {0xf9400268, 0xaa1303e0, 0xf940d108, 0xd63f0100, 0xf9400268}},
+        {0x02ea0754, {0x52800340, 0xd65f03c0, 0xf9400408, 0xb4000148, 0xa9412802}},
     };
     const auto &main = exl::util::GetMainModuleInfo();
     for (const auto &f : fingerprints) if (f.offset + sizeof(f.words) > main.m_Text.m_Size ||
@@ -395,7 +433,20 @@ bool InstallRecipePreview() {
         Logging.Log("[QoL Enhancements/Core] DIY preview: DISABLED; instruction mismatch at main+0x%lx\n", f.offset); return false;
     }
     Main = main.m_Text.m_Start;
+    const auto modeSlot = Main + address::PhoneRendererModeSlot;
+    if (!main.m_Data.InRange(modeSlot) || !main.m_Data.InRange(modeSlot + sizeof(std::uintptr_t) - 1) ||
+        *reinterpret_cast<const std::uintptr_t *>(modeSlot) != Main + address::PhoneRendererMode) {
+        Logging.Log("[QoL Enhancements/Core] DIY preview: DISABLED; renderer mode slot mismatch\n");
+        return false;
+    }
     if (!RegisterPageInput(PreviewInput)) return false;
+    auto slot = reinterpret_cast<volatile std::uintptr_t *>(modeSlot);
+    const auto replacement = reinterpret_cast<std::uintptr_t>(&PhoneRendererMode);
+    *slot = replacement;
+    if (*slot != replacement) {
+        Logging.Log("[QoL Enhancements/Core] DIY preview: DISABLED; renderer mode slot write failed\n");
+        return false;
+    }
     BuildRecipeLayout::InstallAtOffset(address::BuildLayout);
     BindPhoneRecipes::InstallAtOffset(address::PhoneBind);
     UpdatePhoneRecipes::InstallAtOffset(address::PhoneFrame);

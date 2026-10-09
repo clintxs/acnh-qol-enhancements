@@ -116,8 +116,17 @@ original deactivation. Reopening retains the bound session; a new Bind resets it
 ## Renderer and request ABI
 
 UI context +28 is a **parameter store**, not the renderer. UI context +30 is
-the 11C8-byte model controller. It must be idle (state +10=0, mode +50=-1,
-handle +6C=0) before acquisition. Mode 2 is the native workbench item profile.
+the 11C8-byte model controller. The active phone already reserves mode 26/state 3;
+native virtual +200 at 049E8378 returns 26 through 02EA0754. Base app frame 02B0C720 calls PhoneFrame,
+then reserves its reported mode (21..31 use state 3). The 0.3.35 live log
+confirmed A queues the correct recipe but the idle-only guard refuses it.
+
+Accept only idle mode -1/state 0 or phone mode 26/state 3, with handle +6C=0
+and no requested/active background page. Save the mode; publish mode 2/state 1
+and report mode 2 through the phone's writable virtual slot while owned.
+Otherwise the base frame immediately overwrites mode 2 with 26. The tiny
+constant-return function itself must not be trampolined: neighboring code starts
+only eight bytes later. Mode 2 is the native workbench item profile.
 Controller +58 is the requested background page, +60 the active visibility
 page, +68 the mode flag, +69 camera-enabled, +70 model type, +74 loading flags,
 +8C item data and +9C recipe index.
@@ -140,7 +149,10 @@ struct ItemRequest { // 24 bytes, AArch64 alignment
 loading flags. The null visibility-page branch is valid native code. Release
 uses 032BA5E4(controller, 2), which checks mode, removes the handle and transitions
 to state 0. The state-1 exit balances camera/layer changes; state-0 entry resets
-mode and background pointers. Do not merely clear the handle or mode.
+mode and background pointers. When borrowed, restore mode 26 and enter state 3
+through ChangeState before returning to the app. Native state 3 entry 032B8924
+and exit 032B89D8 also balance the camera reference at camera +68 -> +3C.
+The app's normal close then releases mode 26. Do not merely clear the handle or mode.
 
 ## Capture layout
 
@@ -175,8 +187,11 @@ drain, renderer-busy/failed-allocation recovery, parameter restoration, repeated
 open and deactivation. Each integration fingerprint is corrupted individually.
 Core tests cover all 64 optional-module combinations and shared hook ownership.
 
-GPU capture, native UI factory construction, camera activation and scene/entity
-allocation are modeled boundaries. Passing tests establish the ABI/control flow
-covered above, **not a rendered item or a freeze-free live game**. The next Deck
+GPU capture, native UI factory construction, scene/entity allocation and mutex
+operations are modeled boundaries. The lifecycle test now executes native ChangeState, state 0/1/3
+callbacks and ReleaseModel against camera-counter fixtures; it verifies balanced
+references across B, reopening and deactivation. Native base app update executes
+and reverting its mode getter reproduces immediate mode reclamation. Passing
+tests establish the ABI/control flow covered above, **not a rendered item or a freeze-free live game**. The next Deck
 test must establish model visibility, materials remaining visible, B return,
 reopening and ordinary workbench/Quick Store behavior afterward.
