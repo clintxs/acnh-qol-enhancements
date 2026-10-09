@@ -156,13 +156,24 @@ The app's normal close then releases mode 26. Do not merely clear the handle or 
 
 ## Capture layout
 
-The retained in-memory BFLYT appends a hidden N_QolPreview_00 parent containing
-N_QolCapture_00 and P_QolCapture_00. The pan1 capture carries author-defined
+The retained in-memory BFLYT inserts hidden N_QolCapture_00 as the first root
+child and appends a hidden N_QolPreview_00 parent containing P_QolCapture_00.
+Both siblings are explicitly shown after allocation and hidden on close. The
+pan1 capture carries author-defined
 DynamicCaptureOn=R10G10B10A2 and CaptureBGAlpha=255. The pic1 references the
 capture by DynamicCaptureUseName and DynamicCaptureUseIndex=0 and a new
 Capture^t texture/material. usd1 entry offsets are relative to each entry.
 Native binding writes the capture pane to typed picture +100 or alternate
 picture +130. Missing binding declines A before taking renderer ownership.
+
+0.3.36's valid handles and cleared loading flags narrow its blank output to
+drawing. Native 03A2E5D0 copies the current framebuffer crop via 0384A8E0 when
+CaptureBGColor is absent, then draws capture children through 0027E140.
+WorkBenchInfo's N_Capture_00 is its first root child, has no children and sits at
+(-430,-64); P_Capture_00 displays it later. Thus the scene image is already in
+the framebuffer, and capturing after MenuRecipe's backgrounds loses it. 0.3.37
+matches the native early-capture/late-picture ordering. 03462284's capture pane
+factory only resolves pane references; it does not connect a separate 3D scene.
 
 The patch validates section sizes, hierarchy, names and table offsets. It adds
 records to texture/material tables while preserving all existing indices and

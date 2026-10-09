@@ -119,7 +119,7 @@ HOOK_DEFINE_TRAMPOLINE(BuildRecipeLayout) {
 
 enum class Phase { Idle, Queued, Starting, Showing, Closing, DrainBack };
 struct Session {
-    void *phone{}, *layout{}, *surface{}, *gridPane{}, *scrollPane{}, *cursorPane{};
+    void *phone{}, *layout{}, *surface{}, *capture{}, *gridPane{}, *scrollPane{}, *cursorPane{};
     void *controller{}, *parameters{};
     void *focusedRow{};
     Phase phase{};
@@ -219,6 +219,7 @@ void Close(Session &s) {
     if (s.ownsRenderer && s.scrollPane) At<unsigned char>(s.scrollPane, field::PaneFlags) = s.scrollFlags;
     if (s.ownsRenderer && s.cursorPane) At<unsigned char>(s.cursorPane, field::PaneFlags) = s.cursorFlags;
     Visible(s.surface, false);
+    Visible(s.capture, false);
     s.controller = s.parameters = nullptr; s.ownsRenderer = false;
     s.phase = Phase::DrainBack;
     Logging.Log("[QoL Enhancements/Core] DIY preview: grid restored; renderer released\n");
@@ -264,14 +265,14 @@ HOOK_DEFINE_TRAMPOLINE(BindPhoneRecipes) {
         if (!s.layout) return;
         const auto root = PhoneRoot(s.layout);
         s.surface = Find(root, recipe_layout::SurfaceName);
-        auto capture = Find(root, recipe_layout::CaptureName);
+        s.capture = Find(root, recipe_layout::CaptureName);
         auto picture = Find(root, recipe_layout::PictureName);
         bool captureBound = false;
-        if (capture && picture) {
+        if (s.capture && picture) {
             if (auto typed = Native<void *(*)(void *)>(address::CapturePicture)(picture))
-                captureBound = At<void *>(typed, 0x100) == capture;
+                captureBound = At<void *>(typed, 0x100) == s.capture;
             else if (auto typed = Native<void *(*)(void *)>(address::AlternateCapturePicture)(picture))
-                captureBound = At<void *>(typed, 0x130) == capture;
+                captureBound = At<void *>(typed, 0x130) == s.capture;
         }
         if (!captureBound) s.surface = nullptr;
         s.gridPane = Find(root, "L_BtnList_00");
@@ -392,7 +393,7 @@ HOOK_DEFINE_TRAMPOLINE(UpdatePhoneRecipes) {
         Native<void (*)(void *, const ItemRequest *)>(address::CreateItemModel)(s->controller, &request);
         if (!At<unsigned>(s->controller, field::ModelHandle)) { Close(*s); return; }
         Visible(s->gridPane, false); Visible(s->scrollPane, false); Visible(s->cursorPane, false);
-        Visible(s->surface, true); s->phase = Phase::Showing;
+        Visible(s->capture, true); Visible(s->surface, true); s->phase = Phase::Showing;
         Logging.Log("[QoL Enhancements/Core] DIY preview: stationary model created; handle=%u\n", At<unsigned>(s->controller, field::ModelHandle));
     }
 };

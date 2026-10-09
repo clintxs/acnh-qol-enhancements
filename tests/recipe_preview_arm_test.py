@@ -145,7 +145,7 @@ class PreviewMachine(Machine):
         panes = {}
         for name in ('N_QolPreview_00', 'N_QolCapture_00', 'P_QolCapture_00', 'L_BtnList_00', 'L_ScrollBar_00', 'L_Cursor_00', 'N_Recipe_00'):
             pane = self.alloc(0x200); panes[name] = pane
-            self.write(pane + 0x58, 0xa2 if name == 'N_QolPreview_00' else 0xa3, 1)
+            self.write(pane + 0x58, 0xa2 if name in ('N_QolPreview_00', 'N_QolCapture_00') else 0xa3, 1)
             self.u.mem_write(pane+0xb0,name.encode()+b'\0'); self.write(pane,self.pane_methods)
             self.write(pane+0x20,pane+0x20); self.write(pane+0x28,pane+0x20)
             if surface or name != 'N_QolPreview_00': self.panes[(root, name)] = pane
@@ -196,13 +196,31 @@ class PreviewMachine(Machine):
         assert bytes(self.u.mem_read(pointer, len(content))) == content
         return self.built
 
+def pane_tree(content):
+    panes, parents, current = [], [], None
+    for section in layout_sections(content):
+        if section[:4] in PANE_TYPES:
+            current = pane_name(section)
+            panes.append((current, parents[-1] if parents else None))
+        elif section[:4] == b'pas1': parents.append(current)
+        elif section[:4] == b'pae1': parents.pop()
+    return panes
+
 def verify_layout(original, patched):
     before = layout_sections(original); after = layout_sections(patched)
     oldpanes = {pane_name(s): s for s in before if s[:4] in PANE_TYPES}
     newpanes = {pane_name(s): s for s in after if s[:4] in PANE_TYPES}
     assert all(newpanes[n] == s for n, s in oldpanes.items())
     assert not newpanes['N_QolPreview_00'][8] & 1
-    assert newpanes['N_QolCapture_00'][8] & 1
+    # DynamicCapture copies the framebuffer when encountered in pane order.
+    # Capture before the app paints over the scene; display the texture later.
+    tree = pane_tree(patched)
+    assert tree[1] == ('N_QolCapture_00', 'RootPane'), tree[:4]
+    assert tree[-1] == ('P_QolCapture_00', 'N_QolPreview_00')
+    assert ('N_QolPreview_00', 'RootPane') in tree
+    assert not any(parent == 'N_QolCapture_00' for _, parent in tree)
+    assert not newpanes['N_QolCapture_00'][8] & 1
+    assert struct.unpack_from('<ff', newpanes['N_QolCapture_00'], 44) == (-430, -64)
     for tag in (b'mat1', b'txl1'):
         old = next(s for s in before if s[:4] == tag); new = next(s for s in after if s[:4] == tag)
         count = struct.unpack_from('<H', old, 8)[0]
@@ -223,6 +241,13 @@ def verify_layout(original, patched):
     assert struct.unpack_from('<I', capture, 28)[0] == 0x15
     assert struct.unpack_from('<I', capture, 32)[0] == 0x08040200
     assert len(capture) == 84
+
+# This ordering comes from the native screen, whose capture has no children:
+# its model image must already be present in the framebuffer at capture time.
+native_tree = pane_tree(layout_asset('WorkBenchInfo'))
+assert native_tree[1] == ('N_Capture_00', 'RootPane')
+assert not any(parent == 'N_Capture_00' for _, parent in native_tree)
+assert next(i for i, (name, _) in enumerate(native_tree) if name == 'P_Capture_00') > 2
 
 for base in (0x7100000000, 0x7200000000):
     m = PreviewMachine(base)
@@ -276,6 +301,7 @@ for base in (0x7100000000, 0x7200000000):
     assert struct.unpack('<IIIHHQ',request)==(0,0x44550088,0x00112233,0xfffe,0,0)
     assert m.read(panes['L_BtnList_00']+0x58,1)==0xa2
     assert m.read(panes['N_QolPreview_00']+0x58,1)==0xa3
+    assert m.read(panes['N_QolCapture_00']+0x58,1)==0xa3
     assert m.read(panes['N_Recipe_00']+0x58,1)==0xa3
     before=list(m.events); m.input(page,2); assert m.events==before
     assert m.input(page,0x20)==0x20; m.frame(phone)
@@ -284,12 +310,14 @@ for base in (0x7100000000, 0x7200000000):
     assert m.invoke(m.read(m.read(phone)+0x200),phone)==26
     assert m.read(panes['L_BtnList_00']+0x58,1)==0xa3
     assert m.read(panes['N_QolPreview_00']+0x58,1)==0xa2
+    assert m.read(panes['N_QolCapture_00']+0x58,1)==0xa2
     assert bytes(m.u.mem_read(m.parameters+0x2c,40))==snapshot and m.read(m.parameters+0x12,1)==1
     before=list(m.events); m.input(page,0x20); assert m.events==before
     m.input(page,0); m.input(page,0); assert m.events[-1]==('native_input',page)
     m.hook(0x2e9d538,phone); m.confirm(page); m.frame(phone); m.frame(phone)
     assert sum(e[0]=='spawn' for e in m.events)==2
     m.hook(0x2e9d538,phone); assert m.read(m.controller+0x6c,4)==0
+    assert m.read(panes['N_QolCapture_00']+0x58,1)==0xa2
     phone2,page2,row2,panes2=m.phone(1,surface=False)
     before=m.model_events; m.confirm(page2); m.frame(phone2); assert m.model_events==before
     unbound,unbound_page,unbound_row,unbound_panes=m.phone(3)
@@ -352,6 +380,7 @@ for base in (0x7100000000, 0x7200000000):
     m.confirm(page3); m.frame(phone3); m.frame(phone3)
     assert m.read(panes3['L_BtnList_00']+0x58,1)==0xa3
     assert m.read(panes3['N_QolPreview_00']+0x58,1)==0xa2
+    assert m.read(panes3['N_QolCapture_00']+0x58,1)==0xa2
     assert m.read(m.controller+0x50,4)==26 and m.read(m.controller+0x10,4)==3
     # The genuinely idle controller path remains supported. Check restoration
     # before the outer app frame legitimately acquires its usual mode again.

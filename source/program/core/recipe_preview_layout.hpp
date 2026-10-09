@@ -46,13 +46,16 @@ inline unsigned UserData(std::byte *p, const char *stringKey, const char *value,
     std::memcpy(p + 40 + valueLength + keyLength, integerKey, integerKeyLength);
     return size;
 }
+inline unsigned Capture(std::byte *p) {
+    Pane(p, "pan1", 84, CaptureName, 2, 850, 750);
+    Write(p, 44, -430.0f); Write(p, 48, -64.0f);
+    return 84 + UserData(p + 84, "DynamicCaptureOn", "R10G10B10A2", "CaptureBGAlpha", 255);
+}
 inline unsigned Surface(std::byte *p, unsigned material) {
     unsigned used = 0;
     Pane(p, "pan1", 84, SurfaceName, 2, 850, 750); used += 84;
     Write(p, 44, -430.0f); Write(p, 48, -64.0f);
     Section(p + used, "pas1", 8); used += 8;
-    Pane(p + used, "pan1", 84, CaptureName, 3, 850, 750); used += 84;
-    used += UserData(p + used, "DynamicCaptureOn", "R10G10B10A2", "CaptureBGAlpha", 255);
     Pane(p + used, "pic1", 136, PictureName, 1, 850, 750);
     std::memset(p + used + 84, 255, 16);
     Write<std::uint16_t>(p + used, 100, material); p[used + 102] = std::byte(1);
@@ -62,7 +65,11 @@ inline unsigned Surface(std::byte *p, unsigned material) {
     Section(p + used, "pae1", 8); return used + 8;
 }
 
-// Append a capture pair to the loaded MenuRecipe resource. All existing panes,
+// Add a capture pair to the loaded MenuRecipe resource. Native 03A2E5D0 copies
+// the framebuffer at capture draw time. Match WorkBenchInfo: capture as the
+// first root child, before UI backgrounds cover the model; display its picture
+// after the original panes. The two siblings have independent visibility.
+// All existing panes,
 // animations, materials and texture indices retain their original values,
 // including changes supplied by aspect-ratio mods. No workbench asset is loaded.
 // The caller must keep output alive for the entire native layout lifetime.
@@ -70,7 +77,7 @@ inline std::size_t AddSurface(std::span<const std::byte> input, std::span<std::b
     const auto *data = input.data();
     if (input.size() < 20 || input.size() > MaximumBytes - 1024 ||
         std::memcmp(data, "FLYT\xff\xfe\x14\0", 8) || Read<unsigned>(data, 12) != input.size()) return 0;
-    unsigned sections = 0, depth = 0, rootEnd = 0, textures = 0, materials = 0;
+    unsigned sections = 0, depth = 0, rootStart = 0, rootEnd = 0, textures = 0, materials = 0;
     bool menu = false, root = false, textureTable = false, materialTable = false;
     for (std::size_t at = 20; at < input.size();) {
         if (input.size() - at < 8) return 0;
@@ -82,7 +89,10 @@ inline std::size_t AddSurface(std::span<const std::byte> input, std::span<std::b
             if (!std::strcmp(reinterpret_cast<const char *>(s + 12), SurfaceName)) return 0;
             if (!std::strcmp(reinterpret_cast<const char *>(s + 12), "RootPane")) root = true;
         }
-        if (Tag(s, "pas1")) ++depth;
+        if (Tag(s, "pas1")) {
+            if (!depth && root && !rootStart) rootStart = at + size;
+            ++depth;
+        }
         if (Tag(s, "pae1")) {
             if (!depth) return 0;
             if (!--depth) rootEnd = at;
@@ -103,10 +113,11 @@ inline std::size_t AddSurface(std::span<const std::byte> input, std::span<std::b
         }
         at += size; ++sections;
     }
-    if (!menu || !root || !rootEnd || depth || !textureTable || !materialTable ||
+    if (!menu || !root || !rootStart || !rootEnd || depth || !textureTable || !materialTable ||
         sections != Read<std::uint16_t>(data, 16) || output.size() < input.size() + 1024) return 0;
     auto *dest = output.data(); std::memcpy(dest, data, 20); unsigned used = 20;
     for (std::size_t at = 20; at < input.size();) {
+        if (at == rootStart) used += Capture(dest + used);
         if (at == rootEnd) used += Surface(dest + used, materials);
         const auto *s = data + at; const unsigned size = Read<unsigned>(s, 4);
         auto *target = dest + used;

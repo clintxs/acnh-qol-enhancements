@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.36 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.37 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -90,11 +90,11 @@ this package does not supply an aspect-ratio patch.
 CORE SETTINGS / AMIIBO TIMEOUT
 DIY RECIPE PREVIEWS (CORE)
 
-0.3.36 fixes the renderer reservation that prevented A from opening a preview.
-Core temporarily borrows the DIY app's existing renderer reservation and
-restores it on B. The app's outer update retains the item profile while the
-preview is active. Native selection/material updates and fresh A input remain
-in place; other occupied renderer modes leave the ordinary grid usable.
+0.3.37 corrects the blank preview's capture order. The model loads in 0.3.36,
+but capture runs after the app paints over it. Core now captures first and
+displays the texture after the original panes, matching the native workbench.
+Capture and display are shown together on A and hidden on B or deactivation.
+The phone's renderer reservation and native material updates are retained.
 
 This approach uses the item renderer directly within the existing DIY app.
 The DIY app keeps its existing materials panel. Press A on a recipe to request a
@@ -132,7 +132,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.36
+  version = 0.3.37
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.

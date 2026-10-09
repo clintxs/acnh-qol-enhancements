@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.36 DIY app renderer reservation fix** for ACNH **3.0.3 on Eden**. One Core
+**0.3.37 DIY preview capture-order fix** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -60,12 +60,12 @@ fingerprints only, checked before each feature's first hook.
 
 ## DIY Recipes app previews
 
-0.3.36 fixes the renderer reservation that prevented A from opening a preview.
-The DIY app already owns mode 26/state 3; Core temporarily borrows it for an item
-model and restores the phone's reservation on B. The app's outer update keeps
-the temporary item profile while the preview is active. Recipe focus and fresh
-A input preserve native selection/material updates. Other occupied renderer
-modes still decline the request and leave the grid usable.
+0.3.37 corrects the blank preview's capture order. The model loads in 0.3.36,
+but its image is captured after the app paints its background over it. Core now
+captures before the app's original panes and displays that texture afterward,
+matching the native workbench's ordering. Capture and display are shown together
+on A and hidden together on B or app deactivation. The borrowed phone renderer
+reservation and native selection/material updates remain in place.
 
 This approach uses the item renderer directly within the existing DIY app.
 The existing DIY app keeps its materials panel, category, selection and scroll
@@ -197,7 +197,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.36
+version = 0.3.37
 base_speed = 2
 boost_speed = 4
 faster_ui = false

@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.36 DIY renderer reservation fix
+# Unified QoL validation — 0.3.37 DIY preview capture order
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,30 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.37 DIY capture draw order
+
+The synced 0.3.36 log shows valid item handles, loading flags cleared and state 1
+retained. B releases the model and restores the renderer. The user sees the grid
+hide but no model. Native capture draw helper 03A2E5D0 copies the current
+framebuffer crop via 0384A8E0, then draws any capture children via 0027E140.
+WorkBenchInfo places its empty N_Capture_00 first under RootPane and its display
+picture later in the UI. The prototype instead appended capture after all app
+panes, so the original background had already painted over the scene.
+
+The capture is now the first root child, at (-430,-64), independent of the late
+hidden display surface. Both start hidden, become visible after model allocation,
+and hide on B, deactivation or failure. Original resource sections and installed
+aspect-ratio edits remain preserved. No workbench layout is loaded.
+
+The new pane-order regression fails against the 0.3.36 ELF. It checks the native
+workbench ordering and empty capture, then requires the transformed MenuRecipe
+capture to precede every original root child, with the picture under the late
+surface. Compiled lifecycle checks cover visibility of both siblings across A,
+B, reopening, deactivation and failed allocation at both load addresses. Core
+module combinations, build and package integrity are checked for this release.
+GPU rendering is still outside the local fixture: live model visibility and
+16:10 placement require a Deck test. Rotation and navigation remain deferred.
 
 ## 0.3.36 DIY renderer reservation
 
