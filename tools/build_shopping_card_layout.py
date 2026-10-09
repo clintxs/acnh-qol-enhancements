@@ -1,7 +1,7 @@
 """Add a separate, hidden savings display to the native top-right currency part.
 
-Uses native rounded-window textures for the counter and fine alpha-edged
-vector bands for the card. Original panes, animation, fonts and textures remain byte-for-byte intact.
+Uses native rounded-window textures and untextured vector panes for the green
+card. Original panes, animation, fonts and textures remain byte-for-byte intact.
 No item or MSBT resources are added. Requires the local hash-checked 3.0.3 dump.
 """
 from pathlib import Path
@@ -11,7 +11,6 @@ import struct
 from layout_io import archive_entries, layout_sections, pane_name, resources
 from build_layouts import text_pane, PANE_TYPES
 from build_catalog_badge_layout import material_records
-from shopping_card_geometry import rounded_rectangle, LAYERS
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSET = 'LBellCounterRT'
@@ -26,7 +25,7 @@ OVAL_CENTER = (-25, -2)
 OVAL_SIZE = (306, 128)
 RIM = 8
 CARD_CENTER = (-25, 52)
-BADGE_SHIFT = 24  # About 16 screen pixels at the 1280-wide HUD scale.
+BADGE_SHIFT = 24  # Retain the requested ~16 screen-pixel label shift.
 CARD_ANGLE = 6  # Slight tilt after the native HUD parent's -3-degree rotation.
 
 
@@ -96,32 +95,37 @@ def edit_layout(data):
     backing = rename(icon, 'N_CardBacking_00')
     opening, closing = struct.pack('<4sI', b'pas1', 8), struct.pack('<4sI', b'pae1', 8)
     pieces, rim_pieces = [], []
-    def rectangle(name, x, y, width, height, colors):
-        pane = rename(panes['P_Icon_00'][:104], name)
+    def rectangle(x, y, width, height, color, output=pieces, prefix='P_CardShape'):
+        pane = rename(panes['P_Icon_00'][:104], f'{prefix}_{len(output):02}')
         pane[8:12] = bytes((3, 0, 255, 0))
         struct.pack_into('<3f', pane, 44, x, y, 0)
         struct.pack_into('<3f', pane, 56, 0, 0, 0)
         struct.pack_into('<2f', pane, 68, 1, 1)
         struct.pack_into('<2f', pane, 76, width, height)
-        pane[84:100] = b''.join(bytes(color) for color in colors)
+        pane[84:100] = bytes(color) * 4
         struct.pack_into('<HBB', pane, 100, solid_index, 0, 0)
         struct.pack_into('<I', pane, 4, len(pane))
-        return bytes(pane)
-    # Backing is behind the oval; dark edge and face are in front. Ordinary
-    # PIC panes have no window-frame/shader stretching to collapse the icon.
-    for index, (prefix, width, height, radius, color) in enumerate(LAYERS):
-        output = rim_pieces if index == 0 else pieces
-        for i, geometry in enumerate(rounded_rectangle(width, height, radius, color)):
-            output.append(rectangle(f'{prefix}_{i:03}', *geometry))
-    for i, (x, y, width, height, color) in enumerate((
-            (0, 10, 76, 8, CREAM), (-23, -7, 14, 12, (240, 204, 101, 255)),
-            (16, -12, 22, 3, CREAM), (9, -19, 36, 3, CREAM))):
-        pieces.append(rectangle(f'P_CardShape_{i:02}', x, y, width, height, (color,) * 4))
+        output.append(bytes(pane))
+    # The white backing is drawn BEFORE the oval, so its lower outline is
+    # occluded by the oval. The dark edge belongs to the foreground card icon.
+    for width, height in ((94, 54), (90, 62), (82, 66)):
+        rectangle(0, 0, width, height, white, rim_pieces, 'P_CardRim')
+    # Recovery: use the small, previously displayed silhouette. The entire
+    # counter disappeared live after the 0.3.9 dense-alpha-band change.
+    # Keep this resource at the known working complexity until native loading
+    # and rendering of a replacement icon can be verified.
+    for width, height in ((82, 42), (78, 50), (70, 54)):
+        rectangle(0, 0, width, height, INK)
+    for width, height in ((76, 38), (72, 44), (66, 48)):
+        rectangle(0, 0, width, height, (84, 183, 120, 255))
+    rectangle(0, 10, 76, 8, CREAM)
+    rectangle(-23, -7, 14, 12, (240, 204, 101, 255))
+    rectangle(16, -12, 22, 3, CREAM)
+    rectangle(9, -19, 36, 3, CREAM)
     number = text_pane(panes['T_Num_00'], NUMBER, '999,999,999', -25, 0, 260, 56, .76, True)
     unit = rename(panes['N_Pos_00'], 'N_CardBells_00')
     # The native badge window uses a right-hand origin: place that origin
-    # eight units inside the oval's right edge, then move the whole
-    # badge left so its text stays centered on its white background.
+    # eight units inside the oval's right edge, then retain the requested shift left.
     struct.pack_into('<f', unit, 44, OVAL_CENTER[0] + OVAL_SIZE[0] / 2 - RIM - BADGE_SHIFT)
     additions = [bytes(group), opening, bytes(backing), opening, *rim_pieces, closing,
                  outline, bytes(background), bytes(icon), opening,
@@ -139,6 +143,10 @@ def edit_layout(data):
                 insertion = i
     assert insertion is not None and not parents
     sections[insertion:insertion] = additions
+    # Recovery budget derived from the previously displayed 0.3.7 layout.
+    # This is a conservative project guard, not a claimed native engine limit.
+    assert sum(s[:4] in PANE_TYPES for s in sections) <= 35
+    assert len(sections) <= 74
     output = bytearray(data[:20]) + b''.join(sections)
     struct.pack_into('<I', output, 12, len(output))
     struct.pack_into('<H', output, 16, len(sections))

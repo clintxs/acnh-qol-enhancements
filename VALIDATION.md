@@ -1,11 +1,11 @@
-# Unified QoL validation — 0.3.9 Shopping Card prototype
+# Unified QoL validation — 0.3.10 Shopping Card recovery prototype
 
 Validated locally on October 8, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
 dialogue fix and subsequently the corrected 0.2.3 NPC diagnostic build work in Eden. The user also confirmed Nook’s Cranny transactions in Shopping Card 0.3.1.
 The user confirmed the corrected savings HUD in 0.3.4 and balance animation
-in 0.3.5. The configuration layering, 0.3.9 icon repair and aspect-ratio placement and Able Sisters
-still need a live check. No running game or save files were accessed by the
+in 0.3.5. Configuration layering, the 0.3.10 counter recovery, aspect-ratio placement
+and Able Sisters still need a live check. No running game or save files were accessed by the
 local tests below.
 
 ## Build and loader
@@ -114,7 +114,7 @@ compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
   resolves both direct/group text adapters, shows full zero/cap balances,
   restores cash panes outside supported shops, and tolerates absent resources.
   Native text setting, typed parameter lookup and pane lookup are modeled;
-  0.3.9 appearance still needs Eden verification; the user confirmed the
+  0.3.10 recovery still needs Eden verification; the user confirmed the
   balance animation in 0.3.5.
 - 0.3.5 tests execute native 03353B14 number stepping and 03025400 feedback
   through its Up/Down/Finish animation dispatch and positional sound setup,
@@ -131,19 +131,22 @@ compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
   24-byte amount buffer, and uses native rounded-window textures/vector shapes.
   The eight-unit oval rim, centered card transform, dark foreground card
   edge, separate white backing behind the oval and right-hand Bells badge
-  are checked. The 0.3.8 frame-field tests passed but did not establish rendered
-  shape validity: the user reported a flattened/mangled icon. 0.3.9 replaces
-  the three card windows with ordinary untextured PIC quads. Tests decode those
-  exported quads and check full height/width, opaque interiors, round corner
-  cutouts and transparent-to-opaque edge gradients at the contour. The existing
-  24-layout-unit (about 16-screen-pixel) badge shift remains. Original resources
-  and all original pane transforms are preserved, including the 1920x1080
-  canvas and root position; no 16:10-specific height offset is added.
-  A local preview renders the exported PIC geometry and shows a complete card
-  with both outlines. Its oval is illustrative; it does not emulate the native
-  window renderer, fonts, full HUD placement or animation. Native rendering,
-  performance and placement at both 16:9 and 16:10 still require live checks.
-  No MSBT lookup is attached to the savings text.
+  are checked. Both later icon experiments failed live despite local checks:
+  0.3.8 flattened the card; 0.3.9 made both savings and normal cash counters
+  disappear everywhere. Its geometry preview established shape coverage only,
+  not native resource loading/rendering. That build increased the component
+  from 35 panes/74 sections/7,996 bytes to 281 panes/320 sections/33,580 bytes.
+  Layout expansion is a suspect; no native pane/allocation limit is established.
+- 0.3.10 restores the compact layout that previously displayed. A recorded hash
+  of the 0.3.7 exported BFLYT verifies the recovery byte for byte after normalizing
+  its sole intentional difference: Bells-badge X120 -> 96. The existing native
+  resources, materials, controls and animations remain unchanged. A conservative
+  project budget enforces 35 panes/74 sections; it is not an engine-limit claim.
+  The original 1920x1080 canvas/root and the catalog lifecycle hooks remain.
+  Local ARM regressions verify cash presentation outside supported contexts,
+  savings presentation within them, amount feedback and teardown. These model
+  the layout/engine boundaries and cannot establish live recovery. The earlier
+  stepped icon corners are restored; smoother rendering remains unresolved.
 
 ## Conditional dialogue
 
@@ -269,7 +272,10 @@ CLI are also required. None of those original game assets are redistributed.
 
 Switch hardware and other emulators/game versions are not validated targets.
 
-7. Shopping Card: use the existing save backup. Test a floor item and cabinet
+7. Shopping Card: first confirm both ordinary pocket-Bells display outside shops
+   and savings display in shops/catalog return after 0.3.9's disappearance.
+   Check entering/leaving shops, opening pockets and opening/closing Nook Shopping.
+   Use the existing save backup. Test a floor item and cabinet
    item in both Nook's Cranny versions, clothing from Mabel and the fitting room,
    then the fitting bag with both modules enabled. Compare savings at the ABD
    before/after; confirm pocket Bells and Bell bags do not change. Test cash
@@ -280,8 +286,8 @@ Switch hardware and other emulators/game versions are not validated targets.
    Close/reopen pockets repeatedly without a transaction; verify no false
    sound/amount animation. Check green savings display at zero and large
    balances, thicker white oval outline, centered dark-edged card and its white
-   backing visible only above the oval; check the repaired full-height card
-   and smooth dark/white corners
+   backing visible only above the oval; check the restored full-height card
+   with the earlier stepped dark/white corners
    and the lower-right white Bells badge with green text shifted left about 16 pixels.
    Check at 1280x720 (16:9) and 1280x800 (16:10 with the existing aspect mod),
    including top/right margins, clipping, icon proportions and frame pacing.

@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.9 Shopping Card prototype** for ACNH **3.0.3 on Eden**. One Core
+**0.3.10 Shopping Card recovery prototype** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -85,9 +85,10 @@ savings amount inside the two shops and while the catalog is open. It fits the f
 the prototype label is English (“Bells”), on a white badge with green text.
 The green oval has a thick white rim. The centered card has a dark edge and
 a white backing behind the oval; the white Bells badge sits at the lower right.
-0.3.9 replaces the malformed 0.3.8 card windows with filled vector silhouettes
-and fine alpha gradients around the rounded edges. The badge remains shifted
-left by about 16 screen pixels at 1280-pixel width.
+0.3.10 restores the previously displayed, compact card layout after 0.3.9
+made both savings and ordinary cash counters disappear. The badge remains
+shifted left by about 16 screen pixels at 1280-pixel width. The icon uses the
+earlier stepped corners again; a smooth replacement needs native validation.
 Balance changes count up/down with the native increase/decrease/finish animation
 and sound feedback. First display, resident/room switches and unchanged balances
 stay silent. Outside those shops, closing the catalog returns to the ordinary Bells presentation. Pockets and other shared cash counters keep
@@ -114,7 +115,7 @@ checkout, but the user reported its HUD still showed cash outside Nook’s Crann
 0.3.8 follows the catalog’s native opening, closing and destruction events
 instead of assuming it shares the HUD’s UI context. This display correction
 was followed by a catalog screenshot showing the savings presentation.
-Catalog checkout and the corrected 0.3.9 card appearance still need live verification. Catalog gift orders use a separate
+Catalog checkout and the 0.3.10 display recovery still need live verification. Catalog gift orders use a separate
 native sending/payment path and are not covered by this prototype; their
 payment remains unchanged. Nook Stop and phone catalog purchases, insufficient
 savings, cancellation, order limits, delivery and screen transitions need live
@@ -138,7 +139,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.9
+version = 0.3.10
 base_speed = 2
 boost_speed = 4
 faster_ui = false

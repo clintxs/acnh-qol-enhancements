@@ -1,8 +1,8 @@
-QoL Enhancements 0.3.9 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.10 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
-Shopping Card: repaired card icon with fine alpha-edged vector curves.
+Shopping Card: recovery of the shared counter after it disappeared in 0.3.9.
 Native 16:9 placement; regular catalog self-orders use savings.
 
 INSTALL
@@ -37,9 +37,10 @@ inside these shops and while the catalog is open; closing the catalog outside
 these shops restores ordinary Bells. The white English “Bells” badge
 has green text and sits at the lower right.
 The oval has a thicker white rim; the centered card has a dark edge, with
-its white backing behind the oval. 0.3.9 replaces the malformed 0.3.8 card
-windows with filled vector silhouettes and fine alpha edges. The Bells badge
-remains shifted about 16 screen pixels left at 1280-pixel width. Savings changes use native count-up/down
+its white backing behind the oval. 0.3.10 restores the compact layout used
+before the 0.3.8/0.3.9 icon experiments. The Bells badge remains shifted about
+16 screen pixels left at 1280-pixel width. The earlier stepped icon corners
+return; a smoother replacement remains pending native validation. Savings changes use native count-up/down
 animation and sound.
 Entering shops, switching residents and unchanged balances are silent.
 0.3.4 corrects the HUD path missed in 0.3.2–0.3.3, which
@@ -52,7 +53,7 @@ No new save fields, SD files, MSBT replacements or permissions are required.
 Disable/remove Shopping Card and restart for a clean uninstall; completed
 transactions remain ordinary saved money/item changes. Nook transactions were
 confirmed in 0.3.1, the savings HUD in 0.3.4 and animation in 0.3.5; the
-0.3.9 appearance, Able Sisters and catalog checkout need live testing.
+0.3.10 display recovery, Able Sisters and catalog checkout need live testing.
 0.3.7 still showed cash outside Nook’s Cranny; 0.3.8 follows native catalog
 open/close/destruction events independently of the shop or HUD’s UI context.
 The latest catalog screenshot shows the savings presentation.
@@ -67,7 +68,7 @@ this package does not supply an aspect-ratio patch.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.9
+  version = 0.3.10
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.

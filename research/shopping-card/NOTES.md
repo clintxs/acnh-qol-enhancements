@@ -1,6 +1,6 @@
 # Shopping Card — ACNH 3.0.3
 
-Prototype 0.3.9, October 8, 2026. Original mapped main SHA-256:
+Prototype 0.3.10, October 8, 2026. Original mapped main SHA-256:
 `b1ae8e2a0d82f9f38f711c132d1751b221baf9d6411b2be06ebc4bb502ac912d`.
 Build ID: `FF1D1C05670DB6021C85B624A710B963`.
 All implementation uses readable Exlaunch C++ hooks. No new game item or data
@@ -161,6 +161,22 @@ the same primitive path as the previously working vector icon, with much finer
 curves and alpha feathering. Check native frame pacing as well as edge quality.
 The exported geometry is rasterized by tools/preview_shopping_card.py for local
 inspection. This preview is not a native window/font/animation renderer.
+
+The user then reported that 0.3.9 showed neither savings nor pocket Bells,
+including outside shops. The entire shared counter component is implicated.
+The 281-pane/320-section layout expansion is a suspect, but no native hard limit
+or allocation failure was observed directly. The preview and shape tests failed
+to cover resource loading. Do not treat their success as proof of native rendering.
+
+0.3.10 restores the previously displayed 35-pane/74-section/7,996-byte layout.
+After normalizing the retained Bells-badge shift (X120 -> 96), the exported
+BFLYT matches the recorded SHA-256 of the 0.3.7 component byte for byte.
+The dense geometry helper is removed from production; its implementation remains
+in Git and the preserved 0.3.9 source archive. The earlier stepped corners return.
+A conservative build budget prevents accidental expansion of this recovery
+component; it does not describe a verified engine limit. Native loading/rendering
+must be established before another smooth-icon approach is shipped. Payment,
+catalog lifecycle and savings animation hooks are unchanged in this recovery.
 
 The default resource retains its original 1920×1080 canvas, root and anchors.
 There is no 16:10 height offset to undo for 16:9. A future verified placement
