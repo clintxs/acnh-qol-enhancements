@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.37 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.38 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -90,18 +90,17 @@ this package does not supply an aspect-ratio patch.
 CORE SETTINGS / AMIIBO TIMEOUT
 DIY RECIPE PREVIEWS (CORE)
 
-0.3.37 corrects the blank preview's capture order. The model loads in 0.3.36,
-but capture runs after the app paints over it. Core now captures first and
-displays the texture after the original panes, matching the native workbench.
-Capture and display are shown together on A and hidden on B or deactivation.
-The phone's renderer reservation and native material updates are retained.
+The 0.3.37 Deck test confirms item models render inside the existing app.
+0.3.38 preserves capture transparency so the app's own background can show
+through. The RIGHT STICK now rotates the item: left/right turns it, up/down
+tilts it up to 60 degrees from its starting pose. A dead zone prevents drift.
+Reopening starts from the item's native pose.
 
-This approach uses the item renderer directly within the existing DIY app.
-The DIY app keeps its existing materials panel. Press A on a recipe to request a
-stationary 3D model in place of the grid; press B to return to the same grid.
-Category, selection and scroll position are retained. This view has no crafting
-button or crafting action. Rotation and left/right recipe navigation are not
-implemented yet; the first test is whether the model appears and B exits safely.
+The DIY app keeps its existing materials panel. Press A on a recipe to open the
+3D preview in place of the grid; press B to return to the same grid. Category,
+selection and scroll position are retained. This view has no crafting button
+or crafting action. Left/right recipe navigation in the preview is not
+implemented yet.
 
 Core adds a small capture surface to the loaded MenuRecipe layout in memory,
 preserving existing panes and installed layout/aspect-ratio edits. No workbench
@@ -109,8 +108,9 @@ layout or additional feature folder is used. If the capture binding or renderer
 is unavailable, the original grid remains usable. Core and Pockets share their
 page-input hook so Quick Store can remain enabled.
 
-Local ARM checks pass; live rendering, model placement and 16:10 appearance
-still need an Eden test. Fully restart the game when updating.
+Local ARM checks pass, including native rotation and capture-alpha parsing.
+Transparency, rotation feel and 16:10 appearance in 0.3.38 still need an Eden
+test. Fully restart the game when updating.
 
 From 0.3.19, the amiibo timeout fix is built into Core and enabled by default.
 Remove the old “QoL Enhancements - Amiibo” folder when updating; its amiibo.ini
@@ -132,7 +132,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.37
+  version = 0.3.38
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.

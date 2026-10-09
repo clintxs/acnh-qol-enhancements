@@ -5,9 +5,10 @@
 0.3.32 retires the 0.3.24–0.3.31 workbench-page transplant. Those versions
 failed live tests with freezes, incorrect dispatch, missing models and app
 startup failures. Their implementation history remains in Git and VALIDATION.md.
-A stationary model inside the existing app is now the first milestone. Rotation
-and left/right navigation are deliberately deferred until live model rendering
-and B return work. No live success is claimed by the local checks.
+The user confirmed visible models in 0.3.37, including a wooden simple bed,
+after correcting capture order. 0.3.38 adds transparency and right-stick
+rotation; those changes still need live inspection. Left/right recipe navigation
+is deferred. Local tests alone do not establish rendered output.
 
 This implementation retains MenuRecipe's material panel. It adds a hidden
 capture surface to the loaded layout and temporarily hides the grid, scrollbar
@@ -160,7 +161,7 @@ The retained in-memory BFLYT inserts hidden N_QolCapture_00 as the first root
 child and appends a hidden N_QolPreview_00 parent containing P_QolCapture_00.
 Both siblings are explicitly shown after allocation and hidden on close. The
 pan1 capture carries author-defined
-DynamicCaptureOn=R10G10B10A2 and CaptureBGAlpha=255. The pic1 references the
+DynamicCaptureOn=R10G10B10A2 and CaptureBGAlpha=0 (from 0.3.38). The pic1 references the
 capture by DynamicCaptureUseName and DynamicCaptureUseIndex=0 and a new
 Capture^t texture/material. usd1 entry offsets are relative to each entry.
 Native binding writes the capture pane to typed picture +100 or alternate
@@ -188,6 +189,30 @@ layouts. Concurrent loads do not block; contention, invalid data or cache
 exhaustion returns the original resource. This uses static memory, not UI heap
 page allocation. It costs approximately 1 MiB of BSS.
 
+## Transparency and rotation (0.3.38)
+
+03A2DAD4 sets capture flag +D2 bit 1 when CaptureBGAlpha is 255 and no
+CaptureBGColor is supplied. That forces an opaque framebuffer copy, producing
+0.3.37's black rectangle. Alpha 0 leaves this bit clear. Do not supply
+CaptureBGColor: that selects a clear instead of copying the rendered model.
+The original app background remains behind the late picture.
+
+Native 03C4BAC4 dispatches float axis pairs at snapshot row +4 + kind*8;
+kind 1 is right stick (+0C/+10), with consumed-axis bit 1 at row +40. Collect
+right-stick input only during Showing on the page's actual shortcut input row.
+Apply it once in the following phone frame, after native update; drop it when
+blocked, consumed, loading or no longer owned. Use a 0.15 dead zone and three
+degrees per update at full deflection. Yaw wraps; pitch stays within ±60° of the
+native pose, preserving roll and position. Reopening resets to the native pose.
+
+032B9E08(controller, Angle32[3]) validates the handle in the native entity
+registry, its type and execution context, then writes component +2BC/+2C0/+2C4.
+The vector is cached at controller +80; native 032BA000 passes that vector during
+loading. 032B74F0 multiplies source radians by 2^32/(2π), establishing Angle32
+units. Controller +78/+7C and helper 032B97A0 are position, not rotation.
+Use the native angle helper and update the cached vector only on success.
+Fingerprint the helper, its native vector call site and axis dispatch ABI.
+
 ## Validation boundary
 
 Compiled hooks, resource transformation, native focus mapping/button dispatch,
@@ -204,5 +229,5 @@ callbacks and ReleaseModel against camera-counter fixtures; it verifies balanced
 references across B, reopening and deactivation. Native base app update executes
 and reverting its mode getter reproduces immediate mode reclamation. Passing
 tests establish the ABI/control flow covered above, **not a rendered item or a freeze-free live game**. The next Deck
-test must establish model visibility, materials remaining visible, B return,
-reopening and ordinary workbench/Quick Store behavior afterward.
+test must establish transparency, rotation feel, materials remaining visible, B
+return, reopening and ordinary workbench/Quick Store behavior afterward.

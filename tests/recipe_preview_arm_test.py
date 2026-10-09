@@ -20,7 +20,7 @@ def layout_asset(name):
     return next(v for k, v in r.items() if k.endswith('/' + name + '.bflyt'))
 MENU = layout_asset('MenuRecipe')
 HOOKS = (0x267d64, 0x2e9cde0, 0x2e9fbb0, 0x2e9d538, 0x3c58d24)
-GUARDS = HOOKS + (0x32bd990, 0x32ba5e4, 0x3dbb160, 0x27d1d0, 0x3a17390, 0x3a174f0, 0x3c66298, 0x2e93798, 0x2e96a80, 0x3c4b880, 0x2ea0754, 0x2b0c810)
+GUARDS = HOOKS + (0x32bd990, 0x32ba5e4, 0x3dbb160, 0x27d1d0, 0x3a17390, 0x3a174f0, 0x3c66298, 0x2e93798, 0x2e96a80, 0x3c4b880, 0x2ea0754, 0x2b0c810, 0x32b9e08, 0x32ba000, 0x3c4bac4)
 
 class PreviewMachine(Machine):
     def __init__(self, base):
@@ -70,6 +70,28 @@ class PreviewMachine(Machine):
         self.write(base+0x55ca7b8,1,1)
         self.write(base+0x55ca7b0,1,1); self.write(base+0x55ca7b4,1,1)
         self.services[base+0x2e96b80] = ('preview','noop')  # Material view update, after native index mapping.
+        # Execute native SetModelRotation against a real-shaped entity registry;
+        # it validates the live handle and writes Angle32 XYZ at component +2bc.
+        manager_slot=self.alloc(); manager=self.alloc(0x600)
+        registry=self.alloc(); entries=self.alloc(); entity=self.alloc(0x300)
+        entity_methods=self.alloc(); self.component=self.alloc(0x300)
+        self.write(manager_slot,manager); self.write(base+0x4ab27c0,manager_slot)
+        self.write(manager+0x1c0,registry); self.write(registry+8,entries)
+        self.write(entries,entity); self.write(entity,entity_methods)
+        self.write(entity_methods+0x20,self.stub('accept'))
+        self.write(entity+0x150,1,4); self.write(entity+0x230,0x12345,4)
+        self.write(entity+0x68,self.component)
+        # The native entity manager also checks its render-thread context.
+        self.write(manager+0x288,1,4)
+        self.render_thread=self.alloc(); thread_methods=self.alloc()
+        self.write(self.render_thread,thread_methods)
+        self.write(thread_methods+0x60,self.stub('zero'))
+        thread_context=self.alloc(); thread_slot=self.alloc()
+        self.write(thread_slot,thread_context); self.write(base+0x4ab3350,thread_slot)
+        self.services[base+0x3f033a0]=('preview','render_thread')
+        guard=self.alloc(); self.write(guard,1,1); self.write(base+0x4ab2e60,guard)
+        self.write(base+0x4ab2e58,self.alloc())
+        self.model_entity=entity
 
     def alloc(self, n=0x100):
         p = self.next; self.next += (n + 15) & ~15; return p
@@ -92,7 +114,9 @@ class PreviewMachine(Machine):
             self.write(self.reg(0) + 8, self.reg(1), 4)
         elif action == 'spawn':
             request = bytes(u.mem_read(self.reg(1), 24)); self.events.append(('spawn', request))
-            if not self.fail_spawn: self.write(self.reg(0) + 0x6c, 0x12345, 4)
+            if not self.fail_spawn:
+                self.write(self.reg(0) + 0x6c, 0x12345, 4)
+                u.mem_write(self.reg(0)+0x80,struct.pack('<3I',0x01000000,0x20000000,0x03000000))
         elif action == 'release':
             self.events.append(('release', self.reg(1)))
             self.write(self.reg(0) + 0x6c, 0, 4)
@@ -121,6 +145,9 @@ class PreviewMachine(Machine):
         elif action == 'copy':
             u.mem_write(self.reg(0),bytes(u.mem_read(self.reg(1),self.reg(2)))); result=self.reg(0)
         elif action == 'accept': result = 1
+        elif action == 'render_thread': result = self.render_thread
+        elif action == 'capture_data':
+            result = self.capture_alpha if self.string(self.reg(1)) == 'CaptureBGAlpha' else 0
         elif action in ('noop', 'bind', 'frame', 'deactivate'): pass
         else: raise AssertionError(action)
         u.reg_write(UC_ARM64_REG_X0, result); u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
@@ -184,10 +211,13 @@ class PreviewMachine(Machine):
         event = self.alloc(0x20); self.write(event, kind, 4); self.write(event + 0x18, row)
         self.invoke(self.base + 0x375aa40, page, event)
     def frame(self, phone): self.invoke(self.base+0x2b0c720,phone)
-    def input(self, page, held, resident=0, blocked=0, consumed=0):
+    def input(self, page, held, resident=0, blocked=0, consumed=0, left=(0,0), right=(0,0), consumed_axes=0):
         snapshot = self.alloc(); rows = self.alloc(8 * 0x48)
         self.write(snapshot + 8, 8, 4); self.write(snapshot + 0x10, rows)
         self.write(rows + resident * 0x48, held, 4); self.write(rows + resident * 0x48 + 0x3c, consumed, 4)
+        self.last_input_row=rows + resident * 0x48
+        self.u.mem_write(self.last_input_row+4,struct.pack('<4f',*left,*right))
+        self.write(self.last_input_row+0x40,consumed_axes,4)
         self.hook(0x3c58d24, page, snapshot, blocked)
         return self.read(rows + resident * 0x48 + 0x3c, 4)
     def patch(self, content):
@@ -237,6 +267,7 @@ def verify_layout(original, patched):
     name_offset, value_offset = struct.unpack_from('<II', usd, 12)
     assert usd[12+name_offset:].split(b'\0',1)[0] == b'DynamicCaptureOn'
     assert usd[12+value_offset:].split(b'\0',1)[0] == b'R10G10B10A2'
+    assert struct.unpack_from('<i', usd, 36)[0] == 0  # Preserve scene alpha; no opaque black rectangle.
     capture = material_records(next(s for s in after if s[:4] == b'mat1'))[-1]
     assert struct.unpack_from('<I', capture, 28)[0] == 0x15
     assert struct.unpack_from('<I', capture, 32)[0] == 0x08040200
@@ -303,8 +334,50 @@ for base in (0x7100000000, 0x7200000000):
     assert m.read(panes['N_QolPreview_00']+0x58,1)==0xa3
     assert m.read(panes['N_QolCapture_00']+0x58,1)==0xa3
     assert m.read(panes['N_Recipe_00']+0x58,1)==0xa3
+    # Right-stick rotation executes the native registry lookup and rotation
+    # write. Preserve the item's initial pose/roll, materials and position.
+    materials=bytes(m.u.mem_read(panes['N_Recipe_00'],0x200))
+    position=bytes(m.u.mem_read(m.controller+0x78,8))
+    angles=lambda: struct.unpack('<3I',bytes(m.u.mem_read(m.controller+0x80,12)))
+    pose=angles()
+    for right in ((0,0),(.1,-.1),(float('nan'),float('inf'))):
+        m.input(page,0,right=right); m.frame(phone); assert angles()==pose
+    m.input(page,0,left=(1,1)); m.frame(phone); assert angles()==pose
+    m.input(page,0,right=(1,1),consumed_axes=2); m.frame(phone); assert angles()==pose
+    m.input(page,0,right=(1,1),blocked=1); m.frame(phone); assert angles()==pose
+    m.write(input_context+0x54,1,1)
+    m.input(page,0,right=(1,1)); m.frame(phone); assert angles()==pose
+    m.write(input_context+0x54,0,1)
+    m.input(page,0,right=(1,0)); assert m.read(m.last_input_row+0x40,4)==2
+    assert angles()==pose  # Applied outside the input callback.
+    m.frame(phone); changed=angles()
+    assert changed[0]==pose[0] and changed[2]==pose[2]
+    assert abs(((pose[1]-changed[1])&0xffffffff)/2**32*360-3)<.0001
+    assert bytes(m.u.mem_read(m.component+0x2bc,12))==bytes(m.u.mem_read(m.controller+0x80,12))
+    m.frame(phone); assert angles()==changed  # No snapshot must not keep rotating.
+    # Both directions, full turn wrap, bounded tilt and loaded/owned guards.
+    m.input(page,0,right=(-1,0)); m.frame(phone); assert angles()==pose
+    for _ in range(120): m.input(page,0,right=(1,0)); m.frame(phone)
+    assert abs(((angles()[1]-pose[1]+2**31)&0xffffffff)-2**31)<512
+    for _ in range(30): m.input(page,0,right=(0,1)); m.frame(phone)
+    upper=angles(); m.input(page,0,right=(0,1)); m.frame(phone); assert angles()==upper
+    for _ in range(60): m.input(page,0,right=(0,-1)); m.frame(phone)
+    lower=angles(); assert lower[0]!=upper[0] and lower[2]==pose[2]
+    m.input(page,0,right=(0,-1)); m.frame(phone); assert angles()==lower
+    for off,value,size in ((0x74,1,1),(0x6c,0,4),(0x50,7,4),(0x10,0,4)):
+        saved=m.read(m.controller+off,size); m.write(m.controller+off,value,size)
+        m.input(page,0,right=(1,1)); m.hook(0x2e9fbb0,phone); assert angles()==lower
+        m.write(m.controller+off,saved,size)
+    m.write(m.model_entity+0x230,0x54321,4)
+    m.input(page,0,right=(1,1)); m.frame(phone); assert angles()==lower
+    m.write(m.model_entity+0x230,0x12345,4)
+    m.write(m.context+0x30,m.alloc(0x1200))
+    m.input(page,0,right=(1,1)); m.hook(0x2e9fbb0,phone); assert angles()==lower
+    m.write(m.context+0x30,m.controller)
+    assert bytes(m.u.mem_read(m.controller+0x78,8))==position
+    assert bytes(m.u.mem_read(panes['N_Recipe_00'],0x200))==materials
     before=list(m.events); m.input(page,2); assert m.events==before
-    assert m.input(page,0x20)==0x20; m.frame(phone)
+    assert m.input(page,0x20,right=(1,1))==0x20; m.frame(phone)
     assert ('release',2) in m.events
     assert m.read(m.controller+0x50,4)==26 and m.read(m.controller+0x10,4)==3
     assert m.invoke(m.read(m.read(phone)+0x200),phone)==26
@@ -316,8 +389,10 @@ for base in (0x7100000000, 0x7200000000):
     m.input(page,0); m.input(page,0); assert m.events[-1]==('native_input',page)
     m.hook(0x2e9d538,phone); m.confirm(page); m.frame(phone); m.frame(phone)
     assert sum(e[0]=='spawn' for e in m.events)==2
+    assert angles()==pose  # Reopening starts from the item's native pose.
     m.hook(0x2e9d538,phone); assert m.read(m.controller+0x6c,4)==0
     assert m.read(panes['N_QolCapture_00']+0x58,1)==0xa2
+    print(f'PASS: native Angle32 writes from right stick only; dead zone, turn/wrap, bounded tilt, load/owner/handle guards, unchanged position/materials and reopen, ASLR {base:#x}')
     phone2,page2,row2,panes2=m.phone(1,surface=False)
     before=m.model_events; m.confirm(page2); m.frame(phone2); assert m.model_events==before
     unbound,unbound_page,unbound_row,unbound_panes=m.phone(3)
@@ -346,6 +421,9 @@ for base in (0x7100000000, 0x7200000000):
     m.confirm(routed_page,resident=4); m.frame(routed); m.frame(routed)
     assert m.read(m.controller+0x6c,4)==0x12345
     assert struct.unpack('<IIIHHQ',m.model_events[-1][1])[1:3]==(0x445500bb,0x00112233)
+    routed_pose=angles()
+    m.input(routed_page,0,resident=0,right=(1,1)); m.frame(routed); assert angles()==routed_pose
+    m.input(routed_page,0,resident=4,right=(1,1)); m.frame(routed); assert angles()!=routed_pose
     m.input(routed_page,0x20,resident=0); m.frame(routed); assert m.read(m.controller+0x6c,4)==0x12345
     assert m.input(routed_page,0x20,resident=4)==0x20; m.frame(routed)
     assert m.read(m.controller+0x6c,4)==0
@@ -429,6 +507,17 @@ for base in (0x7100000000, 0x7200000000):
     assert m.read(m.controller+0x6c,4)==0 and m.read(m.controller+0x70,4)==0
     assert m.read(m.controller+0x8c)==0xfffe and m.read(m.controller+0x10,4)==0
     print(f'PASS: compiled resource patch preserves native/modified layout; focus dispatch alone cannot preview; snapshot input/B consumption, direct model ABI, parameter restoration, repeated open, deactivation and unavailable renderer, ASLR {base:#x}')
+
+    # Execute native capture alpha parsing: 255 forces opacity; zero preserves
+    # framebuffer alpha without clearing away the already rendered item.
+    m.services[base+0x27e610]=('preview','capture_data')
+    m.capture_alpha=m.alloc(); m.write(m.capture_alpha+4,12,4)
+    flags=m.alloc()
+    for alpha,expected in ((255,2),(0,0)):
+        m.write(m.capture_alpha+12,alpha,4); m.write(flags,0,1)
+        assert m.invoke(base+0x3a2dad4,0,0,0,flags)==0
+        assert m.read(flags,1)==expected
+    print(f'PASS: native capture alpha parser preserves scene transparency without a background clear, ASLR {base:#x}')
 
 # Exercise native state transitions and camera reference counts, not only
 # modeled state-field writes. Delegate glue below supplies the fixture owner;

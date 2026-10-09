@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.37 DIY preview capture order
+# Unified QoL validation — 0.3.38 DIY transparency and rotation
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,40 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.38 DIY transparency and right-stick rotation
+
+The user confirms 0.3.37 renders models, with a screenshot of a wooden simple bed
+inside the existing app and a black rectangular background. The synced log shows
+repeated model creation and release without a reported crash. The requested
+rotation control was corrected to the right stick before implementation.
+
+CaptureBGAlpha changes from 255 to 0. Native 03A2DAD4 sets the capture's force-
+opaque bit for 255; zero leaves the scene alpha intact. CaptureBGColor remains
+absent so the framebuffer model is copied rather than cleared. The late picture
+can then composite over the original app background instead of an opaque black
+rectangle. The opacity assertion fails against the 0.3.37 ELF; the new fixture
+executes native alpha parsing for both values at two load addresses.
+
+The shared snapshot's right-stick float pair is row +0C/+10, with consumed-axis
+bit 1 at +40. Native 03C4BAC4 verifies the pair ABI. Input is collected only for
+the showing preview's routed row and applied once in its following phone update.
+A 0.15 dead zone rejects drift; invalid/non-finite axes, consumed/blocked input,
+missing snapshots and loading/unowned renderers cannot rotate the item. Maximum
+speed is three degrees per update, with yaw wrapping and pitch limited to ±60°
+from the item's initial pose. Reopening uses the native pose again.
+
+Native 032B9E08 resolves the model handle and writes its Angle32 XYZ vector;
+controller +80 stores the cached angles. 032B74F0 establishes a full turn as 2^32
+units. Controller +78/+7C are position floats and remain untouched. The compiled
+fixture executes the native handle/type/thread validation and angle writes,
+checking both directions, a full turn, tilt limits, roll/position/material
+preservation, routing on resident 5/input row 4, stale handles, missing ownership,
+B while the stick is held and reopening. New native bindings/call sites are
+fingerprinted; the camera lifecycle and all 64 Core module combinations pass.
+
+Build and package integrity/source parity are checked. GPU compositing and
+rotation feel still need a live Deck test. Recipe navigation remains deferred.
 
 ## 0.3.37 DIY capture draw order
 

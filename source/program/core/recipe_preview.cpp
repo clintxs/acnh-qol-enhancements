@@ -2,6 +2,7 @@
 #include "recipe_preview.hpp"
 #include "recipe_preview_layout.hpp"
 #include "page_input.hpp"
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstring>
@@ -18,6 +19,7 @@ constexpr std::uintptr_t PageInput = 0x03c58d24, UiContext = 0x04ab2230;
 constexpr std::uintptr_t Application = 0x059f83f0;
 constexpr std::uintptr_t CreateItemModel = 0x032bd990, ReleaseModel = 0x032ba5e4;
 constexpr std::uintptr_t ChangeState = 0x03dbb160;
+constexpr std::uintptr_t SetModelRotation = 0x032b9e08;
 constexpr std::uintptr_t CapturePicture = 0x03a17390, AlternateCapturePicture = 0x03a174f0;
 }
 namespace field {
@@ -33,8 +35,14 @@ constexpr std::size_t ApplicationMasks = 0x418, GlobalBlockMask = 0x10;
 constexpr std::size_t Controller = 0x30, Parameters = 0x28;
 constexpr std::size_t ModelMode = 0x50, ModelHandle = 0x6c;
 constexpr std::size_t ModelState = 0x10, BackgroundPage = 0x58, VisibilityPage = 0x60;
+constexpr std::size_t ModelFlags = 0x74, ModelAngles = 0x80;
+constexpr std::size_t RightStick = 0x0c, ConsumedAxes = 0x40;
 }
 constexpr unsigned WorkbenchModelMode = 2, ConfirmMask = 0x10, BackMask = 0x20, PhoneShortcutKind = 5;
+constexpr unsigned RightStickMask = 2;
+constexpr float StickDeadZone = 0.15f, DegreesPerUpdate = 3.0f, MaximumTilt = 60.0f;
+// Native 032B74F0 converts radians to Angle32 (one turn = 2^32).
+constexpr float AngleUnitsPerDegree = 4294967296.0f / 360.0f;
 constexpr int PhoneModelMode = 26, PhoneModelState = 3;
 std::uintptr_t Main{};
 template<class T> T &At(void *object, std::size_t offset = 0) {
@@ -128,6 +136,8 @@ struct Session {
     unsigned char gridFlags{}, scrollFlags{}, cursorFlags{}, savedHidden{};
     std::array<std::byte, 0x28> savedParameters{};
     std::uint64_t item{};
+    std::array<std::uint32_t, 3> initialAngles{};
+    float stickX{}, stickY{}, tilt{};
     int inputRow{-1};
     int savedModelMode{-1};
     bool backHeld{}, confirmHeld{true}, ownsRenderer{};
@@ -194,6 +204,7 @@ bool InputBlocked(Session &s, unsigned blocked) {
     return !masks || (mask & At<unsigned>(masks, field::GlobalBlockMask));
 }
 void Close(Session &s) {
+    s.stickX = s.stickY = 0;
     if (s.ownsRenderer) {
         // Release only the handle/mode acquired by this phone. The native
         // state-1 exit balances camera/layers before state 0 resets ownership.
@@ -287,8 +298,38 @@ HOOK_DEFINE_TRAMPOLINE(BindPhoneRecipes) {
                     s.surface, s.gridPane, s.inputRow, focusBindings);
     }
 };
+float StickAxis(float value) {
+    // Reject NaN/infinity and apply a dead zone to avoid controller drift.
+    if (!(value >= -1.0f && value <= 1.0f)) return 0;
+    if (value > StickDeadZone) return (value - StickDeadZone) / (1.0f - StickDeadZone);
+    if (value < -StickDeadZone) return (value + StickDeadZone) / (1.0f - StickDeadZone);
+    return 0;
+}
+void RotatePreview(Session &s) {
+    const auto x = s.stickX, y = s.stickY;
+    s.stickX = s.stickY = 0; // A missing/blocked snapshot must never keep spinning.
+    if (x == 0 && y == 0) return;
+    auto context = UiContext();
+    if (!s.ownsRenderer || !context || At<void *>(context, field::Controller) != s.controller ||
+        At<unsigned>(s.controller, field::ModelMode) != WorkbenchModelMode ||
+        At<int>(s.controller, field::ModelState) != 1 || !At<unsigned>(s.controller, field::ModelHandle) ||
+        (At<unsigned char>(s.controller, field::ModelFlags) & 7)) return;
+    std::array<std::uint32_t, 3> angles{};
+    std::memcpy(angles.data(), static_cast<std::byte *>(s.controller) + field::ModelAngles, sizeof(angles));
+    const float tilt = std::clamp(s.tilt - y * DegreesPerUpdate, -MaximumTilt, MaximumTilt);
+    angles[0] = s.initialAngles[0] + static_cast<std::uint32_t>(static_cast<std::int32_t>(tilt * AngleUnitsPerDegree));
+    angles[1] -= static_cast<std::uint32_t>(static_cast<std::int32_t>(x * DegreesPerUpdate * AngleUnitsPerDegree));
+    // 032B9E08 resolves/validates the handle and writes the entity's Angle32
+    // XYZ vector. +78/+7c are position floats, not rotation. Preserve roll and
+    // the cached rotation so later native model updates retain the new angle.
+    if (Native<bool (*)(void *, const std::uint32_t *)>(address::SetModelRotation)(s.controller, angles.data())) {
+        std::memcpy(static_cast<std::byte *>(s.controller) + field::ModelAngles, angles.data(), sizeof(angles));
+        s.tilt = tilt;
+    }
+}
 bool PreviewInput(void *layout, void *snapshot, unsigned blocked) {
     for (auto &s : Sessions) if (s.layout == layout) {
+        s.stickX = s.stickY = 0;
         if (s.phase == Phase::Idle) s.inputRow = ShortcutInputRow(s.layout);
         if (!snapshot || s.inputRow < 0) return s.phase != Phase::Idle;
         const auto count = At<unsigned>(snapshot, 8);
@@ -315,6 +356,14 @@ bool PreviewInput(void *layout, void *snapshot, unsigned blocked) {
         } else if (press && !(blocked & 1) && !(At<unsigned>(row, 0x3c) & BackMask)) {
             s.phase = Phase::Closing;
             At<unsigned>(row, 0x3c) |= BackMask;
+        }
+        // Native 03C4BAC4 reads float axis pairs at row +4 + kind*8.
+        // Kind 1 is the right stick; +40 bit 1 records its consumption.
+        if (s.phase == Phase::Showing && !InputBlocked(s, blocked) &&
+            !(At<unsigned>(row, field::ConsumedAxes) & RightStickMask)) {
+            s.stickX = StickAxis(At<float>(row, field::RightStick));
+            s.stickY = StickAxis(At<float>(row, field::RightStick + 4));
+            At<unsigned>(row, field::ConsumedAxes) |= RightStickMask;
         }
         // Keep all native grid/category/sort input frozen. The input
         // context remains enabled, so B can still be observed here.
@@ -374,6 +423,7 @@ HOOK_DEFINE_TRAMPOLINE(UpdatePhoneRecipes) {
             if (!Begin(*s)) { s->phase = Phase::Idle; Logging.Log("[QoL Enhancements/Core] DIY preview: renderer busy/unavailable; grid retained\n"); }
             return;
         }
+        if (s->phase == Phase::Showing) RotatePreview(*s);
         if (s->phase == Phase::Showing && ++s->frames == 30) {
             Logging.Log("[QoL Enhancements/Core] DIY preview: renderer status; handle=%u flags=%u state=%d\n",
                         At<unsigned>(s->controller, field::ModelHandle),
@@ -392,9 +442,11 @@ HOOK_DEFINE_TRAMPOLINE(UpdatePhoneRecipes) {
         request.itemLow = s->item; request.itemHigh = s->item >> 32;
         Native<void (*)(void *, const ItemRequest *)>(address::CreateItemModel)(s->controller, &request);
         if (!At<unsigned>(s->controller, field::ModelHandle)) { Close(*s); return; }
+        std::memcpy(s->initialAngles.data(), static_cast<std::byte *>(s->controller) + field::ModelAngles, sizeof(s->initialAngles));
+        s->tilt = s->stickX = s->stickY = 0;
         Visible(s->gridPane, false); Visible(s->scrollPane, false); Visible(s->cursorPane, false);
         Visible(s->capture, true); Visible(s->surface, true); s->phase = Phase::Showing;
-        Logging.Log("[QoL Enhancements/Core] DIY preview: stationary model created; handle=%u\n", At<unsigned>(s->controller, field::ModelHandle));
+        Logging.Log("[QoL Enhancements/Core] DIY preview: item model created; handle=%u\n", At<unsigned>(s->controller, field::ModelHandle));
     }
 };
 HOOK_DEFINE_TRAMPOLINE(DeactivatePhoneRecipes) {
@@ -427,6 +479,9 @@ bool InstallRecipePreview() {
         {0x03c4b880, {0xd10203ff, 0xa9027bfd, 0xa9036ffc, 0xa90467fa, 0xa9055ff8}},
         {0x02b0c810, {0xf9400268, 0xaa1303e0, 0xf940d108, 0xd63f0100, 0xf9400268}},
         {0x02ea0754, {0x52800340, 0xd65f03c0, 0xf9400408, 0xb4000148, 0xa9412802}},
+        {0x032b9e08, {0xa9bc7bfd, 0xf9000bf7, 0xa90257f6, 0xa9034ff4, 0x910003fd}},
+        {0x032ba000, {0x91020261, 0xaa1303e0, 0x97ffff80, 0x36000200, 0xb9405268}},
+        {0x03c4bac4, {0xbd400100, 0xbc038c20, 0xbd400500, 0xf8418c08, 0xf90003fb}},
     };
     const auto &main = exl::util::GetMainModuleInfo();
     for (const auto &f : fingerprints) if (f.offset + sizeof(f.words) > main.m_Text.m_Size ||
@@ -452,7 +507,7 @@ bool InstallRecipePreview() {
     BindPhoneRecipes::InstallAtOffset(address::PhoneBind);
     UpdatePhoneRecipes::InstallAtOffset(address::PhoneFrame);
     DeactivatePhoneRecipes::InstallAtOffset(address::PhoneDeactivate);
-    Logging.Log("[QoL Enhancements/Core] DIY preview: READY; renderer-only stationary prototype; A opens, B returns\n");
+    Logging.Log("[QoL Enhancements/Core] DIY preview: READY; transparent capture; right stick rotates; A opens, B returns\n");
     return true;
 }
 } // namespace qol::core

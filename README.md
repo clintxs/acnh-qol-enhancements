@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.37 DIY preview capture-order fix** for ACNH **3.0.3 on Eden**. One Core
+**0.3.38 DIY preview transparency and right-stick rotation** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -60,18 +60,16 @@ fingerprints only, checked before each feature's first hook.
 
 ## DIY Recipes app previews
 
-0.3.37 corrects the blank preview's capture order. The model loads in 0.3.36,
-but its image is captured after the app paints its background over it. Core now
-captures before the app's original panes and displays that texture afterward,
-matching the native workbench's ordering. Capture and display are shown together
-on A and hidden together on B or app deactivation. The borrowed phone renderer
-reservation and native selection/material updates remain in place.
+The 0.3.37 Deck test confirms item models now render inside the existing app.
+0.3.38 preserves the capture's transparency so the app's own background can show
+through, and adds **right-stick rotation**: left/right turns the item, up/down
+tilts it up to 60° from its starting pose. A small dead zone prevents drift.
+Reopening starts from the item's native pose.
 
-This approach uses the item renderer directly within the existing DIY app.
 The existing DIY app keeps its materials panel, category, selection and scroll
-position. A on a recipe requests a stationary 3D item in the grid area; B releases
-the model and restores the grid. There is no crafting button or crafting action.
-Rotation and left/right recipe navigation are not implemented in this first step.
+position. A opens the 3D preview in place of the grid; B releases the model and
+restores the grid. There is no crafting button or crafting action. Left/right
+recipe navigation within the preview is not implemented yet.
 
 Core adds a small capture surface to the **loaded MenuRecipe layout in memory**.
 Existing panes, animations and material/texture indices are preserved, including
@@ -79,10 +77,10 @@ installed aspect-ratio edits. No workbench layout or extra RomFS file is used.
 If the capture binding or renderer is unavailable, the ordinary grid stays usable.
 Core and Pockets share one page-input hook, preserving Quick Store behavior.
 
-Compiled ARM checks cover native button dispatch, model request/release, input
-scope, B consumption and restoration. **Live model rendering and 16:10 appearance
-remain unverified**; this release is a test of that first milestone, not a completed
-preview feature. See `research/recipe-preview/NOTES.md` and `VALIDATION.md`.
+Compiled ARM checks cover native rotation and capture-alpha parsing, input
+scope, B consumption and restoration. **Transparency, rotation feel and 16:10
+appearance in 0.3.38 still need an Eden test.** See
+`research/recipe-preview/NOTES.md` and `VALIDATION.md`.
 
 The Exlaunch SIMD context declaration now matches its assembly stack layout;
 compile-time assertions and execution of the real adapter cover that correction.
@@ -197,7 +195,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.37
+version = 0.3.38
 base_speed = 2
 boost_speed = 4
 faster_ui = false
