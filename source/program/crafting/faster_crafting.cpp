@@ -4,21 +4,40 @@
 namespace qol::crafting {
 namespace {
 namespace address {
-// Immediately after loading each state's mash-A counter, before native 1..3
-// clamping. Both paths have already excluded non-local player actors.
-constexpr std::uintptr_t CraftingMashRate = 0x022fc694;
-constexpr std::uintptr_t CookingMashRate = 0x022799fc;
+// Immediately before storing the computed rate in S0. Both paths have already
+// excluded non-local player actors; crafting's readiness check still follows.
+constexpr std::uintptr_t CraftingMashRate = 0x022fc6bc;
+constexpr std::uintptr_t CookingMashRate = 0x02279a14;
 } // namespace address
-constexpr unsigned MaximumMashBoost = 3;
+constexpr std::uintptr_t ActorStateFrames = 0x1c04;
+constexpr unsigned RampFrames = 30;
+
+float AutomaticRate(unsigned elapsedFrames) {
+    // Sample 1 + 2 * log(1 + 9*t) / log(10), t = frame/30. A small constant
+    // table avoids a runtime math-library dependency in the injected module.
+    // Starts at 1x, rises quickly, then eases into the native maximum of 3x.
+    static constexpr float rates[RampFrames + 1]{
+        1.000000000f, 1.227886705f, 1.408239965f, 1.557507202f, 1.684845362f,
+        1.795880017f, 1.894316063f, 1.982723388f, 2.062957834f, 2.136403448f,
+        2.204119983f, 2.266936911f, 2.325515663f, 2.380392160f, 2.432006687f,
+        2.480725379f, 2.526855987f, 2.570659670f, 2.612359948f, 2.652149605f,
+        2.690196080f, 2.726645720f, 2.761627185f, 2.795254183f, 2.827627705f,
+        2.858837851f, 2.888965344f, 2.918082785f, 2.946255707f, 2.973543469f,
+        3.000000000f,
+    };
+    return rates[elapsedFrames < RampFrames ? elapsedFrames : RampFrames];
+}
 
 HOOK_DEFINE_INLINE(AutomaticMashBoost) {
     static void Callback(exl::hook::InlineFloatCtx *registers) {
-        // Supply the native maximum to its existing calculation. Do not write
-        // the counter or controller state: no synthetic A presses can confirm
-        // menus, and disabling this module restores ordinary manual boosting.
-        // Crafting's native recipe/animation gate can still reset the rate to
-        // 1, and native state teardown restores normal animation playback.
-        registers->W[8] = MaximumMashBoost;
+        // Native state entry resets this per-actor counter, and the update
+        // wrappers increment it only when not suspended/busy. Reading it keeps
+        // each action's ramp independent without another hook or cached actor.
+        // Replace only the rate: input/mash counters, recipe readiness and
+        // native exit resets remain intact. Manual mashing works when disabled.
+        const auto actor = registers->X[19];
+        const auto elapsed = *reinterpret_cast<const unsigned *>(actor + ActorStateFrames);
+        registers->S[0] = AutomaticRate(elapsed);
     }
 };
 } // namespace
@@ -27,11 +46,15 @@ bool Install() {
     struct Fingerprint { std::uintptr_t offset; std::uint32_t words[5]; };
     // Original instructions only; behavior is implemented by the C++ callback.
     constexpr Fingerprint fingerprints[]{
-        {address::CraftingMashRate, {0x1e211002, 0x5283dd0a, 0x3945eaa9, 0x8b0a0260, 0x1e220101}},
-        {address::CookingMashRate, {0x1e211002, 0x1e220101, 0x1e222020, 0x1e21cc41, 0x7100051f}},
+        {address::CraftingMashRate, {0xbd192a60, 0xf9401108, 0x34000089, 0xf000e3e9, 0x913aed29}},
+        {address::CookingMashRate, {0xbd192260, 0xf9403274, 0xb50000f4, 0xb0017668, 0x91070108}},
         // Guard local-player/input checks as well as the two hook sites.
         {0x022fc63c, {0x5282f588, 0xaa0003f3, 0x8b080015, 0xb9417808, 0x35000528}},
         {0x02279998, {0x5282f588, 0xaa0003f3, 0x8b080015, 0xb9417808, 0x34000088}},
+        // Common state-entry reset and both registered update increments.
+        {0x022758a8, {0xb91c067f, 0xb00141f6, 0xb91d9a69, 0xf943fed6, 0x37900428}},
+        {0x022a6bec, {0xb95c0668, 0x11000508, 0xb91c0668, 0xf9400bf3, 0xa8c27bfd}},
+        {0x022b1830, {0xb95c0668, 0x11000508, 0xb91c0668, 0xf9400bf3, 0xa8c27bfd}},
     };
     const auto &main = exl::util::GetMainModuleInfo();
     for (const auto &expected : fingerprints) {
@@ -44,7 +67,7 @@ bool Install() {
     }
     AutomaticMashBoost::InstallAtOffset(address::CraftingMashRate);
     AutomaticMashBoost::InstallAtOffset(address::CookingMashRate);
-    Logging.Log("[QoL Enhancements/Faster Crafting] READY: C++ hooks; automatic crafting/cooking boost=%ux\n", MaximumMashBoost);
+    Logging.Log("[QoL Enhancements/Faster Crafting] READY: C++ hooks; logarithmic crafting/cooking ramp=1..3x over %u updates\n", RampFrames);
     return true;
 }
 } // namespace qol::crafting
