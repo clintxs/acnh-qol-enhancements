@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.23 combined Shopping Card funds
+# Unified QoL validation — 0.3.24 DIY recipe previews
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -19,8 +19,9 @@ by the local tests below.
   `exl_main` installs only the content-mount continuation hook and performs no
   configuration reads. Activation executes the real compiled registry/parser and
   installers; a second activation performs no additional reads or installations.
-- Full suite installs 63 disjoint modeled hook ranges (Core 1, Catalog 16,
-  Pockets 16, Faster Dialogue 7, Fitting Room 11, Amiibo 1, Shopping Card 10 behavior + 1 allocation support), plus the private
+- Full suite installs 69 disjoint modeled hook ranges (Core discovery 1,
+  DIY preview 3, Catalog 16, Pockets 16, Faster Dialogue 7, Fitting Room 11,
+  Amiibo 1, Faster Crafting 2, Shopping Card 11 behavior + 1 allocation support), plus the private
   fitting input vtable entry. No embedded binary replacement arrays, IPS or
   dialogue code-cave helper remain in the collection.
 - Per-feature absent, disabled, invalid, missing-version, oversized, below-minimum
@@ -543,3 +544,34 @@ change, insufficient total, cancellation, multiple residents and sale proceeds.
 Release checks: the devkitA64 build and `tools/check.py core shopping fitting`
 passed. All five palette structure checks and suite manifest/resource checks
 passed; generated assets retain the previous nine-digit layout bytes.
+
+## 0.3.24 DIY Recipes app previews
+
+The feature is built into Core, with no optional module or new RomFS asset.
+Selecting a recipe opens a phone-owned instance of the native workbench detail
+page. It borrows the current app list for native left/right navigation and
+material/item lookup. A private virtual table disables the craft focus target
+and rejects crafting actions; the nested craft-button layout root is hidden.
+B runs the return animation, releases the borrowed list and restores the app's
+category, selected cell and scroll position. Native workbench objects are intact.
+
+Local checks execute the compiled integration at two ASLR bases, with modeled
+UI allocation, loading and animation completion. The actual game code handles
+recipe copying (including all six material entries), list count, left/right
+wrapping, item lookup, favorite-command forwarding and craft-action rejection.
+Additional cases cover sorted/filtered pointer order, one-item lists, invalid
+selections, allocation failure, duplicate confirms, reuse, per-resident sessions,
+active/already-removed child cleanup, and all instruction-fingerprint conflicts.
+Core's 64 package combinations and configuration/compatibility checks pass with
+the three added built-in hooks. A preview mismatch leaves amiibo and optional
+modules independent.
+
+The 0.3.24 pinned Docker build passes with `-Wall -Werror`. All host checks and
+the Core, Shopping Card, Faster Dialogue, Faster Crafting, Pockets, Fitting Room
+and Catalog regression groups pass against that build.
+
+Live Eden verification remains pending for model/resource loading, visible
+layout/layering, rotation, physical input, B during loading, repeated app/phone
+closure and normal workbench crafting/cooking. The local harness does not
+establish those results. See `research/recipe-preview/NOTES.md` for native bindings
+and the live test list. No running game, installed mod folder or save was changed.

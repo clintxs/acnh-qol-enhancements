@@ -2,6 +2,7 @@
 #include "modules.hpp"
 #include "release.hpp"
 #include "settings.hpp"
+#include "recipe_preview.hpp"
 #include "program/shopping/shopping_card.hpp"
 #include "program/dialogue/settings.hpp"
 #include "program/catalog/game/build_profile.hpp"
@@ -90,7 +91,9 @@ bool ActivateCoreSettings() {
             Logging.Log("[QoL Enhancements/Core] WARNING: %s config invalid/unreadable; retaining prior settings\n",
                         layer == ConfigLayer::Custom ? "custom" : "regular");
     }
-    return InstallAmiiboTimeout(CorePreferences.amiiboTimeoutFrames);
+    const bool amiibo = InstallAmiiboTimeout(CorePreferences.amiiboTimeoutFrames);
+    const bool recipePreview = InstallRecipePreview();
+    return amiibo && recipePreview;
 }
 } // namespace
 

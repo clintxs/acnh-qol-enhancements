@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.23 combined Shopping Card funds** for ACNH **3.0.3 on Eden**. One Core
+**0.3.24 DIY recipe previews** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -19,6 +19,9 @@ for installation, version policy and user-facing limits.
 Faster tool-wheel animations and other workspace mods are not bundled in this
 six-feature suite. Historical source notes under `docs/` describe each
 baseline; their old installation/packaging instructions refer to standalone mods.
+
+Core also includes the amiibo timeout fix and DIY Recipes app previews. These
+built-in features do not require an optional module.
 
 Development releases advance numerically (for example, 0.9.0 → 0.10.0).
 Version 1.0.0 is reserved for the initial release.
@@ -54,6 +57,21 @@ Native restrictions and scripted speed overrides remain in force. No binary repl
 code-cave helper remains. Amiibo's existing 9,000-update timeout is likewise a
 C++ hook; its behavior is unchanged. Expected instruction words are validation
 fingerprints only, checked before each feature's first hook.
+
+## DIY Recipes app previews
+
+Core's new integration candidate opens the native workbench detail page when
+you select a recipe in the NookPhone app. It displays the larger rotatable model
+and materials, hides the crafting button, and rejects crafting actions. Native
+left/right navigation uses the app's current filtered/sorted recipe list. B
+returns to the same app category, selection and scroll position.
+
+The implementation lives in `source/program/core/recipe_preview.cpp`; it creates
+a phone-owned native page with a private virtual table. Existing workbench pages
+keep their normal behavior. It requires no additional RomFS layout or optional
+module. ARM execution checks cover the integration and native navigation/data
+paths; visible layout, rotation/input and resource loading still require live
+Eden verification. See `research/recipe-preview/NOTES.md` and `VALIDATION.md`.
 
 The Exlaunch SIMD context declaration now matches its assembly stack layout;
 compile-time assertions and execution of the real adapter cover that correction.
@@ -168,7 +186,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.23
+version = 0.3.24
 base_speed = 2
 boost_speed = 4
 faster_ui = false
@@ -307,9 +325,9 @@ at `../vanilla-3.0.3/Layout`; builders verify their hashes and archive structure
 The package script checks that every INI matches the Core release, refuses to
 replace existing archives, and creates:
 
-- `dist/qol-enhancements-v0_3_4_for_acnh_v3_0_3.zip`
-- `dist/qol-enhancements-v0_3_4_for_acnh_v3_0_3_source.zip`
-- `dist/qol-enhancements-v0_3_4_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
+- `dist/qol-enhancements-v0_3_24_for_acnh_v3_0_3.zip`
+- `dist/qol-enhancements-v0_3_24_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v0_3_24_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
 
 The binary ZIP contains a conspicuous installation text file, README, Core and
 six independently selectable feature folders, plus a SHA-256 manifest. Source
