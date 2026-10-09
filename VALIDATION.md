@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.41 DIY render diagnostic
+# Unified QoL validation — 0.3.42 DIY pose and background fix
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,22 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.42 native pose and color paths
+
+The synced 0.3.41 trace confirms all 77 queued transforms were applied, while
+none of 2,662 low-level clear calls matched the layer-color pointer. RE found
+032B9510 can reapply animated default angles and 039392B0 copies the layer color
+to its stack before the observed 039F6E00 clear.
+
+The new setter hook preserves the owned preview's cached pose while retaining
+native validation. The layer draw hook passes a local native color override
+for #E5DFC7, scoped by the actual draw context's layer pointer. It leaves layer
+storage and caller options untouched. Tests execute the native parameter update
+to reproduce/prevent overwrite, build the native 3x4 matrix, and execute the
+layer's copied-color conversion followed by the graphics-clear boundary.
+Steam Deck visuals, rotation feel, B/reopen stability and ordinary workbench
+behavior still require user validation. No live fix is claimed by local tests.
 
 ## 0.3.41 live render diagnostic
 
@@ -51,18 +67,20 @@ native updates and a nonmatching clear path before another rendering change.
 The user confirms 0.3.39 renders models, but right-stick rotation has no visible
 effect. Its log shows successful model allocation, flags=0/state=1 and release.
 The previous implementation called 032B9E08 directly. That helper can reject
-writes outside its entity-update phase; even successful Angle32 writes omit
-032BE2B0, which marks the item entity transform dirty at +398. The earlier test
-checked angle storage, without that final transform invalidation step.
+writes outside its entity-update phase. At this stage, 032BE2B0 and entity +398
+were interpreted as transform invalidation; 0.3.42 research corrects that field
+to a material publication gate and identifies native pose animation overwrite.
 
 0.3.40 writes controller +80 and sets its transform-pending bit at +74. Native
-late dispatch 02B0E20C -> 032B9FCC applies position/rotation and item invalidation,
+late dispatch 02B0E20C -> 032B9FCC applies position/rotation and material publication gating,
 then clears the bit on success. Material updates and other owners remain
 protected. Repeated dispatch of an already-consumed snapshot no longer erases
 this frame's queued movement. B and missing/blocked input still stop rotation.
 Bounded right-stick/rotation log entries distinguish input from queued updates.
 
-The item renderer uses layer/camera 2 (01513A48). Native layer draw 0386D730
+The following 0.3.40 pointer-matching approach was superseded in 0.3.42: live
+clears copy the color to their stack instead. The item renderer uses layer/camera
+2 (01513A48). Native layer draw 0386D730
 passes layer +9C as the RGBA pointer to ClearRenderTarget (038025B0). A C++ hook
 substitutes RGBA (229/255, 223/255, 199/255, 1), #E5DFC7, only for that pointer,
 color target 0 and a color-clear mask while the preview owns the renderer. An
@@ -72,7 +90,7 @@ never changed. Missing layer metadata leaves the normal preview usable.
 CaptureBGAlpha stays 255; CaptureBGColor remains absent.
 
 Compiled ARM tests execute the native late dispatch, registry/type/thread checks,
-Angle32 writes and item invalidation at two bases. They reproduce rejection in
+Angle32 writes and material publication gating at two bases. They reproduce rejection in
 UI entity phase 0, then successful application in phase 1, and require entity
 +398 to change. The clear hook executes the actual native clear body through
 modeled graphics API calls: requested RGB, untouched other layers/targets,

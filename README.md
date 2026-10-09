@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.41 DIY preview render diagnostic** for ACNH **3.0.3 on Eden**. One Core
+**0.3.42 DIY preview pose and background fix** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -60,16 +60,16 @@ fingerprints only, checked before each feature's first hook.
 
 ## DIY Recipes app previews
 
-Models render, but the 0.3.40 live test still shows a black background and no
-right-stick rotation. Its log confirms input reaches the preview and queues
-angles; it does not establish native transform application or a matching color
-clear. **0.3.41 is a diagnostic build, not a confirmed fix.** It records actual
-native update attempts and distinct clear passes, with bounded output, to locate
-where these changes are lost. It does not force entity updates or change phases.
+0.3.42 protects the right-stick pose from native parameter animation overwrites
+and supplies **#E5DFC7** through the item layer's native color override. The
+0.3.41 live trace confirmed successful transform updates, but its background
+hook never matched because the native renderer copies the color first.
 
-The requested controls remain right-stick turning/tilting, with a small dead
-zone and a 60° tilt limit, and the intended background is **#E5DFC7**. These are
-still unfinished in live play. Reopening starts from the item's native pose.
+Local checks reproduce the animation overwrite and verify the protected pose
+changes the native drawable matrix. They also follow the native copied color to
+the graphics clear. **Rotation and background still need a Steam Deck test.**
+Right-stick turning/tilting uses a small dead zone and a 60° tilt limit;
+reopening starts from the item's native pose.
 
 The existing DIY app keeps its materials panel, category, selection and scroll
 position. A opens the 3D preview in place of the grid; B releases the model and
@@ -201,7 +201,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.41
+version = 0.3.42
 base_speed = 2
 boost_speed = 4
 faster_ui = false

@@ -19,7 +19,8 @@ constexpr std::uintptr_t PageInput = 0x03c58d24, UiContext = 0x04ab2230;
 constexpr std::uintptr_t Application = 0x059f83f0;
 constexpr std::uintptr_t CreateItemModel = 0x032bd990, ReleaseModel = 0x032ba5e4;
 constexpr std::uintptr_t ChangeState = 0x03dbb160;
-constexpr std::uintptr_t ClearRenderTarget = 0x038025b0, RenderLayers = 0x04abdb78;
+constexpr std::uintptr_t DrawModelLayer = 0x039392b0, RenderLayers = 0x04abdb78;
+constexpr std::uintptr_t SetModelRotation = 0x032b9e08;
 constexpr std::uintptr_t UpdateModelTransform = 0x032b9fcc, EntityManager = 0x04ab27c0;
 constexpr std::uintptr_t CapturePicture = 0x03a17390, AlternateCapturePicture = 0x03a174f0;
 }
@@ -39,6 +40,8 @@ constexpr std::size_t ModelState = 0x10, BackgroundPage = 0x58, VisibilityPage =
 constexpr std::size_t ModelReady = 0x69, ModelFlags = 0x74, ModelAngles = 0x80;
 constexpr std::size_t RightStick = 0x0c, ConsumedAxes = 0x40;
 constexpr std::size_t LayerCount = 0x20, Layers = 0x28, LayerClearColor = 0x9c;
+constexpr std::size_t DrawLayer = 0x3d0, DrawOptionsSize = 0x28;
+constexpr std::size_t DrawOptionsFlags = 0x10, DrawOptionsColor = 0x24;
 constexpr std::size_t EntityPhase = 0x288, EntityStage = 0x5e8;
 }
 constexpr unsigned WorkbenchModelMode = 2, ConfirmMask = 0x10, BackMask = 0x20, PhoneShortcutKind = 5;
@@ -49,13 +52,13 @@ constexpr float StickDeadZone = 0.15f, DegreesPerUpdate = 3.0f, MaximumTilt = 60
 constexpr float AngleUnitsPerDegree = 4294967296.0f / 360.0f;
 constexpr int PhoneModelMode = 26, PhoneModelState = 3;
 constexpr unsigned ItemRenderLayer = 2;
-constexpr std::array<float, 4> PreviewBackground{229.0f / 255, 223.0f / 255, 199.0f / 255, 1};
-// The clear runs on a render worker. Publish only the color-field address;
+constexpr unsigned PreviewBackground = 0xe5dfc7ff; // Native draw override packs RRGGBBAA.
+// Layer drawing runs on a render worker. Publish only the layer identity;
 // that worker must not inspect the UI thread's mutable Session objects.
 std::atomic<const void *> PreviewClearColor{};
 std::atomic<void *> PreviewController{};
 std::atomic<unsigned> TransformCalls{}, TransformAttempts{}, TransformApplied{}, ClearCalls{}, ClearMatches{};
-std::array<std::atomic<std::uintptr_t>, 16> ReportedClearPasses{};
+
 std::uintptr_t Main{};
 template<class T> T &At(void *object, std::size_t offset = 0) {
     return *reinterpret_cast<T *>(static_cast<std::byte *>(object) + offset);
@@ -98,39 +101,41 @@ const void *ItemLayerClearColor() {
     const auto count = At<unsigned>(manager, field::LayerCount);
     auto layers = At<void **>(manager, field::Layers);
     if (count <= ItemRenderLayer || count > 64 || !layers || !layers[ItemRenderLayer]) return nullptr;
-    // Native 01513A48 uses camera/layer 2 for UI item models. 0386D730
-    // clears each layer with its RGBA at +9c before drawing its models.
     return static_cast<std::byte *>(layers[ItemRenderLayer]) + field::LayerClearColor;
 }
-HOOK_DEFINE_TRAMPOLINE(ClearPreviewBackground) {
-    static void Callback(float depth, void *buffer, void *command, int target,
-                         unsigned mask, const void *color, unsigned stencil, void *viewport, bool apply) {
-        const auto previewColor = PreviewClearColor.load(std::memory_order_acquire);
-        const bool matches = previewColor && color == previewColor && target == 0 && (mask & 1);
-        if (previewColor) {
-            ClearCalls.fetch_add(1, std::memory_order_relaxed);
-            if (matches) ClearMatches.fetch_add(1, std::memory_order_relaxed);
-            // Report each distinct native caller once, plus a matching pass.
-            // Workers use atomics only; the fixed table bounds diagnostic output.
-            const auto caller = reinterpret_cast<std::uintptr_t>(__builtin_return_address(0));
-            const auto key = caller | std::uintptr_t(matches);
-            for (auto &seen : ReportedClearPasses) {
-                auto value = seen.load(std::memory_order_relaxed);
-                if (value == key) break;
-                if (!value && seen.compare_exchange_strong(value, key, std::memory_order_relaxed)) {
-                    std::array<unsigned, 4> rgba{};
-                    if (color && (mask & 1)) std::memcpy(rgba.data(), color, sizeof(rgba));
-                    Logging.Log("[QoL Enhancements/Core] DIY preview: clear pass; caller=%lx color=%p target=%d mask=%x match=%u rgba=%08x/%08x/%08x/%08x\n",
-                                caller - Main, color, target, mask, unsigned(matches), rgba[0], rgba[1], rgba[2], rgba[3]);
-                    break;
-                }
-            }
-        }
-        if (matches)
-            color = PreviewBackground.data();
-        // Preserve depth/stencil, viewport and every other pass. Do not clear
-        // the capture itself: its copy must retain the already rendered item.
-        Orig(depth, buffer, command, target, mask, color, stencil, viewport, apply);
+HOOK_DEFINE_TRAMPOLINE(DrawPreviewLayer) {
+    static void Callback(void *renderer, void *command, void *context, const void *options) {
+        const auto published = PreviewClearColor.load(std::memory_order_acquire);
+        const auto layer = context ? At<void *>(context, field::DrawLayer) : nullptr;
+        const bool matches = published && layer &&
+            static_cast<std::byte *>(layer) + field::LayerClearColor == published;
+        if (published) ClearCalls.fetch_add(1, std::memory_order_relaxed);
+        if (!matches) { Orig(renderer, command, context, options); return; }
+        // 039392B0 copies layer +9c to its stack before 039F63F0 clears it.
+        // Comparing that later pointer with the layer field can never match.
+        // Use the native per-draw color override, scoped to the owned layer.
+        // No layer/global color is mutated, and nested draws get their own copy.
+        alignas(8) std::array<std::byte, field::DrawOptionsSize> overridden{};
+        if (options) std::memcpy(overridden.data(), options, overridden.size());
+        At<unsigned>(overridden.data(), field::DrawOptionsFlags) =
+            (At<unsigned>(overridden.data(), field::DrawOptionsFlags) & ~0x100u) | 8;
+        At<unsigned>(overridden.data(), field::DrawOptionsColor) = PreviewBackground;
+        if (ClearMatches.fetch_add(1, std::memory_order_relaxed) == 0)
+            Logging.Log("[QoL Enhancements/Core] DIY preview: item layer draw matched; background #E5DFC7\n");
+        Orig(renderer, command, context, overridden.data());
+    }
+};
+HOOK_DEFINE_TRAMPOLINE(SetPreviewRotation) {
+    static bool Callback(void *controller, const void *angles) {
+        // 032B9510 can reapply the native parameter animation through this
+        // setter AFTER a queued transform succeeds. Keep the preview pose at
+        // that final boundary too; other controllers retain the supplied pose.
+        if (controller && controller == PreviewController.load(std::memory_order_acquire) &&
+            At<unsigned>(controller, field::ModelMode) == WorkbenchModelMode &&
+            At<int>(controller, field::ModelState) == 1 &&
+            At<unsigned>(controller, field::ModelHandle))
+            angles = static_cast<std::byte *>(controller) + field::ModelAngles;
+        return Orig(controller, angles); // Preserve native entity/phase/handle validation.
     }
 };
 HOOK_DEFINE_TRAMPOLINE(TraceModelTransform) {
@@ -152,7 +157,7 @@ HOOK_DEFINE_TRAMPOLINE(TraceModelTransform) {
     }
 };
 void ReportRendererTrace() {
-    Logging.Log("[QoL Enhancements/Core] DIY preview: render trace; native_updates=%u pending_attempts=%u applied=%u clears=%u matched_clears=%u\n",
+    Logging.Log("[QoL Enhancements/Core] DIY preview: render trace; native_updates=%u pending_attempts=%u applied=%u layer_draws=%u matched_layers=%u\n",
                 TransformCalls.load(std::memory_order_relaxed), TransformAttempts.load(std::memory_order_relaxed),
                 TransformApplied.load(std::memory_order_relaxed), ClearCalls.load(std::memory_order_relaxed),
                 ClearMatches.load(std::memory_order_relaxed));
@@ -400,11 +405,9 @@ void RotatePreview(Session &s) {
     const float tilt = std::clamp(s.tilt - y * DegreesPerUpdate, -MaximumTilt, MaximumTilt);
     angles[0] = s.initialAngles[0] + static_cast<std::uint32_t>(static_cast<std::int32_t>(tilt * AngleUnitsPerDegree));
     angles[1] -= static_cast<std::uint32_t>(static_cast<std::int32_t>(x * DegreesPerUpdate * AngleUnitsPerDegree));
-    // 032B9E08 can refuse entity writes in the app-update thread/phase.
-    // Queue the cached transform instead: native late update 02B0E20C ->
-    // 032B9FCC retries it in the valid entity context, calls 032BE2B0 to mark
-    // the item entity's transform dirty, and only then clears pending bit 0.
-    // Angle writes alone do not rebuild its rendered transform.
+    // Queue for the native late entity phase. The setter hook also protects
+    // this pose from parameter animation writes in 032B9510. 032BE2B0 sets
+    // the material-publication gate (+398); it is not a transform dirty flag.
     std::memcpy(static_cast<std::byte *>(s.controller) + field::ModelAngles, angles.data(), sizeof(angles));
     At<unsigned char>(s.controller, field::ModelFlags) |= TransformPending;
     s.tilt = tilt;
@@ -592,8 +595,8 @@ bool InstallRecipePreview() {
         {0x03c4bac4, {0xbd400100, 0xbc038c20, 0xbd400500, 0xf8418c08, 0xf90003fb}},
         {0x032b9fcc, {0xd100c3ff, 0xa9017bfd, 0xa9024ff4, 0x910043fd, 0x3941d008}},
         {0x02b0e20c, {0xf0015948, 0x91064108, 0xf9400108, 0xf9401900, 0x141eaf6c}},
-        {0x038025b0, {0xfc190fe8, 0xa9017bfd, 0xa9026ffc, 0xa90367fa, 0xa9045ff8}},
-        {0x0386d71c, {0x91027284, 0xf85e03a6, 0x2a1f03e2, 0x2a1f03e5, 0x52800027}},
+        {0x039392b0, {0xd10203ff, 0x6d032beb, 0x6d0423e9, 0xa9057bfd, 0xa90657f6}},
+        {0x032b9750, {0xaa1403e1, 0x940001ad, 0x9000f3c8, 0x91240108, 0xf9400108}},
         {0x01513a48, {0xd101c3ff, 0x6d012beb, 0x6d0223e9, 0xa9037bfd, 0xa9045ff8}},
         {0x032be2b0, {0xb9406c09, 0x34000629, 0xa9be7bfd, 0xa9014ff4, 0x910003fd}},
         {0x032ba034, {0xaa1303e0, 0x9400109e, 0x36000080, 0x3941d268, 0x121f1908}},
@@ -622,9 +625,10 @@ bool InstallRecipePreview() {
     BindPhoneRecipes::InstallAtOffset(address::PhoneBind);
     UpdatePhoneRecipes::InstallAtOffset(address::PhoneFrame);
     DeactivatePhoneRecipes::InstallAtOffset(address::PhoneDeactivate);
-    ClearPreviewBackground::InstallAtOffset(address::ClearRenderTarget);
+    DrawPreviewLayer::InstallAtOffset(address::DrawModelLayer);
+    SetPreviewRotation::InstallAtOffset(address::SetModelRotation);
     TraceModelTransform::InstallAtOffset(address::UpdateModelTransform);
-    Logging.Log("[QoL Enhancements/Core] DIY preview: READY; native render trace; A opens, B returns\n");
+    Logging.Log("[QoL Enhancements/Core] DIY preview: READY; protected native pose and item-layer color; A opens, B returns\n");
     return true;
 }
 } // namespace qol::core

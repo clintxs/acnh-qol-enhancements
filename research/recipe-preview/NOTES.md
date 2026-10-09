@@ -11,7 +11,9 @@ transparency change hid the whole model. 0.3.39 restores opaque capture and the 
 rotation has no visible effect. 0.3.40 queues the native transform update and
 uses #E5DFC7 for the item-layer clear. The user reports no visible change.
 0.3.41 observes actual native transform attempts and clear passes; it is a
-diagnostic release and does not claim to fix either behavior.
+diagnostic release and does not claim to fix either behavior. 0.3.42 protects
+the preview pose at the native setter and overrides the color before its stack
+copy. Live visual validation remains pending.
 Left/right recipe navigation remains unfinished.
 
 This implementation retains MenuRecipe's material panel. It adds a hidden
@@ -79,6 +81,8 @@ All addresses are main-module offsets in build FF1D1C05670DB6021C85B624A710B963.
 | 04AB2230 | GOT → singleton storage → UI context |
 | 032B78A8 / 032B9210 | UI3D controller construction / initialization |
 | 032B8270 / 032B85D0 | Model state-1 entry/exit: balance camera and scene layers |
+| 032B9510 / 032B9E08 | Native parameter animation / final model rotation setter |
+| 039392B0 / 039F63F0 | Layer draw color copy/override / render-target drawing |
 | 032BD990 | Item request, accepts controller mode 2 and null background page |
 | 032BA5E4 / 032BA674 | Matching-mode release / handle cleanup |
 | 03DBB160 | Synchronous state transition: old exit, new entry |
@@ -219,15 +223,16 @@ loading. 032B74F0 multiplies source radians by 2^32/(2π), establishing Angle32
 units. Controller +78/+7C and helper 032B97A0 are position, not rotation.
 The first rotation implementation called this helper directly and cached its
 result only on success. The 0.3.39 live test showed no rotation. Direct writes
-can be rejected in the UI entity phase and do not invalidate the item's final
-transform, even when accepted.
+can be rejected in the UI entity phase. Later native parameter animation can
+overwrite accepted rotation (see 0.3.42 below).
 
 ## Deferred rotation and item background (0.3.40)
 
 Cache the angles at controller +80 and OR transform-pending bit 0 at +74.
 Native late update 02B0E20C calls 032B9FCC, which retries position/rotation in its
 entity context. For mode 2 it then calls 032BE2B0, setting item entity +398=1
-before clearing the pending bit. Preserve the material bits and allow further
+before clearing the pending bit. Later RE establishes +398 is the material
+publication gate, not a transform dirty flag. Preserve the material bits and allow further
 input to update an already pending transform. A duplicate consumed input
 callback must not erase movement waiting for the phone frame.
 
@@ -268,6 +273,44 @@ remain failures, successful updates to remain successful, bounded output and
 scope removal before release. Live trace data is required before selecting a
 new entity-update or background-rendering path. Background/rotation remain
 unfinished, and the post-release unmapped-read origin remains unestablished.
+
+## Native pose overwrite and copied clear color (0.3.42)
+
+The synced 0.3.41 log confirms 138 native updates, 77 pending attempts and 77
+successes, at entity phase -1/stage 2. All 2,662 clear calls missed the published
+layer-color address. Scheduling and input are established; pointer matching at
+the low-level clear is wrong.
+
+032B9510 runs from UI context update 03285C50 -> 03285C74. When controller +338
+parameter animation is active, it builds a fresh pose with 032B74F0 and calls
+032B9E08 at 032B9754, independent of the queued +80 angles. Protect the owned
+preview at the setter boundary: supply controller +80 for both this call and
+032B9FCC. Preserve the native setter's handle, phase and RTTI checks; clear the
+atomic owner before releasing the renderer. Other controllers pass through.
+The local fixture executes the native animation body, reproduces its overwrite
+with the hook bypassed, and prevents it with the hook. Native component matrix
+builder 006021A4 consumes both +2B0 base angles and +2BC additional angles;
+the fixture checks its complete 3x4 drawable matrix changes and stays changed.
+
+039392B0 gets the rendering layer from draw context +3D0. It copies layer +9C
+RGBA to the stack and calls 039F63F0 at 039393DC. The latter clears through
+038025B0 at 039F6E00, exactly the stack-color call observed live. Instead hook
+the layer draw and pass a local copy of its 0x28-byte color options only for
+the published item layer. Flags +10: clear bit 0x100 (global color precedence),
+set bit 8 (per-draw override); +24 packs RRGGBBAA as E5DFC7FF. Native conversion
+produces normalized RGBA. Preserve the original options, layer storage, other
+layers and all downstream native render operations. Missing layer metadata
+leaves ordinary rendering available. No capture clear or alpha change is used.
+
+The ARM fixture executes 039392B0 through its stack-copy/color-conversion path,
+then models the postprocessing boundary and executes the native GPU-clear body
+with those copied bytes. It verifies original color options and layer memory
+are untouched, including global-color precedence. Layer draw totals and a
+single first-match report replace the failed low-level clear diagnostics.
+These checks establish the native data paths, not live visual success. The
+Deck test must confirm the selected render layer reaches the captured model,
+rotation persists, and B/reopening remain stable. The prior post-release
+unmapped-read origin remains unestablished.
 
 ## Validation boundary
 
