@@ -1,11 +1,11 @@
-# Unified QoL validation — 0.3.16 Shopping Card icon polish
+# Unified QoL validation — 0.3.17 localized dialogue names
 
-Validated locally on October 8, 2026 against the supplied original ACNH 3.0.3
+Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
 dialogue fix and subsequently the corrected 0.2.3 NPC diagnostic build work in Eden. The user also confirmed Nook’s Cranny transactions in Shopping Card 0.3.1.
 The user confirmed the corrected savings HUD in 0.3.4 and balance animation
 in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
-Configuration layering, the 0.3.16 icon polish, aspect-ratio placement and Able
+Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
 
@@ -19,8 +19,8 @@ by the local tests below.
   `exl_main` installs only the content-mount continuation hook and performs no
   configuration reads. Activation executes the real compiled registry/parser and
   installers; a second activation performs no additional reads or installations.
-- Full suite installs 61 disjoint modeled hook ranges (Core 1, Catalog 16,
-  Pockets 16, Faster Dialogue 5, Fitting Room 11, Amiibo 1, Shopping Card 10 behavior + 1 allocation support), plus the private
+- Full suite installs 63 disjoint modeled hook ranges (Core 1, Catalog 16,
+  Pockets 16, Faster Dialogue 7, Fitting Room 11, Amiibo 1, Shopping Card 10 behavior + 1 allocation support), plus the private
   fitting input vtable entry. No embedded binary replacement arrays, IPS or
   dialogue code-cave helper remain in the collection.
 - Per-feature absent, disabled, invalid, missing-version, oversized, below-minimum
@@ -465,3 +465,28 @@ Switch hardware and other emulators/game versions are not validated targets.
   names. Green must match the main 0.3.16 ZIP byte-for-byte; green/gold also
   match revision 3. The package verifies all entries and its checksum manifest.
   Previous archives and the Core executable remain unchanged.
+
+
+## 0.3.17 localized NPC names
+
+- Two new C++ observation hooks execute during native name-label preparation,
+  alongside the unchanged five speed/input hooks. No name lookup, message
+  rendering, voice, emote or delegate behavior is replaced by the hooks.
+- Tests execute the original name-holder construction, source+128 validity and
+  dispatch, and actual UTF-16 data/capacity getters through the real SIMD hook
+  adapter. Only the resource lookup inside the name delegate is modeled.
+- 6,916 name cases passed. Real special NPC and villager names from all 14
+  supplied locale archives feed
+  the native holder and compiled capture code. Russian grammar tags with embedded
+  zeros are removed. No extracted name tables are included in the release.
+- Host checks cover valid/malformed UTF-8, UTF-16 surrogate pairs, missing
+  terminators, malformed/oversized tags, bounded conversion, Unicode list entries
+  and unchanged regular/custom configuration layering.
+- Compiled name matching covers Blathers and accented/Japanese/Chinese/Russian
+  names, names in either INI, owned copies after native stack reuse, unavailable
+  labels, mismatched source and generation, retiring entities, UI/player scope
+  and language-independent internal IDs. Existing aliases remain available.
+- The prototype still requires a live Eden check: add Blathers to the existing
+  personal list, restart and compare his text without/with B/R; also check a
+  listed villager and an unlisted speaker. Alternate-language name capture is
+  locally tested but has not been confirmed in a live game.

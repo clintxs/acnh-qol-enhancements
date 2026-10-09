@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.16 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.17 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -82,7 +82,7 @@ this package does not supply an aspect-ratio patch.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.16
+  version = 0.3.17
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.
@@ -99,7 +99,7 @@ that entire file; an invalid custom file retains the regular configuration.
 An absent/invalid regular marker cannot be activated by a custom file.
 Other modules currently have only enabled/version settings. Pockets captions
 remain a separate translation resource, outside module configuration layering.
-Whole-line #/; comments, a UTF-8 BOM, CRLF and ASCII text up to 4 KiB per file
+Whole-line #/; comments, a UTF-8 BOM, CRLF and valid UTF-8 text up to 4 KiB per file
 are supported. Versions use numeric major.minor.patch.
 
 PERSONAL FASTER DIALOGUE SETTINGS
@@ -116,8 +116,14 @@ Edit this file to customize:
   faster_player = true
   faster_npc_list = Timmy, Tommy, Orville, Wilbur, Kapp'n
 
-The five internal IDs are rcm, rct, dod, doc, kpp; other actual NPC resource
-IDs work too. Kapp'n also covers its kppB profile. Matching ignores case.
+NPC lists accept localized names shown above the dialogue bubble and internal
+IDs, for special NPCs and villagers. Add Blathers in English, Thibou in French,
+Sócrates in Spanish, or フータ in Japanese; owl works in every language.
+Use the game's spelling, accents and punctuation. ASCII case is ignored;
+non-ASCII case folding and Unicode normalization are not performed.
+Timmy/Tommy/Orville/Wilbur/Kapp'n aliases still work across languages, mapping
+to rcm/rct/dod/doc/kpp; Kapp'n also includes kppB. Name capture is new in 0.3.17
+and needs a live test. Missing/invalid name labels leave ID matching usable.
 This prototype accepts speed tiers 2/4.
 Holding B/R selects boost_speed without stacking it on an automatic boost.
 0.2.2 fixes an early window check that rejected recognized DIY/catch messages.
@@ -135,7 +141,7 @@ may include enabled/version and can override a disabled regular configuration.
 It cannot enable an absent module. Bad preference values and duplicate keys
 warn and retain their earlier value; invalid list entries are ignored. A supplied
 NPC list replaces the earlier list; an empty list clears it. Boost below base
-is raised to base after both files are loaded. Up to 64 ASCII IDs are supported.
+is raised to base after both files are loaded. Up to 64 entries of 95 UTF-8 bytes are supported.
 All five dialogue preferences also work in the regular faster-dialogue.ini;
 keep personal edits in the custom file to preserve them across suite updates.
 

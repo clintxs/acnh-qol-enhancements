@@ -9,7 +9,7 @@ import struct
 from core_arm_test import Machine, RAW, DEFAULT, SLUGS
 from unicorn.arm64_const import *
 
-HOOKS = (0x1afa00c, 0x1afdec0, 0x1afded4, 0x1afdefc, 0x1a969e0)
+HOOKS = (0x1afa00c, 0x1afdec0, 0x1afded4, 0x1afdefc, 0x1a969e0, 0x1b04824, 0x1b04b80)
 CUSTOM = b"base_speed=2\nboost_speed=4\nfaster_ui=true\nfaster_player=true\nfaster_npc_list=Timmy,Tommy,Orville,Wilbur,Kapp'n\n"
 GP = [globals()[f'UC_ARM64_REG_X{i}'] for i in range(31)]
 Q = [globals()[f'UC_ARM64_REG_Q{i}'] for i in range(32)]

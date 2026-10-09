@@ -21,8 +21,8 @@ int main() {
     assert(SelectSpeed(settings, MessageKind::Ui, "", false) == 4);
     assert(SelectSpeed(settings, MessageKind::Unknown, "rcm", false) == 2);
     assert(ParseSettings("base_speed=0\nboost_speed=nan\nfaster_ui=yes\n"
-                         "faster_npc_list=Timmy,Not An NPC,,Orville,\nunknown=true\nmalformed\n", settings) == 8);
-    assert(settings.baseSpeed == 2 && settings.boostSpeed == 4 && !settings.fasterUi && settings.npcCount == 2);
+                         "faster_npc_list=Timmy,Not An NPC,,Orville,\nunknown=true\nmalformed\n", settings) == 7);
+    assert(settings.baseSpeed == 2 && settings.boostSpeed == 4 && !settings.fasterUi && settings.npcCount == 3);
     assert(ParseSettings("base_speed=4\nbase_speed=4\nboost_speed=2\nboost_speed=2\n"
                          "faster_ui=true\nfaster_ui=true\nfaster_npc_list=doc\nfaster_npc_list=rcm", settings) == 4);
     assert(settings.baseSpeed == 2 && settings.boostSpeed == 4 && !settings.fasterUi && !settings.npcCount);
@@ -56,6 +56,40 @@ int main() {
     assert(settings.boostSpeed == 2 && settings.fasterPlayer && settings.npcCount == 1);
     assert(Equal(settings.npcs[0].data(), "doc"));
     assert(!ApplySettings("faster_npc_list=", settings) && settings.npcCount == 0);
+    assert(!ParseSettings("faster_npc_list=Blathers,Sócrates,フータ,傅达,Блезерс,Mr. Resetti", settings));
+    assert(settings.npcCount == 6);
+    for (auto name : {"Blathers", "blathers", "Sócrates", "フータ", "傅达", "Блезерс", "Mr. Resetti"}) {
+        assert(SelectSpeed(settings, MessageKind::Npc, "owl", false, name) == 4);
+        assert(SelectSpeed(settings, MessageKind::Unknown, "owl", false, name) == 2);
+    }
+    assert(SelectSpeed(settings, MessageKind::Npc, "owl", false, "Thibou") == 2);
+    assert(!ParseSettings("faster_npc_list=owl", settings));
+    assert(SelectSpeed(settings, MessageKind::Npc, "owl", false, "Thibou") == 4);
+    assert(!AddNpc(settings, std::string(NpcNameBytes, 'a')));
+    assert(!AddNpc(settings, "bad\x01name"));
+    assert(!AddNpc(settings, "\xc0\xaf"));
+    char label[NpcNameBytes]{};
+    const auto convert = [&](std::u16string input) {
+        input.push_back(0);
+        return CopyLabelName(input, label);
+    };
+    assert(convert(u"Sócrates") && std::string(label) == "Sócrates");
+    assert(convert(u"フータ") && std::string(label) == "フータ");
+    assert(convert(u"\U0001f989") && std::string(label) == "🦉");
+    // Embedded zero units belong to tag parameters, not the terminator.
+    std::u16string russian = u"Блезерс";
+    russian += std::u16string{0xe, 50, 22, 14, 0, 2, u'а', 2, u'у', 2, u'а'};
+    assert(convert(russian) && std::string(label) == "Блезерс");
+    std::u16string compound = u"Кид";
+    const std::u16string grammar{0xe, 50, 22, 14, 0, 2, u'а', 2, u'у', 2, u'а'};
+    compound += grammar + u" Кэт" + grammar;
+    assert(convert(compound) && std::string(label) == "Кид Кэт");
+    assert(!convert(std::u16string{0xd800}) && !label[0]);
+    assert(!convert(std::u16string{0xdc00}) && !label[0]);
+    assert(!convert(std::u16string(NpcNameBytes, u'A')) && !label[0]);
+    assert(!convert(std::u16string{u'A', 0xe, 0, 0, 400}) && !label[0]);
+    assert(!convert(std::u16string{u'A', 0xe, 0, 0, 1}) && !label[0]);
+    assert(!CopyLabelName(std::u16string(64, u'A'), label) && !label[0]);
     for (auto bank : {"FTR_WorkingTable", "SYS_Player", "SYS_Get_Fish", "SYS_Get_Insect", "SYS_Get_DiveFish",
                       "TalkFtr/FTR_WorkingTable", "TalkSys/SYS_Player.msbt"})
         assert(IsPlayerMessageBank(bank));

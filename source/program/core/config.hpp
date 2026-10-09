@@ -1,4 +1,5 @@
 #pragma once
+#include "utf8.hpp"
 #include <compare>
 #include <cstdint>
 #include <string_view>
@@ -50,10 +51,7 @@ inline bool ParseConfig(std::string_view input, Config &output,
     if (input.starts_with("\xef\xbb\xbf")) input.remove_prefix(3);
     Config parsed = layer == ConfigLayer::Custom ? output : Config{};
     bool hasEnabled = false, hasVersion = false;
-    for (char character : input) {
-        const auto byte = static_cast<unsigned char>(character);
-        if (byte >= 127 || (byte < 32 && character != '\n' && character != '\r' && character != '\t')) return false;
-    }
+    if (!ValidUtf8(input, true)) return false;
     while (!input.empty()) {
         const auto newline = input.find('\n');
         const auto line = Trim(input.substr(0, newline));

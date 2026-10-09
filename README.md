@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.16 Shopping Card icon polish** for ACNH **3.0.3 on Eden**. One Core
+**0.3.17 localized NPC dialogue matching** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -44,12 +44,13 @@ hook pools (32 KiB trampoline / 16 KiB inline; fake heap remains 20 KiB).
 Detailed feature logs identify the suite and feature. Pockets reads translations
 at `content:/qol-enhancements/messages/pockets.ini`.
 
-Faster Dialogue now lives in `source/program/dialogue/`: five SIMD-preserving
+Faster Dialogue now lives in `source/program/dialogue/`: seven SIMD-preserving
 C++ hooks implement current B/R input, eligible speed selection/forwarding, and
 main/renderer multipliers. The active speaker is resolved through its owned
-entity handle, validated against the live registry; NPC resource IDs are matched without
-localized name comparisons or a last-speaker cache. Native restrictions and
-scripted speed overrides remain in force. No binary replacement array or game
+entity handle, validated against the live registry. NPC resource IDs and the
+resolved localized name tag are both accepted. The name copy is cleared for every label preparation and tied to its manager, source
+and entity generation; the live entity still passes the existing identity checks.
+Native restrictions and scripted speed overrides remain in force. No binary replacement array or game
 code-cave helper remains. Amiibo's existing 9,000-update timeout is likewise a
 C++ hook; its behavior is unchanged. Expected instruction words are validation
 fingerprints only, checked before each feature's first hook.
@@ -161,7 +162,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.16
+version = 0.3.17
 base_speed = 2
 boost_speed = 4
 faster_ui = false
@@ -174,7 +175,7 @@ list; an empty list clears it. Custom files are read once per restart, even if
 regular `enabled` is false, so a custom `enabled=true` can re-enable installed
 code. An unreadable, oversized or invalid metadata overlay leaves the regular
 configuration intact. Neither malformed metadata nor duplicate metadata is
-partially applied. Each file is limited to 4 KiB of ASCII text, with whole-line
+partially applied. Each file is limited to 4 KiB of valid UTF-8 text, with whole-line
 comments, CRLF and an optional UTF-8 BOM.
 
 Other modules currently expose just `enabled` and `version`, with names
@@ -215,15 +216,29 @@ speed keys; a boost below the base is raised to the base. These are nominal tier
 including language/FPS adjustments, not fixed wall-clock multipliers. Native
 scripted waits, protected messages and nonnegative overrides retain priority.
 
-The five friendly aliases map to `rcm`, `rct`, `dod`, `doc`, `kpp`. The friendly Kapp'n alias
-also includes its known `kppB` profile. Other resource IDs, such as villager IDs,
-can also be listed; matching is case-insensitive and
-exact, without guessing variant IDs. Up to 64 IDs of at most 15 ASCII identifier
-characters are accepted. Syntactically valid IDs not used by a live speaker
-simply never match. Bad values/keys warn; invalid values retain the earlier
-layer's value, and invalid list entries are ignored. Duplicate preference keys
-revert that setting to its value before the file. The boost/base relationship
-is normalized after both files have loaded.
+The list now accepts **the localized name shown above the dialogue bubble**, or
+an internal resource ID, for special NPCs and villagers. For example, in English:
+
+```ini
+faster_npc_list = Timmy, Tommy, Orville, Wilbur, Kapp'n, Blathers
+```
+
+`Blathers` follows the current language: use `Thibou` in French, `Sócrates` in
+Spanish, or `フータ` in Japanese. The ID `owl` works in any language. Existing
+friendly aliases for Timmy/Tommy/Orville/Wilbur/Kapp'n remain available across
+languages; Kapp'n still includes its known `kppB` profile. Other entries match the
+resolved name or ID exactly, ignoring ASCII letter case. Preserve non-ASCII
+spelling, accents and punctuation as shown in game; Unicode normalization and
+non-ASCII case folding are not performed. Up to 64 entries of 95 UTF-8 bytes
+are accepted. Unknown names simply never match. Native name tags are copied
+once when prepared, with formatting/grammar metadata removed; unavailable or
+invalid labels leave ID matching usable. This name capture is a prototype and
+needs a live Eden check, especially Blathers and villager names.
+
+Bad values/keys warn; invalid values retain the earlier layer's value, and
+invalid list entries are ignored. Duplicate preference keys revert that setting
+to its value before the file. A supplied list replaces the earlier one. The
+boost/base relationship is normalized after both files have loaded.
 
 `faster_ui` covers native system dialog windows (the blue dialogs). Independent
 `faster_player` covers valid player speakers and five reviewed self-message

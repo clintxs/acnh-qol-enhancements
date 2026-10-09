@@ -222,3 +222,38 @@ previous layer, lists replace (empty clears), and boost/base normalization runs
 after both layers. Enabled/version can be overridden for every installed module;
 an absent/invalid regular marker still prevents activation. Native hooks and
 speaker/message classification are unchanged from the confirmed NPC fix.
+
+
+## 0.3.17 native localized name tag observation
+
+STR_NNpcName at 03F7242A and STR_SNpcName at 03F6D1BE have direct references
+in 01B0E6B4. That helper checks ordinary/special NPC parameter records and fills
+a name object through the game's message resolver; no alias table is added.
+
+The label preparation function at 01B04808 takes the presentation context.
+At 01B04824 it reads context+0's manager and manager+C0's active TalkSource
+into x24. It constructs a bounded native UTF-16 name holder on its stack,
+then checks/invokes the source+128 name delegate at 01B048EC..01B04914.
+This is distinct from the source+28 voice POSITION delegate.
+01B04B5C..01B04B7C invokes holder virtual +18/+20. The original methods
+005F5B28/005F5B30 load holder+8 data and holder+10 capacity; capacity is in
+UTF-16 units (64 here), NOT the current string length. At 01B04B80 the name
+text is in x19 and capacity in w0, before the engine's name-pane renderer.
+
+Two SIMD-preserving C++ hooks observe 01B04824/01B04B80. The first clears the
+previous name even if the delegate fails; the second copies complete, bounded
+UTF-16 to UTF-8. The owned copy is tied to manager/source/entity handle. Current
+speaker identity still resolves independently and validates live generation,
+retiring flags, kind and RTTI before any localized matching. No extra engine
+functions are called, no borrowed name pointer survives the native frame, and
+name preparation, rendering, audio and emotes run unchanged.
+
+All supplied names fit the new bound. Russian names have grammar tags (sometimes between words)
+(group 50/type 22) whose payload contains embedded zero units. The converter
+skips length-delimited MSBT tags before checking termination. Invalid encoding,
+unterminated/oversized names and malformed tags yield no name, never a partial
+prefix; internal ID matching still works. Lists accept valid plain UTF-8 and
+ASCII-insensitive exact matching; full Unicode case folding/normalization is
+not implemented. Old English aliases and Kapp'n profile expansion are retained.
+Native constructor/getter paths and the actual callbacks are exercised with all
+14 supplied name banks in ARM tests; live name capture is not yet confirmed.

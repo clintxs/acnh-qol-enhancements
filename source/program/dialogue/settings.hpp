@@ -1,5 +1,6 @@
 #pragma once
 #include "program/core/config.hpp"
+#include "localized_name.hpp"
 #include <array>
 
 namespace qol::dialogue {
@@ -8,7 +9,7 @@ struct Settings {
     unsigned baseSpeed = 2, boostSpeed = 4;
     bool fasterUi = false, fasterPlayer = false;
     unsigned npcCount = 0;
-    std::array<std::array<char, NpcIdBytes>, MaxNpcs> npcs{};
+    std::array<std::array<char, NpcNameBytes>, MaxNpcs> npcs{};
 };
 enum class MessageKind { Unknown, Npc, Ui, Player };
 constexpr char Lower(char c) { return c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c; }
@@ -44,11 +45,9 @@ inline bool AddNpc(Settings &settings, std::string_view name) {
         return regular && alternate;
     }
     name = NpcAlias(name);
-    // Internal resource IDs are ASCII identifiers. Unknown friendly names do
-    // not silently become IDs; arbitrary real IDs (including villagers) work.
-    if (name.size() < 3 || name.size() >= NpcIdBytes) return false;
-    for (char c : name) if (!((Lower(c) >= 'a' && Lower(c) <= 'z') ||
-                             (c >= '0' && c <= '9') || c == '_')) return false;
+    // A list entry can be a resource ID or the localized visible name. The
+    // current speaker, not spelling heuristics, determines whether it matches.
+    if (name.empty() || name.size() >= NpcNameBytes || !core::ValidUtf8(name)) return false;
     for (unsigned i = 0; i < settings.npcCount; ++i)
         if (Equal(name, settings.npcs[i].data())) return true;
     if (settings.npcCount == MaxNpcs) return false;
@@ -57,12 +56,13 @@ inline bool AddNpc(Settings &settings, std::string_view name) {
     return true;
 }
 inline unsigned SelectSpeed(const Settings &settings, MessageKind kind,
-                            std::string_view npc, bool held) {
+                            std::string_view npc, bool held, std::string_view localizedName = {}) {
     bool automatic = (kind == MessageKind::Ui && settings.fasterUi) ||
                      (kind == MessageKind::Player && settings.fasterPlayer);
     if (kind == MessageKind::Npc)
         for (unsigned i = 0; i < settings.npcCount; ++i)
-            automatic |= Equal(npc, settings.npcs[i].data());
+            automatic |= Equal(npc, settings.npcs[i].data()) ||
+                         (!localizedName.empty() && Equal(localizedName, settings.npcs[i].data()));
     return held || automatic ? settings.boostSpeed : settings.baseSpeed;
 }
 // These are the two existing, nominal tiers, relative to the game's live fast
@@ -76,7 +76,7 @@ inline bool ParseSpeed(std::string_view value, unsigned &speed) {
 // duplicates restore that key's earlier value. A supplied NPC list replaces
 // the earlier list, while invalid entries leave its other entries usable.
 inline unsigned ApplySettings(std::string_view input, Settings &output) {
-    if (input.size() > core::MaxConfigBytes) return 1;
+    if (input.size() > core::MaxConfigBytes || !core::ValidUtf8(input, true)) return 1;
     const Settings previous = output;
     if (input.starts_with("\xef\xbb\xbf")) input.remove_prefix(3);
     unsigned warnings = 0, seen = 0, duplicate = 0;

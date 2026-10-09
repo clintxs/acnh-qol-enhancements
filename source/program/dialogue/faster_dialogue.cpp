@@ -9,6 +9,7 @@ namespace address {
 constexpr std::uintptr_t HeldInput = 0x01afa00c, EligibleFast = 0x01afdec0;
 constexpr std::uintptr_t ForwardFast = 0x01afded4;
 constexpr std::uintptr_t MainRate = 0x01afdefc, RendererRate = 0x01a969e0;
+constexpr std::uintptr_t NameBegin = 0x01b04824, NameReady = 0x01b04b80;
 constexpr std::uintptr_t EntityRegistryGot = 0x04ab27c0;
 constexpr std::uintptr_t NpcTypeGot = 0x04ab37d0, NpcTypeGuardGot = 0x04ab37d8;
 } // namespace address
@@ -27,6 +28,12 @@ constexpr unsigned NpcEntity = 10, PlayerEntity = 0x4f, DialogWindow = 1, Balloo
 constexpr std::uint16_t BoostButtons = 0x4002; // B/R; L is deliberately excluded.
 } // namespace layout
 Settings Preferences{};
+struct ResolvedName {
+    std::uintptr_t manager{}, source{};
+    unsigned handle{};
+    char name[NpcNameBytes]{};
+};
+ResolvedName Name{};
 template <class T> T Read(std::uintptr_t object, std::size_t offset = 0) {
     T result;
     std::memcpy(&result, reinterpret_cast<const void *>(object + offset), sizeof(result));
@@ -52,6 +59,7 @@ struct Speaker {
     std::uintptr_t entity{};
     unsigned entityHandle = ~0u, entityFlags = ~0u;
     char id[NpcIdBytes]{};
+    char localizedName[NpcNameBytes]{};
     char bank[layout::MessageBankBytes]{};
 };
 Speaker CurrentSpeaker(std::uintptr_t text) {
@@ -147,7 +155,12 @@ Speaker CurrentSpeaker(std::uintptr_t text) {
     if (!name) return result;
     for (unsigned i = 0; i < NpcIdBytes; ++i) {
         const auto c = Read<char>(name, i);
-        if (!c) { result.lookup = SpeakerLookup::Npc; return result; }
+        if (!c) {
+            result.lookup = SpeakerLookup::Npc;
+            if (Name.manager == manager && Name.source == source && Name.handle == handle)
+                std::memcpy(result.localizedName, Name.name, sizeof(result.localizedName));
+            return result;
+        }
         if (i == NpcIdBytes - 1) break;
         result.id[i] = c;
     }
@@ -209,6 +222,36 @@ void TraceMessage(std::uintptr_t manager, std::uintptr_t text) {
 }
 #endif
 
+HOOK_DEFINE_INLINE(DialogueNameBegin) {
+    static void Callback(exl::hook::InlineFloatCtx *registers) {
+        // Native 01b04808 prepares the name tag. Clear on EVERY preparation,
+        // including absent names and failed delegates, before retaining owner
+        // identity. x0 is the presentation context; context+0 is its manager.
+        Name = {};
+        if (!registers->X[0]) return;
+        Name.manager = Read<std::uintptr_t>(registers->X[0]);
+        if (!Name.manager) return;
+        Name.source = Read<std::uintptr_t>(Name.manager, layout::ActiveSpeaker);
+        if (Name.source) Name.handle = Read<unsigned>(Name.source, layout::SpeakerEntityHandle);
+    }
+};
+HOOK_DEFINE_INLINE(DialogueNameReady) {
+    static void Callback(exl::hook::InlineFloatCtx *registers) {
+        // 01b048ec..01b04914 invokes the SAME source+128 name delegate as the
+        // label. Its holder's virtual +18/+20 return UTF-16 data/capacity in
+        // x19/w0 at 01b04b80 (verified getters 005f5b28/005f5b30).
+        // Borrow only for this copy: the holder resides in the native frame.
+        const auto data = registers->X[19];
+        const auto units = registers->W[0];
+        if (!Name.manager || !Name.source || !Name.handle || !data || !units || units > MaxLabelUnits ||
+            registers->X[24] != Name.source ||
+            Read<std::uintptr_t>(Name.manager, layout::ActiveSpeaker) != Name.source ||
+            Read<unsigned>(Name.source, layout::SpeakerEntityHandle) != Name.handle) return;
+        std::array<char16_t, MaxLabelUnits> buffer{};
+        std::memcpy(buffer.data(), reinterpret_cast<const void *>(data), units * sizeof(char16_t));
+        CopyLabelName({buffer.data(), units}, Name.name);
+    }
+};
 HOOK_DEFINE_INLINE(DialogueHeldInput) {
     static void Callback(exl::hook::InlineFloatCtx *registers) {
         // Immediately after native active-player/fallback selection; x0 is
@@ -229,7 +272,7 @@ HOOK_DEFINE_INLINE(DialogueSelectSpeed) {
         const auto text = registers->X[19];
         const auto speaker = CurrentSpeaker(text);
         const auto speed = SelectSpeed(Preferences, speaker.kind, speaker.id,
-                                      Read<std::uint8_t>(text, layout::HeldFast) != 0);
+                                      Read<std::uint8_t>(text, layout::HeldFast) != 0, speaker.localizedName);
         // Reached only AFTER native forced/protected/acceleration-disabled
         // checks. Native stores this flag and forwards it to both renderers.
         // 1 = native fast, 3 = native fast plus extra multiplier (old 0.3 tier).
@@ -249,13 +292,13 @@ HOOK_DEFINE_INLINE(DialogueSelectSpeed) {
             previous.handle != speaker.handle || previous.entity != speaker.entity ||
             previous.entityHandle != speaker.entityHandle || previous.entityFlags != speaker.entityFlags ||
             previousSpeed != speed || std::strcmp(previous.id, speaker.id) ||
-            std::strcmp(previous.bank, speaker.bank);
+            std::strcmp(previous.bank, speaker.bank) || std::strcmp(previous.localizedName, speaker.localizedName);
         if (changed && reports < 128) {
             ++reports; previous = speaker; previousSpeed = speed;
-            Logging.Log("[QoL Enhancements/Faster Dialogue] SELECT reason=%s window=%u entity_kind=%u kind=%u npc=%s speed=%u bank=%s handle=%08x entity=0x%lx entity_handle=%08x entity_flags=%08x\n",
+            Logging.Log("[QoL Enhancements/Faster Dialogue] SELECT reason=%s window=%u entity_kind=%u kind=%u npc=%s speed=%u bank=%s handle=%08x entity=0x%lx entity_handle=%08x entity_flags=%08x name=%s\n",
                         reasons[static_cast<unsigned>(speaker.lookup)], speaker.window, speaker.entityKind,
                         static_cast<unsigned>(speaker.kind), speaker.id, speed, speaker.bank,
-                        speaker.handle, speaker.entity, speaker.entityHandle, speaker.entityFlags);
+                        speaker.handle, speaker.entity, speaker.entityHandle, speaker.entityFlags, speaker.localizedName);
         }
 #endif
     }
@@ -295,6 +338,11 @@ bool Install() {
         {address::ForwardFast, {0xb900011f, 0x394832c8, 0x340007c8, 0x3961f2c8, 0x340008c8}},
         {address::MainRate, {0x14000054, 0x52829108, 0x52a7f017, 0x3934dedf, 0x8b080274}},
         {address::RendererRate, {0x14000002, 0xbd421400, 0xbd420801, 0xbd420c02, 0x5e21d821}},
+        {address::NameBegin, {0xf9400008, 0x9105e3f4, 0xf9406118, 0xf9401008, 0xf9410d16}},
+        {address::NameReady, {0xb4001153, 0x34001120, 0x79400268, 0x340010e8, 0xf94186c8}},
+        {0x01b048ec, {0xf9409708, 0x9104a313, 0xaa1303e0, 0xf9400908, 0xd63f0100}},
+        {0x01b04b5c, {0xf94007e8, 0x910023e0, 0xf9400d08, 0xd63f0100, 0xf94007e8}},
+        {0x005f5b28, {0xf9400400, 0xd65f03c0, 0xb9401000, 0xd65f03c0, 0xa9bd7bfd}},
         {0x01af89d0, {0xaa1803e0, 0xf9524676, 0xf9400d08, 0xd63f0100, 0xf9400717}},
         {0x01d9dc3c, {0x528f3388, 0xf941d829, 0x8b080008, 0xf81d83a8, 0x528f0d88}},
         {0x01d9e11c, {0xa97de7b4, 0x910042ea, 0xeb08029f, 0xf93cca74, 0x3900fe9f}},
@@ -318,6 +366,8 @@ bool Install() {
 #if CAS_VERBOSE_DIALOGUE_TRACE
     Logging.Log("[QoL Enhancements/Faster Dialogue] DIAGNOSTIC: npc-handle-v4; owned speaker handle and player window fixes\n");
 #endif
+    DialogueNameBegin::InstallAtOffset(address::NameBegin);
+    DialogueNameReady::InstallAtOffset(address::NameReady);
     DialogueHeldInput::InstallAtOffset(address::HeldInput);
     DialogueSelectSpeed::InstallAtOffset(address::EligibleFast);
     DialogueForwardSpeed::InstallAtOffset(address::ForwardFast);
