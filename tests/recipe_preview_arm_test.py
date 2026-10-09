@@ -2,8 +2,9 @@
 
 UI allocation, async loading, rendering and animations are modeled. Native
 heap shrink/allocation, child activation/removal, page/icon/state construction,
-layout-table construction, confirmation dispatch, recipe copy, navigation, item
-lookup and craft-action dispatch execute from main.raw.
+layout-table construction, confirmation dispatch, page updates/deferred requests,
+recipe state handlers, recipe copy, navigation, item lookup and craft-action
+dispatch execute from main.raw.
 This is not a live Eden rendering/input test.
 """
 import struct
@@ -13,7 +14,8 @@ from unicorn.arm64_const import *
 HOOKS = (0x2e9cde0, 0x2e9fbb0, 0x2e9d538, 0x376890c)
 GUARDS = (0x2e9cf2c, 0x2e9cfe8, 0x3492b50, 0x34930b0, 0x3493430,
           0x34940e0, 0x3492fec, 0x3494d8c, 0x34947d0, 0x3495408,
-          0x346fdb0, 0x3473ac8, 0x376890c, 0x3769260, 0x3768c7c, 0x3492e74)
+          0x346fdb0, 0x3473ac8, 0x376890c, 0x3769260, 0x3768c7c, 0x3492e74,
+          0x3494b08, 0x349530c)
 
 
 class PreviewMachine(Machine):
@@ -240,7 +242,8 @@ class PreviewMachine(Machine):
         self.preview_frame(preview)
         assert self.read(preview + 0x1f0, 4) == 2
         assert self.read(preview + 0x1c200) == page + 0x8a350
-        self.settle(preview, 3)
+        # cAppear parks in cDisplayList (5), awaiting its owner's selection.
+        self.settle(preview, 5)
         self.preview_frame(preview)
         assert self.read(preview + 0x264, 4) == self.read(page + 0x218, 4)
         assert self.read(preview + 0x1f0, 4) == 4
@@ -571,6 +574,107 @@ def check_native_startup(base):
     assert m.read(phone + 0x78, 4) == 0
 
 
+class NativeTransitionMachine(NativeActivationMachine):
+    """Execute page updates, deferred requests, and native recipe state handlers."""
+    def __init__(self, base):
+        super().__init__(base)
+        # Model only type identification and UI services, never the state
+        # table, state entries/updates/exits, or deferred-request processing.
+        self.native_actions.update({0x34740cc: 'preview_type',
+                                    0x346ee40: 'refresh_recipe_icons',
+                                    0x346ec1c: 'refresh_recipe_details',
+                                    0x346eb74: 'no_animation',
+                                    0x346e9c0: 'no_animation',  # Sound target pane.
+                                    0x346f350: 'clear_recipe_icons',
+                                    0x32bd990: 'detail_sound',
+                                    0x32ba890: 'detail_sound'})
+        self.write(base + 0x5639190, self.aux(0x100))
+        for offset in (0x4ab7c40, 0x4ac7280):
+            self.write(self.read(base + offset), 1, 1)
+
+    def initialize_states(self, preview):
+        self.heap_sealed = False
+        self.write(self.tls + 0xa8, self.heap)
+        self.write(self.base + 0x59e7600, self.heap_manager)
+        self.write(self.base + 0x4ab2698, self.base + 0x59e7600)
+        for offset in range(0, 0x18, 8):
+            pointer = struct.unpack_from('<Q', RAW, 0x4a3d900 + offset)[0]
+            self.write(self.base + 0x4a3d900 + offset, self.base + pointer)
+        self.invoke(self.base + 0x34942f0, preview, preview + 0x1a8)
+        self.write(self.tls + 0xa8, self.previous_heap)
+        self.heap_sealed = True
+        layout = self.read(preview + 0x1c1f8)
+        self.write(self.read(layout + 0x210) + 0x48, self.aux())
+        for offset in (0x570, 0x578, 0x580, 0x588):
+            self.write(layout + offset, self.aux())
+
+    def preview_frame(self, preview):
+        assert self.read(preview + 0xa8, 4) == 3
+        # Manager scheduling is modeled; execute its page-update virtual and
+        # post-update visitor, including both real deferred-request slots.
+        self.write(preview + 0x164, 1, 1)
+        self.updating_preview = True
+        try:
+            self.invoke(self.base + 0x2b0c720, preview)
+        finally:
+            self.updating_preview = False
+        self.invoke(self.base + 0x2b0e370, 0, preview)
+
+    def service(self, u, pc, size, user):
+        action = getattr(self, 'native_actions', {}).get(pc - self.base)
+        if action in ('preview_type', 'refresh_recipe_icons', 'refresh_recipe_details',
+                      'clear_recipe_icons', 'detail_sound'):
+            self.events.append((action, self.reg(0)))
+            u.reg_write(UC_ARM64_REG_X0, int(action == 'preview_type'))
+            u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
+            return
+        super().service(u, pc, size, user)
+
+
+def check_native_opening(base):
+    m = NativeTransitionMachine(base)
+    phone = m.phone()
+    preview = m.prepared[phone]
+    m.initialize_states(preview)
+    m.confirm(phone)
+    m.frame(phone)
+    states = []
+    for _ in range(5):
+        m.preview_frame(preview)
+        states.append(m.read(preview + 0x1b0, 4))
+    assert states == [2, 5, 4, 3, 3], states
+    assert m.read(preview + 0x264, 4) == m.read(phone + 0x218, 4)
+    assert m.reloads == [m.read(phone + 0x218, 4)]
+    assert 'DIY preview: showing' in m.text
+    assert m.read(preview + 0x1f0) == 0xffffffffffffffff
+    assert m.read(m.read(m.read(preview + 0x1c1f8) + 0x210) + 0x54, 1) == 0
+    # B follows the actual play exit -> display-list entry -> idle entry.
+    layout = m.read(preview + 0x1c1f8)
+    callback = m.read(m.read(layout + 0x470) + 0x10)
+    event = m.aux()
+    m.write(event + 0x10, 0, 4)
+    assert m.invoke(callback, preview, event) == 1
+    states = []
+    for _ in range(3):
+        m.preview_frame(preview)
+        states.append(m.read(preview + 0x1b0, 4))
+    assert states == [5, 1, 1], states
+    assert m.read(preview + 0x1c200) == 0  # Native idle clears the borrowed list.
+    m.frame(phone)
+    assert m.read(preview + 0xa8, 4) == 2
+    assert m.read(m.read(m.read(phone + 0x210) + 0x210) + 0x54, 1) == 0
+    # Reuse the same page and native state table, beginning from real cIdle.
+    allocated = m.next_preview
+    m.confirm(phone)
+    m.frame(phone)
+    states = []
+    for _ in range(5):
+        m.preview_frame(preview)
+        states.append(m.read(preview + 0x1b0, 4))
+    assert states == [2, 5, 4, 3, 3], states
+    assert m.next_preview == allocated
+
+
 def check_native_constructor(base, heap_source):
     m = NativeConstructorMachine(base)
     phone = m.phone(prepare=False)
@@ -796,6 +900,7 @@ def check_failures(base):
 
 if __name__ == '__main__':
     for base in (0x7100000000, 0x7200000000):
+        check_native_opening(base)
         check_native_startup(base)
         check_native_heap_shrink(base)
         check_native_heap_dependency(base)
@@ -806,4 +911,4 @@ if __name__ == '__main__':
         check_lists(base)
         check_app_reopening(base)
         check_failures(base)
-    print('PASS: native cInit initialization/update and opening without fabricated idle transition, native child activation/update registration/removal, native heap shrink/allocation failure, preparation before shrink, native null-heap crash reproduction, page/270-icon/state constructors with manager/current/default heaps, native 35-row layout construction and confirmation dispatch, Core phone preview lifecycle, borrowed recipe/materials, native navigation/wrap, craft rejection, B return, reuse, teardown and fail-closed fingerprints at two ASLR bases')
+    print('PASS: native preview page updates/deferred requests/state handlers through 0/1 -> 2 -> 5 -> 4 -> 3, B return and reuse; native cInit initialization/update, child activation/update registration/removal, heap shrink/allocation failure, preparation before shrink, null-heap crash reproduction, page/270-icon/state constructors with manager/current/default heaps, 35-row layout construction and confirmation dispatch; Core preview lifecycle, borrowed recipe/materials, native navigation/wrap, craft rejection, teardown and fail-closed fingerprints at two ASLR bases')

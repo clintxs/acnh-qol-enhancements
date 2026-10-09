@@ -320,7 +320,10 @@ void AdvancePreview(Session &session) {
         }
         break;
     case Phase::Appearing:
-        if (Settled(preview, 3)) {
+        // cAppear (2) requests cDisplayList (5), whose update is empty. The
+        // workbench owner supplies the selection from there. cPlay (3) is
+        // reached only after cChangePlay (4) loads that selected recipe.
+        if (Settled(preview, 5)) {
             At<unsigned>(preview, field::PreviewSelection) = At<unsigned>(phone, field::PhoneSelection);
             if (Request(preview, 4)) {
                 session.phase = Phase::Selecting;
@@ -424,6 +427,8 @@ bool InstallRecipePreview() {
         {0x034940e0, {0xa9bb7bfd, 0xa90167fa, 0xa9025ff8, 0xa90357f6, 0xa9044ff4}},
         {0x03492fec, {0xb9401029, 0x91407008, 0x91072108, 0x71000d3f, 0x540000e0}},
         {0x03492e74, {0xa9be7bfd, 0xf9000bf3, 0x910003fd, 0xf9400008, 0xaa0003f3}},
+        {0x03494b08, {0x39480008, 0x9107c009, 0xb868792a, 0x3100055f, 0x54000040}},
+        {0x0349530c, {0xd10103ff, 0xa9017bfd, 0xf90013f5, 0xa9034ff4, 0x910043fd}},
         {0x03494d8c, {0xf9400268, 0xaa1303e0, 0xb9426661, 0xf9414508, 0xd63f0100}},
         {0x034947d0, {0xa9bc7bfd, 0xf9000bf7, 0xa90257f6, 0xa9034ff4, 0x910003fd}},
         {0x03495408, {0xb941b808, 0x71000d1f, 0x54000941, 0xd10103ff, 0xa9017bfd}},

@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.28 DIY recipe preview opening fix
+# Unified QoL validation — 0.3.29 DIY recipe preview selection fix
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -749,3 +749,37 @@ navigation/B return, repeated app/phone reopening and ordinary workbench
 crafting/cooking. This release fixes a reproduced opening stall; local tests
 cannot establish that every live preview issue is resolved. No running game,
 installed mod, save or synced log is modified.
+
+## 0.3.29 DIY preview appearance-to-selection stall
+
+The synced 0.3.28 log confirms successful activation (`state=0 lifecycle=3`)
+and `appear requested`, then ends without a selection message or native crash.
+The initial-state fix gets past the first stall, but the next wait is wrong:
+the integration expects settled state 3 after appearance. Native 03494B08
+instead requests state 5 (`cDisplayList`). Its update, 0349553C, does nothing;
+the owner must supply the selection and request state 4 (`cChangePlay`). That
+state loads the recipe and requests state 3 (`cPlay`) after its animation.
+
+The new regression executes native state initialization, page-update virtual
+02B0C720, deferred-request visitor 02B0E370, and state entry/update/exit handlers.
+Against the 0.3.28 binary it records states 2, 5, 5, 5, 5 and fails. Version
+0.3.29 selects from settled state 5; the expected opening sequence is now
+2, 5, 4, 3, 3. The existing modeled flow fixtures also use state 5 instead of
+artificially setting state 3 immediately after appearance.
+
+The native transition regression checks the selected index, model reload
+request, empty deferred slots and enabled preview input. It also exercises B's
+play exit/display-list entry, native idle cleanup, return of app input and
+reopening of the same page. UI type identification, icon/detail rendering,
+sound and animation services are modeled. Manager scheduling and actual
+rendering remain outside this test. Added fingerprints cover the native appear
+and selection updates; conflicts disable only the preview feature.
+
+The pinned Docker build and `python3 tools/check.py core` pass, including host
+policy checks, all 64 module subsets at two ASLR bases, Core configuration and
+preview regressions. Release archive integrity, manifest hashes, deployed Core
+parity and source parity are checked before delivery. Older archives remain.
+
+Live Eden verification remains required for visible appearance, item rotation,
+controller navigation/B return, app/phone reopening and workbench crafting.
+No running game, installed mod, save or synced log is modified.

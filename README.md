@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.28 DIY recipe preview opening fix** for ACNH **3.0.3 on Eden**. One Core
+**0.3.29 DIY recipe preview opening fix** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -60,12 +60,12 @@ fingerprints only, checked before each feature's first hook.
 
 ## DIY Recipes app previews
 
-0.3.28 fixes an opening stall: a new native preview starts in `cInit` (0),
-while the previous build waited indefinitely for `cIdle` (1). Both states now
-open the preview. App deactivation retains the prepared page so reopening does
-not discard the feature. The tests execute native preview state initialization,
-its initial update, child activation and callback registration. Progress logs
-now distinguish completed activation from a stalled appearance transition.
+0.3.29 fixes the next opening stall seen in 0.3.28. Native appearance enters
+`cDisplayList` (5), where the owner must supply a selected recipe. The integration
+previously waited for `cPlay` (3), which requires that selection first. It now
+selects from state 5. The regression executes the native state handlers and
+deferred requests through opening, B return and reuse, instead of inventing an
+appearance-to-play transition. App deactivation retains the prepared page.
 
 The page is still prepared during app setup, before the UI heap shrinks.
 The app's layout stays intact if preparation fails.
@@ -196,7 +196,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.28
+version = 0.3.29
 base_speed = 2
 boost_speed = 4
 faster_ui = false
@@ -335,9 +335,9 @@ at `../vanilla-3.0.3/Layout`; builders verify their hashes and archive structure
 The package script checks that every INI matches the Core release, refuses to
 replace existing archives, and creates:
 
-- `dist/qol-enhancements-v0_3_28_for_acnh_v3_0_3.zip`
-- `dist/qol-enhancements-v0_3_28_for_acnh_v3_0_3_source.zip`
-- `dist/qol-enhancements-v0_3_28_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
+- `dist/qol-enhancements-v0_3_29_for_acnh_v3_0_3.zip`
+- `dist/qol-enhancements-v0_3_29_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v0_3_29_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
 
 The binary ZIP contains a conspicuous installation text file, README, Core and
 six independently selectable feature folders, plus a SHA-256 manifest. Source

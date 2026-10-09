@@ -27,8 +27,11 @@ All addresses are offsets from the loaded main module.
 | 034942F0 | Native preview state table initialization (initial state 0) |
 | 03494768 | Initial-state update (no automatic idle transition) |
 | 034949A8 | Preview appear entry |
+| 03494B08 | Appear update: request cDisplayList (5) |
 | 03494FF0 | Recipe selection entry: count, model/material load, animation |
+| 0349530C | Recipe selection update: wait for animation, then request play (3) |
 | 03495408 | Return-to-list entry: reverse animation/reset |
+| 0349553C | Display-list update: no-op, awaits owner selection |
 | 034947D0 | Idle entry: clear borrowed dataset and model requests |
 | 034969D0 | Native left/right index wrapping and item-change notification |
 | 03473AAC | Refresh preview count from dataset |
@@ -42,6 +45,8 @@ All addresses are offsets from the loaded main module.
 | 03363544 | Item-icon constructor (270 per preview) |
 | 03DBAC90 | Allocate state callback/name arrays from explicit/current heap |
 | 03DBAF40 | State-name assignment; null names fault at 03DBB0EC |
+| 02B0C720 | Page update: native state update, then page virtual +0x1A0 |
+| 02B0E370 | Post-update visitor: consume deferred request, enter state, reset actions |
 | 04AB2698 | GOT pointer to heap-manager singleton storage |
 | 04AB3350 | GOT pointer to thread-manager singleton storage |
 
@@ -82,8 +87,8 @@ preparing a new child, so a replacement UI manager never borrows an old page.
 An already removed child is not removed twice. Native ownership frees page,
 layout, model and dialog allocations. Sessions are separate for each resident.
 
-Native state 0 is initial, 1 idle, 2 appear, 3 play, 4 select recipe and 5
-return to list. The two deferred request slots at +0x1F0/+0x1F4 are selected by
+Native state 0 is cInit, 1 cIdle, 2 cAppear, 3 cPlay, 4 cChangePlay and 5
+cDisplayList. The two deferred request slots at +0x1F0/+0x1F4 are selected by
 byte +0x200. Version 0.3.28 accepts settled state 0 as well as 1 before lending
 the dataset and requesting appearance, and retains the native virtual +0xF0
 layout-readiness check. Native 034942F0 initializes state 0;
@@ -91,6 +96,18 @@ layout-readiness check. Native 034942F0 initializes state 0;
 for state 1 therefore stalls forever on a new page. On reuse, wait for idle
 entry to finish because it clears borrowed data. The former activation fixture
 incorrectly forced state 1, hiding this failure.
+
+The synced 0.3.28 log reaches `activated; state=0 lifecycle=3` and `appear
+requested`, with no subsequent selection message or crash backtrace. Its
+appearance wait incorrectly expected state 3. Native cAppear update 03494B08
+unconditionally requests state 5 when the current request slot is empty.
+State 5's update 0349553C is a return instruction: the owner must set +0x264
+and request state 4. Only state 4's update requests state 3 after the selection
+animation completes. Version 0.3.29 waits for settled state 5 and follows this
+native sequence. A native execution regression against 0.3.28 records
+2 -> 5 -> 5 -> 5 -> 5, reproducing the suspended-input stall. Corrected code
+records 2 -> 5 -> 4 -> 3 -> 3. Earlier flow fixtures manually settled at 3 after
+appearance, concealing this second stall; they now settle at 5.
 
 Child activation clears parent +0x164 for the current frame. The native manager
 subsequently traverses the page tree (03768DB0), advances lifecycle 3 to 4 and
@@ -137,7 +154,11 @@ It executes native heap shrink/allocation, preview state-table initialization,
 initial-state updates, child activation/removal and callback registration, with
 engine service boundaries modeled. An initial-state regression preserves native
 state 0 through activation and checks that compiled code requests appearance.
-The native manager scheduler, async transitions and renderer remain modeled. It executes base/common page, 270 icon and state-machine constructors with
+It also executes the native page-update virtual, deferred-request visitor, and
+state entry/update/exit handlers through appearance, selection, play, B return,
+idle cleanup and reuse. Type identification, icon/detail refresh, sound and
+animation services are modeled; native state transitions are not. The native
+manager scheduler and renderer remain modeled. It executes base/common page, 270 icon and state-machine constructors with
 manager/current/default heaps, modeling their allocation and string services.
 It models asynchronous readiness, rendering and animations,
 and executes the native recipe copy, list count, next/previous navigation,
