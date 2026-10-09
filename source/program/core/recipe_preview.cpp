@@ -22,6 +22,7 @@ constexpr std::uintptr_t ChangeState = 0x03dbb160;
 constexpr std::uintptr_t DrawModelLayer = 0x039392b0, RenderLayers = 0x04abdb78;
 constexpr std::uintptr_t SetModelRotation = 0x032b9e08;
 constexpr std::uintptr_t BuildModelMatrix = 0x006021a4, DrawLayerContents = 0x039f63f0;
+constexpr std::uintptr_t ItemParamGlobalSlot = 0x04ac0428;
 constexpr std::uintptr_t UpdateModelTransform = 0x032b9fcc, EntityManager = 0x04ab27c0;
 constexpr std::uintptr_t CapturePicture = 0x03a17390, AlternateCapturePicture = 0x03a174f0;
 }
@@ -51,7 +52,7 @@ constexpr std::size_t EntityPhase = 0x288, EntityStage = 0x5e8;
 constexpr unsigned WorkbenchModelMode = 2, ConfirmMask = 0x10, BackMask = 0x20, PhoneShortcutKind = 5;
 constexpr unsigned RightStickMask = 2;
 constexpr unsigned TransformPending = 1, MaterialPending = 6;
-constexpr float StickDeadZone = 0.15f, DegreesPerUpdate = 3.0f, MaximumTilt = 60.0f;
+constexpr float StickDeadZone = 0.15f, DegreesPerUpdate = 6.0f, MaximumTilt = 60.0f;
 // Native 032B74F0 converts radians to Angle32 (one turn = 2^32).
 constexpr float AngleUnitsPerDegree = 4294967296.0f / 360.0f;
 constexpr int PhoneModelMode = 26, PhoneModelState = 3;
@@ -66,6 +67,7 @@ constexpr std::array<float, 4> PreviewBackground{1.5950871f, 1.3879482f, 0.87512
 // that worker must not inspect the UI thread's mutable Session objects.
 std::atomic<const void *> PreviewClearColor{};
 std::atomic<void *> PreviewController{};
+std::atomic<bool> PreviewFixedPose{};
 std::atomic<unsigned> PreviewHandle{}, PreviewAngleZ{}, MatrixCalls{}, MatrixMatches{}, BackgroundApplied{};
 std::atomic<std::uint64_t> PreviewAngleXY{};
 // Type 42 creates up to four type-6 item carriers; each carrier creates the
@@ -86,6 +88,61 @@ template<class T> T &At(void *object, std::size_t offset = 0) {
     return *reinterpret_cast<T *>(static_cast<std::byte *>(object) + offset);
 }
 template<class F> F Native(std::uintptr_t offset) { return reinterpret_cast<F>(Main + offset); }
+namespace itemTable {
+constexpr std::size_t FirstId = 0x1f8, RowCount = 0x1d8, Rows = 0x1e0;
+constexpr std::size_t HeaderV0 = 12, HeaderV1 = 28, DescriptorSize = 8;
+constexpr unsigned MaxRows = 65536, MaxRowBytes = 4096, MaxFields = 512;
+constexpr unsigned MaxHeaderDistance = 64 * 1024 * 1024;
+constexpr unsigned KindField = 0x5270eb75, IdField = 0x54706054;
+// ItemKind CRC32 values: English and Japanese resource spellings.
+constexpr std::array<unsigned, 8> FixedKinds{
+    0x055c8679, 0xa661cd8e, // RoomWall / 内装：壁紙
+    0xc354e1f6, 0x8b19cf5d, // RoomFloor / 内装：床板
+    0x11e75a84, 0x8e4773fe, // Rug / ラグ
+    0x2c28165c, 0x1ffca4d6  // Fence / 柵
+};
+}
+bool UsesFixedPreviewPose(std::uint16_t itemId) {
+    // Read the same live ItemParam table as native item-root update 0192A590.
+    // Keep this Core-only: Catalog may be disabled. Validate row identity and
+    // runtime header fixups before classifying; do not guess from recipe IDs.
+    auto slot = *Native<void **>(address::ItemParamGlobalSlot);
+    auto table = slot ? At<void *>(slot) : nullptr;
+    if (!table) return false;
+    const auto firstId = At<std::uint16_t>(table, itemTable::FirstId);
+    const auto count = At<unsigned>(table, itemTable::RowCount);
+    auto rows = At<void **>(table, itemTable::Rows);
+    if (!rows || count > itemTable::MaxRows || itemId < firstId || unsigned(itemId - firstId) >= count)
+        return false;
+    auto row = rows[itemId - firstId];
+    if (!row) return false;
+    const auto distance = At<unsigned>(row);
+    if (distance < itemTable::HeaderV1 || distance > itemTable::MaxHeaderDistance ||
+        reinterpret_cast<std::uintptr_t>(row) < distance) return false;
+    auto header = static_cast<std::byte *>(row) - distance;
+    const auto entries = At<unsigned>(header), stride = At<unsigned>(header, 4);
+    const auto fields = At<std::uint16_t>(header, 8);
+    const auto version = At<unsigned char>(header, 10);
+    if (!entries || entries > itemTable::MaxRows || stride < 4 || stride > itemTable::MaxRowBytes ||
+        !fields || fields > itemTable::MaxFields || version > 1) return false;
+    auto descriptors = header + (version ? itemTable::HeaderV1 : itemTable::HeaderV0);
+    auto firstRow = descriptors + fields * itemTable::DescriptorSize;
+    if (static_cast<std::byte *>(row) < firstRow) return false;
+    const auto rowOffset = static_cast<std::byte *>(row) - firstRow;
+    if (rowOffset % stride || rowOffset / stride >= entries) return false;
+    unsigned kind{};
+    bool identityMatches{};
+    for (unsigned i = 0; i < fields; ++i) {
+        auto descriptor = descriptors + i * itemTable::DescriptorSize;
+        const auto hash = At<unsigned>(descriptor), offset = At<unsigned>(descriptor, 4);
+        if (hash == itemTable::KindField && offset <= stride - sizeof(unsigned))
+            kind = At<unsigned>(row, offset);
+        if (hash == itemTable::IdField && offset <= stride - sizeof(std::uint16_t))
+            identityMatches = At<std::uint16_t>(row, offset) == itemId;
+    }
+    return identityMatches && std::find(itemTable::FixedKinds.begin(), itemTable::FixedKinds.end(), kind) !=
+        itemTable::FixedKinds.end();
+}
 void *UiContext() {
     auto storage = *Native<void **>(address::UiContext);
     return storage ? At<void *>(storage) : nullptr;
@@ -195,7 +252,10 @@ struct ModelMatrix { float values[12]; }; // ARM64 returns this 48-byte object t
 HOOK_DEFINE_TRAMPOLINE(BuildPreviewMatrix) {
     static ModelMatrix Callback(void *component) {
         const auto handle = PreviewHandle.load(std::memory_order_acquire);
-        if (!handle || !component) return Orig(component);
+        // Native 0192A590 derives carrier angles/framing from item preview
+        // parameters (including mRemakeFence). Preserve those matrices for
+        // flat surfaces/fences instead of replacing them with controller XYZ.
+        if (!handle || !component || PreviewFixedPose.load(std::memory_order_acquire)) return Orig(component);
         MatrixCalls.fetch_add(1, std::memory_order_relaxed);
         auto owner = At<void *>(component, field::ComponentOwner);
         if (!owner) return Orig(component);
@@ -224,7 +284,8 @@ HOOK_DEFINE_TRAMPOLINE(SetPreviewRotation) {
         // 032B9510 can reapply the native parameter animation through this
         // setter AFTER a queued transform succeeds. Keep the preview pose at
         // that final boundary too; other controllers retain the supplied pose.
-        if (controller && controller == PreviewController.load(std::memory_order_acquire) &&
+        if (controller && !PreviewFixedPose.load(std::memory_order_acquire) &&
+            controller == PreviewController.load(std::memory_order_acquire) &&
             At<unsigned>(controller, field::ModelMode) == WorkbenchModelMode &&
             At<int>(controller, field::ModelState) == 1 &&
             At<unsigned>(controller, field::ModelHandle))
@@ -320,7 +381,7 @@ struct Session {
     float stickX{}, stickY{}, tilt{};
     int inputRow{-1};
     int savedModelMode{-1};
-    bool backHeld{}, confirmHeld{true}, ownsRenderer{};
+    bool backHeld{}, confirmHeld{true}, ownsRenderer{}, fixedPose{};
 };
 std::array<Session, 8> Sessions{};
 Session *ForPhone(void *phone) {
@@ -390,6 +451,7 @@ void Close(Session &s) {
         PreviewHandle.store(0, std::memory_order_release);
         for (auto &carrier : PreviewCarriers) carrier.store(0, std::memory_order_release);
         PreviewController.store(nullptr, std::memory_order_release);
+        PreviewFixedPose.store(false, std::memory_order_release);
         PreviewClearColor.store(nullptr, std::memory_order_release);
         // Release only the handle/mode acquired by this phone. The native
         // state-1 exit balances camera/layers before state 0 resets ownership.
@@ -493,7 +555,7 @@ float StickAxis(float value) {
 void RotatePreview(Session &s) {
     const auto x = s.stickX, y = s.stickY;
     s.stickX = s.stickY = 0; // A missing/blocked snapshot must never keep spinning.
-    if (x == 0 && y == 0) return;
+    if (s.fixedPose || (x == 0 && y == 0)) return;
     auto context = UiContext();
     if (!s.ownsRenderer || !context || At<void *>(context, field::Controller) != s.controller ||
         At<unsigned>(s.controller, field::ModelMode) != WorkbenchModelMode ||
@@ -618,7 +680,11 @@ bool Begin(Session &s) {
     MatrixCalls.store(0, std::memory_order_relaxed);
     MatrixMatches.store(0, std::memory_order_relaxed);
     BackgroundApplied.store(0, std::memory_order_relaxed);
+    s.fixedPose = UsesFixedPreviewPose(static_cast<std::uint16_t>(s.item));
+    PreviewFixedPose.store(s.fixedPose, std::memory_order_release);
     PreviewController.store(controller, std::memory_order_release);
+    Logging.Log("[QoL Enhancements/Core] DIY preview: native fixed pose=%u item=%u\n",
+                unsigned(s.fixedPose), unsigned(s.item & 0xffff));
     const auto color = ItemLayerClearColor();
     PreviewClearColor.store(color, std::memory_order_release);
     Logging.Log("[QoL Enhancements/Core] DIY preview: background #E5DFC7; layer_color=%p\n", color);

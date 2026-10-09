@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.44 DIY mesh ownership correction
+# Unified QoL validation — 0.3.45 fixed item poses and faster rotation
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,36 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.45 native fixed poses and doubled speed
+
+The user confirms 0.3.44's right-stick turning and vertical tilt work. They
+request native workbench poses locked for wallpapers, floors, rugs and fences,
+and twice the movement speed elsewhere. The accepted cream color is unchanged.
+
+Workbench 0348D8BC uses the same native item-model creation function, mode 2
+and display 0 as this preview. Controller parameter decoding 032B74F0 and
+item-root update 0192A590 supply native angles and framing; the latter selects
+per-item/carrier parameters (including the named mRemakeFence resource from
+019305D0), converts angles at 0192B394 and writes carrier component +2BC.
+The fixed categories now bypass our controller-angle protection and final
+matrix substitution, preserving the native transform rather than hardcoding
+angles from a sample item. Core classifies validated ItemParam rows independently
+of Catalog, once per renderer acquisition, and publishes an atomic fixed flag.
+Right-stick input is drained without moving these items. Other items use 6° per
+update at full stick, retaining the existing dead zone and 60° tilt bound.
+
+Checks use every real 3.0.3 fixed item and sample every other ItemKind through
+compiled open/deactivation, including malformed metadata and English/Japanese
+enums. Fixed input, supplied native setter angles, root/carrier/grandchild matrix
+preservation, B cleanup and ordinary rotation after a fixed item are exercised
+at both ASLR bases. Existing checks cover native lifecycle, background scoping,
+6° turning/full-turn wrap, bounded tilt and all compatibility fingerprints.
+Full Core checks and package/source/hash parity are run before delivery.
+
+Native resource loading and GPU rendering are modeled locally. Confirm all four
+fixed categories, the faster controls, B/reopening and ordinary workbench behavior
+on Steam Deck. No live game or save is accessed by these checks.
 
 ## 0.3.44 carrier ownership correction
 

@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.44 DIY mesh ownership correction** for ACNH **3.0.3 on Eden**. One Core
+**0.3.45 fixed item poses and faster rotation** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -60,16 +60,15 @@ fingerprints only, checked before each feature's first hook.
 
 ## DIY Recipes app previews
 
-The user confirmed the cream background in 0.3.43, but rotation still had no
-visible effect. Its log showed zero displayed-mesh matches. Native allocation
-creates two levels below the controller: an item carrier, then the drawable.
-0.3.44 publishes the carrier handles and matches the drawable through those
-handles before applying the right-stick pose. The accepted background is unchanged.
+The user confirmed visible right-stick turning and tilting in 0.3.44 and
+accepted the cream background. 0.3.45 preserves the native workbench renderer's
+poses for wallpapers, floors, rugs and fences; right-stick movement is disabled
+for those item types. Other items turn and tilt twice as fast (6° per update at
+full stick), retaining the dead zone and 60° tilt limit. Reopening resets the pose.
 
-Local checks execute the native carrier setup and verify a stale grandchild's
-matrix changes without modifying entity memory. **Visible rotation still needs
-a Steam Deck test.** Right-stick turning and tilting retain the dead zone and
-60° tilt limit; reopening resets the pose.
+Local checks use real ItemParam rows and execute compiled input/renderer hooks,
+checking native matrix preservation, fixed-to-rotating transitions, B cleanup
+and the doubled speed. **The fixed categories and new speed need a Deck test.**
 
 The existing DIY app keeps its materials panel, category, selection and scroll
 position. A opens the 3D preview in place of the grid; B releases the model and
@@ -201,7 +200,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.44
+version = 0.3.45
 base_speed = 2
 boost_speed = 4
 faster_ui = false

@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.44 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.45 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -90,17 +90,15 @@ this package does not supply an aspect-ratio patch.
 CORE SETTINGS / AMIIBO TIMEOUT
 DIY RECIPE PREVIEWS (CORE)
 
-0.3.44 corrects the displayed mesh's ownership check. The game creates an
-item carrier below the preview controller, then the drawable below that carrier.
-The previous build missed that second level and logged zero mesh matches.
-The accepted cream background is unchanged.
+0.3.44's right-stick turning and tilting are confirmed working in-game.
+0.3.45 locks wallpapers, floors, rugs and fences to the workbench renderer's
+native poses. These item types ignore right-stick movement. Other items turn
+and tilt twice as fast; the dead zone and 60-degree tilt limit are unchanged.
+Reopening resets the pose. The accepted cream background is unchanged.
 
-Local checks cover native carrier setup, stale grandchild rotation matrices,
-unchanged entity memory, generation checks, scoped color and lifecycle.
-Visible rotation STILL REQUIRES A STEAM DECK TEST.
-
-RIGHT STICK turns/tilts, with a dead zone and 60-degree tilt limit. Reopening
-starts from the item's native pose.
+Local checks cover real item categories, native pose/matrix preservation,
+fixed-to-rotating transitions, B cleanup and doubled movement speed.
+The fixed categories and new speed STILL REQUIRE A STEAM DECK TEST.
 
 The DIY app keeps its existing materials panel. Press A on a recipe to open the
 3D preview in place of the grid; press B to return to the same grid. Category,
@@ -138,7 +136,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.44
+  version = 0.3.45
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.

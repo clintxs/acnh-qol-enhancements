@@ -13,8 +13,10 @@ uses #E5DFC7 for the item-layer clear. The user reports no visible change.
 0.3.41 observes actual native transform attempts and clear passes; it is a
 diagnostic release and does not claim to fix either behavior. 0.3.42 protects
 the preview pose at the native setter and overrides the color before its stack
-copy. The user accepts the 0.3.43 cream background; visible rotation is still
-unresolved. 0.3.44 corrects a missing carrier level in drawable ownership.
+copy. The user accepts the 0.3.43 cream background. 0.3.44 corrects a missing
+carrier level in drawable ownership; the user confirms turning and tilt work.
+0.3.45 preserves native poses for walls, floors, rugs and fences and doubles
+movement speed for other items.
 Left/right recipe navigation remains unfinished.
 
 This implementation retains MenuRecipe's material panel. It adds a hidden
@@ -401,3 +403,44 @@ controller -> carrier -> drawable, reproduces the old scope's miss, verifies
 all four published carriers, generation/kind/liveness/count guards, immutable
 component bytes and B cleanup. Local execution does not prove live visuals or
 asynchronous scene timing; those remain for the next Deck test.
+
+
+## Native fixed poses and faster movement (0.3.45)
+
+The user confirms 0.3.44 rotation and tilt work, requests fixed poses for
+wallpapers/floors/rugs, adds fences, and requests twice the movement speed.
+
+Workbench 0348D8BC calls the same CreateItemModel 032BD990 used here, with
+display 0 and controller mode 2. The request contains item data rather than
+category-specific angles. 032BB4EC/032B74F0 read the native controller's live
+preview parameters (angles at controller +80). Root update 0192A590 separately
+selects item/placement-specific preview parameters through 0192A0F4. The
+019305D0 parameter constructor names its resources, including mRemakeFence
+and mRemakeFenceScale; the fence entry's array count/data are +3B10/+3B18.
+At 0192B394 the root converts selected degree-valued XYZ angles to Angle32;
+it writes the carrier's extra angles at component +2BC/+2C0/+2C4 after computing
+bounds. Other branches choose placement and scale. Drawable update 019282FC
+copies the carrier transform, and 019283F0 builds the final native matrix.
+
+Preserve this whole native path for fixed types rather than guessing or copying
+one numeric pose from a particular recipe. Core reads validated live ItemParam
+rows through GOT slot 04AC0428 (table +1F8/+1D8/+1E0). Match ItemKind CRCs for
+RoomWall, RoomFloor, Rug and Fence, accepting English/Japanese enum spellings
+and requiring UniqueID to agree. This is independent of the Catalog module.
+Read the resource once when acquiring the preview; never on a render worker.
+
+Publish a fixed-pose flag before publishing controller ownership. For fixed
+items, drain but ignore right-stick movement, pass native rotation-setter
+arguments through unchanged, and bypass the custom matrix-angle substitution
+for the root, carriers and drawables. Thus native angles, position, scale and
+per-carrier framing remain intact. Clear the flag after the active handle is
+cleared during B/deactivation, before releasing the native renderer. Ordinary
+items continue using the working 0.3.44 path at 6 degrees per update (was 3),
+with unchanged dead zone, tilt bound and accepted HDR background. No new hooks.
+
+ARM tests classify every real fixed item and a representative of every other
+kind through the actual open/deactivation path, test malformed row/header/
+identity and both enum languages, then verify fixed input and native setter/
+root/carrier/drawable matrices. They also cover B cleanup, a rotating item after
+a fixed item, 6-degree horizontal movement and a 60-update full turn. GPU output
+and native resource-loaded poses still require the next live Deck test.

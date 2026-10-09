@@ -11,6 +11,8 @@ import sys
 import struct
 from core_arm_test import Machine, RAW, DEFAULT
 from unicorn.arm64_const import *
+from unicorn import UC_PROT_READ
+import zlib
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 from build_catalog_badge_layout import resources, layout_sections, pane_name, PANE_TYPES, material_records
 
@@ -33,6 +35,7 @@ class PreviewMachine(Machine):
         super().__init__(base, files)
         self.u.mem_map(self.ram + 0x200000, 0x800000)
         self.boot(); self.activate()
+        self.write(base+0x4ac0428,0)  # No live ItemParam resource until explicitly supplied.
         assert all(base + a in self.hooks for a in HOOKS)
         for name, action in [('BuildRecipeLayout', 'build'), ('BindPhoneRecipes', 'bind'),
                              ('UpdatePhoneRecipes', 'frame'), ('DeactivatePhoneRecipes', 'deactivate'),
@@ -425,6 +428,115 @@ for base in (0x7100000000, 0x7200000000):
     assert m.read(carrier+0x364,4)==0x112345
     print(f'PASS: native type-42 initializer requests type 6; native type-6 initializer requests type 6F, ASLR {base:#x}')
 
+# Classify actual 3.0.3 ItemParam rows, then preserve the native pose through
+# both controller animation and root/carrier/grandchild matrix boundaries.
+item_data=bytearray((ASSETS.parent/'Bcsv/ItemParam.bcsv').read_bytes())
+item_count,item_stride,item_fields,item_version=struct.unpack_from('<IIHB',item_data)
+item_header=28 if item_version else 12
+item_offsets=dict(struct.unpack_from('<II',item_data,item_header+8*i) for i in range(item_fields))
+fixed_names={'RoomWall':'内装：壁紙','RoomFloor':'内装：床板','Rug':'ラグ','Fence':'柵'}
+fixed_hashes={zlib.crc32(name.encode()) for pair in fixed_names.items() for name in pair}
+item_rows={}; kinds={}
+for i in range(item_count):
+    offset=item_header+8*item_fields+i*item_stride
+    struct.pack_into('<I',item_data,offset,offset) # Runtime header back-reference.
+    item_id=struct.unpack_from('<H',item_data,offset+item_offsets[0x54706054])[0]
+    kind=struct.unpack_from('<I',item_data,offset+item_offsets[0x5270eb75])[0]
+    item_rows[item_id]=(offset,kind); kinds.setdefault(kind,item_id)
+fixed_items={item_id for item_id,(offset,kind) in item_rows.items() if kind in fixed_hashes}
+assert all(any(kind in {zlib.crc32(n.encode()),zlib.crc32(j.encode())} for _,kind in item_rows.values())
+           for n,j in fixed_names.items())
+for base in (0x7100000000, 0x7200000000):
+    m=PreviewMachine(base)
+    data=base+0x30000000
+    m.u.mem_map(data,(len(item_data)+4095)&~4095); m.u.mem_write(data,bytes(item_data))
+    table=m.alloc(0x200); pointers=m.alloc((max(item_rows)+1)*8); slot=m.alloc()
+    m.write(slot,table); m.write(base+0x4ac0428,slot)
+    m.write(table+0x1d8,max(item_rows)+1,4); m.write(table+0x1e0,pointers)
+    for item_id,(offset,kind) in item_rows.items(): m.write(pointers+item_id*8,data+offset)
+    m.u.mem_protect(data,(len(item_data)+4095)&~4095,UC_PROT_READ)
+    classify_phone,classify_page,_,_=m.phone()
+    classify_recipe=m.read(m.read(classify_phone+0x8a358))
+    def classify(item_id):
+        m.write(classify_recipe+8,item_id)
+        m.confirm(classify_page); m.frame(classify_phone); m.frame(classify_phone)
+        result=m.read(m.module.find('PreviewFixedPose'),1)
+        m.hook(0x2e9d538,classify_phone)
+        return result
+    # Every fixed item, plus a real representative of every other ItemKind.
+    for item_id in sorted(fixed_items|set(kinds.values())):
+        assert classify(item_id)==int(item_id in fixed_items),(item_id,item_rows[item_id])
+    fixed_id=next(iter(fixed_items)); offset,kind=item_rows[fixed_id]
+    row=data+offset
+    for field,value,size in ((0x1d8,0,4),(0x1d8,65537,4),(0x1e0,0,8),(0x1f8,fixed_id+1,2)):
+        saved=m.read(table+field,size); m.write(table+field,value,size)
+        assert classify(fixed_id)==0
+        m.write(table+field,saved,size)
+    saved=m.read(pointers+fixed_id*8); m.write(pointers+fixed_id*8,0)
+    assert classify(fixed_id)==0
+    m.write(pointers+fixed_id*8,saved)
+    # Malformed headers/identity and both enum languages, using a writable copy.
+    copy_offset=item_header+8*item_fields
+    sample=bytearray(item_data[:copy_offset])+item_data[offset:offset+item_stride]
+    struct.pack_into('<I',sample,0,1); struct.pack_into('<I',sample,copy_offset,copy_offset)
+    copy=m.alloc(len(sample))
+    m.u.mem_write(copy,bytes(sample)); m.write(pointers+fixed_id*8,copy+copy_offset)
+    for field,value,size in ((0,0,4),(0,65537,4),(4,0,4),(4,4097,4),(8,513,2),(10,2,1),
+                             (copy_offset,0,4),(copy_offset,64*1024*1024+1,4),
+                             (copy_offset+item_offsets[0x54706054],fixed_id+1,2)):
+        saved=m.read(copy+field,size); m.write(copy+field,value,size)
+        assert classify(fixed_id)==0
+        m.write(copy+field,saved,size)
+    for hashed in fixed_hashes:
+        m.write(copy+copy_offset+item_offsets[0x5270eb75],hashed,4)
+        assert classify(fixed_id)==1
+    m.write(pointers+fixed_id*8,row)
+    for name,japanese in fixed_names.items():
+        candidates={zlib.crc32(name.encode()),zlib.crc32(japanese.encode())}
+        item_id=next(i for i,(o,k) in item_rows.items() if k in candidates)
+        phone,page,focus,panes=m.phone()
+        recipe=m.read(m.read(phone+0x8a358)); m.write(recipe+8,item_id)
+        m.confirm(page); m.frame(phone); m.frame(phone)
+        assert m.read(m.module.find('PreviewFixedPose'),1)==1
+        assert f'native fixed pose=1 item={item_id}' in m.text
+        pose=bytes(m.u.mem_read(m.controller+0x80,12))
+        for right in ((1,0),(-1,0),(0,1),(0,-1),(1,1)):
+            m.input(page,0,right=right); m.frame(phone)
+            assert bytes(m.u.mem_read(m.controller+0x80,12))==pose
+        # Supply distinct native poses on every hierarchy level. The hook must
+        # pass them through verbatim, retaining native base angles/position/scale.
+        for owner_kind,parent in ((0x42,0),(6,0x12345),(0x6f,0x112345)):
+            owner=m.alloc(0x400); component=m.alloc(0x2c8)
+            m.u.mem_write(component,bytes(m.u.mem_read(m.component,0x2c8)))
+            m.write(component+0x48,owner); m.write(owner+0x15c,owner_kind,4)
+            m.write(owner+0x230,0x12345 if owner_kind==0x42 else 0x212345,4)
+            m.write(owner+0x234,parent,4)
+            m.u.mem_write(component+0x2b0,struct.pack('<6I',0x08000000,0x10000000,0x02000000,
+                                                   0x30000000,0x40000000,0x50000000))
+            native=bytes(m.u.mem_read(component,0x2c8))
+            assert m.drawable_matrix(component,protected=True)==m.drawable_matrix(component)
+            assert bytes(m.u.mem_read(component,0x2c8))==native
+        # Native parameter animation must also retain its supplied angles.
+        supplied=m.alloc(); expected=struct.pack('<3I',0x12340000,0x45670000,0x789a0000)
+        m.u.mem_write(supplied,expected)
+        assert m.hook(0x32b9e08,m.controller,supplied)==1
+        assert bytes(m.u.mem_read(m.component+0x2bc,12))==expected
+        m.input(page,0x20); m.frame(phone)
+        assert not m.read(m.module.find('PreviewFixedPose'),1)
+        assert not m.read(m.module.find('PreviewHandle'),4)
+        assert m.read(panes['L_BtnList_00']+0x58,1)&1
+        m.hook(0x2e9d538,phone)
+    # A normal item opened after a fixed preview must regain rotation.
+    item_id=next(i for i,(o,k) in item_rows.items() if k==zlib.crc32(b'Ftr'))
+    phone,page,focus,panes=m.phone(); recipe=m.read(m.read(phone+0x8a358)); m.write(recipe+8,item_id)
+    m.confirm(page); m.frame(phone); m.frame(phone)
+    assert not m.read(m.module.find('PreviewFixedPose'),1)
+    before=bytes(m.u.mem_read(m.controller+0x80,12))
+    m.input(page,0,right=(1,1)); m.frame(phone)
+    assert bytes(m.u.mem_read(m.controller+0x80,12))!=before
+    m.hook(0x2e9d538,phone)
+    print(f'PASS: {len(fixed_items)} real walls/floors/rugs/fences fixed; every other kind sampled; native controller/carrier/drawable poses retained, right-stick ignored, B and rotating-item reopen; ASLR {base:#x}')
+
 for base in (0x7100000000, 0x7200000000):
     m = PreviewMachine(base)
     verify_layout(MENU, m.patch(MENU)); ptr = m.build_pointer
@@ -529,7 +641,12 @@ for base in (0x7100000000, 0x7200000000):
     assert m.read(m.model_entity+0x398,1)==1  # Native material-publication gate.
     assert not m.read(m.controller+0x74,1)&1
     assert changed[0]==pose[0] and changed[2]==pose[2]
-    assert abs(((pose[1]-changed[1])&0xffffffff)/2**32*360-3)<.0001
+    assert abs(((pose[1]-changed[1])&0xffffffff)/2**32*360-6)<.0001
+    m.input(page,0,right=(0,1)); m.frame(phone)
+    tilted=angles()
+    assert abs(((changed[0]-tilted[0])&0xffffffff)/2**32*360-6)<.0001
+    assert tilted[1:]==changed[1:]
+    m.input(page,0,right=(0,-1)); m.frame(phone); assert angles()==changed
     assert bytes(m.u.mem_read(m.component+0x2bc,12))==bytes(m.u.mem_read(m.controller+0x80,12))
     rendered=m.drawable_matrix()
     # Reproduce a successful late update being overwritten by native parameter
@@ -598,7 +715,7 @@ for base in (0x7100000000, 0x7200000000):
     m.frame(phone); assert angles()==changed  # No snapshot must not keep rotating.
     # Both directions, full turn wrap, bounded tilt and loaded/owned guards.
     m.input(page,0,right=(-1,0)); m.frame(phone); assert angles()==pose
-    for _ in range(120): m.input(page,0,right=(1,0)); m.frame(phone)
+    for _ in range(60): m.input(page,0,right=(1,0)); m.frame(phone)
     assert abs(((angles()[1]-pose[1]+2**31)&0xffffffff)-2**31)<512
     for _ in range(30): m.input(page,0,right=(0,1)); m.frame(phone)
     upper=angles(); m.input(page,0,right=(0,1)); m.frame(phone); assert angles()==upper
