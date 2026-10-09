@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.33 DIY layout-accessor loading fix
+# Unified QoL validation — 0.3.34 DIY shortcut input fix
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,27 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.34 DIY A-button input routing
+
+The user confirmed 0.3.33 opens without crashing but A does nothing. The synced
+log shows capture/grid binding succeeded, with input_row=-1 and no A queued.
+Native MenuRecipePage setup 02E936EC creates shortcut kind 5 at page +570 and
+kind 6 at +578. The prototype incorrectly required kind 3 (Back), declining A
+because it could not resolve an input row. B remains snapshot mask 20 hex;
+its mask is independent of the kind of shortcut used to obtain the input row.
+
+The revised fixture executes native 02E936EC; shortcut allocation alone is
+modeled. It reproduces the no-op against the 0.3.33 ELF. The compiled fix reads
+kind-5 routing, refreshes it on A, and reports declined recipe presses and the
+number of bound press callbacks. Regression cases cover missing/wrong shortcuts,
+out-of-range rows, routing assigned after bind and row 4 on resident 5, including
+B on an unrelated row not closing the preview. The shortcut-creation call site
+is fingerprinted. Existing renderer/input/lifecycle checks and Core module
+combinations run again at both bases.
+
+The user has confirmed app loading; live model rendering and B return remain
+unverified. Local ARM checks model allocation/camera/GPU boundaries.
 
 ## 0.3.33 DIY app loading crash
 
@@ -32,7 +53,8 @@ Core installation/configuration combinations and the preview runtime are checked
 again; prior 0.3.32 suite regressions remain recorded below. Build, ZIP integrity,
 manifest hashes and source parity are checked for the new package.
 
-Live Eden confirmation of app loading, model visibility and B return is pending.
+The subsequent 0.3.33 live test confirmed app loading. A was blocked as described
+above; model visibility and B return remain pending.
 
 ## 0.3.32 renderer-only DIY prototype
 

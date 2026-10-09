@@ -23,11 +23,12 @@ constexpr std::size_t Recipes = 0x8a350, State = 0x1b0, Requests = 0x1f0;
 constexpr std::size_t LayoutInstances = 0x3f8, LayoutAccessor = 0x58;
 constexpr std::size_t GetNativeLayout = 0x28, LayoutRoot = 0x18, Grid = 0x580;
 constexpr std::size_t Rows = 0x210, RowCount = 0x208, PaneFlags = 0x58;
-constexpr std::size_t BackHint = 0x570, HintInput = 0xa0;
+constexpr std::size_t ShortcutHint = 0x570, HintInput = 0xa0;
+constexpr std::size_t InputRow = 0x10, InputKind = 0x14;
 constexpr std::size_t Controller = 0x30, Parameters = 0x28;
 constexpr std::size_t ModelMode = 0x50, ModelHandle = 0x6c;
 }
-constexpr unsigned WorkbenchModelMode = 2, BackMask = 0x20;
+constexpr unsigned WorkbenchModelMode = 2, BackMask = 0x20, PhoneShortcutKind = 5;
 std::uintptr_t Main{};
 template<class T> T &At(void *object, std::size_t offset = 0) {
     return *reinterpret_cast<T *>(static_cast<std::byte *>(object) + offset);
@@ -115,6 +116,7 @@ struct Session {
     void *controller{}, *parameters{};
     Phase phase{};
     unsigned frames{};
+    unsigned rejectedPresses{};
     unsigned char gridFlags{}, scrollFlags{}, cursorFlags{}, savedHidden{};
     std::array<std::byte, 0x28> savedParameters{};
     std::uint64_t item{};
@@ -131,6 +133,15 @@ Session *ForPhone(void *phone) {
 bool PhoneReady(void *phone) {
     return At<int>(phone, field::State) == 3 && At<int>(phone, field::Requests) == -1 &&
            At<int>(phone, field::Requests + 4) == -1;
+}
+int ShortcutInputRow(void *layout) {
+    auto hint = At<void *>(layout, field::ShortcutHint);
+    auto input = hint ? At<void *>(hint, field::HintInput) : nullptr;
+    // MenuRecipePage creates this shortcut with kind 5 in native 02e936ec.
+    // It is not the Back hint used by the pocket page (kind 3). The row is
+    // shared by all buttons; B itself is read from the snapshot's BackMask.
+    return input && At<unsigned>(input, field::InputKind) == PhoneShortcutKind &&
+           At<unsigned>(input, field::InputRow) < 8 ? At<int>(input, field::InputRow) : -1;
 }
 void Close(Session &s) {
     if (s.ownsRenderer) {
@@ -157,6 +168,8 @@ void Close(Session &s) {
 void PressRecipe(void *phone, void *event) {
     auto s = ForPhone(phone);
     if (!s || s->phase != Phase::Idle || !PhoneReady(phone) || !event) return;
+    // Refresh on press as shortcut routing can be assigned after binding.
+    s->inputRow = ShortcutInputRow(s->layout);
     // Button row 5 is press; row 1 is focus-leave. Confirm only an actual
     // recipe row, never category tabs, sort controls or an unrelated button.
     auto grid = At<void *>(s->layout, field::Grid);
@@ -171,19 +184,28 @@ void PressRecipe(void *phone, void *event) {
     const auto selected = At<unsigned>(phone, field::Selection);
     const auto recipes = At<void **>(phone, field::Recipes + 8);
     if (!recipeRow || selected >= count || count > 4096 || !recipes || !recipes[selected] ||
-        At<std::uint16_t>(recipes[selected], 8) >= 0xfffe || !s->surface || !s->gridPane || s->inputRow < 0) return;
+        At<std::uint16_t>(recipes[selected], 8) >= 0xfffe || !s->surface || !s->gridPane || s->inputRow < 0) {
+        if (s->rejectedPresses++ < 8)
+            Logging.Log("[QoL Enhancements/Core] DIY preview: A declined; recipe_row=%u selected=%u count=%u surface=%p grid=%p input_row=%d\n",
+                        unsigned(recipeRow), selected, count, s->surface, s->gridPane, s->inputRow);
+        return;
+    }
     s->item = At<std::uint64_t>(recipes[selected], 8);
     s->phase = Phase::Queued;
     Logging.Log("[QoL Enhancements/Core] DIY preview: A queued; recipe_index=%u item=%u\n", selected, unsigned(s->item & 0xffff));
 }
-void ReplacePress(void *layout) {
+unsigned ReplacePress(void *layout) {
     const auto columns = At<unsigned>(layout, 0x430), rows = At<unsigned>(layout, 0x434);
     const auto entries = At<std::byte *>(layout, 0x438);
-    if (!entries || columns > 64 || rows != 0x23) return;
+    if (!entries || columns > 64 || rows != 0x23) return 0;
+    unsigned replaced{};
     for (unsigned column = 0; column < columns; ++column) {
         auto &callback = At<std::uintptr_t>(entries + (5 * columns + column) * 0x20, 0x10);
-        if (callback == Main + address::PhonePress) callback = reinterpret_cast<std::uintptr_t>(&PressRecipe);
+        if (callback == Main + address::PhonePress) {
+            callback = reinterpret_cast<std::uintptr_t>(&PressRecipe); ++replaced;
+        } else if (callback == reinterpret_cast<std::uintptr_t>(&PressRecipe)) ++replaced;
     }
+    return replaced;
 }
 HOOK_DEFINE_TRAMPOLINE(BindPhoneRecipes) {
     static void Callback(void *phone) {
@@ -211,13 +233,10 @@ HOOK_DEFINE_TRAMPOLINE(BindPhoneRecipes) {
         if (s.gridPane) s.gridFlags = At<unsigned char>(s.gridPane, field::PaneFlags);
         if (s.scrollPane) s.scrollFlags = At<unsigned char>(s.scrollPane, field::PaneFlags);
         if (s.cursorPane) s.cursorFlags = At<unsigned char>(s.cursorPane, field::PaneFlags);
-        auto hint = At<void *>(s.layout, field::BackHint);
-        auto input = hint ? At<void *>(hint, field::HintInput) : nullptr;
-        // Native UI key kind 3 is B (0x20), with the resident's input row.
-        if (input && At<int>(input, 0x14) == 3 && At<unsigned>(input, 0x10) < 8)
-            s.inputRow = At<int>(input, 0x10);
-        ReplacePress(s.layout);
-        Logging.Log("[QoL Enhancements/Core] DIY preview: app bound; surface=%p grid=%p input_row=%d\n", s.surface, s.gridPane, s.inputRow);
+        s.inputRow = ShortcutInputRow(s.layout);
+        const auto pressBindings = ReplacePress(s.layout);
+        Logging.Log("[QoL Enhancements/Core] DIY preview: app bound; surface=%p grid=%p input_row=%d press_bindings=%u\n",
+                    s.surface, s.gridPane, s.inputRow, pressBindings);
     }
 };
 bool PreviewInput(void *layout, void *snapshot, unsigned blocked) {
@@ -326,6 +345,7 @@ bool InstallRecipePreview() {
         {0x03a174f0, {0xa9bd7bfd, 0xa90157f6, 0xa9024ff4, 0x910003fd, 0xd00085c8}},
         {0x0027d1d0, {0xa9bd7bfd, 0xf9000bf5, 0xa9024ff4, 0x910003fd, 0xaa0003f4}},
         {0x03c66298, {0xf9402c00, 0xaa0203f5, 0xaa0103f4, 0xf9000fbf, 0xb40000a0}},
+        {0x02e93798, {0x528000a8, 0x9a9f1102, 0x94231d66, 0x395ed2a8, 0xf902ba60}},
     };
     const auto &main = exl::util::GetMainModuleInfo();
     for (const auto &f : fingerprints) if (f.offset + sizeof(f.words) > main.m_Text.m_Size ||

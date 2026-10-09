@@ -26,6 +26,16 @@ It reproduces the old invalid traversal, then checks the accessor output path,
 invalid/unbuilt roots and missing accessors. Core declines lookup unless the
 returned root is named RootPane and its child-list sentinel is initialized.
 
+## 0.3.34 shortcut input correction
+
+The 0.3.33 live log reaches app binding with valid surface/grid pointers but
+input_row=-1, and the user reports A does nothing. Native 02E936EC allocates
+shortcut kind 5 into +570 and kind 6 into +578 (02E93798..02E937C8). Requiring
+kind 3 at +570 was copied from pocket-page Back routing and does not apply to
+MenuRecipePage. The test now executes native shortcut setup rather than assigning
+a kind-3 descriptor. It fails against 0.3.33 and checks the corrected routing,
+including invalid/missing shortcuts and an input row assigned after binding.
+
 ## Native bindings
 
 All addresses are main-module offsets in build FF1D1C05670DB6021C85B624A710B963.
@@ -44,6 +54,7 @@ All addresses are main-module offsets in build FF1D1C05670DB6021C85B624A710B963.
 | 02E9D538 | Phone deactivation; retains page/layout for reopening |
 | 0375AA40 / 0375AB74 | Native button dispatch / raw-event translation |
 | 03C58D24 | Common page input, shared with Pockets Quick Store |
+| 02E936EC / 02E93798 | Native MenuRecipe shortcut construction / kind-5 allocation call site |
 | 04AB2230 | GOT → singleton storage → UI context |
 | 032B78A8 / 032B9210 | UI3D controller construction / initialization |
 | 032B8270 / 032B85D0 | Model state-1 entry/exit: balance camera and scene layers |
@@ -74,8 +85,10 @@ the following app update, outside the native button-dispatch stack.
 Core installs one shared PageInput hook. A handler returns true only while its
 phone preview owns input; otherwise native input runs once. Pockets registers
 its existing Quick Store observer without installing a second hook. The phone
-Back hint at layout +570 → +A0 supplies the input row (+10) and native kind
-(+14, B=3). Input snapshots have count +8 and rows +10, stride 48 hex, held
+shortcut at layout +570 → +A0 supplies the input row (+10) and native kind
+(+14, expected 5). It is not a Back hint; B is read from the input snapshot.
+Routing is refreshed on A, since initial binding can precede row assignment.
+Input snapshots have count +8 and rows +10, stride 48 hex, held
 buttons +0 and consumed buttons +3C. B mask 20 hex is consumed on press;
 all phone grid/category input is suppressed until B is released after closing.
 

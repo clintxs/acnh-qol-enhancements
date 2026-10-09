@@ -19,7 +19,7 @@ def layout_asset(name):
     return next(v for k, v in r.items() if k.endswith('/' + name + '.bflyt'))
 MENU = layout_asset('MenuRecipe')
 HOOKS = (0x267d64, 0x2e9cde0, 0x2e9fbb0, 0x2e9d538, 0x3c58d24)
-GUARDS = HOOKS + (0x32bd990, 0x32ba5e4, 0x3dbb160, 0x27d1d0, 0x3a17390, 0x3a174f0, 0x3c66298)
+GUARDS = HOOKS + (0x32bd990, 0x32ba5e4, 0x3dbb160, 0x27d1d0, 0x3a17390, 0x3a174f0, 0x3c66298, 0x2e93798)
 
 class PreviewMachine(Machine):
     def __init__(self, base):
@@ -57,6 +57,12 @@ class PreviewMachine(Machine):
         for off, target in ((0x1a8, self.stub('source')), (0x1b8, base + 0x375ab74),
                             (0x1c0, self.stub('noop')), (0x1c8, self.stub('accept')), (0x1d0, self.stub('noop'))):
             self.write(self.dispatch + off, target)
+        # Run the app's real shortcut setup; only shortcut allocation is modeled.
+        self.services[base+0x375ad38] = ('preview', 'shortcut')
+        self.write(base+0x4ac51b0,base+0x5549100)
+        self.write(base+0x5549100,1,1)  # Native RTTI singleton already initialized.
+        self.write(base+0x55ca7b8,1,1)
+        self.write(base+0x55ca7b0,1,1); self.write(base+0x55ca7b4,1,1)
 
     def alloc(self, n=0x100):
         p = self.next; self.next += (n + 15) & ~15; return p
@@ -94,6 +100,11 @@ class PreviewMachine(Machine):
         elif action == 'typed': result = self.reg(0)
         elif action == 'layout_access':
             self.write(self.reg(1),self.read(self.reg(0)+8))
+        elif action == 'shortcut':
+            hint=self.alloc(); key=self.alloc()
+            self.write(hint+0xa0,key)
+            self.write(key+0x14,self.reg(2),4); self.write(key+0x10,self.reg(3),4)
+            result=hint
         elif action == 'source': result = 7
         elif action == 'child_find':
             u.reg_write(UC_ARM64_REG_X2, 1); u.reg_write(UC_ARM64_REG_PC, self.base+0x27d1d0); return
@@ -135,8 +146,10 @@ class PreviewMachine(Machine):
         self.write(panes['P_QolCapture_00']+0x100,panes['N_QolCapture_00'])
         row = self.alloc(); rows = self.alloc(); self.write(rows, row)
         self.write(grid + 0x208, 1, 4); self.write(grid + 0x210, rows)
-        hint = self.alloc(); key = self.alloc(); self.write(page + 0x570, hint); self.write(hint + 0xa0, key)
-        self.write(key + 0x14, 3, 4); self.write(key + 0x10, resident, 4)
+        setup=self.alloc(); self.invoke(self.base+0x2e936ec,page,setup)
+        hint=self.read(page+0x570); key=self.read(hint+0xa0)
+        assert self.read(key+0x14,4)==5 and self.read(key+0x10,4)==0
+        assert self.read(self.read(self.read(page+0x578)+0xa0)+0x14,4)==6
         entries = self.alloc(35 * 0x20)
         self.write(page + 0x430, 1, 4); self.write(page + 0x434, 35, 4); self.write(page + 0x438, entries)
         for kind in range(35):
@@ -206,6 +219,7 @@ for base in (0x7100000000, 0x7200000000):
     damaged = bytearray(MENU); struct.pack_into('<I', damaged, 24, 0xffffffff)
     assert m.patch(bytes(damaged)) == damaged
     phone, page, row, panes = m.phone()
+    assert 'input_row=0 press_bindings=1' in m.text
     snapshot = bytes(m.u.mem_read(m.parameters+0x2c, 40))
     for kind in (0, 1, 2, 4): m.button(page, row, kind); m.frame(phone)
     assert not m.events and m.read(m.controller + 0x50, 4) == 0xffffffff
@@ -238,6 +252,29 @@ for base in (0x7100000000, 0x7200000000):
     m.hook(0x2e9cde0,unbound)
     before=list(m.events); m.button(unbound_page,unbound_row,5); m.frame(unbound)
     assert m.events == before  # Named panes alone do not prove capture binding.
+    routed,routed_page,routed_row,routed_panes=m.phone(5)
+    hint=m.read(routed_page+0x570); key=m.read(hint+0xa0)
+    before=list(m.events)
+    # The old kind-3 fixture hid the live kind-5 rejection. Wrong/missing
+    # shortcuts still decline safely, and report why an actual A is declined.
+    m.write(key+0x14,3,4); m.hook(0x2e9cde0,routed)
+    m.button(routed_page,routed_row,5); m.frame(routed)
+    assert m.events==before and 'A declined;' in m.text
+    m.write(routed_page+0x570,0); m.hook(0x2e9cde0,routed)
+    m.button(routed_page,routed_row,5); m.frame(routed); assert m.events==before
+    m.write(routed_page+0x570,hint); m.write(key+0x14,5,4); m.write(key+0x10,8,4)
+    m.hook(0x2e9cde0,routed); m.button(routed_page,routed_row,5); m.frame(routed)
+    assert m.events==before
+    # Routing assigned after bind must be refreshed by A. Use row 4 while
+    # the phone resident is 5 to ensure input is routed by the shortcut.
+    m.write(key+0x10,4,4); m.button(routed_page,routed_row,5); m.frame(routed); m.frame(routed)
+    assert m.read(m.controller+0x6c,4)==0x12345
+    m.input(routed_page,0x20,resident=0); m.frame(routed)
+    assert m.read(m.controller+0x6c,4)==0x12345
+    assert m.input(routed_page,0x20,resident=4)==0x20; m.frame(routed)
+    assert m.read(m.controller+0x6c,4)==0
+    m.input(routed_page,0,resident=4)
+    print('PASS: native MenuRecipe shortcut kinds; A uses kind-5 routing, delayed/non-resident input row, safe missing/invalid shortcut')
     bad_phone,bad_page,bad_row,bad_panes=m.phone(4)
     holder=m.read(bad_page+0x3f8); instance=m.read(holder)
     accessor=m.read(instance+0x58); native=m.read(accessor+8)
