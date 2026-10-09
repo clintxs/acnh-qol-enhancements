@@ -19,7 +19,7 @@ constexpr std::uintptr_t PageInput = 0x03c58d24, UiContext = 0x04ab2230;
 constexpr std::uintptr_t Application = 0x059f83f0;
 constexpr std::uintptr_t CreateItemModel = 0x032bd990, ReleaseModel = 0x032ba5e4;
 constexpr std::uintptr_t ChangeState = 0x03dbb160;
-constexpr std::uintptr_t SetModelRotation = 0x032b9e08;
+constexpr std::uintptr_t ClearRenderTarget = 0x038025b0, RenderLayers = 0x04abdb78;
 constexpr std::uintptr_t CapturePicture = 0x03a17390, AlternateCapturePicture = 0x03a174f0;
 }
 namespace field {
@@ -35,15 +35,22 @@ constexpr std::size_t ApplicationMasks = 0x418, GlobalBlockMask = 0x10;
 constexpr std::size_t Controller = 0x30, Parameters = 0x28;
 constexpr std::size_t ModelMode = 0x50, ModelHandle = 0x6c;
 constexpr std::size_t ModelState = 0x10, BackgroundPage = 0x58, VisibilityPage = 0x60;
-constexpr std::size_t ModelFlags = 0x74, ModelAngles = 0x80;
+constexpr std::size_t ModelReady = 0x69, ModelFlags = 0x74, ModelAngles = 0x80;
 constexpr std::size_t RightStick = 0x0c, ConsumedAxes = 0x40;
+constexpr std::size_t LayerCount = 0x20, Layers = 0x28, LayerClearColor = 0x9c;
 }
 constexpr unsigned WorkbenchModelMode = 2, ConfirmMask = 0x10, BackMask = 0x20, PhoneShortcutKind = 5;
 constexpr unsigned RightStickMask = 2;
+constexpr unsigned TransformPending = 1, MaterialPending = 6;
 constexpr float StickDeadZone = 0.15f, DegreesPerUpdate = 3.0f, MaximumTilt = 60.0f;
 // Native 032B74F0 converts radians to Angle32 (one turn = 2^32).
 constexpr float AngleUnitsPerDegree = 4294967296.0f / 360.0f;
 constexpr int PhoneModelMode = 26, PhoneModelState = 3;
+constexpr unsigned ItemRenderLayer = 2;
+constexpr std::array<float, 4> PreviewBackground{229.0f / 255, 223.0f / 255, 199.0f / 255, 1};
+// The clear runs on a render worker. Publish only the color-field address;
+// that worker must not inspect the UI thread's mutable Session objects.
+std::atomic<const void *> PreviewClearColor{};
 std::uintptr_t Main{};
 template<class T> T &At(void *object, std::size_t offset = 0) {
     return *reinterpret_cast<T *>(static_cast<std::byte *>(object) + offset);
@@ -79,6 +86,28 @@ void Visible(void *pane, bool visible) {
     if (pane) At<unsigned char>(pane, field::PaneFlags) =
         (At<unsigned char>(pane, field::PaneFlags) & ~1u) | unsigned(visible);
 }
+const void *ItemLayerClearColor() {
+    auto storage = *Native<void **>(address::RenderLayers);
+    auto manager = storage ? At<void *>(storage) : nullptr;
+    if (!manager) return nullptr;
+    const auto count = At<unsigned>(manager, field::LayerCount);
+    auto layers = At<void **>(manager, field::Layers);
+    if (count <= ItemRenderLayer || count > 64 || !layers || !layers[ItemRenderLayer]) return nullptr;
+    // Native 01513A48 uses camera/layer 2 for UI item models. 0386D730
+    // clears each layer with its RGBA at +9c before drawing its models.
+    return static_cast<std::byte *>(layers[ItemRenderLayer]) + field::LayerClearColor;
+}
+HOOK_DEFINE_TRAMPOLINE(ClearPreviewBackground) {
+    static void Callback(float depth, void *buffer, void *command, int target,
+                         unsigned mask, const void *color, unsigned stencil, void *viewport, bool apply) {
+        const auto previewColor = PreviewClearColor.load(std::memory_order_acquire);
+        if (previewColor && color == previewColor && target == 0 && (mask & 1))
+            color = PreviewBackground.data();
+        // Preserve depth/stencil, viewport and every other pass. Do not clear
+        // the capture itself: its copy must retain the already rendered item.
+        Orig(depth, buffer, command, target, mask, color, stencil, viewport, apply);
+    }
+};
 // Layout::Build retains its resource pointer. Never give it a temporary vector
 // or overwrite a buffer that an existing layout can still reference. Capacity
 // exhaustion declines the feature, leaving the original resource untouched.
@@ -132,7 +161,7 @@ struct Session {
     void *focusedRow{};
     Phase phase{};
     unsigned frames{};
-    unsigned rejectedPresses{}, inputReports{};
+    unsigned rejectedPresses{}, inputReports{}, stickReports{}, rotationReports{};
     unsigned char gridFlags{}, scrollFlags{}, cursorFlags{}, savedHidden{};
     std::array<std::byte, 0x28> savedParameters{};
     std::uint64_t item{};
@@ -206,6 +235,7 @@ bool InputBlocked(Session &s, unsigned blocked) {
 void Close(Session &s) {
     s.stickX = s.stickY = 0;
     if (s.ownsRenderer) {
+        PreviewClearColor.store(nullptr, std::memory_order_release);
         // Release only the handle/mode acquired by this phone. The native
         // state-1 exit balances camera/layers before state 0 resets ownership.
         auto context = UiContext();
@@ -313,28 +343,35 @@ void RotatePreview(Session &s) {
     if (!s.ownsRenderer || !context || At<void *>(context, field::Controller) != s.controller ||
         At<unsigned>(s.controller, field::ModelMode) != WorkbenchModelMode ||
         At<int>(s.controller, field::ModelState) != 1 || !At<unsigned>(s.controller, field::ModelHandle) ||
-        (At<unsigned char>(s.controller, field::ModelFlags) & 7)) return;
+        (At<unsigned char>(s.controller, field::ModelFlags) & MaterialPending)) return;
     std::array<std::uint32_t, 3> angles{};
     std::memcpy(angles.data(), static_cast<std::byte *>(s.controller) + field::ModelAngles, sizeof(angles));
     const float tilt = std::clamp(s.tilt - y * DegreesPerUpdate, -MaximumTilt, MaximumTilt);
     angles[0] = s.initialAngles[0] + static_cast<std::uint32_t>(static_cast<std::int32_t>(tilt * AngleUnitsPerDegree));
     angles[1] -= static_cast<std::uint32_t>(static_cast<std::int32_t>(x * DegreesPerUpdate * AngleUnitsPerDegree));
-    // 032B9E08 resolves/validates the handle and writes the entity's Angle32
-    // XYZ vector. +78/+7c are position floats, not rotation. Preserve roll and
-    // the cached rotation so later native model updates retain the new angle.
-    if (Native<bool (*)(void *, const std::uint32_t *)>(address::SetModelRotation)(s.controller, angles.data())) {
-        std::memcpy(static_cast<std::byte *>(s.controller) + field::ModelAngles, angles.data(), sizeof(angles));
-        s.tilt = tilt;
-    }
+    // 032B9E08 can refuse entity writes in the app-update thread/phase.
+    // Queue the cached transform instead: native late update 02B0E20C ->
+    // 032B9FCC retries it in the valid entity context, calls 032BE2B0 to mark
+    // the item entity's transform dirty, and only then clears pending bit 0.
+    // Angle writes alone do not rebuild its rendered transform.
+    std::memcpy(static_cast<std::byte *>(s.controller) + field::ModelAngles, angles.data(), sizeof(angles));
+    At<unsigned char>(s.controller, field::ModelFlags) |= TransformPending;
+    s.tilt = tilt;
+    if (s.rotationReports++ < 4)
+        Logging.Log("[QoL Enhancements/Core] DIY preview: rotation queued; yaw=%08x pitch=%08x ready=%u flags=%u\n",
+                    angles[1], angles[0], At<unsigned char>(s.controller, field::ModelReady),
+                    At<unsigned char>(s.controller, field::ModelFlags));
 }
 bool PreviewInput(void *layout, void *snapshot, unsigned blocked) {
     for (auto &s : Sessions) if (s.layout == layout) {
-        s.stickX = s.stickY = 0;
+        if (s.phase != Phase::Showing) s.stickX = s.stickY = 0;
         if (s.phase == Phase::Idle) s.inputRow = ShortcutInputRow(s.layout);
-        if (!snapshot || s.inputRow < 0) return s.phase != Phase::Idle;
+        if (!snapshot || s.inputRow < 0) { s.stickX = s.stickY = 0; return s.phase != Phase::Idle; }
         const auto count = At<unsigned>(snapshot, 8);
         auto rows = At<std::byte *>(snapshot, 0x10);
-        if (!rows || count > 8 || unsigned(s.inputRow) >= count) return s.phase != Phase::Idle;
+        if (!rows || count > 8 || unsigned(s.inputRow) >= count) {
+            s.stickX = s.stickY = 0; return s.phase != Phase::Idle;
+        }
         auto row = rows + s.inputRow * 0x48;
         const auto buttons = At<unsigned>(row);
         const bool confirm = (buttons & ConfirmMask) != 0;
@@ -359,11 +396,21 @@ bool PreviewInput(void *layout, void *snapshot, unsigned blocked) {
         }
         // Native 03C4BAC4 reads float axis pairs at row +4 + kind*8.
         // Kind 1 is the right stick; +40 bit 1 records its consumption.
-        if (s.phase == Phase::Showing && !InputBlocked(s, blocked) &&
-            !(At<unsigned>(row, field::ConsumedAxes) & RightStickMask)) {
-            s.stickX = StickAxis(At<float>(row, field::RightStick));
-            s.stickY = StickAxis(At<float>(row, field::RightStick + 4));
-            At<unsigned>(row, field::ConsumedAxes) |= RightStickMask;
+        if (s.phase == Phase::Showing) {
+            const bool inputBlocked = InputBlocked(s, blocked);
+            const auto x = StickAxis(At<float>(row, field::RightStick));
+            const auto y = StickAxis(At<float>(row, field::RightStick + 4));
+            if ((x != 0 || y != 0) && s.stickReports++ < 4)
+                Logging.Log("[QoL Enhancements/Core] DIY preview: right-stick snapshot; row=%d x=%08x y=%08x consumed=%x blocked=%u\n",
+                            s.inputRow, At<unsigned>(row, field::RightStick), At<unsigned>(row, field::RightStick + 4),
+                            At<unsigned>(row, field::ConsumedAxes), unsigned(inputBlocked));
+            if (inputBlocked) s.stickX = s.stickY = 0;
+            else if (!(At<unsigned>(row, field::ConsumedAxes) & RightStickMask)) {
+                s.stickX = x; s.stickY = y;
+                At<unsigned>(row, field::ConsumedAxes) |= RightStickMask;
+            }
+            // A second dispatch of the already-consumed snapshot must not
+            // erase input queued for this frame. RotatePreview drains it.
         }
         // Keep all native grid/category/sort input frozen. The input
         // context remains enabled, so B can still be observed here.
@@ -409,6 +456,9 @@ bool Begin(Session &s) {
     At<void *>(controller, field::BackgroundPage) = nullptr; // No background page owner.
     At<unsigned char>(controller, 0x68) = 0;
     s.ownsRenderer = true; s.frames = 0;
+    const auto color = ItemLayerClearColor();
+    PreviewClearColor.store(color, std::memory_order_release);
+    Logging.Log("[QoL Enhancements/Core] DIY preview: background #E5DFC7; layer_color=%p\n", color);
     Native<void (*)(void *, unsigned)>(address::ChangeState)(static_cast<std::byte *>(controller) + 8, 1);
     s.phase = Phase::Starting;
     Logging.Log("[QoL Enhancements/Core] DIY preview: renderer acquired; previous_mode=%d previous_state=%d\n", mode, state);
@@ -482,6 +532,13 @@ bool InstallRecipePreview() {
         {0x032b9e08, {0xa9bc7bfd, 0xf9000bf7, 0xa90257f6, 0xa9034ff4, 0x910003fd}},
         {0x032ba000, {0x91020261, 0xaa1303e0, 0x97ffff80, 0x36000200, 0xb9405268}},
         {0x03c4bac4, {0xbd400100, 0xbc038c20, 0xbd400500, 0xf8418c08, 0xf90003fb}},
+        {0x032b9fcc, {0xd100c3ff, 0xa9017bfd, 0xa9024ff4, 0x910043fd, 0x3941d008}},
+        {0x02b0e20c, {0xf0015948, 0x91064108, 0xf9400108, 0xf9401900, 0x141eaf6c}},
+        {0x038025b0, {0xfc190fe8, 0xa9017bfd, 0xa9026ffc, 0xa90367fa, 0xa9045ff8}},
+        {0x0386d71c, {0x91027284, 0xf85e03a6, 0x2a1f03e2, 0x2a1f03e5, 0x52800027}},
+        {0x01513a48, {0xd101c3ff, 0x6d012beb, 0x6d0223e9, 0xa9037bfd, 0xa9045ff8}},
+        {0x032be2b0, {0xb9406c09, 0x34000629, 0xa9be7bfd, 0xa9014ff4, 0x910003fd}},
+        {0x032ba034, {0xaa1303e0, 0x9400109e, 0x36000080, 0x3941d268, 0x121f1908}},
     };
     const auto &main = exl::util::GetMainModuleInfo();
     for (const auto &f : fingerprints) if (f.offset + sizeof(f.words) > main.m_Text.m_Size ||
@@ -507,7 +564,8 @@ bool InstallRecipePreview() {
     BindPhoneRecipes::InstallAtOffset(address::PhoneBind);
     UpdatePhoneRecipes::InstallAtOffset(address::PhoneFrame);
     DeactivatePhoneRecipes::InstallAtOffset(address::PhoneDeactivate);
-    Logging.Log("[QoL Enhancements/Core] DIY preview: READY; opaque capture restored; right stick rotates; A opens, B returns\n");
+    ClearPreviewBackground::InstallAtOffset(address::ClearRenderTarget);
+    Logging.Log("[QoL Enhancements/Core] DIY preview: READY; cream background; deferred right-stick rotation; A opens, B returns\n");
     return true;
 }
 } // namespace qol::core

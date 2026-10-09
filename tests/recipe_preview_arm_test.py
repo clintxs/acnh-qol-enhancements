@@ -19,8 +19,8 @@ def layout_asset(name):
     r = resources(zstd.decompress((ASSETS / (name + '.Nin_NX_NVN.zs')).read_bytes()))
     return next(v for k, v in r.items() if k.endswith('/' + name + '.bflyt'))
 MENU = layout_asset('MenuRecipe')
-HOOKS = (0x267d64, 0x2e9cde0, 0x2e9fbb0, 0x2e9d538, 0x3c58d24)
-GUARDS = HOOKS + (0x32bd990, 0x32ba5e4, 0x3dbb160, 0x27d1d0, 0x3a17390, 0x3a174f0, 0x3c66298, 0x2e93798, 0x2e96a80, 0x3c4b880, 0x2ea0754, 0x2b0c810, 0x32b9e08, 0x32ba000, 0x3c4bac4)
+HOOKS = (0x267d64, 0x2e9cde0, 0x2e9fbb0, 0x2e9d538, 0x3c58d24, 0x38025b0)
+GUARDS = HOOKS + (0x32bd990, 0x32ba5e4, 0x3dbb160, 0x27d1d0, 0x3a17390, 0x3a174f0, 0x3c66298, 0x2e93798, 0x2e96a80, 0x3c4b880, 0x2ea0754, 0x2b0c810, 0x32b9e08, 0x32ba000, 0x3c4bac4, 0x32b9fcc, 0x2b0e20c, 0x386d71c, 0x1513a48, 0x32be2b0, 0x32ba034)
 
 class PreviewMachine(Machine):
     def __init__(self, base):
@@ -73,7 +73,7 @@ class PreviewMachine(Machine):
         # Execute native SetModelRotation against a real-shaped entity registry;
         # it validates the live handle and writes Angle32 XYZ at component +2bc.
         manager_slot=self.alloc(); manager=self.alloc(0x600)
-        registry=self.alloc(); entries=self.alloc(); entity=self.alloc(0x300)
+        registry=self.alloc(); entries=self.alloc(); entity=self.alloc(0x400)
         entity_methods=self.alloc(); self.component=self.alloc(0x300)
         self.write(manager_slot,manager); self.write(base+0x4ab27c0,manager_slot)
         self.write(manager+0x1c0,registry); self.write(registry+8,entries)
@@ -91,7 +91,37 @@ class PreviewMachine(Machine):
         self.services[base+0x3f033a0]=('preview','render_thread')
         guard=self.alloc(); self.write(guard,1,1); self.write(base+0x4ab2e60,guard)
         self.write(base+0x4ab2e58,self.alloc())
+        item_guard=self.alloc(); self.write(item_guard,1,1); self.write(base+0x4abfcf8,item_guard)
+        self.write(base+0x4abfcf0,self.alloc())
         self.model_entity=entity
+        self.entity_manager=manager
+        component_methods=self.alloc(0x108); self.write(self.component,component_methods)
+        self.write(component_methods+0x100,self.stub('accept'))  # Native position write boundary.
+        # Real late transform pump runs after the UI update, in a different
+        # entity-manager phase. The old direct setter must fail in UI phase 0.
+        self.write(self.controller+0x69,1,1)
+        self.layer_manager=self.alloc(); self.layer_array=self.alloc()
+        self.layers=[self.alloc(0xb0) for _ in range(3)]
+        self.write(self.layer_manager+0x20,3,4); self.write(self.layer_manager+0x28,self.layer_array)
+        for i,layer in enumerate(self.layers):
+            self.write(self.layer_array+i*8,layer)
+            self.u.mem_write(layer+0x9c,struct.pack('<4f',0,0,0,1))
+        layer_slot=self.alloc(); self.write(layer_slot,self.layer_manager); self.write(base+0x4abdb78,layer_slot)
+        # Execute native clear through the hook's original, through to its NVN
+        # color/depth calls. Only viewport setup and the GPU calls are modeled.
+        self.u.mem_write(base+0x38025b0,RAW[0x38025b0:0x38025b0+20])
+        self.write(self.module.find('ClearPreviewBackground','OrigRef'),base+0x38025b0)
+        self.services[base+0x37e77e4]=('preview','noop')
+        clock_slot=self.alloc(); self.write(clock_slot,1000000000); self.write(base+0x4ab29d0,clock_slot)
+        color_slot=self.alloc(); self.write(color_slot,self.stub('gpu_clear'))
+        self.write(base+0x4acfd90,color_slot)
+        depth_slot=self.alloc(); self.write(depth_slot,self.stub('gpu_depth'))
+        self.write(base+0x4acf298,depth_slot)
+        self.clear_buffer=self.alloc(); texture=self.alloc(0xc0)
+        self.write(self.clear_buffer+0x20,texture); self.write(self.clear_buffer+0x28,texture)
+        self.write(self.clear_buffer+0x60,texture)
+        self.clear_command=self.alloc(); self.write(self.clear_command+0xb8,0x12345678)
+        self.gpu_colors=[]; self.gpu_depths=[]
 
     def alloc(self, n=0x100):
         p = self.next; self.next += (n + 15) & ~15; return p
@@ -122,6 +152,7 @@ class PreviewMachine(Machine):
             self.write(self.reg(0) + 0x6c, 0, 4)
             self.write(self.reg(0) + 0x50, 0xffffffff, 4)
             self.write(self.reg(0) + 0x10, 0, 4)
+            self.write(self.reg(0) + 0x74, 0, 1)
         elif action == 'build':
             pointer = self.reg(6)
             n = self.read(pointer + 12, 4)
@@ -146,6 +177,10 @@ class PreviewMachine(Machine):
             u.mem_write(self.reg(0),bytes(u.mem_read(self.reg(1),self.reg(2)))); result=self.reg(0)
         elif action == 'accept': result = 1
         elif action == 'render_thread': result = self.render_thread
+        elif action == 'gpu_clear':
+            self.gpu_colors.append((self.reg(0),self.reg(1),bytes(u.mem_read(self.reg(2),16)),self.reg(3)))
+        elif action == 'gpu_depth':
+            self.gpu_depths.append((u.reg_read(UC_ARM64_REG_S0),self.reg(0),self.reg(1),self.reg(2),self.reg(3)))
         elif action == 'capture_data':
             result = self.capture_alpha if self.string(self.reg(1)) == 'CaptureBGAlpha' else 0
         elif action in ('noop', 'bind', 'frame', 'deactivate'): pass
@@ -210,7 +245,14 @@ class PreviewMachine(Machine):
     def button(self, page, row, kind):
         event = self.alloc(0x20); self.write(event, kind, 4); self.write(event + 0x18, row)
         self.invoke(self.base + 0x375aa40, page, event)
-    def frame(self, phone): self.invoke(self.base+0x2b0c720,phone)
+    def frame(self, phone):
+        self.write(self.entity_manager+0x288,0,4)
+        self.invoke(self.base+0x2b0c720,phone)
+        self.write(self.entity_manager+0x288,1,4)
+        self.invoke(self.base+0x2b0e20c)  # Actual native deferred transform dispatch.
+    def clear(self, layer=2, target=0, mask=1):
+        self.u.reg_write(UC_ARM64_REG_S0,0x3f000000)
+        self.hook(0x38025b0,self.clear_buffer,self.clear_command,target,mask,self.layers[layer]+0x9c,7,self.alloc(),1)
     def input(self, page, held, resident=0, blocked=0, consumed=0, left=(0,0), right=(0,0), consumed_axes=0):
         snapshot = self.alloc(); rows = self.alloc(8 * 0x48)
         self.write(snapshot + 8, 8, 4); self.write(snapshot + 0x10, rows)
@@ -336,12 +378,33 @@ for base in (0x7100000000, 0x7200000000):
     assert m.read(panes['N_QolPreview_00']+0x58,1)==0xa3
     assert m.read(panes['N_QolCapture_00']+0x58,1)==0xa3
     assert m.read(panes['N_Recipe_00']+0x58,1)==0xa3
-    # Right-stick rotation executes the native registry lookup and rotation
-    # write. Preserve the item's initial pose/roll, materials and position.
+    # Native item layer clear reaches the GPU with the requested cream color;
+    # other layers, target indices and depth/stencil must pass through intact.
+    cream=struct.pack('<4f',229/255,223/255,199/255,1)
+    black=struct.pack('<4f',0,0,0,1)
+    m.clear(); assert m.gpu_colors[-1]==(0x12345678,0,cream,15)
+    m.clear(layer=1); assert m.gpu_colors[-1][2]==black
+    m.clear(target=1); assert m.gpu_colors[-1][1:3]==(1,black)
+    m.clear(mask=3); assert m.gpu_colors[-1][2]==cream
+    assert m.gpu_depths[-1]==(0x3f000000,0x12345678,1,7,0)
+    before=len(m.gpu_colors); m.clear(mask=2); assert len(m.gpu_colors)==before
+    assert bytes(m.u.mem_read(m.layers[2]+0x9c,16))==black
+    # Right-stick queues the transform in UI phase 0; native late dispatch
+    # resolves the registry and writes it in entity phase 1.
+    # Preserve the item's initial pose/roll, materials and position.
     materials=bytes(m.u.mem_read(panes['N_Recipe_00'],0x200))
     position=bytes(m.u.mem_read(m.controller+0x78,8))
     angles=lambda: struct.unpack('<3I',bytes(m.u.mem_read(m.controller+0x80,12)))
     pose=angles()
+    # Reproduce the old failure: direct entity rotation is rejected during
+    # the app update, even with a valid loaded handle and ready renderer.
+    m.write(m.model_entity+0x398,0,1)
+    m.write(m.entity_manager+0x288,0,4)
+    assert m.invoke(base+0x32b9e08,m.controller,m.controller+0x80)==0
+    assert m.read(m.model_entity+0x398,1)==0
+    m.write(m.entity_manager+0x288,1,4)
+    assert m.invoke(base+0x32b9e08,m.controller,m.controller+0x80)==1
+    assert m.read(m.model_entity+0x398,1)==0  # Even accepted direct writes omit invalidation.
     for right in ((0,0),(.1,-.1),(float('nan'),float('inf'))):
         m.input(page,0,right=right); m.frame(phone); assert angles()==pose
     m.input(page,0,left=(1,1)); m.frame(phone); assert angles()==pose
@@ -352,7 +415,14 @@ for base in (0x7100000000, 0x7200000000):
     m.write(input_context+0x54,0,1)
     m.input(page,0,right=(1,0)); assert m.read(m.last_input_row+0x40,4)==2
     assert angles()==pose  # Applied outside the input callback.
+    # Re-dispatch the same consumed snapshot before the frame; it must not
+    # erase the first callback's queued movement.
+    duplicate=m.alloc(); m.write(duplicate+8,8,4)
+    m.write(duplicate+0x10,m.last_input_row)
+    m.hook(0x3c58d24,page,duplicate,0)
     m.frame(phone); changed=angles()
+    assert m.read(m.model_entity+0x398,1)==1  # Native item transform invalidation.
+    assert not m.read(m.controller+0x74,1)&1
     assert changed[0]==pose[0] and changed[2]==pose[2]
     assert abs(((pose[1]-changed[1])&0xffffffff)/2**32*360-3)<.0001
     assert bytes(m.u.mem_read(m.component+0x2bc,12))==bytes(m.u.mem_read(m.controller+0x80,12))
@@ -366,13 +436,18 @@ for base in (0x7100000000, 0x7200000000):
     for _ in range(60): m.input(page,0,right=(0,-1)); m.frame(phone)
     lower=angles(); assert lower[0]!=upper[0] and lower[2]==pose[2]
     m.input(page,0,right=(0,-1)); m.frame(phone); assert angles()==lower
-    for off,value,size in ((0x74,1,1),(0x6c,0,4),(0x50,7,4),(0x10,0,4)):
+    for off,value,size in ((0x74,2,1),(0x74,4,1),(0x6c,0,4),(0x50,7,4),(0x10,0,4)):
         saved=m.read(m.controller+off,size); m.write(m.controller+off,value,size)
         m.input(page,0,right=(1,1)); m.hook(0x2e9fbb0,phone); assert angles()==lower
         m.write(m.controller+off,saved,size)
     m.write(m.model_entity+0x230,0x54321,4)
-    m.input(page,0,right=(1,1)); m.frame(phone); assert angles()==lower
+    entity_pose=bytes(m.u.mem_read(m.component+0x2bc,12))
+    m.input(page,0,right=(1,1)); m.frame(phone)
+    assert bytes(m.u.mem_read(m.component+0x2bc,12))==entity_pose
+    assert m.read(m.controller+0x74,1)&1  # Stale handle cannot apply or clear pending work.
     m.write(m.model_entity+0x230,0x12345,4)
+    m.frame(phone); assert not m.read(m.controller+0x74,1)&1
+    lower=angles()
     m.write(m.context+0x30,m.alloc(0x1200))
     m.input(page,0,right=(1,1)); m.hook(0x2e9fbb0,phone); assert angles()==lower
     m.write(m.context+0x30,m.controller)
@@ -381,6 +456,7 @@ for base in (0x7100000000, 0x7200000000):
     before=list(m.events); m.input(page,2); assert m.events==before
     assert m.input(page,0x20,right=(1,1))==0x20; m.frame(phone)
     assert ('release',2) in m.events
+    m.clear(); assert m.gpu_colors[-1][2]==black
     assert m.read(m.controller+0x50,4)==26 and m.read(m.controller+0x10,4)==3
     assert m.invoke(m.read(m.read(phone)+0x200),phone)==26
     assert m.read(panes['L_BtnList_00']+0x58,1)==0xa3
@@ -394,7 +470,7 @@ for base in (0x7100000000, 0x7200000000):
     assert angles()==pose  # Reopening starts from the item's native pose.
     m.hook(0x2e9d538,phone); assert m.read(m.controller+0x6c,4)==0
     assert m.read(panes['N_QolCapture_00']+0x58,1)==0xa2
-    print(f'PASS: native Angle32 writes from right stick only; dead zone, turn/wrap, bounded tilt, load/owner/handle guards, unchanged position/materials and reopen, ASLR {base:#x}')
+    print(f'PASS: native deferred Angle32 writes and scoped cream GPU clear; right stick only; dead zone, turn/wrap, bounded tilt, load/owner/handle guards, unchanged position/materials and reopen, ASLR {base:#x}')
     phone2,page2,row2,panes2=m.phone(1,surface=False)
     before=m.model_events; m.confirm(page2); m.frame(phone2); assert m.model_events==before
     unbound,unbound_page,unbound_row,unbound_panes=m.phone(3)
@@ -462,6 +538,18 @@ for base in (0x7100000000, 0x7200000000):
     assert m.read(panes3['N_QolPreview_00']+0x58,1)==0xa2
     assert m.read(panes3['N_QolCapture_00']+0x58,1)==0xa2
     assert m.read(m.controller+0x50,4)==26 and m.read(m.controller+0x10,4)==3
+    # Unavailable layer metadata leaves an otherwise working preview usable;
+    # the clear hook passes through rather than touching an unknown layer.
+    m.fail_spawn=False
+    fallback,fallback_page,fallback_row,fallback_panes=m.phone(6)
+    m.write(m.layer_manager+0x20,2,4)
+    m.confirm(fallback_page); m.frame(fallback); m.frame(fallback)
+    assert m.read(m.controller+0x6c,4)==0x12345
+    m.clear(); assert m.gpu_colors[-1][2]==black
+    m.write(m.layer_manager+0x20,3,4)
+    m.hook(0x2e9d538,fallback)
+    m.clear(); assert m.gpu_colors[-1][2]==black
+
     # The genuinely idle controller path remains supported. Check restoration
     # before the outer app frame legitimately acquires its usual mode again.
     m.input(page3,0); m.fail_spawn=False

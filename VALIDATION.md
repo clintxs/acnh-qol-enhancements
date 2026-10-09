@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.39 DIY visibility restoration
+# Unified QoL validation — 0.3.40 DIY rotation and background
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,42 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.40 DIY deferred rotation and cream background
+
+The user confirms 0.3.39 renders models, but right-stick rotation has no visible
+effect. Its log shows successful model allocation, flags=0/state=1 and release.
+The previous implementation called 032B9E08 directly. That helper can reject
+writes outside its entity-update phase; even successful Angle32 writes omit
+032BE2B0, which marks the item entity transform dirty at +398. The earlier test
+checked angle storage, without that final transform invalidation step.
+
+0.3.40 writes controller +80 and sets its transform-pending bit at +74. Native
+late dispatch 02B0E20C -> 032B9FCC applies position/rotation and item invalidation,
+then clears the bit on success. Material updates and other owners remain
+protected. Repeated dispatch of an already-consumed snapshot no longer erases
+this frame's queued movement. B and missing/blocked input still stop rotation.
+Bounded right-stick/rotation log entries distinguish input from queued updates.
+
+The item renderer uses layer/camera 2 (01513A48). Native layer draw 0386D730
+passes layer +9C as the RGBA pointer to ClearRenderTarget (038025B0). A C++ hook
+substitutes RGBA (229/255, 223/255, 199/255, 1), #E5DFC7, only for that pointer,
+color target 0 and a color-clear mask while the preview owns the renderer. An
+atomic pointer publishes the scope to render workers; no Session is read there.
+Close/deactivation removes the scope before release. Stored layer colors are
+never changed. Missing layer metadata leaves the normal preview usable.
+CaptureBGAlpha stays 255; CaptureBGColor remains absent.
+
+Compiled ARM tests execute the native late dispatch, registry/type/thread checks,
+Angle32 writes and item invalidation at two bases. They reproduce rejection in
+UI entity phase 0, then successful application in phase 1, and require entity
++398 to change. The clear hook executes the actual native clear body through
+modeled graphics API calls: requested RGB, untouched other layers/targets,
+depth/stencil values, source color preservation and scope removal are checked.
+Existing rotation, layout/aspect-ratio preservation, camera lifecycle and all
+64 Core module combinations pass. New native bindings/call sites are guarded
+before any integration hook installs. Build/package integrity and source parity
+are checked. GPU output and right-stick feel still need an Eden/Deck test.
 
 ## 0.3.39 DIY visibility regression
 

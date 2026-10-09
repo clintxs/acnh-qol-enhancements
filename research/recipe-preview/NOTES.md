@@ -7,9 +7,10 @@ failed live tests with freezes, incorrect dispatch, missing models and app
 startup failures. Their implementation history remains in Git and VALIDATION.md.
 The user confirmed visible models in 0.3.37, including a wooden simple bed,
 after correcting capture order. 0.3.38 added right-stick rotation, but its
-transparency change hid the whole model. 0.3.39 restores opaque capture while
-retaining rotation. Visibility and rotation still need live inspection; background
-matching and left/right recipe navigation remain unfinished.
+transparency change hid the whole model. 0.3.39 restores opaque capture and the user confirms visibility again, but
+rotation has no visible effect. 0.3.40 queues the native transform update and
+uses #E5DFC7 for the item-layer clear. These changes need a live test.
+Left/right recipe navigation remains unfinished.
 
 This implementation retains MenuRecipe's material panel. It adds a hidden
 capture surface to the loaded layout and temporarily hides the grid, scrollbar
@@ -199,7 +200,7 @@ framebuffer. The 0.3.38 live test made the whole item invisible despite successf
 loading; preserving source alpha therefore appears to hide its color output.
 0.3.39 restores alpha 255, as in the working 0.3.37 build and WorkBenchInfo.
 Do not supply CaptureBGColor: that selects a clear instead of copying the model.
-Matching the app background requires a different approach and is unfinished.
+0.3.40 colors the item-rendering layer before capture, as described below.
 
 Native 03C4BAC4 dispatches float axis pairs at snapshot row +4 + kind*8;
 kind 1 is right stick (+0C/+10), with consumed-axis bit 1 at row +40. Collect
@@ -214,8 +215,32 @@ registry, its type and execution context, then writes component +2BC/+2C0/+2C4.
 The vector is cached at controller +80; native 032BA000 passes that vector during
 loading. 032B74F0 multiplies source radians by 2^32/(2π), establishing Angle32
 units. Controller +78/+7C and helper 032B97A0 are position, not rotation.
-Use the native angle helper and update the cached vector only on success.
-Fingerprint the helper, its native vector call site and axis dispatch ABI.
+The first rotation implementation called this helper directly and cached its
+result only on success. The 0.3.39 live test showed no rotation. Direct writes
+can be rejected in the UI entity phase and do not invalidate the item's final
+transform, even when accepted.
+
+## Deferred rotation and item background (0.3.40)
+
+Cache the angles at controller +80 and OR transform-pending bit 0 at +74.
+Native late update 02B0E20C calls 032B9FCC, which retries position/rotation in its
+entity context. For mode 2 it then calls 032BE2B0, setting item entity +398=1
+before clearing the pending bit. Preserve the material bits and allow further
+input to update an already pending transform. A duplicate consumed input
+callback must not erase movement waiting for the phone frame.
+
+01513A48 establishes item camera/layer index 2. The layer manager is obtained
+through GOT 04ABDB78 and its singleton storage; +20 is count and +28 the layer
+array. Native layer draw 0386D730 passes layer +9C RGBA to 038025B0. Its ABI is
+(float depth in S0, buffer X0, command X1, target W2, mask W3, color X4,
+stencil W5, viewport X6, apply W7). Substitute #E5DFC7 normalized RGBA only
+when color points to this layer's field, target is zero and mask includes color.
+Publish only that address atomically while the app owns the renderer, clearing
+it before release/deactivation. Preserve native color storage, depth/stencil,
+viewport and other targets/layers. A missing manager/layer leaves ordinary
+preview capture available. Capture alpha remains opaque; no capture clear is
+introduced. This reaches a graphics API call locally; live GPU color remains
+unverified.
 
 ## Validation boundary
 
@@ -233,5 +258,5 @@ callbacks and ReleaseModel against camera-counter fixtures; it verifies balanced
 references across B, reopening and deactivation. Native base app update executes
 and reverting its mode getter reproduces immediate mode reclamation. Passing
 tests establish the ABI/control flow covered above, **not a rendered item or a freeze-free live game**. The next Deck
-test must establish restored visibility, rotation feel, materials remaining visible, B
+test must establish cream background, rotation feel, materials remaining visible, B
 return, reopening and ordinary workbench/Quick Store behavior afterward.
