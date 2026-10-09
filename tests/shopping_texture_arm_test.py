@@ -106,7 +106,7 @@ for texture,backing in zip(after[7:],(True,False)):
         assert pixel(0,0) == art.FACE
         assert pixel(40,0) == art.INK
         assert pixel(0,10) == art.CREAM and pixel(-23,-7) == art.CHIP
-        assert pixel(16,-6) == art.CREAM and pixel(9,-13) == art.CREAM
+        assert pixel(16,-4.5) == art.CREAM and pixel(9,-11.5) == art.CREAM
 print('PASS: original seven textures preserved; two RGBA8 images, independent GPU-byte-order decode, complete colored card and antialiased corners')
 
 from nso_reader import image

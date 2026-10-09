@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.15 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.16 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -50,8 +50,9 @@ an allocation floor for this counter only, preserving other resources and
 larger mod overrides. This support also keeps cash visible when Shopping Card
 behavior is disabled but its assets remain installed. No shared RSTC file is
 replaced. Update both Core and Shopping Card, then fully restart the game.
-The user confirmed 0.3.14 works. 0.3.15 moves the two card-detail lines up
-slightly and changes the border to dark blue-green. Native size lookup and SDK
+The user confirmed 0.3.14 works. 0.3.16 moves the two card-detail lines up
+one more screen pixel at 1280 width and makes the border a lighter blue-green
+after the previous shade still appeared black in-game. Native size lookup and SDK
 relocation pass; the final cosmetic changes still need an Eden check.
 The Bells badge retains its shift about 16 screen pixels left at 1280-pixel width.
 Savings changes use native count-up/down animation and sound.
@@ -66,7 +67,7 @@ No new save fields, SD files, MSBT replacements or permissions are required.
 Disable/remove Shopping Card and restart for a clean uninstall; completed
 transactions remain ordinary saved money/item changes. Nook transactions were
 confirmed in 0.3.1, the savings HUD in 0.3.4 and animation in 0.3.5; the
-0.3.15 icon adjustments, Able Sisters and catalog checkout need live testing.
+0.3.16 icon adjustments, Able Sisters and catalog checkout need live testing.
 0.3.7 still showed cash outside Nook’s Cranny; 0.3.8 follows native catalog
 open/close/destruction events independently of the shop or HUD’s UI context.
 The latest catalog screenshot shows the savings presentation.
@@ -81,7 +82,7 @@ this package does not supply an aspect-ratio patch.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.15
+  version = 0.3.16
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.

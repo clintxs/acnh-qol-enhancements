@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.15 Shopping Card icon polish** for ACNH **3.0.3 on Eden**. One Core
+**0.3.16 Shopping Card icon polish** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -104,8 +104,10 @@ larger overrides and other resource lookups. This support remains active when
 the package is installed but its behavior is disabled, so ordinary cash can
 still load. Removing the package removes this support on restart. No shared
 RSTC replacement is shipped. Native size lookup and SDK relocation now have
-regression coverage. The user confirmed 0.3.14 works. 0.3.15 moves the two
-card-detail lines up six layout units and changes the border from near-black to dark blue-green.
+regression coverage. The user confirmed 0.3.14 works. 0.3.16 moves the two
+card-detail lines up another 1.5 layout units (one screen pixel at 1280 width)
+and makes the border a visibly lighter blue-green after the previous shade still
+appeared black in-game.
 Its final appearance still needs an Eden check.
 The badge remains shifted left by about 16 screen pixels at 1280-pixel width.
 Balance changes count up/down with the native increase/decrease/finish animation
@@ -135,7 +137,7 @@ checkout, but the user reported its HUD still showed cash outside Nook’s Crann
 0.3.8 follows the catalog’s native opening, closing and destruction events
 instead of assuming it shares the HUD’s UI context. This display correction
 was followed by a catalog screenshot showing the savings presentation.
-Catalog checkout and the 0.3.15 icon adjustments still need live verification. Catalog gift orders use a separate
+Catalog checkout and the 0.3.16 icon adjustments still need live verification. Catalog gift orders use a separate
 native sending/payment path and are not covered by this prototype; their
 payment remains unchanged. Nook Stop and phone catalog purchases, insufficient
 savings, cancellation, order limits, delivery and screen transitions need live
@@ -159,7 +161,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.15
+version = 0.3.16
 base_speed = 2
 boost_speed = 4
 faster_ui = false
