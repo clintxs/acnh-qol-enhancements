@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.26 DIY recipe preview construction fix
+# Unified QoL validation — 0.3.27 DIY recipe preview setup fix
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -641,3 +641,57 @@ Live Eden verification of 0.3.26 remains pending. This fixes the reproduced
 construction dependency; it does not prove rendering, rotation, asynchronous
 resource loading or actual controller/B behavior in Eden. No installed mod,
 running game or save was changed.
+
+
+## 0.3.27 DIY preview initialization timing and active-page updates
+
+The synced `logs/eden_log.txt` reports Core 0.3.26. Every selection logs
+`allocating page` followed by `could not create native page`. The manager heap
+is nonnull (214E07D318) and previous TLS heap is null. No preview constructor or
+layout-binding stage is reached. This establishes allocation failure in the
+live app, rather than missing heap selection or an item/model-specific fault.
+The 0.3.26 null-TLS reproduction remains a defensive test; it did not establish
+the live 0.3.25 allocation history. The app's UI pool was already shrunk, which
+also explains why 0.3.25's libc-allocated page failed on internal allocations.
+
+Native UI manager initialization at 0376D9A0 creates an ExpHeap (037C6D48),
+builds/initializes its pages, then invokes heap virtual+0x28 = ExpHeap::adjust
+(037C75D4). Adjustment returns unused capacity to its parent. The new Core hook
+on page initialization (0376890C) identifies only the MenuRecipePage vtable and
+prepares its native preview child during this setup interval. It leaves the
+preview inactive (lifecycle 2) and activates it only after confirmation dispatch
+finishes. This uses the app's reserved construction heap and native ownership;
+it does not increase a global resource budget or allocate on first selection.
+Failure leaves app input/layout available, with no layout-root hide/show calls.
+The preview's layer is set one above the phone layout, matching native factories.
+
+Actual child activation (03769260) clears the parent's +0x164 update flag. The
+previous fixture omitted that behavior and incorrectly allowed the phone to
+drive preview transitions indefinitely. Transitions now run from the preview's
+own update override. After B's return animation and idle reset, native child
+removal (03768C7C) returns lifecycle to 2. Restore the parent update flag first,
+then detach from the parent's own update after child-callback iteration returns;
+removal inside the child callback would invalidate that iterator. Input is
+restored after detachment. The prepared child can be reused without further
+UI allocations.
+
+The expanded regression executes concrete ExpHeap creation from a buffer
+(037C6FFC), allocation (037C77A0), and adjustment: preview-sized allocation
+succeeds before shrink and returns null afterward. Base heap bookkeeping and
+the parent's backing-block resize are modeled; the free lists/capacity are real
+native code. Integration tests forbid allocations after modeled UI setup and
+exercise actual child activation/removal with only callback registration and
+engine entry/exit services modeled. Parent updates are forbidden while paused;
+opening, navigation, B return, restored app updates, reuse and cleanup still pass.
+The existing native constructor, data, dispatch and fail-closed checks remain.
+
+The pinned devkitA64 Docker build passes with `-Wall -Werror`.
+`python3 tools/check.py core` passes all host checks, all 64 module combinations
+at two load bases, configuration/compatibility tests and the expanded native
+preview tests. Suite/source/custom ZIP integrity, suite manifest hashes and
+binary/source parity checks pass. Older releases are preserved.
+
+Live Eden verification of 0.3.27 remains pending for full resource loading,
+rendering/layering, rotation, controller input, app/phone reopening and ordinary
+workbench crafting/cooking. The native tests do not establish these live results.
+No installed mod, running game, save or synced log was modified.

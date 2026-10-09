@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.26 DIY recipe preview construction fix** for ACNH **3.0.3 on Eden**. One Core
+**0.3.27 DIY recipe preview setup fix** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -60,11 +60,12 @@ fingerprints only, checked before each feature's first hook.
 
 ## DIY Recipes app previews
 
-0.3.26 fixes heap selection during preview construction after the 0.3.25
-freeze report. It explicitly selects the manager, current or default game heap
-and uses native page allocation. Construction follows completed input dispatch.
-Tests now execute the native page, 270 icon and state-machine constructors,
-including the null-heap failure seen in the supplied crash backtrace.
+0.3.27 prepares the preview during app setup, before the game shrinks the UI
+heap. The 0.3.26 synced Eden log showed that allocating on A was too late.
+The active preview now drives its own opening/B-return transitions while the
+phone app is paused. The app's layout stays intact if preparation fails.
+Native heap shrink/allocation and child activation/removal are covered by
+execution tests, alongside the page, icon and state constructors.
 
 Core's new integration candidate opens the native workbench detail page when
 you select a recipe in the NookPhone app. It displays the larger rotatable model
@@ -192,7 +193,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.26
+version = 0.3.27
 base_speed = 2
 boost_speed = 4
 faster_ui = false
@@ -331,9 +332,9 @@ at `../vanilla-3.0.3/Layout`; builders verify their hashes and archive structure
 The package script checks that every INI matches the Core release, refuses to
 replace existing archives, and creates:
 
-- `dist/qol-enhancements-v0_3_26_for_acnh_v3_0_3.zip`
-- `dist/qol-enhancements-v0_3_26_for_acnh_v3_0_3_source.zip`
-- `dist/qol-enhancements-v0_3_26_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
+- `dist/qol-enhancements-v0_3_27_for_acnh_v3_0_3.zip`
+- `dist/qol-enhancements-v0_3_27_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v0_3_27_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
 
 The binary ZIP contains a conspicuous installation text file, README, Core and
 six independently selectable feature folders, plus a SHA-256 manifest. Source

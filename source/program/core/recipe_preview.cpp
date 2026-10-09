@@ -6,6 +6,7 @@
 namespace qol::core {
 namespace {
 namespace address {
+constexpr std::uintptr_t PhoneVtable = 0x049e8178;
 constexpr std::uintptr_t PhoneBind = 0x02e9cde0;
 constexpr std::uintptr_t PhoneFrame = 0x02e9fbb0;
 constexpr std::uintptr_t PhoneCleanup = 0x02e9d538;
@@ -23,7 +24,6 @@ constexpr std::uintptr_t RemoveChild = 0x03768c7c;
 constexpr std::uintptr_t GetTls = 0x03f033a0;
 constexpr std::uintptr_t Lock = 0x03f03880;
 constexpr std::uintptr_t Unlock = 0x03f038c0;
-constexpr std::uintptr_t LayoutVisible = 0x02af0d30;
 constexpr std::uintptr_t StringVtable = 0x04ab2020;
 constexpr std::uintptr_t PageParamsVtable = 0x04ac39b0;
 constexpr std::uintptr_t ThreadManager = 0x04ab3350;
@@ -35,6 +35,7 @@ namespace field {
 constexpr std::size_t Parent = 0x48, PendingChildren = 0x50, PendingCount = 0x60;
 constexpr std::size_t PendingLinkOffset = 0x64, Manager = 0x98, Lifecycle = 0xa8;
 constexpr std::size_t Mutex = 0x188, State = 0x1b0, Requests = 0x1f0;
+constexpr std::size_t UpdatesEnabled = 0x164, LayoutLayer = 0x3ec;
 constexpr std::size_t Resident = 0x1f8, RequestSlot = 0x200;
 constexpr std::size_t PhoneLayout = 0x210, PhoneSelection = 0x218, PhoneRecipes = 0x8a350;
 constexpr std::size_t PreviewCount = 0x260, PreviewSelection = 0x264;
@@ -65,12 +66,13 @@ void *Global(std::uintptr_t offset) { return *Native<void **>(offset); }
 
 // The phone keeps its list alive and unchanged while the preview borrows it.
 // Each resident gets a separate session; no native workbench object is modified.
-enum class Phase { Idle, Queued, Loading, Appearing, Selecting, Showing, Closing, Restoring };
+enum class Phase { Idle, Queued, Loading, Appearing, Selecting, Showing, Closing, Restoring, Detaching };
 struct Session {
     void *phone{};
     void *preview{};
     Phase phase{};
     bool closeRequested{};
+    unsigned char phoneUpdates{};
 };
 std::array<Session, 8> Sessions{};
 // Include the two ABI header words so native RTTI/header access stays valid.
@@ -103,9 +105,6 @@ void SuspendPhone(Session &session, bool suspend) {
     if (!layout) return;
     if (auto input = At<void *>(layout, field::Input))
         At<unsigned char>(input, field::InputSuspended) = suspend;
-    // This native method changes the visibility of layout roots, preserving
-    // the category, selected cell, scroll position and individual pane states.
-    Native<void (*)(void *, bool)>(address::LayoutVisible)(layout, !suspend);
 }
 void HideCraftButton(void *preview) {
     auto layout = At<void *>(preview, field::PreviewLayout);
@@ -141,12 +140,21 @@ void ReplaceCallback(void *layout, std::size_t rows, std::uintptr_t original,
         if (callback == Main + original) callback = replacement;
     }
 }
+void AdvancePreview(Session &session);
+void SetPreviewLayer(void *preview) {
+    auto session = PreviewSession(preview);
+    auto layout = At<void *>(preview, field::PreviewLayout);
+    auto phoneLayout = session ? At<void *>(session->phone, field::PhoneLayout) : nullptr;
+    if (layout && phoneLayout)
+        At<unsigned>(layout, field::LayoutLayer) = At<unsigned>(phoneLayout, field::LayoutLayer) + 1;
+}
 void BindPreview(void *preview) {
     Logging.Log("[QoL Enhancements/Core] DIY preview: binding layout\n");
     Native<void (*)(void *)>(address::PreviewBind)(preview);
     auto layout = At<void *>(preview, field::PreviewLayout);
     if (layout) ReplaceCallback(layout, 0x468, address::PreviewInput,
                                 reinterpret_cast<std::uintptr_t>(&PreviewInput));
+    SetPreviewLayer(preview);
     HideCraftButton(preview);
     Logging.Log("[QoL Enhancements/Core] DIY preview: layout bound\n");
 }
@@ -157,6 +165,7 @@ void UpdatePreview(void *preview) {
     HideCraftButton(preview);
     if (At<int>(preview, field::PreviewAction) == 2)
         At<int>(preview, field::PreviewAction) = -1;
+    if (auto session = PreviewSession(preview)) AdvancePreview(*session);
 }
 
 // Native state-machine constructors use TLS+0xa8 when TLS exists, even when
@@ -204,7 +213,7 @@ struct PageParams {
 static_assert(offsetof(PageParams, resident) == 0xe);
 static_assert(offsetof(PageParams, argument) == 0x10);
 
-bool CreatePreview(Session &session) {
+bool PreparePreview(Session &session) {
     auto manager = At<void *>(session.phone, field::Manager);
     if (!manager) return false;
     UiHeapScope heap(manager);
@@ -245,11 +254,10 @@ bool CreatePreview(Session &session) {
     Logging.Log("[QoL Enhancements/Core] DIY preview: initializing page\n");
     Native<void (*)(void *, const PageParams *)>(address::InitializePage)(preview, &params);
     At<unsigned>(preview, field::Lifecycle) = 2;
+    SetPreviewLayer(preview);
     Logging.Log("[QoL Enhancements/Core] DIY preview: creating child pages\n");
     Virtual(preview, 0x48);
-    Logging.Log("[QoL Enhancements/Core] DIY preview: activating page\n");
-    Native<void (*)(void *, void *)>(address::ActivateChild)(phone, preview);
-    Logging.Log("[QoL Enhancements/Core] DIY preview: page active\n");
+    Logging.Log("[QoL Enhancements/Core] DIY preview: page prepared during app setup\n");
     return true;
 }
 
@@ -269,6 +277,21 @@ void ConfirmRecipe(void *phone, void *) {
                 At<unsigned char>(phone, field::Resident), selected);
 }
 
+// UI manager initialization shrinks its heap after constructing pages
+// (main+0376D9A0 -> ExpHeap::adjust). Prepare the child before that shrink.
+HOOK_DEFINE_TRAMPOLINE(InitializeNativePage) {
+    static void Callback(void *page, const PageParams *params) {
+        Orig(page, params);
+        if (At<std::uintptr_t>(page, 0) != Main + address::PhoneVtable) return;
+        const auto resident = At<unsigned char>(page, field::Resident);
+        if (resident >= Sessions.size()) return;
+        auto &session = Sessions[resident];
+        if (session.phone && session.phone != page) return;
+        session.phone = page;
+        if (!session.preview && !PreparePreview(session))
+            Logging.Log("[QoL Enhancements/Core] DIY preview: preparation failed; app remains available\n");
+    }
+};
 HOOK_DEFINE_TRAMPOLINE(BindPhoneRecipes) {
     static void Callback(void *phone) {
         Orig(phone);
@@ -282,68 +305,81 @@ HOOK_DEFINE_TRAMPOLINE(BindPhoneRecipes) {
                                     reinterpret_cast<std::uintptr_t>(&ConfirmRecipe));
     }
 };
+void AdvancePreview(Session &session) {
+    auto phone = session.phone;
+    auto preview = session.preview;
+    auto layout = At<void *>(preview, field::PreviewLayout);
+    switch (session.phase) {
+    case Phase::Loading:
+        if (Settled(preview, 1) && layout) {
+            At<void *>(preview, field::PreviewRecipes) = static_cast<std::byte *>(phone) + field::PhoneRecipes;
+            Virtual(preview, 0xa8);
+            session.phase = Phase::Appearing;
+            Logging.Log("[QoL Enhancements/Core] DIY preview: appear requested\n");
+        }
+        break;
+    case Phase::Appearing:
+        if (Settled(preview, 3)) {
+            At<unsigned>(preview, field::PreviewSelection) = At<unsigned>(phone, field::PhoneSelection);
+            if (Request(preview, 4)) {
+                session.phase = Phase::Selecting;
+                Logging.Log("[QoL Enhancements/Core] DIY preview: recipe selection requested\n");
+            }
+        }
+        break;
+    case Phase::Selecting:
+        if (Settled(preview, 3)) {
+            session.phase = Phase::Showing;
+            Logging.Log("[QoL Enhancements/Core] DIY preview: showing\n");
+        }
+        break;
+    case Phase::Showing:
+        if (session.closeRequested && Settled(preview, 3) && Request(preview, 5))
+            session.phase = Phase::Closing;
+        break;
+    case Phase::Closing:
+        if (Settled(preview, 5) && layout && Virtual<bool>(layout, 0x140, 0) && Request(preview, 1))
+            session.phase = Phase::Restoring;
+        break;
+    case Phase::Restoring:
+        if (Settled(preview, 1)) {
+            // This update runs from the parent's child-callback list. Removing
+            // ourselves here would invalidate its iterator. Resume the parent
+            // and detach after dispatch, in its next own update callback.
+            At<unsigned char>(phone, field::UpdatesEnabled) = session.phoneUpdates;
+            session.phase = Phase::Detaching;
+        }
+        break;
+    case Phase::Idle: case Phase::Queued: case Phase::Detaching: break;
+    }
+}
 HOOK_DEFINE_TRAMPOLINE(UpdatePhoneRecipes) {
     static void Callback(void *phone) {
         Orig(phone);
         auto session = PhoneSession(phone);
-        if (!session || session->phase == Phase::Idle) return;
-        if (session->phase == Phase::Queued) {
-            session->phase = Phase::Loading;
-            SuspendPhone(*session, true);
-            if (!session->preview && !CreatePreview(*session)) {
-                session->phase = Phase::Idle;
-                SuspendPhone(*session, false);
-                Logging.Log("[QoL Enhancements/Core] DIY preview: could not create native page\n");
-            }
+        if (!session) return;
+        if (session->phase == Phase::Detaching) {
+            Native<void (*)(void *, void *)>(address::RemoveChild)(phone, session->preview);
+            session->phase = Phase::Idle;
+            SuspendPhone(*session, false);
+            auto selected = At<unsigned>(phone, field::PhoneSelection);
+            Native<void (*)(void *, unsigned)>(address::PhoneRender)(phone, selected);
+            auto layout = At<void *>(phone, field::PhoneLayout);
+            if (auto grid = At<void *>(layout, field::Grid))
+                Native<void (*)(void *, unsigned)>(address::GridRefresh)(grid, 2);
             return;
         }
-        if (!session->preview) return;
-        auto preview = session->preview;
-        auto layout = At<void *>(preview, field::PreviewLayout);
-        switch (session->phase) {
-        case Phase::Loading:
-            if (Settled(preview, 1) && layout) {
-                At<void *>(preview, field::PreviewRecipes) = static_cast<std::byte *>(phone) + field::PhoneRecipes;
-                Virtual(preview, 0xa8);
-                session->phase = Phase::Appearing;
-                Logging.Log("[QoL Enhancements/Core] DIY preview: appear requested\n");
-            }
-            break;
-        case Phase::Appearing:
-            if (Settled(preview, 3)) {
-                At<unsigned>(preview, field::PreviewSelection) = At<unsigned>(phone, field::PhoneSelection);
-                if (Request(preview, 4)) {
-                    session->phase = Phase::Selecting;
-                    Logging.Log("[QoL Enhancements/Core] DIY preview: recipe selection requested\n");
-                }
-            }
-            break;
-        case Phase::Selecting:
-            if (Settled(preview, 3)) {
-                session->phase = Phase::Showing;
-                Logging.Log("[QoL Enhancements/Core] DIY preview: showing\n");
-            }
-            break;
-        case Phase::Showing:
-            if (session->closeRequested && Settled(preview, 3) && Request(preview, 5))
-                session->phase = Phase::Closing;
-            break;
-        case Phase::Closing:
-            if (Settled(preview, 5) && layout && Virtual<bool>(layout, 0x140, 0) && Request(preview, 1))
-                session->phase = Phase::Restoring;
-            break;
-        case Phase::Restoring:
-            if (Settled(preview, 1)) {
-                session->phase = Phase::Idle;
-                SuspendPhone(*session, false);
-                Native<void (*)(void *, unsigned)>(address::PhoneRender)(phone, At<unsigned>(phone, field::PhoneSelection));
-                auto phoneLayout = At<void *>(phone, field::PhoneLayout);
-                if (auto grid = At<void *>(phoneLayout, field::Grid))
-                    Native<void (*)(void *, unsigned)>(address::GridRefresh)(grid, 2);
-            }
-            break;
-        case Phase::Idle: case Phase::Queued: break;
+        if (session->phase != Phase::Queued) return;
+        if (!session->preview) {
+            session->phase = Phase::Idle;
+            Logging.Log("[QoL Enhancements/Core] DIY preview: unavailable; app remains visible\n");
+            return;
         }
+        session->phase = Phase::Loading;
+        session->phoneUpdates = At<unsigned char>(phone, field::UpdatesEnabled);
+        SuspendPhone(*session, true);
+        Logging.Log("[QoL Enhancements/Core] DIY preview: activating prepared page\n");
+        Native<void (*)(void *, void *)>(address::ActivateChild)(phone, session->preview);
     }
 };
 HOOK_DEFINE_TRAMPOLINE(CleanupPhoneRecipes) {
@@ -383,7 +419,6 @@ bool InstallRecipePreview() {
         {0x0376890c, {0xd10283ff, 0xa9067bfd, 0xf9003bf7, 0xa90857f6, 0xa9094ff4}},
         {0x03769260, {0xd10103ff, 0xa9017bfd, 0xa90257f6, 0xa9034ff4, 0x910043fd}},
         {0x03768c7c, {0xb940a828, 0x321f0108, 0x71001d1f, 0x54000041, 0xd65f03c0}},
-        {0x02af0d30, {0xa9bc7bfd, 0xa9015ff8, 0xa90257f6, 0xa9034ff4, 0x910003fd}},
     };
     const auto &main = exl::util::GetMainModuleInfo();
     for (const auto &expected : fingerprints) {
@@ -402,6 +437,7 @@ bool InstallRecipePreview() {
     replace(0x1a0, &UpdatePreview);
     replace(0x220, &NoCraftButton);
     replace(0x288, &CannotCraft);
+    InitializeNativePage::InstallAtOffset(address::InitializePage);
     BindPhoneRecipes::InstallAtOffset(address::PhoneBind);
     UpdatePhoneRecipes::InstallAtOffset(address::PhoneFrame);
     CleanupPhoneRecipes::InstallAtOffset(address::PhoneCleanup);

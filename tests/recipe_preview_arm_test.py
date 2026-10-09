@@ -1,18 +1,19 @@
 """Exercise the compiled phone-preview integration against ACNH 3.0.3 code.
 
 UI allocation, async loading, rendering and animations are modeled. Native
-page/icon/state construction, layout-table construction, confirmation dispatch, recipe copy,
-navigation, item lookup and craft-action dispatch execute from main.raw.
+heap shrink/allocation, child activation/removal, page/icon/state construction,
+layout-table construction, confirmation dispatch, recipe copy, navigation, item
+lookup and craft-action dispatch execute from main.raw.
 This is not a live Eden rendering/input test.
 """
 import struct
 from core_arm_test import Machine, RAW
 from unicorn.arm64_const import *
 
-HOOKS = (0x2e9cde0, 0x2e9fbb0, 0x2e9d538)
+HOOKS = (0x2e9cde0, 0x2e9fbb0, 0x2e9d538, 0x376890c)
 GUARDS = (0x2e9cf2c, 0x2e9cfe8, 0x3492b50, 0x34930b0, 0x3493430,
           0x34940e0, 0x3492fec, 0x3494d8c, 0x34947d0, 0x3495408,
-          0x346fdb0, 0x3473ac8, 0x376890c, 0x3769260, 0x3768c7c, 0x2af0d30)
+          0x346fdb0, 0x3473ac8, 0x376890c, 0x3769260, 0x3768c7c)
 
 
 class PreviewMachine(Machine):
@@ -35,7 +36,10 @@ class PreviewMachine(Machine):
         self.next_preview = self.ram + 0x300000
         self.next_aux = self.ram + 0x400000
         self.fail_allocation = False
+        self.heap_sealed = False
+        self.prepared = {}
         self.dispatching_confirmation = False
+        self.updating_preview = False
         self.hidden = True
         self.reloads = []
         self.sounds = []
@@ -112,20 +116,27 @@ class PreviewMachine(Machine):
         self.write(page + 0x1f0, 0xffffffffffffffff)
         self.write(page + 0x200, 0, 1)
 
-    def phone(self, resident=0, count=3):
+    def phone(self, resident=0, count=3, prepare=True):
+        self.heap_sealed = False
         page = self.ram + 0x10000 + resident * 0x100000
         self.u.mem_write(page, bytes(0xf6380))
         self.write(page + 0x1f8, resident, 1)
         self.settle(page, 3)
+        self.write(page, self.base + 0x49e8178)
+        self.write(page + 0x164, 1, 1)
         # Native lists are circular sentinel lists; nodes use native offsets.
         self.write(page + 0x50, page + 0x50)
         self.write(page + 0x58, page + 0x50)
         self.write(page + 0x64, 0x10, 4)
+        self.write(page + 0x68, page + 0x68)
+        self.write(page + 0x70, page + 0x68)
+        self.write(page + 0x7c, 0x38, 4)
         manager = self.aux()
         self.write(manager + 0xb8, self.heap)
         self.write(page + 0x98, manager)
         layout = self.layout()
         self.write(page + 0x210, layout)
+        self.write(layout + 0x3ec, 7, 4)
         self.write(layout + 0x580, self.aux(0x500))
         # Execute the native table constructor. The original fixture invented
         # six rows, masking the bug that rejected the game's 35-row table.
@@ -147,11 +158,18 @@ class PreviewMachine(Machine):
         self.write(page + 0x8a350, count, 4)
         self.write(page + 0x8a358, recipes)
         self.write(page + 0x218, count - 1, 4)
+        if prepare: self.prepare(page)
         self.hook(0x2e9cde0, page)
         assert self.read(entries + 0x10) == self.base + 0x2e96a80
         assert self.read(entries + 5 * columns * 0x20 + 0x10) == self.base + 0x2e99d94
         assert self.read(entries + columns * 0x20 + 0x10) != self.base + 0x2e99d90
         return page
+
+    def prepare(self, page):
+        preview = self.next_preview
+        self.hook(0x376890c, page, 0)
+        if self.next_preview != preview: self.prepared[page] = preview
+        self.heap_sealed = True  # Native manager calls ExpHeap::adjust afterward.
 
     def native_layout_tables(self, layout):
         # Only allocation and the final resource-bind virtual are modeled;
@@ -194,22 +212,31 @@ class PreviewMachine(Machine):
             self.dispatching_confirmation = False
 
     def frame(self, page):
+        assert self.read(page + 0x164, 1), "native scheduler pauses parent updates"
         self.hook(0x2e9fbb0, page)
+
+    def preview_frame(self, preview):
+        assert self.read(preview + 0xa8, 4) == 3
+        self.updating_preview = True
+        try:
+            self.invoke(self.read(self.read(preview) + 0x1a0), preview)
+        finally:
+            self.updating_preview = False
 
     def open(self, page):
         self.confirm(page)
-        self.frame(page)  # Page construction follows the completed input event.
-        preview = self.next_preview - 0x1d000
+        self.frame(page)  # Activate the child already prepared during app setup.
+        preview = self.prepared[page]
         assert self.read(self.tls + 0xa8) == self.previous_heap
-        self.frame(page)
+        self.preview_frame(preview)
         assert self.read(preview + 0x1f0, 4) == 2
         assert self.read(preview + 0x1c200) == page + 0x8a350
         self.settle(preview, 3)
-        self.frame(page)
+        self.preview_frame(preview)
         assert self.read(preview + 0x264, 4) == self.read(page + 0x218, 4)
         assert self.read(preview + 0x1f0, 4) == 4
         self.settle(preview, 3)
-        self.frame(page)
+        self.preview_frame(preview)
         return preview
 
     def service(self, u, pc, size, user):
@@ -225,6 +252,8 @@ class PreviewMachine(Machine):
         action = self.native_actions.get(pc - self.base)
         if pc in self.originals:
             action = 'original_' + hex(self.originals[pc])
+            if self.originals[pc] == 0x376890c:
+                action = 'initialize'
         if self.services.get(pc, (None,))[0] == 'preview':
             action = self.services[pc][1]
         if action is None:
@@ -239,6 +268,7 @@ class PreviewMachine(Machine):
         if action == 'layout_allocate':
             result = self.aux(args[0])
         elif action == 'heap_allocate':
+            assert not self.heap_sealed, 'allocation after UI heap shrink'
             assert args[0] == self.heap and args[2] == 8
             u.reg_write(UC_ARM64_REG_X0, args[1])
             return self.service(u, self.base + 0x2478c0, size, user)
@@ -261,8 +291,13 @@ class PreviewMachine(Machine):
             self.settle(page, 0)
             self.write(page + 0x1c1c8, 0xffffffff, 4)
             self.write(page + 0x1c1cc, 0xffffffff, 4)
+            self.write(page + 0x38, 0)
+            self.write(page + 0x40, 0)
         elif action == 'initialize':
             page = args[0]
+            if self.read(page) == self.base + 0x49e8178:
+                u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
+                return
             assert self.read(page + 0x48) != 0 and self.read(page + 0x98) != 0
             layout = self.layout()
             self.write(page + 0x1c1f8, layout)
@@ -283,6 +318,7 @@ class PreviewMachine(Machine):
         elif action == 'activate_child':
             assert self.read(args[1] + 0x48) == args[0]
             assert self.read(args[1] + 0xa8, 4) == 2
+            self.write(args[0] + 0x164, 0, 1)
             self.write(args[1] + 0xa8, 3, 4)
             self.settle(args[1], 1)
         elif action == 'show_preview':
@@ -304,7 +340,9 @@ class PreviewMachine(Machine):
             assert args[0] == self.context
             self.sounds.append(self.read(args[1], 8))
         elif action == 'remove_child':
+            assert not self.updating_preview, 'removal invalidates native child-update iterator'
             assert self.read(args[1] + 0x48) == args[0]
+            self.write(args[1] + 0xa8, 2, 4)
         elif action.startswith('original_') or action in (
                 'lock', 'unlock', 'bind_preview', 'frame_preview', 'initialize_children',
                 'render_phone', 'refresh_grid', 'no_animation', 'item_init', 'layout_resources',
@@ -314,6 +352,77 @@ class PreviewMachine(Machine):
             raise AssertionError(action)
         u.reg_write(UC_ARM64_REG_X0, result)
         u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
+
+
+class NativeHeapMachine(PreviewMachine):
+    """Execute expandable-heap construction/allocation/adjust, with a parent stub."""
+    def __init__(self, base):
+        super().__init__(base)
+        self.global_pointer(0x4ab2698, 0)
+        for offset in range(0x4a64448, 0x4a64558, 8):
+            pointer = struct.unpack_from('<Q', RAW, offset)[0]
+            if 0 < pointer < 0x3f07000:
+                self.write(base + offset, base + pointer)
+        self.native_actions[0x37ca450] = 'heap_base'
+
+    def service(self, u, pc, size, user):
+        action = getattr(self, 'native_actions', {}).get(pc - self.base)
+        if self.services.get(pc, (None,))[0] == 'preview':
+            action = self.services[pc][1]
+        if action in ('heap_base', 'parent_resize'):
+            if action == 'heap_base':
+                # Model base heap bookkeeping unrelated to its free blocks.
+                # The concrete heap builds/manages its own lists natively.
+                heap = self.reg(0)
+                for offset, value in ((0x30, self.reg(3)), (0x38, self.reg(4)),
+                                      (0x40, self.reg(2))):
+                    self.write(heap + offset, value)
+                self.write(heap + 0x88, self.reg(5), 4)
+            else:
+                u.reg_write(UC_ARM64_REG_X0, 1)
+            u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
+            return
+        super().service(u, pc, size, user)
+
+
+def check_native_heap_shrink(base):
+    m = NativeHeapMachine(base)
+    heap = m.invoke(base + 0x37c6ffc, m.ram + 0x500000, 0x100000, 0, 0)
+    parent, table = m.aux(), m.aux()
+    m.write(table + 0x48, m.stub('parent_resize'))
+    m.write(parent, table)
+    m.write(heap + 0x40, parent)
+    # Same page size and alignment as the preview/native page factories.
+    assert m.invoke(base + 0x37c77a0, heap, 0x1c210, 8) != 0
+    original_size = m.read(heap + 0x38)
+    assert m.invoke(base + 0x37c75d4, heap) < original_size
+    assert m.invoke(base + 0x37c77a0, heap, 0x1c210, 8) == 0
+
+
+class NativeLifecycleMachine(PreviewMachine):
+    """Run actual child activation/deactivation and active-list ownership."""
+    def __init__(self, base):
+        super().__init__(base)
+        self.native_actions.pop(0x3769260)
+        self.native_actions.pop(0x3768c7c)
+        self.native_actions.update({0x2b0c4c8: 'activate_begin',
+                                    0x2b0c51c: 'activate_end',
+                                    0x2b0c528: 'deactivate_begin',
+                                    0x2b0c534: 'deactivate_end',
+                                    0x37695c0: 'register_updates',
+                                    0x3769930: 'unregister_updates'})
+
+    def service(self, u, pc, size, user):
+        action = getattr(self, 'native_actions', {}).get(pc - self.base)
+        if action in ('activate_begin', 'activate_end', 'deactivate_begin',
+                      'deactivate_end', 'register_updates', 'unregister_updates'):
+            if action == 'activate_begin': self.settle(self.reg(0), 1)
+            if action == 'deactivate_begin':
+                assert not self.updating_preview, 'removal invalidates native child-update iterator'
+                self.events.append(('remove_child', self.read(self.reg(0) + 0x48), self.reg(0)))
+            u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
+            return
+        super().service(u, pc, size, user)
 
 
 class NativeConstructorMachine(PreviewMachine):
@@ -356,6 +465,7 @@ class NativeConstructorMachine(PreviewMachine):
             u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
             return
         if action == 'heap_allocate':
+            assert not self.heap_sealed, 'allocation after UI heap shrink'
             assert self.reg(0) == self.heap and self.reg(2) == 8
             u.reg_write(UC_ARM64_REG_X0, self.reg(1))
             return self.service(u, self.base + 0x2478c0, size, user)
@@ -377,7 +487,7 @@ class NativeConstructorMachine(PreviewMachine):
 
 def check_native_constructor(base, heap_source):
     m = NativeConstructorMachine(base)
-    phone = m.phone()
+    phone = m.phone(prepare=False)
     m.write(base + 0x59e7600, m.heap_manager)
     m.write(base + 0x4ab2698, base + 0x59e7600)
     if heap_source != 'manager':
@@ -388,10 +498,11 @@ def check_native_constructor(base, heap_source):
     preview = m.next_preview
     guard = bytes([0xa5]) * 32
     m.u.mem_write(preview + 0x1c210, guard)
-    m.confirm(phone)
-    assert not any(event[0] == 'allocate' for event in m.events)
+    m.prepare(phone)
     assert m.read(m.read(layout + 0x210) + 0x54, 1) == 0
-    m.frame(phone)
+    assert m.read(phone + 0x164, 1) == 1
+    assert m.read(preview + 0xa8, 4) == 2
+    assert m.read(m.read(preview + 0x1c1f8) + 0x3ec, 4) == 8
     assert m.next_preview == preview + 0x1d000
     assert m.read(preview + 0x48) == phone
     assert m.read(preview + 0x50) == preview + 0x50
@@ -429,8 +540,8 @@ def check_native_heap_dependency(base):
         raise AssertionError('native null-heap crash was not reproduced')
 
 
-def check_flow(base):
-    m = PreviewMachine(base)
+def check_flow(base, machine=PreviewMachine):
+    m = machine(base)
     phone = m.phone()
     original_index = m.read(phone + 0x218, 4)
     preview = m.open(phone)
@@ -477,28 +588,35 @@ def check_flow(base):
     assert m.read(preview + 0x1c1cc, 4) == 3
     m.write(event + 0x10, 0, 4)
     assert m.invoke(callback, preview, event) == 1
-    m.frame(phone)
+    m.preview_frame(preview)
     assert m.read(preview + 0x1f0, 4) == 5
     m.settle(preview, 5)
     m.hidden = False
-    m.frame(phone)
+    m.preview_frame(preview)
     assert m.read(preview + 0x1f0, 4) == 0xffffffff
     m.hidden = True
-    m.frame(phone)
+    m.preview_frame(preview)
     assert m.read(preview + 0x1f0, 4) == 1
     # Native idle entry clears the borrowed data and selection.
     m.write(preview + 0x1c200, 0)
     m.settle(preview, 1)
-    m.frame(phone)
+    m.preview_frame(preview)
+    assert m.read(preview + 0xa8, 4) == 3
+    m.frame(phone)  # Detach only after native child-update iteration returns.
     phone_layout = m.read(phone + 0x210)
     assert m.read(m.read(phone_layout + 0x210) + 0x54, 1) == 0
     assert m.read(phone + 0x218, 4) == original_index
     assert m.read(phone + 0x1b0, 4) == 3
     allocations = len([e for e in m.events if e[0] == 'allocate'])
+    assert m.read(phone + 0x164, 1) == 1
+    assert m.read(preview + 0xa8, 4) == 2
+    assert m.read(phone + 0x78, 4) == 0
+    assert not any(e[0] == 'layout_visibility' for e in m.events)
+    m.open(phone)
     m.confirm(phone); m.confirm(phone)
     assert len([e for e in m.events if e[0] == 'allocate']) == allocations
     m.hook(0x2e9d538, phone)
-    assert len([e for e in m.events if e[0] == 'remove_child']) == 1
+    assert len([e for e in m.events if e[0] == 'remove_child']) == 2
     assert bytes(m.u.mem_read(base + 0x4a3b778, 0x2c0)) == native_table
 
 
@@ -527,7 +645,7 @@ def check_lists(base):
     assert m.read(second_preview + 0x1c200) == second + 0x8a350
     m.hook(0x2e9d538, first)
     assert [e[2] for e in m.events if e[0] == 'remove_child'] == [first_preview]
-    m.frame(second)
+    m.preview_frame(second_preview)
     assert m.read(second_preview + 0x1c200) == second + 0x8a350
     # A child already removed by native teardown must not be removed twice.
     m.write(second_preview + 0xa8, 2, 4)
@@ -538,7 +656,7 @@ def check_lists(base):
 def check_failures(base):
     for case in ('empty', 'invalid_index', 'unavailable_item', 'allocation', 'no_heap', 'busy'):
         m = PreviewMachine(base)
-        phone = m.phone()
+        phone = m.phone(prepare=False)
         if case == 'empty': m.write(phone + 0x8a350, 0, 4)
         if case == 'invalid_index': m.write(phone + 0x218, 99, 4)
         if case == 'unavailable_item':
@@ -548,12 +666,16 @@ def check_failures(base):
         if case == 'no_heap':
             m.write(m.read(phone + 0x98) + 0xb8, 0)
             m.write(m.tls + 0xa8, 0)
+        m.prepare(phone)
+        constructed = len([e for e in m.events if e[0] == 'construct'])
         if case == 'busy': m.write(phone + 0x1f0, 5, 4)
         m.confirm(phone)
         m.frame(phone)
         layout = m.read(phone + 0x210)
         assert m.read(m.read(layout + 0x210) + 0x54, 1) == 0
-        assert not any(e[0] == 'construct' for e in m.events)
+        assert len([e for e in m.events if e[0] == 'construct']) == constructed
+        assert not any(e[0] == 'layout_visibility' for e in m.events)
+        assert m.read(phone + 0x164, 1) == 1
     for offset in HOOKS + GUARDS:
         m = Machine(base, {})
         m.write(base + offset, 0, 4)
@@ -565,10 +687,12 @@ def check_failures(base):
 
 if __name__ == '__main__':
     for base in (0x7100000000, 0x7200000000):
+        check_native_heap_shrink(base)
         check_native_heap_dependency(base)
         for heap_source in ('manager', 'current', 'default'):
             check_native_constructor(base, heap_source)
         check_flow(base)
+        check_flow(base, NativeLifecycleMachine)
         check_lists(base)
         check_failures(base)
-    print('PASS: native null-heap crash reproduction, page/270-icon/state constructors with manager/current/default heaps, native 35-row layout construction and confirmation dispatch, Core phone preview lifecycle, borrowed recipe/materials, native navigation/wrap, craft rejection, B return, reuse, teardown and fail-closed fingerprints at two ASLR bases')
+    print('PASS: native heap shrink/allocation failure, preparation before shrink, native child activation/removal with paused parent, native null-heap crash reproduction, page/270-icon/state constructors with manager/current/default heaps, native 35-row layout construction and confirmation dispatch, Core phone preview lifecycle, borrowed recipe/materials, native navigation/wrap, craft rejection, B return, reuse, teardown and fail-closed fingerprints at two ASLR bases')

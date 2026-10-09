@@ -35,7 +35,8 @@ All addresses are offsets from the loaded main module.
 | 0376890C | Page resource initialization |
 | 03769260 | Activate a child registered with its parent |
 | 03768C7C | Remove/clean up an active child |
-| 02AF0D30 | Set layout-root visibility |
+| 0376D9A0 | UI manager initialization: build pages, then shrink heap |
+| 037C75D4 | ExpHeap adjustment (heap virtual +0x28) |
 | 03363544 | Item-icon constructor (270 per preview) |
 | 03DBAC90 | Allocate state callback/name arrays from explicit/current heap |
 | 03DBAF40 | State-name assignment; null names fault at 03DBB0EC |
@@ -51,11 +52,18 @@ The preview page is 0x1C210 bytes, has count/index at +0x260/+0x264, layout at
 data at +8 and six material entries at +0x2C with stride 0x18. Native copying
 omits alignment padding; it is not a raw 0xD0-byte memcpy.
 
-The implementation borrows the phone's dataset while its input and layout are
+The implementation borrows the phone's dataset while its input and updates are
 suspended. It does not reconstruct a recipe catalog, sort by recipe ID or move
 the app's selection. A child is allocated on the native UI heap, registered in
 the parent's pending-child list, initialized and activated through the native
-page API. Creation is queued until phone button dispatch completes.
+page API. Version 0.3.27 prepares the child from the native page-initialization
+hook, before the UI manager shrinks its construction heap. Identification uses
+only MenuRecipePage's vtable (049E8178). Its child remains at lifecycle 2 until
+confirmation queues activation; there are no first-selection allocations.
+The synced 0.3.26 log showed a nonnull manager heap rejecting the page allocation.
+The earlier null-TLS reproduction did not establish the live allocation history.
+The native heap test now reproduces rejection after ExpHeap::adjust.
+The app's layout roots are never toggled; failed preparation leaves it usable.
 Version 0.3.26 explicitly selects manager+0xB8, current TLS+0xA8 or the heap
 manager's default heap (+8), and allocates via heap virtual+0x30, alignment 8.
 Native state-machine construction skips allocation if TLS exists but its heap
@@ -72,7 +80,12 @@ layout, model and dialog allocations. Sessions are separate for each resident.
 Native state 1 is idle, 2 appear, 3 play, 4 select recipe and 5 return to list.
 The two deferred request slots at +0x1F0/+0x1F4 are selected by byte +0x200.
 Wait for idle after initialization before lending the dataset, because idle
-entry clears it. Open through the normal appear request, then select the app's
+entry clears it. Child activation disables parent updates (+0x164), so the
+preview's own update override drives these transitions. On return, remove the
+active child through the native API after restoring the parent update flag
+and returning from child-callback iteration. Detachment runs from the parent's
+own update, then restores input. Retain the initialized child for reuse. Its
+layout layer is one above the phone's. Open through the normal appear request, then select the app's
 index. B requests state 5 and waits for its hide animation before returning to
 idle and restoring the phone. This avoids the native full-screen disappear
 path, which also manipulates the parent crafting screen/global dialogs.
@@ -100,13 +113,14 @@ and visible grid cells so favorite changes are reflected.
 
 ## Verification boundary
 
-Instruction fingerprints cover all three hook sites and relevant native
+Instruction fingerprints cover all four hook sites and relevant native
 construction, binding, state/data and teardown code before installing any of
 this feature's hooks. A mismatch disables only the preview feature. Core's
 amiibo fix and optional modules still activate independently.
 
 `tests/recipe_preview_arm_test.py` runs the compiled C++ at two ASLR bases.
-It executes base/common page, 270 icon and state-machine constructors with
+It executes native heap shrink/allocation and child activation/removal, with
+engine service boundaries modeled. It executes base/common page, 270 icon and state-machine constructors with
 manager/current/default heaps, modeling their allocation and string services.
 It models asynchronous readiness, rendering and animations,
 and executes the native recipe copy, list count, next/previous navigation,
