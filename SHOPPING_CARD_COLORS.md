@@ -1,6 +1,6 @@
-# Shopping Card themes — QoL Enhancements 0.3.19 / ACNH 3.0.3
+# Shopping Card themes — QoL Enhancements 0.3.20 / ACNH 3.0.3
 
-Install the normal QoL Enhancements 0.3.19 Core and Shopping Card first.
+Install the normal QoL Enhancements 0.3.20 Core and Shopping Card first.
 This download contains optional appearance replacements, not a standalone mod.
 
 1. Fully close the game.
@@ -23,10 +23,11 @@ border and red stripe, with cream details and outlines. Poki Red uses the Poki
 bag's light coral-red for the card, a deeper warm-red counter and border,
 cream details/outlines and a gold chip. Colors are based on the supplied
 screenshots. These options still display Bells and spend savings.
-Island takes its colors from the ACNH edition Switch: a white oval and backing,
+Island takes its colors from the ACNH edition Switch: a white oval,
 turquoise-blue card and balance (#6ABDC4), and a mint-green strip (#95E2C5).
-The card has a darker blue-teal edge and white details. The Bells caption uses
-the same turquoise-blue as the balance. Its number material is separate from
+The oval outline, card backing and Bells bubble match the mint-green strip.
+The card has a darker blue-teal edge and white details, and the Bells caption
+is white. Its number material is separate from
 ordinary cash, so the native cash counter keeps its original cream digits.
 ADB Teal reproduces the working 0.3.16 layout exactly. All retain the same card
 shape, detail positions, native 16:9 canvas and balance animations/sounds.

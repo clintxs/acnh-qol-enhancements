@@ -37,7 +37,6 @@ def rename(section, name):
 
 def edit_layout(data, palette_name='green'):
     palette = PALETTES[palette_name]
-    counter = bytes(palette.counter)
     sections = layout_sections(data)
     panes = {pane_name(s): s for s in sections if s[:4] in PANE_TYPES}
     assert CARD not in panes
@@ -62,8 +61,8 @@ def edit_layout(data, palette_name='green'):
     sections[texture_slot] = bytes(texture_table)
     material_slot = next(i for i, s in enumerate(sections) if s[:4] == b'mat1')
     records = material_records(sections[material_slot])
-    # Two copies of the native rounded window give the colored fill the same
-    # light rim as Bells, without tinting away the rim in a shared material.
+    # Two copies of the native rounded window separate the fill and outline,
+    # without tinting away the rim in a shared material.
     def window(template, name, x, y, width, height, color):
         pane = rename(template, name)
         struct.pack_into('<2f', pane, 44, x, y)
@@ -89,7 +88,7 @@ def edit_layout(data, palette_name='green'):
     label[92:96] = panes['T_Bell_00'][92:96]  # Native Bells badge alignment.
     text_material = bytearray(records[struct.unpack_from('<H', label, 88)[0]])
     text_material[:28] = b'CardBellsText'.ljust(28, b'\0')
-    text_material[40:44] = counter
+    text_material[40:44] = bytes(palette.caption or palette.counter)
     struct.pack_into('<H', label, 88, len(records))
     records.append(bytes(text_material))
     number = bytearray(text_pane(panes['T_Num_00'], NUMBER, '999,999,999', -25, 0, 260, 56, .76, True))
@@ -138,7 +137,7 @@ def edit_layout(data, palette_name='green'):
         struct.pack_into('<H', pane,100,material_index)
         return bytes(pane)
     # One normal picture holds the complete colored card, including its edge
-    # and details. Its light backing draws before the oval and stays occluded.
+    # and details. Its backing draws before the oval and stays occluded.
     rim_pieces = [picture('P_CardRim_00',picture_materials[0])]
     pieces = [picture('P_CardIcon_00',picture_materials[1])]
     unit = rename(panes['N_Pos_00'], 'N_CardBells_00')

@@ -89,6 +89,13 @@ print(json.dumps({k:base64.b64encode(v).decode() for k,v in r.items() if k.endsw
     draw.ellipse((47*scale,58*scale,353*scale,186*scale),fill=window_color('W_SavingsRim_00'))
     draw.ellipse((55*scale,66*scale,345*scale,178*scale),fill=window_color('W_SavingsBase_00'))
     draw_picture('P_CardIcon_00')
+    # Illustrate the native rounded badge as well as its serialized fill color.
+    badge_width, badge_height = struct.unpack_from('<2f',panes['W_CardBellBase_00'],76)
+    badge_x, badge_y = 259*scale, 159*scale
+    draw = ImageDraw.Draw(preview)
+    draw.rounded_rectangle((badge_x-badge_width*scale/2, badge_y-badge_height*scale/2,
+                            badge_x+badge_width*scale/2, badge_y+badge_height*scale/2),
+                           radius=badge_height*scale/2, fill=window_color('W_CardBellBase_00'))
     if args.example_balance:
         # Preview serialized text colors too, without claiming to render the
         # native game font, glyph placement or its animation.

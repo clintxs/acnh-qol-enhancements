@@ -59,7 +59,7 @@ label = new_panes['T_SavingsLabel_00']
 start = struct.unpack_from('<I', label, 100)[0]
 assert label[start:start + 12].decode('utf-16-le') == 'Bells\0'
 assert label[92:96] == old_panes['T_Bell_00'][92:96]
-assert new_materials[struct.unpack_from('<H', label, 88)[0]][40:44] == bytes(palette.counter)
+assert new_materials[struct.unpack_from('<H', label, 88)[0]][40:44] == bytes(palette.caption or palette.counter)
 for name, color in (('W_SavingsRim_00', bytes(palette.rim)),
                     ('W_SavingsBase_00', bytes(palette.background or palette.counter)), ('W_CardBellBase_00', bytes(palette.rim))):
     for offset in (128, 168):
@@ -111,7 +111,8 @@ if palette.balance is not None:
     assert struct.unpack_from('<H', number, 88)[0] != struct.unpack_from('<H', old_panes['T_Num_00'], 88)[0]
     assert args.palette == 'island' and palette.background == (255,255,255,255)
     assert palette.balance == palette.counter == palette.face
-    print('PASS: Island white oval, blue card/balance/caption, mint stripe, independent number material and unchanged native cash text')
+    assert palette.rim == palette.stripe and palette.caption == (255,255,255,255)
+    print('PASS: Island white oval, blue card/balance, matching mint stripe/outline/badge, white caption, independent number material and unchanged native cash text')
 else:
     assert number_material == native_number_material
 

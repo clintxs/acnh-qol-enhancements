@@ -24,6 +24,7 @@ class Palette:
     stripe: tuple | None = None
     background: tuple | None = None
     balance: tuple | None = None
+    caption: tuple | None = None
 
 
 def linear_rgba(red, green, blue):
@@ -54,9 +55,10 @@ PALETTES = {
     # Poki bag sample #F8A486, paired with a deeper warm-red counter/edge.
     'poki-red': Palette((177,32,25,255), (255,241,195,255), (58,13,9,255),
                         (239,95,61,255), (255,241,195,255), (240,204,101,255)),
-    'island': Palette(ISLAND_BLUE, (255,255,255,255), linear_rgba(63,142,150),
+    'island': Palette(ISLAND_BLUE, ISLAND_MINT, linear_rgba(63,142,150),
                       ISLAND_BLUE, (255,255,255,255), (255,255,255,255),
-                      stripe=ISLAND_MINT, background=(255,255,255,255), balance=ISLAND_BLUE),
+                      stripe=ISLAND_MINT, background=(255,255,255,255), balance=ISLAND_BLUE,
+                      caption=(255,255,255,255)),
 }
 
 
