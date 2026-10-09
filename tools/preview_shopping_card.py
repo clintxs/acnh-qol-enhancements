@@ -11,7 +11,7 @@ import json
 import struct
 import subprocess
 import sys
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 from shopping_card_texture import PALETTES
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,6 +34,7 @@ def main():
     parser.add_argument('output',type=Path)
     parser.add_argument('--layout-python',default='python3')
     parser.add_argument('--palette',choices=tuple(PALETTES),default='green')
+    parser.add_argument('--example-balance', help='Illustrative text only; uses a substitute for the native game font.')
     args = parser.parse_args()
     # The default Python has zstd; the artifact Python has Pillow.
     code = """import sys,json,base64
@@ -88,6 +89,21 @@ print(json.dumps({k:base64.b64encode(v).decode() for k,v in r.items() if k.endsw
     draw.ellipse((47*scale,58*scale,353*scale,186*scale),fill=window_color('W_SavingsRim_00'))
     draw.ellipse((55*scale,66*scale,345*scale,178*scale),fill=window_color('W_SavingsBase_00'))
     draw_picture('P_CardIcon_00')
+    if args.example_balance:
+        # Preview serialized text colors too, without claiming to render the
+        # native game font, glyph placement or its animation.
+        pane = next(s for s in sections if s[:4] == b'txt1' and pane_name(s) == 'T_SavingsNum_00')
+        material = materials[struct.unpack_from('<H', pane, 88)[0]]
+        text_color = tuple(srgb(v) for v in material[40:43]) + (material[43],)
+        font_path = Path('/System/Library/Fonts/SFCompactRounded.ttf')
+        def font(size):
+            return ImageFont.truetype(str(font_path),size) if font_path.exists() else ImageFont.load_default(size=size)
+        draw = ImageDraw.Draw(preview)
+        draw.text((200*scale,122*scale),args.example_balance,font=font(40*scale),fill=text_color,anchor='mm')
+        label = next(s for s in sections if s[:4] == b'txt1' and pane_name(s) == 'T_SavingsLabel_00')
+        material = materials[struct.unpack_from('<H', label, 88)[0]]
+        label_color = tuple(srgb(v) for v in material[40:43]) + (material[43],)
+        draw.text((259*scale,159*scale),'Bells',font=font(21*scale),fill=label_color,anchor='mm')
     args.output.parent.mkdir(parents=True,exist_ok=True)
     preview.resize((800,400),Image.Resampling.LANCZOS).convert('RGB').save(args.output)
     print(args.output)

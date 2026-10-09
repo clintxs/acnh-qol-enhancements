@@ -78,7 +78,8 @@ def edit_layout(data, palette_name='green'):
         return bytes(pane)
     rim = bytes(palette.rim)
     outline = window(panes['W_BaseL_00'], 'W_SavingsRim_00', *OVAL_CENTER, *OVAL_SIZE, rim)
-    background = bytearray(window(panes['W_BaseL_00'], 'W_SavingsBase_00', *OVAL_CENTER, *OVAL_SIZE, counter))
+    background = bytearray(window(panes['W_BaseL_00'], 'W_SavingsBase_00', *OVAL_CENTER, *OVAL_SIZE,
+                                  bytes(palette.background or palette.counter)))
     # Scale the complete native window so its corner/frame geometry shrinks
     # with the fill, leaving an eight-unit rim on each side.
     struct.pack_into('<2f', background, 68, *((size - 2 * RIM) / size for size in OVAL_SIZE))
@@ -91,6 +92,15 @@ def edit_layout(data, palette_name='green'):
     text_material[40:44] = counter
     struct.pack_into('<H', label, 88, len(records))
     records.append(bytes(text_material))
+    number = bytearray(text_pane(panes['T_Num_00'], NUMBER, '999,999,999', -25, 0, 260, 56, .76, True))
+    if palette.balance is not None:
+        # Island puts blue digits on white. Clone the number material so cash
+        # and every existing palette retain their native cream text exactly.
+        balance_material = bytearray(records[struct.unpack_from('<H', number, 88)[0]])
+        balance_material[:28] = b'CardBalanceText'.ljust(28, b'\0')
+        balance_material[40:44] = bytes(palette.balance)
+        struct.pack_into('<H', number, 88, len(records))
+        records.append(bytes(balance_material))
     picture_materials = []
     native_icon_material = records[struct.unpack_from('<H', panes['P_Icon_00'],100)[0]]
     for index in range(2):
@@ -131,14 +141,13 @@ def edit_layout(data, palette_name='green'):
     # and details. Its light backing draws before the oval and stays occluded.
     rim_pieces = [picture('P_CardRim_00',picture_materials[0])]
     pieces = [picture('P_CardIcon_00',picture_materials[1])]
-    number = text_pane(panes['T_Num_00'], NUMBER, '999,999,999', -25, 0, 260, 56, .76, True)
     unit = rename(panes['N_Pos_00'], 'N_CardBells_00')
     # The native badge window uses a right-hand origin: place that origin
     # eight units inside the oval's right edge, then retain the requested shift left.
     struct.pack_into('<f', unit, 44, OVAL_CENTER[0] + OVAL_SIZE[0] / 2 - RIM - BADGE_SHIFT)
     additions = [bytes(group), opening, bytes(backing), opening, *rim_pieces, closing,
                  outline, bytes(background), bytes(icon), opening,
-                 *pieces, closing, number, bytes(unit), opening, badge, bytes(label), closing, closing]
+                 *pieces, closing, bytes(number), bytes(unit), opening, badge, bytes(label), closing, closing]
     parents = []
     last = None
     insertion = None

@@ -14,23 +14,26 @@ COLOR_LABELS = {
     'gold': 'Bell Gold',
     'hotel-blue': 'Hotel Blue',
     'poki-red': 'Poki Red',
+    'island': 'Island',
 }
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--revision', type=int, default=1)
+    parser.add_argument('--palette', choices=tuple(card.PALETTES), help='Package just one theme.')
     args = parser.parse_args()
     if args.revision < 1:
         parser.error('--revision must be positive')
     version = release_version().replace('.', '_')
     suite = ROOT / 'dist' / f'qol-enhancements-v{version}_for_acnh_v3_0_3.zip'
     revision = f'_r{args.revision}' if args.revision > 1 else ''
-    output = ROOT / 'dist' / f'shopping-card-colors-v{version}_for_acnh_v3_0_3{revision}.zip'
+    option = args.palette or 'colors'
+    output = ROOT / 'dist' / f'shopping-card-{option}-v{version}_for_acnh_v3_0_3{revision}.zip'
     if output.exists():
         raise SystemExit(f'Refusing to replace existing color options: {output}')
     files = {'README.md': (ROOT / 'SHOPPING_CARD_COLORS.md').read_bytes()}
-    for name in card.PALETTES:
+    for name in (args.palette,) if args.palette else card.PALETTES:
         for path, data in card.build(name).items():
             files[f'{COLOR_LABELS[name]}/{FOLDER}/{path}'] = data
             if name == 'green':

@@ -22,6 +22,20 @@ class Palette:
     detail: tuple
     chip: tuple
     stripe: tuple | None = None
+    background: tuple | None = None
+    balance: tuple | None = None
+
+
+def linear_rgba(red, green, blue):
+    def channel(value):
+        value /= 255
+        return round(255 * (value / 12.92 if value <= .04045 else ((value + .055) / 1.055) ** 2.4))
+    return tuple(channel(value) for value in (red, green, blue)) + (255,)
+
+
+# Reference photo's right Joy-Con midtone and left Joy-Con mint face, in sRGB.
+ISLAND_BLUE = linear_rgba(106, 189, 196)  # #6ABDC4
+ISLAND_MINT = linear_rgba(149, 226, 197)  # #95E2C5
 
 
 # Linear RGBA, as used by the native materials and RGBA8_UNORM textures.
@@ -40,6 +54,9 @@ PALETTES = {
     # Poki bag sample #F8A486, paired with a deeper warm-red counter/edge.
     'poki-red': Palette((177,32,25,255), (255,241,195,255), (58,13,9,255),
                         (239,95,61,255), (255,241,195,255), (240,204,101,255)),
+    'island': Palette(ISLAND_BLUE, (255,255,255,255), linear_rgba(63,142,150),
+                      ISLAND_BLUE, (255,255,255,255), (255,255,255,255),
+                      stripe=ISLAND_MINT, background=(255,255,255,255), balance=ISLAND_BLUE),
 }
 
 
@@ -68,7 +85,7 @@ def color_at(x, y, backing, palette):
     return color
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=16)
 def pixels(backing, palette_name='green'):
     palette = PALETTES[palette_name]
     samples = 4

@@ -61,7 +61,7 @@ assert label[start:start + 12].decode('utf-16-le') == 'Bells\0'
 assert label[92:96] == old_panes['T_Bell_00'][92:96]
 assert new_materials[struct.unpack_from('<H', label, 88)[0]][40:44] == bytes(palette.counter)
 for name, color in (('W_SavingsRim_00', bytes(palette.rim)),
-                    ('W_SavingsBase_00', bytes(palette.counter)), ('W_CardBellBase_00', bytes(palette.rim))):
+                    ('W_SavingsBase_00', bytes(palette.background or palette.counter)), ('W_CardBellBase_00', bytes(palette.rim))):
     for offset in (128, 168):
         index = struct.unpack_from('<H', new_panes[name], offset)[0]
         assert new_materials[index][40:44] == color
@@ -94,13 +94,26 @@ print('PASS: thicker eight-unit oval rim, centered card, backing occluded by ova
 
 # A single foreground image avoids independently transformed card fragments.
 assert len(new_panes) == 24 and len(new) == 63
-assert len(modified[next(k for k in modified if k.endswith('.bflyt'))]) == 7100
+assert len(modified[next(k for k in modified if k.endswith('.bflyt'))]) == 7100 + (48 if palette.balance is not None else 0)
 assert not any(s[:4] == b'spi1' for s in new)
 assert not any(n.startswith(('P_CardShape','P_CardEdge','P_CardFace')) for n in new_panes)
 canvas = next(s for s in new if s[:4] == b'lyt1')
 assert struct.unpack_from('<2f', canvas, 12) == (1920,1080)
 assert struct.unpack_from('<3f', new_panes['RootPane'],44) == (0,0,0)
 print('PASS: two ordinary textured pictures, 24 panes/63 sections, native 16:9 canvas/root, original cash resources and controls preserved')
+
+number_material = new_materials[struct.unpack_from('<H', number, 88)[0]]
+native_number_material = old_materials[struct.unpack_from('<H', old_panes['T_Num_00'], 88)[0]]
+if palette.balance is not None:
+    assert number_material[40:44] == bytes(palette.balance)
+    assert number_material[28:40] == native_number_material[28:40]
+    assert number[104:112] == old_panes['T_Num_00'][104:112]
+    assert struct.unpack_from('<H', number, 88)[0] != struct.unpack_from('<H', old_panes['T_Num_00'], 88)[0]
+    assert args.palette == 'island' and palette.background == (255,255,255,255)
+    assert palette.balance == palette.counter == palette.face
+    print('PASS: Island white oval, blue card/balance/caption, mint stripe, independent number material and unchanged native cash text')
+else:
+    assert number_material == native_number_material
 
 if args.palette == 'gold':
     native_label = old_materials[struct.unpack_from('<H',old_panes['T_Bell_00'],88)[0]]
