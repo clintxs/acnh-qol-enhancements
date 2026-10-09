@@ -20,7 +20,7 @@ def layout_asset(name):
     return next(v for k, v in r.items() if k.endswith('/' + name + '.bflyt'))
 MENU = layout_asset('MenuRecipe')
 HOOKS = (0x267d64, 0x2e9cde0, 0x2e9fbb0, 0x2e9d538, 0x3c58d24, 0x39392b0, 0x32b9fcc, 0x32b9e08, 0x6021a4, 0x39f63f0)
-GUARDS = HOOKS + (0x32bd990, 0x32ba5e4, 0x3dbb160, 0x27d1d0, 0x3a17390, 0x3a174f0, 0x3c66298, 0x2e93798, 0x2e96a80, 0x3c4b880, 0x2ea0754, 0x2b0c810, 0x32ba000, 0x3c4bac4, 0x2b0e20c, 0x32b9750, 0x1513a48, 0x32be2b0, 0x32ba034)
+GUARDS = HOOKS + (0x32bd990, 0x32ba5e4, 0x3dbb160, 0x27d1d0, 0x3a17390, 0x3a174f0, 0x3c66298, 0x2e93798, 0x2e96a80, 0x3c4b880, 0x2ea0754, 0x2b0c810, 0x32ba000, 0x3c4bac4, 0x2b0e20c, 0x32b9750, 0x1513a48, 0x32be2b0, 0x32ba034, 0x192a1f0, 0x19362f4)
 
 class PreviewMachine(Machine):
     def __init__(self, base):
@@ -93,6 +93,9 @@ class PreviewMachine(Machine):
         self.write(base+0x4ab2e58,self.alloc())
         item_guard=self.alloc(); self.write(item_guard,1,1); self.write(base+0x4abfcf8,item_guard)
         self.write(base+0x4abfcf0,self.alloc())
+        self.write(entity+0x15c,0x42,4)
+        self.write(entity+0x394,1,4)
+        self.write(entity+0x274,0x112345,4)
         self.model_entity=entity
         self.entity_manager=manager
         component_methods=self.alloc(0x108); self.write(self.component,component_methods)
@@ -212,7 +215,16 @@ class PreviewMachine(Machine):
         elif action == 'child_find':
             u.reg_write(UC_ARM64_REG_X2, 1); u.reg_write(UC_ARM64_REG_PC, self.base+0x27d1d0); return
         elif action == 'entity_create':
-            self.entity_request = bytes(u.mem_read(self.reg(1), 0x30)); result = 0x12345
+            self.entity_request = bytes(u.mem_read(self.reg(1), 0x30))
+            self.events.append(("entity_create", self.reg(2), self.entity_request))
+            result = 0x12345
+        elif action == 'allocate_component': result = self.alloc(self.reg(0))
+        elif action == 'construct_component':
+            name=self.alloc(0x40)
+            self.write(self.reg(0)+0x60,name); self.write(self.reg(0)+0x68,0x40,4)
+        elif action == 'attach_component':
+            self.write(self.reg(1)+0x48,self.reg(0))
+            if not self.read(self.reg(0)+0x68): self.write(self.reg(0)+0x68,self.reg(1))
         elif action == 'layer_color':
             self.layer_color=bytes(u.mem_read(self.reg(4),16))
             self.layer_mask=self.reg(3)
@@ -394,6 +406,27 @@ assert next(i for i, (name, _) in enumerate(native_tree) if name == 'P_Capture_0
 
 for base in (0x7100000000, 0x7200000000):
     m = PreviewMachine(base)
+    for target,action in ((0x2478c0,'allocate_component'),(0x605c50,'construct_component'),
+                          (0x37e18e4,'noop'),(0x5f9fc0,'attach_component'),(0x6402e0,'entity_create'),
+                          (0x665f94,'noop')):
+        m.services[base+target]=('preview',action)
+    allocator_slot=m.alloc(); m.write(base+0x4ab2698,allocator_slot)
+    for got in (0x4ab3078,0x4ab3300,0x4ab2d88):
+        m.write(base+got,base+struct.unpack_from('<Q',RAW,got)[0])
+    default_item=m.alloc(); m.write(default_item,0xfffe); m.write(base+0x4ab37e0,default_item)
+    params=m.alloc(0x30)
+    actor=m.alloc(0x450); m.write(actor+0x230,0x12345,4); m.write(actor+0x394,1,4)
+    m.invoke(base+0x192a1f0,actor,params,0)
+    request=next(e for e in m.events if e[0]=='entity_create')
+    assert request[1]==0x12345 and struct.unpack_from('<I',request[2],4)[0]==6
+    carrier=m.alloc(0x450); m.write(carrier+0x230,0x112345,4)
+    m.invoke(base+0x19362f4,carrier,params,0)
+    assert m.read(carrier+0x27c,4)==0x6f and m.read(carrier+0x360,4)==0x6f
+    assert m.read(carrier+0x364,4)==0x112345
+    print(f'PASS: native type-42 initializer requests type 6; native type-6 initializer requests type 6F, ASLR {base:#x}')
+
+for base in (0x7100000000, 0x7200000000):
+    m = PreviewMachine(base)
     verify_layout(MENU, m.patch(MENU)); ptr = m.build_pointer
     assert m.patch(MENU) and m.build_pointer == ptr
     wide = bytearray(MENU)
@@ -515,20 +548,53 @@ for base in (0x7100000000, 0x7200000000):
         m.write(owner,m.controller); m.write(m.controller+0x50,2,4)
         m.native_parameter_update()
         assert m.drawable_matrix()==rendered
-    # The displayed mesh has its own component. Reproduce a stale child pose
-    # while the controller actor has already accepted all queued transforms.
+    # Real hierarchy: controller type 42 -> carrier type 6 -> drawable type 6F.
+    # The old immediate-parent scope misses the displayed mesh completely.
     child=m.alloc(0x400); child_component=m.alloc(0x2c8)
     m.u.mem_write(child_component,bytes(m.u.mem_read(m.component,0x2c8)))
     m.write(child_component+0x48,child)
-    m.write(child+0x230,0x54321,4); m.write(child+0x234,0x12345,4)
+    m.write(child+0x230,0x212345,4); m.write(child+0x234,0x112345,4)
+    m.write(child+0x15c,0x6f,4)
     m.u.mem_write(child_component+0x2bc,struct.pack('<3I',*pose))
     stale=bytes(m.u.mem_read(child_component,0x2c8))
     assert m.drawable_matrix(child_component)!=rendered
+    # With no carrier publication this is precisely the previous scope: the
+    # root and direct-parent comparisons both miss, despite successful input.
+    carriers=m.module.find('PreviewCarriers')
+    m.u.mem_write(carriers,bytes(16))
+    assert m.drawable_matrix(child_component,protected=True)==m.drawable_matrix(child_component)
+    m.hook(0x32b9fcc,m.controller)
     assert m.drawable_matrix(child_component,protected=True)==rendered
     assert bytes(m.u.mem_read(child_component,0x2c8))==stale
     m.write(child+0x234,0x98765,4)
     assert m.drawable_matrix(child_component,protected=True)==m.drawable_matrix(child_component)
-    m.write(child+0x234,0x12345,4)
+    m.write(child+0x234,0x112345,4)
+    for offset, value, size in ((0x15c, 6, 4), (0x234, 0x112344, 4)):
+        original=m.read(child+offset,size); m.write(child+offset,value,size)
+        assert m.drawable_matrix(child_component,protected=True)==m.drawable_matrix(child_component)
+        m.write(child+offset,original,size)
+    assert m.read(carriers,4)==0x112345
+    for offset,value,size in ((0x230,0x12344,4),(0x248,2,4),(0x15c,6,4),(0x394,5,4),(0x274,0,4)):
+        original=m.read(m.model_entity+offset,size); m.write(m.model_entity+offset,value,size)
+        m.hook(0x32b9fcc,m.controller)
+        assert m.read(carriers,4)==0
+        assert m.drawable_matrix(child_component,protected=True)==m.drawable_matrix(child_component)
+        m.write(m.model_entity+offset,original,size)
+        m.hook(0x32b9fcc,m.controller)
+        assert m.drawable_matrix(child_component,protected=True)==rendered
+    handle=m.read(m.controller+0x6c,4)
+    m.write(m.controller+0x6c,0,4); m.hook(0x32b9fcc,m.controller)
+    assert bytes(m.u.mem_read(carriers,16))==bytes(16)
+    m.write(m.controller+0x6c,handle,4); m.hook(0x32b9fcc,m.controller)
+    assert m.drawable_matrix(child_component,protected=True)==rendered
+    # All four carriers are supported; generation bits are compared intact.
+    m.write(m.model_entity+0x394,4,4)
+    for i in range(4): m.write(m.model_entity+0x274+4*i,0x112345+i,4)
+    m.hook(0x32b9fcc,m.controller)
+    for i in range(4):
+        m.write(child+0x234,0x112345+i,4)
+        assert m.drawable_matrix(child_component,protected=True)==rendered
+    m.write(child+0x234,0x112345,4)
     m.frame(phone); assert angles()==changed  # No snapshot must not keep rotating.
     # Both directions, full turn wrap, bounded tilt and loaded/owned guards.
     m.input(page,0,right=(-1,0)); m.frame(phone); assert angles()==pose
@@ -560,6 +626,7 @@ for base in (0x7100000000, 0x7200000000):
     assert m.input(page,0x20,right=(1,1))==0x20; m.frame(phone)
     assert ('release',2) in m.events
     assert m.read(m.module.find('PreviewHandle'),4)==0
+    assert bytes(m.u.mem_read(carriers,16))==bytes(16)
     assert m.drawable_matrix(child_component,protected=True)==m.drawable_matrix(child_component)
     m.clear(); assert m.gpu_colors[-1][2]==black
     assert m.read(m.controller+0x50,4)==26 and m.read(m.controller+0x10,4)==3
@@ -575,7 +642,7 @@ for base in (0x7100000000, 0x7200000000):
     assert angles()==pose  # Reopening starts from the item's native pose.
     m.hook(0x2e9d538,phone); assert m.read(m.controller+0x6c,4)==0
     assert m.read(panes['N_QolCapture_00']+0x58,1)==0xa2
-    print(f'PASS: native animation overwrite reproduced and prevented; stale child drawable pose corrected without mutation and scoped HDR GPU clear; right stick only; dead zone, turn/wrap, bounded tilt, load/owner/handle guards, unchanged position/materials and reopen, ASLR {base:#x}')
+    print(f'PASS: native animation overwrite reproduced and prevented; grandchild drawable pose corrected without mutation and scoped HDR GPU clear; right stick only; dead zone, turn/wrap, bounded tilt, load/owner/handle guards, unchanged position/materials and reopen, ASLR {base:#x}')
     phone2,page2,row2,panes2=m.phone(1,surface=False)
     before=m.model_events; m.confirm(page2); m.frame(phone2); assert m.model_events==before
     unbound,unbound_page,unbound_row,unbound_panes=m.phone(3)

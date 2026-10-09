@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.43 DIY drawable pose and background correction** for ACNH **3.0.3 on Eden**. One Core
+**0.3.44 DIY mesh ownership correction** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -60,17 +60,16 @@ fingerprints only, checked before each feature's first hook.
 
 ## DIY Recipes app previews
 
-0.3.42 still had no visible rotation and showed a gray background. 0.3.43
-applies the preview pose at the displayed mesh's native matrix builder, including
-child components whose cached pose is stale. It also supplies an HDR background
-color through the layer's downstream draw call, preserving native clear flags.
+The user confirmed the cream background in 0.3.43, but rotation still had no
+visible effect. Its log showed zero displayed-mesh matches. Native allocation
+creates two levels below the controller: an item carrier, then the drawable.
+0.3.44 publishes the carrier handles and matches the drawable through those
+handles before applying the right-stick pose. The accepted background is unchanged.
 
-The background correction targets **#E5DFC7**, using an approximate inverse filmic
-curve fitted to the supplied screenshot. This is experimental; the actual color
-pipeline and on-screen match have not been verified. Local checks reproduce the
-stale child pose and verify the corrected matrix without changing entity memory.
-**Rotation and background still need a Steam Deck test.** Right-stick turning
-and tilting retain the dead zone and 60° tilt limit; reopening resets the pose.
+Local checks execute the native carrier setup and verify a stale grandchild's
+matrix changes without modifying entity memory. **Visible rotation still needs
+a Steam Deck test.** Right-stick turning and tilting retain the dead zone and
+60° tilt limit; reopening resets the pose.
 
 The existing DIY app keeps its materials panel, category, selection and scroll
 position. A opens the 3D preview in place of the grid; B releases the model and
@@ -202,7 +201,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.43
+version = 0.3.44
 base_speed = 2
 boost_speed = 4
 faster_ui = false

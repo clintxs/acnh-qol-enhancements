@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.43 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.44 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -90,15 +90,14 @@ this package does not supply an aspect-ratio patch.
 CORE SETTINGS / AMIIBO TIMEOUT
 DIY RECIPE PREVIEWS (CORE)
 
-0.3.43 applies the right-stick pose at the displayed mesh's native matrix
-builder, including child components with stale cached angles. The previous
-build applied controller transforms but still showed no visible rotation.
+0.3.44 corrects the displayed mesh's ownership check. The game creates an
+item carrier below the preview controller, then the drawable below that carrier.
+The previous build missed that second level and logged zero mesh matches.
+The accepted cream background is unchanged.
 
-The background targets #E5DFC7 using an approximate HDR correction fitted to
-the supplied screenshot. The actual color pipeline and on-screen match remain
-unverified. Native draw flags are preserved. Local checks cover the stale child
-pose, unchanged entity memory, scoped color substitution and lifecycle.
-Rotation and background STILL REQUIRE A STEAM DECK TEST.
+Local checks cover native carrier setup, stale grandchild rotation matrices,
+unchanged entity memory, generation checks, scoped color and lifecycle.
+Visible rotation STILL REQUIRES A STEAM DECK TEST.
 
 RIGHT STICK turns/tilts, with a dead zone and 60-degree tilt limit. Reopening
 starts from the item's native pose.
@@ -139,7 +138,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.43
+  version = 0.3.44
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.

@@ -13,7 +13,8 @@ uses #E5DFC7 for the item-layer clear. The user reports no visible change.
 0.3.41 observes actual native transform attempts and clear passes; it is a
 diagnostic release and does not claim to fix either behavior. 0.3.42 protects
 the preview pose at the native setter and overrides the color before its stack
-copy. Live visual validation remains pending.
+copy. The user accepts the 0.3.43 cream background; visible rotation is still
+unresolved. 0.3.44 corrects a missing carrier level in drawable ownership.
 Left/right recipe navigation remains unfinished.
 
 This implementation retains MenuRecipe's material panel. It adds a hidden
@@ -365,3 +366,38 @@ and reverting its mode getter reproduces immediate mode reclamation. Passing
 tests establish the ABI/control flow covered above, **not a rendered item or a freeze-free live game**. The next Deck
 test must establish cream background, rotation feel, materials remaining visible, B
 return, reopening and ordinary workbench/Quick Store behavior afterward.
+
+## Carrier hierarchy correction (0.3.44)
+
+The 0.3.43 live trace has MatrixMatches=0 despite thousands of matrix calls.
+The immediate-parent fixture in 0.3.43 was insufficient: the actual allocation
+chain has another level.
+
+- Factory 006402E0 uses registration table 04B969C8. Registration 01930264
+  selects constructor 01929CD0 for type 42; vtable 048FAC58 +38 selects
+  initializer 0192A1F0. That initializer requests type 6 with the type-42
+  handle as parent, storing up to four child handles at +274, count +394.
+- Type-6 registration 0193AE38 selects constructor 01935790; vtable 048FC968
+  +38 selects 019362F4. It prepares type-6F requests at +278 and +35C,
+  with the carrier's handle at +364. Type-6F registration 01928280 selects
+  constructor 01925120. Its drawable transform uses 019282FC / 019283F0.
+- Thus the drawable's +234 parent is the type-6 carrier, not the type-42
+  controller actor. The old scope cannot recognize this grandchild.
+
+Publish carrier IDs after the original transform pump returns, while still in
+its native scheduling path. Resolve only the owned root through the same
+registry indexing as 032B9E08; validate its full handle, dead bit and kind 42.
+Reject child counts above four; publish zero for absent slots. The render
+matrix hook reads atomics and its supplied component owner, matching kind 6F
+and the full carrier parent ID. It copies the component locally and preserves
+native matrix output ABI through x8. No new hook or scene update is installed.
+B clears the scope before releasing the controller. Accepted HDR background
+values remain unchanged from 0.3.43.
+
+The ARM fixture executes both native initializers with modeled allocation,
+component construction/attachment and factory boundaries, and checks the
+intermediate request kinds and parent handle. Its rotation test now uses
+controller -> carrier -> drawable, reproduces the old scope's miss, verifies
+all four published carriers, generation/kind/liveness/count guards, immutable
+component bytes and B cleanup. Local execution does not prove live visuals or
+asynchronous scene timing; those remain for the next Deck test.

@@ -44,6 +44,8 @@ constexpr std::size_t LayerCount = 0x20, Layers = 0x28, LayerClearColor = 0x9c;
 constexpr std::size_t DrawLayer = 0x3d0, RendererState = 0x248, DrawInfo = 0x18, DrawView = 8;
 constexpr std::size_t ComponentOwner = 0x48, ComponentAngles = 0x2bc, ComponentPoseSize = 0x2c8;
 constexpr std::size_t EntityHandle = 0x230, ParentHandle = 0x234;
+constexpr std::size_t EntityRegistry = 0x1c0, RegistryEntries = 8, EntityFlags = 0x248;
+constexpr std::size_t EntityKind = 0x15c, ItemChildren = 0x274, ItemChildCount = 0x394;
 constexpr std::size_t EntityPhase = 0x288, EntityStage = 0x5e8;
 }
 constexpr unsigned WorkbenchModelMode = 2, ConfirmMask = 0x10, BackMask = 0x20, PhoneShortcutKind = 5;
@@ -54,6 +56,7 @@ constexpr float StickDeadZone = 0.15f, DegreesPerUpdate = 3.0f, MaximumTilt = 60
 constexpr float AngleUnitsPerDegree = 4294967296.0f / 360.0f;
 constexpr int PhoneModelMode = 26, PhoneModelState = 3;
 constexpr unsigned ItemRenderLayer = 2;
+constexpr unsigned PreviewActorKind = 0x42, ItemDrawableKind = 0x6f;
 // Scene clear colors pass through the 3D color pipeline before UI capture.
 // An sRGB-normalized E5DFC7 clear measured CCC9C0 in the 0.3.42 screenshot.
 // These HDR values fit an inverse filmic curve to that observation. This is
@@ -65,6 +68,10 @@ std::atomic<const void *> PreviewClearColor{};
 std::atomic<void *> PreviewController{};
 std::atomic<unsigned> PreviewHandle{}, PreviewAngleZ{}, MatrixCalls{}, MatrixMatches{}, BackgroundApplied{};
 std::atomic<std::uint64_t> PreviewAngleXY{};
+// Type 42 creates up to four type-6 item carriers; each carrier creates the
+// type-6F drawable. Publish full generation-bearing handles on the native
+// update thread instead of traversing the entity registry on a render worker.
+std::array<std::atomic<unsigned>, 4> PreviewCarriers{};
 // A command buffer is serially recorded. Scope the downstream color override
 // to this layer's synchronous call, using atomic slots for parallel workers.
 struct LayerDrawScope {
@@ -162,6 +169,28 @@ void PublishPose(void *controller) {
     PreviewAngleXY.store(At<std::uint64_t>(angles), std::memory_order_release);
     PreviewHandle.store(At<unsigned>(controller, field::ModelHandle), std::memory_order_release);
 }
+void PublishCarriers(void *controller) {
+    const auto handle = PreviewHandle.load(std::memory_order_acquire);
+    if (!handle || At<unsigned>(controller, field::ModelHandle) != handle) {
+        for (auto &carrier : PreviewCarriers) carrier.store(0, std::memory_order_release);
+        return;
+    }
+    auto storage = *Native<void **>(address::EntityManager);
+    auto manager = storage ? At<void *>(storage) : nullptr;
+    auto registry = manager ? At<void *>(manager, field::EntityRegistry) : nullptr;
+    auto entries = registry ? At<void *>(registry, field::RegistryEntries) : nullptr;
+    auto actor = entries ? At<void *>(entries, (handle >> 17) & 0x7ff8u) : nullptr;
+    const bool valid = actor && At<unsigned>(actor, field::EntityHandle) == handle &&
+        !(At<unsigned>(actor, field::EntityFlags) & 2) && At<unsigned>(actor, field::EntityKind) == PreviewActorKind;
+    const auto count = valid ? At<unsigned>(actor, field::ItemChildCount) : 0;
+    for (unsigned i = 0; i < PreviewCarriers.size(); ++i) {
+        const auto child = count <= PreviewCarriers.size() && i < count ?
+            At<unsigned>(actor, field::ItemChildren + i * sizeof(unsigned)) : 0;
+        const auto previous = PreviewCarriers[i].exchange(child, std::memory_order_release);
+        if (child && child != previous)
+            Logging.Log("[QoL Enhancements/Core] DIY preview: mesh carrier published; slot=%u handle=%u\n", i, child);
+    }
+}
 struct ModelMatrix { float values[12]; }; // ARM64 returns this 48-byte object through x8.
 HOOK_DEFINE_TRAMPOLINE(BuildPreviewMatrix) {
     static ModelMatrix Callback(void *component) {
@@ -169,12 +198,16 @@ HOOK_DEFINE_TRAMPOLINE(BuildPreviewMatrix) {
         if (!handle || !component) return Orig(component);
         MatrixCalls.fetch_add(1, std::memory_order_relaxed);
         auto owner = At<void *>(component, field::ComponentOwner);
-        if (!owner || (At<unsigned>(owner, field::EntityHandle) != handle &&
-                       At<unsigned>(owner, field::ParentHandle) != handle)) return Orig(component);
-        // Item mesh transforms copy the controller actor through 019282FC.
-        // Build from the owned pose at the actual matrix boundary, even when
-        // the phone has not scheduled that child-component update. Do not
-        // mutate shared entity/component memory or invoke scene updates.
+        if (!owner) return Orig(component);
+        const auto parent = At<unsigned>(owner, field::ParentHandle);
+        bool matches = At<unsigned>(owner, field::EntityHandle) == handle || parent == handle;
+        if (!matches && parent && At<unsigned>(owner, field::EntityKind) == ItemDrawableKind)
+            for (auto &carrier : PreviewCarriers)
+                matches |= parent == carrier.load(std::memory_order_acquire);
+        if (!matches) return Orig(component);
+        // 0192A1F0 -> type 6 -> 019362F4 -> type 6F. Its 019282FC
+        // transform copies the carrier, not the controller actor. Substitute
+        // the owned pose at the final matrix boundary without scene mutation.
         alignas(16) std::array<std::byte, field::ComponentPoseSize> pose{};
         std::memcpy(pose.data(), component, pose.size());
         At<std::uint64_t>(pose.data(), field::ComponentAngles) = PreviewAngleXY.load(std::memory_order_acquire);
@@ -205,7 +238,9 @@ HOOK_DEFINE_TRAMPOLINE(TraceModelTransform) {
         const auto before = owned ? At<unsigned char>(controller, field::ModelFlags) : 0;
         if (owned) TransformCalls.fetch_add(1, std::memory_order_relaxed);
         Orig(controller); // Observe native scheduling; never force an entity phase or retry.
-        if (!owned || !(before & TransformPending)) return;
+        if (!owned) return;
+        PublishCarriers(controller); // Child allocation can complete after model creation.
+        if (!(before & TransformPending)) return;
         const auto after = At<unsigned char>(controller, field::ModelFlags);
         if (!(after & TransformPending)) TransformApplied.fetch_add(1, std::memory_order_relaxed);
         if (TransformAttempts.fetch_add(1, std::memory_order_relaxed) >= 8) return;
@@ -353,6 +388,7 @@ void Close(Session &s) {
     if (s.ownsRenderer) {
         ReportRendererTrace();
         PreviewHandle.store(0, std::memory_order_release);
+        for (auto &carrier : PreviewCarriers) carrier.store(0, std::memory_order_release);
         PreviewController.store(nullptr, std::memory_order_release);
         PreviewClearColor.store(nullptr, std::memory_order_release);
         // Release only the handle/mode acquired by this phone. The native
@@ -670,6 +706,8 @@ bool InstallRecipePreview() {
         {0x01513a48, {0xd101c3ff, 0x6d012beb, 0x6d0223e9, 0xa9037bfd, 0xa9045ff8}},
         {0x032be2b0, {0xb9406c09, 0x34000629, 0xa9be7bfd, 0xa9014ff4, 0x910003fd}},
         {0x032ba034, {0xaa1303e0, 0x9400109e, 0x36000080, 0x3941d268, 0x121f1908}},
+        {0x0192a1f0, {0xa9bb7bfd, 0xf9000bf9, 0xa9025ff8, 0xa90357f6, 0xa9044ff4}},
+        {0x019362f4, {0xd101c3ff, 0xa9027bfd, 0xf9001bf9, 0xa9045ff8, 0xa90557f6}},
     };
     const auto &main = exl::util::GetMainModuleInfo();
     for (const auto &f : fingerprints) if (f.offset + sizeof(f.words) > main.m_Text.m_Size ||
@@ -700,7 +738,7 @@ bool InstallRecipePreview() {
     TraceModelTransform::InstallAtOffset(address::UpdateModelTransform);
     BuildPreviewMatrix::InstallAtOffset(address::BuildModelMatrix);
     DrawPreviewContents::InstallAtOffset(address::DrawLayerContents);
-    Logging.Log("[QoL Enhancements/Core] DIY preview: READY; drawable pose and HDR background correction; A opens, B returns\n");
+    Logging.Log("[QoL Enhancements/Core] DIY preview: READY; carrier-scoped drawable pose; A opens, B returns\n");
     return true;
 }
 } // namespace qol::core

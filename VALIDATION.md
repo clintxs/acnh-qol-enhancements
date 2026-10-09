@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.43 DIY drawable pose and background correction
+# Unified QoL validation — 0.3.44 DIY mesh ownership correction
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,36 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.44 carrier ownership correction
+
+The user accepts the 0.3.43 cream background but reports no rotation. The synced
+log records thousands of matrix calls with matched_matrices=0 across recipes,
+while right-stick input and native transform application succeed. The previous
+fixture incorrectly modeled the drawable as an immediate child of the controller.
+
+Native type-42 initializer 0192A1F0 requests type-6 carriers, storing handles at
+actor +274..280 (count +394). Type-6 initializer 019362F4 prepares type-6F
+requests. This extra carrier level means the drawable's parent handle differs
+from the controller's handle. 0.3.44 publishes the four carrier handles after
+the normal native transform pump, validating the root's registry identity,
+generation, liveness and type. The matrix hook matches type-6F drawables against
+those published parent handles. It does not traverse the registry on a render
+worker. B clears all published handles before releasing the renderer.
+The accepted background and native clear flags are unchanged.
+
+Checks execute both native initializers, with allocation/component attachment
+and factory services modeled, to establish the carrier relationship. The
+rotation fixture now uses the two-level hierarchy, retains stale drawable
+angles, and executes 019283F0 -> the compiled hook -> native 006021A4. It checks
+changed matrices, unchanged component bytes, all four carriers, stale generation,
+wrong kind/parent, dead or missing root, invalid child counts and cleanup.
+The old immediate-parent check fails this fixture. Both ASLR bases, native
+lifecycle, 31 fingerprint rejection cases and all 64 module combinations are
+covered. GPU output and asynchronous scene scheduling remain modeled.
+
+Visible rotation, rotation feel and ordinary workbench behavior still require
+a live Steam Deck test. Local matrix results do not establish on-screen output.
 
 ## 0.3.43 displayed mesh pose and HDR clear
 
