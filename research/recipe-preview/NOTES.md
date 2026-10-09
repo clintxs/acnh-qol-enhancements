@@ -172,3 +172,24 @@ navigate a one-item filter and a multi-item sorted/favorites list; test B during
 loading and after navigation; repeatedly reopen/close both the app and phone;
 then verify normal workbench crafting/cooking and favorites still work. Native
 resource loading, UI layering and rendering are not proven by the ARM harness.
+
+
+### 0.3.30: info page is not the model owner
+
+- 03479AB8 constructs info, list and WorkCraftBgSeq siblings. BG's concrete
+  vtable is 04A3B1B8, size 0x220, common page ctor 03768244, state vtable GOT
+  04AD4738, layout +0x218, appearance mode +0x210 (1 = info). The inline factory
+  initializes the base/state fields before InitializePage; Core mirrors it.
+- Info child +0x1c1e8 is WorkBenchNumSelectSeq (03473E60), not model rendering.
+- Owner 0347A600 reads resident +0x1f8, info +0x220, recipe-pointer array +0x230,
+  optional list +0x210. It publishes item/model flags through UI singleton
+  04AB2230 -> +0x28 and requests reload at model +0x2140. Core supplies a
+  temporary read-only owner view and restores the previous model context.
+- Native layers BG=14 and info=23 must remain around the 3D scene/capture;
+  phone-relative info layering is removed now that the source layout is hidden.
+- Button roots are button+0x2e0, root visibility controller +0x1b0. The old
+  button+0x1b0 interpretation was wrong. See native 03471FF0.
+- Info state 5 does not hide the root. Match 0349530C's channel-3 busy query
+  after 03495408 reverses content; then idle and detach on the parent update.
+- Actual rendering, dynamic capture, aspect-ratio mod interaction and physical
+  controller rotation still need live Eden verification.

@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.29 DIY recipe preview opening fix** for ACNH **3.0.3 on Eden**. One Core
+**0.3.30 DIY recipe preview rendering and return fix** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -60,15 +60,16 @@ fingerprints only, checked before each feature's first hook.
 
 ## DIY Recipes app previews
 
-0.3.29 fixes the next opening stall seen in 0.3.28. Native appearance enters
-`cDisplayList` (5), where the owner must supply a selected recipe. The integration
-previously waited for `cPlay` (3), which requires that selection first. It now
-selects from state 5. The regression executes the native state handlers and
-deferred requests through opening, B return and reuse, instead of inventing an
-appearance-to-play transition. App deactivation retains the prepared page.
+0.3.30 adds the native workbench background and publishes each selected item to
+its separate ModelOnUI loader. It keeps the native background/model/capture
+render ordering and hides the phone layout during the preview. Both layouts
+load through the game, so installed layout replacements remain in use.
+The craft button's nested layout root is hidden, and B waits for the reversed
+content animation rather than an entire layout that never becomes hidden.
+The phone's model context and visible list are restored when the preview closes.
 
-The page is still prepared during app setup, before the UI heap shrinks.
-The app's layout stays intact if preparation fails.
+Both pages are prepared during app setup, before the UI heap shrinks. App
+reopening reuses them; preparation failure leaves the app available.
 
 Core's new integration candidate opens the native workbench detail page when
 you select a recipe in the NookPhone app. It displays the larger rotatable model
@@ -77,7 +78,7 @@ left/right navigation uses the app's current filtered/sorted recipe list. B
 returns to the same app category, selection and scroll position.
 
 The implementation lives in `source/program/core/recipe_preview.cpp`; it creates
-a phone-owned native page with a private virtual table. Existing workbench pages
+phone-owned native info/background pages, with a private info virtual table. Existing workbench pages
 keep their normal behavior. It requires no additional RomFS layout or optional
 module. ARM execution checks cover the integration and native navigation/data
 paths; visible layout, rotation/input and resource loading still require live
@@ -196,7 +197,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.29
+version = 0.3.30
 base_speed = 2
 boost_speed = 4
 faster_ui = false
@@ -335,9 +336,9 @@ at `../vanilla-3.0.3/Layout`; builders verify their hashes and archive structure
 The package script checks that every INI matches the Core release, refuses to
 replace existing archives, and creates:
 
-- `dist/qol-enhancements-v0_3_29_for_acnh_v3_0_3.zip`
-- `dist/qol-enhancements-v0_3_29_for_acnh_v3_0_3_source.zip`
-- `dist/qol-enhancements-v0_3_29_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
+- `dist/qol-enhancements-v0_3_30_for_acnh_v3_0_3.zip`
+- `dist/qol-enhancements-v0_3_30_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v0_3_30_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
 
 The binary ZIP contains a conspicuous installation text file, README, Core and
 six independently selectable feature folders, plus a SHA-256 manifest. Source

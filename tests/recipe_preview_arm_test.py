@@ -15,7 +15,8 @@ HOOKS = (0x2e9cde0, 0x2e9fbb0, 0x2e9d538, 0x376890c)
 GUARDS = (0x2e9cf2c, 0x2e9cfe8, 0x3492b50, 0x34930b0, 0x3493430,
           0x34940e0, 0x3492fec, 0x3494d8c, 0x34947d0, 0x3495408,
           0x346fdb0, 0x3473ac8, 0x376890c, 0x3769260, 0x3768c7c, 0x3492e74,
-          0x3494b08, 0x349530c)
+          0x3494b08, 0x349530c, 0x3768244, 0x347a600, 0x346d1e0,
+          0x34920a4, 0x3491f34, 0x3491f54)
 
 
 class PreviewMachine(Machine):
@@ -26,7 +27,7 @@ class PreviewMachine(Machine):
         super().__init__(base, {})
         self.u.mem_map(self.ram + 0x200000, 0x600000)
         # The real loader relocates these vtables/GOT entries before startup.
-        for offset in range(0x4a3b768, 0x4a3ba38, 8):
+        for offset in list(range(0x4a3b768, 0x4a3ba38, 8)) + list(range(0x4a3b1b8, 0x4a3b3d0, 8)):
             value = struct.unpack_from('<Q', RAW, offset)[0]
             self.write(base + offset, base + value if value else 0)
         for table in (0x49e8408, 0x4a5ef98):
@@ -42,7 +43,7 @@ class PreviewMachine(Machine):
         self.prepared = {}
         self.dispatching_confirmation = False
         self.updating_preview = False
-        self.hidden = True
+        self.hidden = False
         self.ready = True
         self.reloads = []
         self.sounds = []
@@ -64,10 +65,16 @@ class PreviewMachine(Machine):
         for offset in (0x4ab2020, 0x4ac39b0, 0x4ab3170):
             self.write(base + offset, self.aux())
         self.context = self.aux()
+        self.model = self.aux(0x2200)
+        self.u.mem_write(self.model + 0x2c, bytes(range(0x28)))
+        self.write(self.model + 0x12, 1, 1)
+        self.model_snapshot = bytes(self.u.mem_read(self.model + 0x2c, 0x28))
         manager = self.aux()
         self.write(manager + 0x30, self.context)
+        self.write(manager + 0x28, self.model)
         self.global_pointer(0x4ab2230, manager)
         self.layout_table = self.aux(0x200)
+        self.write(self.layout_table + 0x120, self.stub('layout_visibility'))
         self.write(self.layout_table + 0x140, self.stub('hidden'))
         self.write(self.layout_table + 0x148, self.stub('ready'))
         self.write(self.layout_table + 0x1a8, self.stub('button_source'))
@@ -80,6 +87,10 @@ class PreviewMachine(Machine):
         self.visibility_table = self.aux()
         self.write(self.visibility_table + 0x20, self.stub('button_hidden'))
         self.native_actions = {
+            0x3768244: 'base_construct', 0x346d47c: 'no_animation',
+            0x346eb74: 'no_animation',
+            0x3491e88: 'background_ready', 0x3492010: 'show_background',
+            0x241c840: 'resident_model_refresh',
             0x2478c0: 'allocate', 0x3492b50: 'construct', 0x376890c: 'initialize',
             0x3493c20: 'initialize_children', 0x3769260: 'activate_child',
             0x3768c7c: 'remove_child', 0x3f03880: 'lock', 0x3f038c0: 'unlock',
@@ -178,6 +189,10 @@ class PreviewMachine(Machine):
         if self.next_preview != preview: self.prepared[page] = preview
         self.heap_sealed = True  # Native manager calls ExpHeap::adjust afterward.
 
+    def background(self, phone):
+        node = self.read(phone + 0x50)
+        return node - self.read(phone + 0x64, 4)
+
     def native_layout_tables(self, layout):
         # Only allocation and the final resource-bind virtual are modeled;
         # table dimensions and delegate initialization execute in game code.
@@ -239,6 +254,9 @@ class PreviewMachine(Machine):
             # Native state processing precedes the page's own frame callback.
             # App deactivation queues idle to cancel an unfinished transition.
             self.settle(preview, 1)
+        background = self.background(page)
+        if self.read(background + 0x1f0, 4) == 1:
+            self.settle(background, 1)
         self.preview_frame(preview)
         assert self.read(preview + 0x1f0, 4) == 2
         assert self.read(preview + 0x1c200) == page + 0x8a350
@@ -286,14 +304,23 @@ class PreviewMachine(Machine):
             return self.service(u, self.base + 0x2478c0, size, user)
         elif action == 'allocate':
             assert not self.dispatching_confirmation, 'page allocation inside button dispatch'
-            assert args[0] == 0x1c210
+            assert args[0] in (0x1c210, 0x220)
             assert self.read(self.tls + 0xa8) == self.heap
             if not self.fail_allocation:
-                result = self.next_preview
-                self.next_preview += 0x1d000
+                if args[0] == 0x220:
+                    result = self.aux(0x220)
+                else:
+                    result = self.next_preview
+                    self.next_preview += 0x1d000
         elif action == 'tls':
             assert args[0] == 7
             result = self.tls
+        elif action == 'base_construct':
+            self.settle(args[0], 0)
+        elif action == 'background_ready':
+            result = int(self.ready and self.read(args[0] + 0x1b0, 4) < 2)
+        elif action == 'show_background':
+            self.write(args[0] + 0x1f0, 2, 4)
         elif action == 'construct':
             page, name, params = args[:3]
             assert self.string(self.read(name + 8)) == 'WorkCraftInfoSeq'
@@ -312,12 +339,24 @@ class PreviewMachine(Machine):
                 return
             assert self.read(page + 0x48) != 0 and self.read(page + 0x98) != 0
             layout = self.layout()
+            if self.read(page) == self.base + 0x4a3b1b8:
+                self.write(layout + 0x3ec, 14, 4)
+                self.write(page + 0x218, layout)
+                self.settle(page, 0)
+                u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
+                return
+            self.write(layout + 0x3ec, 23, 4)
             self.write(page + 0x1c1f8, layout)
             button = self.aux(0x400)
             self.write(button, self.button_table)
             visibility = self.aux()
             self.write(visibility, self.visibility_table)
-            self.write(button + 0x1b0, visibility)
+            roots, root = self.aux(), self.aux(0x200)
+            self.write(roots, root)
+            self.write(button + 0x2e0, roots)
+            self.write(root + 0x1b0, visibility)
+            # Deliberately poison the old mistaken button+0x1b0 location.
+            self.write(button + 0x1b0, 0xdeadbeef)
             self.write(layout + 0x598, button)
             entries = self.aux(0x20)
             self.write(layout + 0x468, 1, 4)
@@ -345,6 +384,12 @@ class PreviewMachine(Machine):
             assert args[1:3] == [0, 0]
         elif action == 'button_hidden':
             assert args[1] == 0
+        elif action == 'content_animation':
+            result = self.content_animation
+        elif action == 'animation_property':
+            assert self.read(args[1] + 8, 4) == 3
+        elif action == 'animation_busy':
+            result = int(self.animation_busy)
         elif action == 'hidden':
             result = int(self.hidden)
         elif action == 'ready':
@@ -361,7 +406,7 @@ class PreviewMachine(Machine):
         elif action.startswith('original_') or action in (
                 'lock', 'unlock', 'bind_preview', 'frame_preview', 'initialize_children',
                 'render_phone', 'refresh_grid', 'no_animation', 'item_init', 'layout_resources',
-                'button_source', 'button_feedback'):
+                'button_source', 'button_feedback', 'resident_model_refresh'):
             pass
         else:
             raise AssertionError(action)
@@ -455,6 +500,7 @@ class NativeConstructorMachine(PreviewMachine):
                 if 0 < pointer < 0x3f07000:
                     self.write(base + table + offset, base + pointer)
         self.native_actions.pop(0x3492b50)
+        self.native_actions.pop(0x3768244)
         self.native_actions.update({0x3b5a110: 'page_name', 0x37e18e4: 'mutex_init',
                                     0x3f04450: 'memset'})
         # String assignment is the only service modeled inside the actual
@@ -571,6 +617,7 @@ def check_native_startup(base):
     assert m.read(phone + 0x150, 4) == 0
     assert m.read(phone + 0x128) == phone + 0x128
     assert m.read(phone + 0x140) == phone + 0x140
+    m.invoke(base + 0x3768c7c, phone, m.background(phone))
     assert m.read(phone + 0x78, 4) == 0
 
 
@@ -581,6 +628,7 @@ class NativeTransitionMachine(NativeActivationMachine):
         # Model only type identification and UI services, never the state
         # table, state entries/updates/exits, or deferred-request processing.
         self.native_actions.update({0x34740cc: 'preview_type',
+                                    0x346d510: 'preview_type',
                                     0x346ee40: 'refresh_recipe_icons',
                                     0x346ec1c: 'refresh_recipe_details',
                                     0x346eb74: 'no_animation',
@@ -588,7 +636,9 @@ class NativeTransitionMachine(NativeActivationMachine):
                                     0x346f350: 'clear_recipe_icons',
                                     0x32bd990: 'detail_sound',
                                     0x32ba890: 'detail_sound'})
-        self.write(base + 0x5639190, self.aux(0x100))
+        # This singleton aliases the UI-context GOT in the real loader.
+        storage = self.read(base + 0x4ab2230)
+        self.write(base + 0x5639190, self.read(storage))
         for offset in (0x4ab7c40, 0x4ac7280):
             self.write(self.read(base + offset), 1, 1)
 
@@ -601,6 +651,11 @@ class NativeTransitionMachine(NativeActivationMachine):
             pointer = struct.unpack_from('<Q', RAW, 0x4a3d900 + offset)[0]
             self.write(self.base + 0x4a3d900 + offset, self.base + pointer)
         self.invoke(self.base + 0x34942f0, preview, preview + 0x1a8)
+        background = self.background(self.read(preview + 0x48))
+        for offset in range(0, 0x18, 8):
+            pointer = struct.unpack_from('<Q', RAW, 0x4a3d518 + offset)[0]
+            self.write(self.base + 0x4a3d518 + offset, self.base + pointer)
+        self.invoke(self.base + 0x34920a4, background, background + 0x1a8)
         self.write(self.tls + 0xa8, self.previous_heap)
         self.heap_sealed = True
         layout = self.read(preview + 0x1c1f8)
@@ -613,6 +668,10 @@ class NativeTransitionMachine(NativeActivationMachine):
         # Manager scheduling is modeled; execute its page-update virtual and
         # post-update visitor, including both real deferred-request slots.
         self.write(preview + 0x164, 1, 1)
+        background = self.background(self.read(preview + 0x48))
+        self.write(background + 0x164, 1, 1)
+        self.invoke(self.base + 0x2b0c720, background)
+        self.invoke(self.base + 0x2b0e370, 0, background)
         self.updating_preview = True
         try:
             self.invoke(self.base + 0x2b0c720, preview)
@@ -692,7 +751,8 @@ def check_native_constructor(base, heap_source):
     assert m.read(m.read(layout + 0x210) + 0x54, 1) == 0
     assert m.read(phone + 0x164, 1) == 1
     assert m.read(preview + 0xa8, 4) == 2
-    assert m.read(m.read(preview + 0x1c1f8) + 0x3ec, 4) == 8
+    assert m.read(m.read(preview + 0x1c1f8) + 0x3ec, 4) == 23
+    assert m.read(m.read(m.background(phone) + 0x218) + 0x3ec, 4) == 14
     assert m.next_preview == preview + 0x1d000
     assert m.read(preview + 0x48) == phone
     assert m.read(preview + 0x50) == preview + 0x50
@@ -736,6 +796,12 @@ def check_flow(base, machine=PreviewMachine):
     original_index = m.read(phone + 0x218, 4)
     preview = m.open(phone)
     layout = m.read(preview + 0x1c1f8)
+    selected = m.read(phone + 0x218, 4)
+    record = m.read(m.read(phone + 0x8a358) + selected * 8)
+    assert m.read(m.model + 0x2c) == m.read(record + 8)
+    assert m.read(m.model + 0x42, 2) == m.read(record, 2)
+    assert m.read(m.model + 0x12, 1) == 0
+    assert m.read(m.model + 0x2140, 4) == 1
     table = m.read(preview)
     native_table = bytes(m.u.mem_read(base + 0x4a3b778, 0x2c0))
     assert table != base + 0x4a3b778
@@ -752,6 +818,10 @@ def check_flow(base, machine=PreviewMachine):
         m.invoke(base + 0x34969d0, preview, direction)
         assert m.read(preview + 0x264, 4) == expected
         assert m.reloads[-1] == expected
+        m.preview_frame(preview)
+        recipe = m.read(m.read(phone + 0x8a358) + expected * 8)
+        assert m.read(m.model + 0x2c) == m.read(recipe + 8)
+        assert m.read(m.model + 0x42, 2) == m.read(recipe, 2)
         assert m.sounds[-1] == 200 + expected
         m.invoke(base + 0x3473c74, preview, expected, output)
         record = m.read(m.read(phone + 0x8a358) + expected * 8)
@@ -781,12 +851,22 @@ def check_flow(base, machine=PreviewMachine):
     m.preview_frame(preview)
     assert m.read(preview + 0x1f0, 4) == 5
     m.settle(preview, 5)
-    m.hidden = False
+    m.hidden = False  # Layout root stays visible after the reverse animation.
+    animation, animation_table, methods = m.aux(), m.aux(), m.aux()
+    m.write(animation, animation_table)
+    m.write(animation_table + 0x20, m.stub('animation_property'))
+    m.write(animation + 8, m.aux())
+    m.write(animation + 0x18, methods)
+    m.write(methods + 0x50, m.stub('animation_busy'))
+    m.content_animation = animation
+    m.native_actions[0x346eb74] = 'content_animation'
+    m.animation_busy = True
     m.preview_frame(preview)
     assert m.read(preview + 0x1f0, 4) == 0xffffffff
-    m.hidden = True
+    m.animation_busy = False
     m.preview_frame(preview)
     assert m.read(preview + 0x1f0, 4) == 1
+    m.native_actions[0x346eb74] = 'no_animation'
     # Native idle entry clears the borrowed data and selection.
     m.write(preview + 0x1c200, 0)
     m.settle(preview, 1)
@@ -801,12 +881,14 @@ def check_flow(base, machine=PreviewMachine):
     assert m.read(phone + 0x164, 1) == 1
     assert m.read(preview + 0xa8, 4) == 2
     assert m.read(phone + 0x78, 4) == 0
-    assert not any(e[0] == 'layout_visibility' for e in m.events)
+    assert [e[2] for e in m.events if e[0] == 'layout_visibility'] == [0, 1]
+    assert bytes(m.u.mem_read(m.model + 0x2c, 0x28)) == m.model_snapshot
+    assert m.read(m.model + 0x12, 1) == 1
     m.open(phone)
     m.confirm(phone); m.confirm(phone)
     assert len([e for e in m.events if e[0] == 'allocate']) == allocations
     m.hook(0x2e9d538, phone)
-    assert len([e for e in m.events if e[0] == 'remove_child']) == 2
+    assert len([e for e in m.events if e[0] == 'remove_child']) == 4
     assert bytes(m.u.mem_read(base + 0x4a3b778, 0x2c0)) == native_table
 
 
@@ -834,13 +916,13 @@ def check_lists(base):
     assert m.read(first_preview + 0x1c200) == first + 0x8a350
     assert m.read(second_preview + 0x1c200) == second + 0x8a350
     m.hook(0x2e9d538, first)
-    assert [e[2] for e in m.events if e[0] == 'remove_child'] == [first_preview]
+    assert [e[2] for e in m.events if e[0] == 'remove_child'] == [first_preview, m.background(first)]
     m.preview_frame(second_preview)
     assert m.read(second_preview + 0x1c200) == second + 0x8a350
     # A child already removed by native teardown must not be removed twice.
     m.write(second_preview + 0xa8, 2, 4)
     m.hook(0x2e9d538, second)
-    assert len([e for e in m.events if e[0] == 'remove_child']) == 1
+    assert len([e for e in m.events if e[0] == 'remove_child']) == 3
 
 
 def check_app_reopening(base):
@@ -911,4 +993,4 @@ if __name__ == '__main__':
         check_lists(base)
         check_app_reopening(base)
         check_failures(base)
-    print('PASS: native preview page updates/deferred requests/state handlers through 0/1 -> 2 -> 5 -> 4 -> 3, B return and reuse; native cInit initialization/update, child activation/update registration/removal, heap shrink/allocation failure, preparation before shrink, null-heap crash reproduction, page/270-icon/state constructors with manager/current/default heaps, 35-row layout construction and confirmation dispatch; Core preview lifecycle, borrowed recipe/materials, native navigation/wrap, craft rejection, teardown and fail-closed fingerprints at two ASLR bases')
+    print('PASS: native model item requests/navigation and context restoration, BG/info render ordering, nested craft-button root hiding, busy return animation with visible layout root; native preview page updates/deferred requests/state handlers through 0/1 -> 2 -> 5 -> 4 -> 3, B return and reuse; native cInit initialization/update, child activation/update registration/removal, heap shrink/allocation failure, preparation before shrink, null-heap crash reproduction, page/270-icon/state constructors with manager/current/default heaps, 35-row layout construction and confirmation dispatch; Core preview lifecycle, borrowed recipe/materials, native navigation/wrap, craft rejection, teardown and fail-closed fingerprints at two ASLR bases')

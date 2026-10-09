@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.29 DIY recipe preview selection fix
+# Unified QoL validation — 0.3.30 DIY preview rendering and return
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -782,4 +782,41 @@ parity and source parity are checked before delivery. Older archives remain.
 
 Live Eden verification remains required for visible appearance, item rotation,
 controller navigation/B return, app/phone reopening and workbench crafting.
+No running game, installed mod, save or synced log is modified.
+
+
+## 0.3.30 DIY preview background, model publication, craft button and B
+
+The synced 0.3.29 log reaches `showing`. The user's screenshot shows populated
+materials, the phone grid inside the captured model area, and “Need materials!”;
+B then stops input. Opening-state regressions alone did not cover these paths.
+
+Native WorkCraftInfoSeq owns the info UI, recipe icons and quantity/dialog
+children; its +0x1c1e8 child is a quantity selector, not a 3D renderer. The
+workbench owner separately publishes the selected recipe to the shared
+ModelOnUI context (0347A600), and owns WorkCraftBgSeq. Core now prepares the
+native background before heap shrink and uses the native model publication
+routine on initial selection and navigation. It saves/restores the model data
+when returning, hides/restores the phone layout, and retains native BG layer 14
+and info/capture layer 23. Installed WorkBenchBG/WorkBenchInfo assets are loaded
+normally; Core ships no replacement of either, including no fixed aspect ratio.
+
+Craft-button +0x1b0 was incorrectly treated as a layout root. Native 03471FF0
+shows its layout roots at +0x2e0; visibility is now changed on that root's
+controller. The test poisons the previous wrong field. Craft rejection and
+removal of the focus target remain independent safeguards.
+
+Native cDisplayList reverses content channel 3 without hiding the entire layout.
+Core now uses the same channel-busy query as 0349530C before idle and detach.
+The regression keeps the root visible, holds a non-null animation busy, then
+releases it and verifies input restoration and reuse. Native model publication,
+BG state initialization/updates, recipe navigation and context restoration run
+in the ARM harness at two ASLR bases. Resource loading/rendering and animation
+services remain modeled; the tests do not prove visible 3D rendering, rotation,
+16:10 appearance or controller behavior in Eden.
+
+Validation: pinned Docker build, `python3 tools/check.py core`, archive integrity,
+manifest hashes, deploy/source parity. Live Eden retest remains required for
+model appearance/rotation, absence of the craft button, 16:10 layout, B back to
+the same recipe grid, app reopening and normal workbench crafting/cooking.
 No running game, installed mod, save or synced log is modified.
