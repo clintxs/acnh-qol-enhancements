@@ -84,8 +84,8 @@ class PreviewMachine(Machine):
         self.write(self.layout_table + 0x1d0, self.stub('button_feedback'))
         self.button_table = self.aux(0x200)
         self.write(self.button_table + 0x140, self.stub('button_visibility'))
-        self.visibility_table = self.aux()
-        self.write(self.visibility_table + 0x20, self.stub('button_hidden'))
+        self.button_roots = []
+        self.group_button_text = False
         self.native_actions = {
             0x3768244: 'base_construct', 0x346d47c: 'no_animation',
             0x346eb74: 'no_animation',
@@ -349,14 +349,39 @@ class PreviewMachine(Machine):
             self.write(page + 0x1c1f8, layout)
             button = self.aux(0x400)
             self.write(button, self.button_table)
-            visibility = self.aux()
-            self.write(visibility, self.visibility_table)
-            roots, root = self.aux(), self.aux(0x200)
-            self.write(roots, root)
-            self.write(button + 0x2e0, roots)
-            self.write(root + 0x1b0, visibility)
-            # Deliberately poison the old mistaken button+0x1b0 location.
-            self.write(button + 0x1b0, 0xdeadbeef)
+            bindings, binding = self.aux(), self.aux(0x200)
+            adapter, methods = self.aux(), self.aux(0x600)
+            root, caption = self.aux(0xc0), self.aux(0xc0)
+            self.button_roots.append(root)
+            self.u.mem_write(root + 0xb0, b'RootPane\0')
+            self.u.mem_write(caption + 0xb0, b'T_Text_00\0')
+            self.write(root + 0x58, 0x91, 1)
+            self.write(caption + 0x58, 0x91, 1)
+            self.write(caption + 0x18, root)
+            self.write(methods + 0x5e0, self.base + 0x3c1b588)
+            payload = caption
+            if self.group_button_text:
+                group, member, group_methods = self.aux(), self.aux(), self.aux(0x600)
+                self.write(group + 0x10, 1, 4)
+                self.write(group + 0x14, 0, 4)
+                self.write(group + 8, member)
+                self.write(member + 8, group)
+                self.write(member + 0x10, caption)
+                self.write(member + 0x18, methods)
+                self.write(group_methods + 0x5e0, self.base + 0x3c47b90)
+                payload, methods = group, group_methods
+            self.write(adapter + 8, payload)
+            self.write(adapter + 0x18, methods)
+            self.write(binding + 0x48, adapter)
+            self.write(bindings, binding)
+            self.write(button + 0x2e0, bindings)
+            # Reproduce the old bad cast: binding+0x1b0 is a heap object,
+            # whose apparent virtual+0x20 leads to data, not executable code.
+            bogus, bogus_table = self.aux(), self.aux()
+            self.write(bogus, bogus_table)
+            self.write(bogus_table + 0x20, binding)
+            self.write(binding + 0x1b0, bogus)
+            self.write(button + 0x1b0, bogus)
             self.write(layout + 0x598, button)
             entries = self.aux(0x20)
             self.write(layout + 0x468, 1, 4)
@@ -382,8 +407,6 @@ class PreviewMachine(Machine):
             assert args[1] in (0, 1)
         elif action == 'button_visibility':
             assert args[1:3] == [0, 0]
-        elif action == 'button_hidden':
-            assert args[1] == 0
         elif action == 'content_animation':
             result = self.content_animation
         elif action == 'animation_property':
@@ -802,6 +825,7 @@ def check_flow(base, machine=PreviewMachine):
     assert m.read(m.model + 0x42, 2) == m.read(record, 2)
     assert m.read(m.model + 0x12, 1) == 0
     assert m.read(m.model + 0x2140, 4) == 1
+    assert all(m.read(root + 0x58, 1) == 0x90 for root in m.button_roots)
     table = m.read(preview)
     native_table = bytes(m.u.mem_read(base + 0x4a3b778, 0x2c0))
     assert table != base + 0x4a3b778
@@ -890,6 +914,24 @@ def check_flow(base, machine=PreviewMachine):
     m.hook(0x2e9d538, phone)
     assert len([e for e in m.events if e[0] == 'remove_child']) == 4
     assert bytes(m.u.mem_read(base + 0x4a3b778, 0x2c0)) == native_table
+
+
+def check_button_pane_types(base):
+    m = PreviewMachine(base)
+    m.group_button_text = True
+    phone = m.phone()
+    preview = m.open(phone)
+    assert all(m.read(root + 0x58, 1) == 0x90 for root in m.button_roots)
+    button = m.read(m.read(preview + 0x1c1f8) + 0x598)
+    binding = m.read(m.read(button + 0x2e0))
+    adapter = m.read(binding + 0x48)
+    methods = m.read(adapter + 0x18)
+    root = m.button_roots[0]
+    m.write(root + 0x58, 0x91, 1)
+    # Unknown binding types must be skipped rather than cast to a Pane.
+    m.write(methods + 0x5e0, 0xdeadbeef)
+    m.preview_frame(preview)
+    assert m.read(root + 0x58, 1) == 0x91
 
 
 def check_lists(base):
@@ -990,7 +1032,8 @@ if __name__ == '__main__':
             check_native_constructor(base, heap_source)
         check_flow(base)
         check_flow(base, NativeLifecycleMachine)
+        check_button_pane_types(base)
         check_lists(base)
         check_app_reopening(base)
         check_failures(base)
-    print('PASS: native model item requests/navigation and context restoration, BG/info render ordering, nested craft-button root hiding, busy return animation with visible layout root; native preview page updates/deferred requests/state handlers through 0/1 -> 2 -> 5 -> 4 -> 3, B return and reuse; native cInit initialization/update, child activation/update registration/removal, heap shrink/allocation failure, preparation before shrink, null-heap crash reproduction, page/270-icon/state constructors with manager/current/default heaps, 35-row layout construction and confirmation dispatch; Core preview lifecycle, borrowed recipe/materials, native navigation/wrap, craft rejection, teardown and fail-closed fingerprints at two ASLR bases')
+    print('PASS: native model item requests/navigation and context restoration, BG/info render ordering, typed craft-button text/group bindings and pane visibility, busy return animation with visible layout root; native preview page updates/deferred requests/state handlers through 0/1 -> 2 -> 5 -> 4 -> 3, B return and reuse; native cInit initialization/update, child activation/update registration/removal, heap shrink/allocation failure, preparation before shrink, null-heap crash reproduction, page/270-icon/state constructors with manager/current/default heaps, 35-row layout construction and confirmation dispatch; Core preview lifecycle, borrowed recipe/materials, native navigation/wrap, craft rejection, teardown and fail-closed fingerprints at two ASLR bases')

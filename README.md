@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.30 DIY recipe preview rendering and return fix** for ACNH **3.0.3 on Eden**. One Core
+**0.3.31 DIY recipe preview startup crash fix** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -60,13 +60,15 @@ fingerprints only, checked before each feature's first hook.
 
 ## DIY Recipes app previews
 
-0.3.30 adds the native workbench background and publishes each selected item to
-its separate ModelOnUI loader. It keeps the native background/model/capture
-render ordering and hides the phone layout during the preview. Both layouts
-load through the game, so installed layout replacements remain in use.
-The craft button's nested layout root is hidden, and B waits for the reversed
-content animation rather than an entire layout that never becomes hidden.
-The phone's model context and visible list are restored when the preview closes.
+0.3.31 corrects the startup crash introduced by craft-button hiding in 0.3.30.
+The button's text-binding records were mistaken for layout roots. Core now
+resolves the caption's typed pane binding (including text groups), walks to the
+button's named root, and clears only its native visibility flag. The updated
+fixture reproduces the previous crash and checks both binding types.
+
+The native background, model-loading requests, render ordering and corrected
+B animation wait remain. Installed WorkBenchBG/WorkBenchInfo layout replacements
+remain in use; live model rendering, rotation and 16:10 appearance need retesting.
 
 Both pages are prepared during app setup, before the UI heap shrinks. App
 reopening reuses them; preparation failure leaves the app available.
@@ -197,7 +199,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.30
+version = 0.3.31
 base_speed = 2
 boost_speed = 4
 faster_ui = false
@@ -336,9 +338,9 @@ at `../vanilla-3.0.3/Layout`; builders verify their hashes and archive structure
 The package script checks that every INI matches the Core release, refuses to
 replace existing archives, and creates:
 
-- `dist/qol-enhancements-v0_3_30_for_acnh_v3_0_3.zip`
-- `dist/qol-enhancements-v0_3_30_for_acnh_v3_0_3_source.zip`
-- `dist/qol-enhancements-v0_3_30_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
+- `dist/qol-enhancements-v0_3_31_for_acnh_v3_0_3.zip`
+- `dist/qol-enhancements-v0_3_31_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v0_3_31_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
 
 The binary ZIP contains a conspicuous installation text file, README, Core and
 six independently selectable feature folders, plus a SHA-256 manifest. Source

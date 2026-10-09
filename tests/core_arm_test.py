@@ -10,7 +10,7 @@ from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
 SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'shopping-card', 'faster-crafting')
 COUNTS = (16, 16, 7, 11, 11, 2)
-DEFAULT = b'enabled=true\nversion=0.3.30\n'
+DEFAULT = b'enabled=true\nversion=0.3.31\n'
 
 def expected_hook_count(machine, enabled):
     # The existing verbose-dialogue build adds a Catalog message trace hook.

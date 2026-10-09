@@ -36,6 +36,8 @@ constexpr std::uintptr_t StateVtable = 0x04ad4738;
 constexpr std::uintptr_t BackgroundName = 0x03fd6af4;
 constexpr std::uintptr_t UpdateWorkbenchModel = 0x0347a600;
 constexpr std::uintptr_t UiContext = 0x04ab2230;
+constexpr std::uintptr_t SetPaneText = 0x03c1b588;
+constexpr std::uintptr_t SetGroupText = 0x03c47b90;
 constexpr std::uintptr_t PreviewName = 0x03f6ecaf; // WorkCraftInfoSeq (page name).
 }
 namespace field {
@@ -50,8 +52,9 @@ constexpr std::size_t PreviewAction = 0x1c1cc, PreviewLayout = 0x1c1f8;
 constexpr std::size_t PreviewRecipes = 0x1c200;
 constexpr std::size_t Input = 0x210, InputSuspended = 0x54, Grid = 0x580;
 constexpr std::size_t CraftButton = 0x598;
-constexpr std::size_t LayoutVisibilityController = 0x1b0;
-constexpr std::size_t ButtonLayouts = 0x2e0;
+constexpr std::size_t ButtonBindings = 0x2e0, BindingAdapter = 0x48;
+constexpr std::size_t AdapterPayload = 8, AdapterMethods = 0x18, TextSetter = 0x5e0;
+constexpr std::size_t PaneParent = 0x18, PaneFlags = 0x58, PaneName = 0xb0;
 }
 constexpr std::size_t PreviewSize = 0x1c210, PreviewVtableSize = 0x2c0;
 // Native layout initialization (main+03759DD0) allocates 0x23 button-event
@@ -119,19 +122,48 @@ void SuspendPhone(Session &session, bool suspend) {
     if (auto input = At<void *>(layout, field::Input))
         At<unsigned char>(input, field::InputSuspended) = suspend;
 }
+void *ButtonTextPane(void *button) {
+    // Same typed text binding as Fitting Room's PricePane. +0x2e0 contains
+    // binding objects, not layout roots; a group payload is not a Pane either.
+    auto bindings = At<void **>(button, field::ButtonBindings);
+    auto binding = bindings ? bindings[0] : nullptr;
+    auto adapter = binding ? At<void *>(binding, field::BindingAdapter) : nullptr;
+    if (!adapter) return nullptr;
+    auto payload = At<void *>(adapter, field::AdapterPayload);
+    auto methods = At<std::uintptr_t *>(adapter, field::AdapterMethods);
+    if (!payload || !methods) return nullptr;
+    const auto setter = methods[field::TextSetter / 8];
+    if (setter == Main + address::SetPaneText) return payload;
+    if (setter != Main + address::SetGroupText) return nullptr;
+    const auto count = At<unsigned>(payload, 0x10);
+    const auto offset = At<int>(payload, 0x14);
+    if (count > 16 || offset < 0 || offset > 128) return nullptr;
+    auto node = At<std::byte *>(payload, 8);
+    for (unsigned i = 0; i < count && node && node != payload; ++i) {
+        auto member = node - offset;
+        auto table = At<std::uintptr_t *>(member, 0x18);
+        if (table && table[field::TextSetter / 8] == Main + address::SetPaneText)
+            return At<void *>(member, 0x10);
+        node = At<std::byte *>(node, 8);
+    }
+    return nullptr;
+}
 void HideCraftButton(void *preview) {
     auto layout = At<void *>(preview, field::PreviewLayout);
     if (!layout) return;
     auto button = At<void *>(layout, field::CraftButton);
     if (!button) return;
-    Virtual(button, 0x140, false, false); // Disable input/selection animation.
-    // LWorkBenchMakeBtn owns its layout root through +0x2e0 (see native
-    // recipe reload main+03471ff0). +0x1b0 on the button itself is unrelated.
-    if (auto roots = At<void **>(button, field::ButtonLayouts)) {
-        if (auto root = roots[0]) {
-            if (auto visibility = At<void *>(root, field::LayoutVisibilityController))
-                Virtual(visibility, 0x20, false);
+    Virtual(button, 0x140, false, false);
+    auto pane = ButtonTextPane(button);
+    for (unsigned depth = 0; pane && depth < 16; ++depth) {
+        const auto name = static_cast<char *>(pane) + field::PaneName;
+        if (!std::strncmp(name, "RootPane", 24) || !std::strncmp(name, "L_CraftBtn_00", 24)) {
+            // Native Pane visibility is bit 0 at +0x58. Preserve alpha,
+            // transform-dirty and all unrelated flags; hide the whole button.
+            At<unsigned char>(pane, field::PaneFlags) &= ~1u;
+            return;
         }
+        pane = At<void *>(pane, field::PaneParent);
     }
 }
 void *NoCraftButton(void *) { return nullptr; }

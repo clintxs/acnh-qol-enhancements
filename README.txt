@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.30 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.31 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -90,7 +90,7 @@ this package does not supply an aspect-ratio patch.
 CORE SETTINGS / AMIIBO TIMEOUT
 DIY RECIPE PREVIEWS (CORE)
 
-Added in 0.3.24, updated through 0.3.30. Select a recipe in the NookPhone DIY Recipes app to open the
+Added in 0.3.24, updated through 0.3.31. Select a recipe in the NookPhone DIY Recipes app to open the
 workbench-style preview, with a larger rotatable model and required materials.
 The crafting button is hidden and crafting is disabled in this phone view.
 Left/right follows the app's current list, including filters and sorting, and
@@ -98,12 +98,11 @@ wraps at the ends. Press B to return to the app with its category, selected
 recipe and scroll position preserved. Normal workbench crafting is unchanged.
 This is built into Core; no additional feature folder or setting is required.
 
-0.3.30 supplies the workbench background and separate 3D item-loading request,
-hides the phone grid and the craft button's actual nested layout, and corrects
-the B return wait. It uses the installed game layouts, including layout mods.
-Closing/reopening the app retains the prepared pages. Preparation happens
-before the UI memory pool shrinks; failure leaves the app usable.
-Progress messages include model requests and return to the app.
+0.3.31 fixes the app-loading crash introduced by button hiding in 0.3.30.
+It now hides the button through its actual named pane, resolving both direct
+text and grouped text bindings. The background, model-loading requests and
+corrected B return wait remain. Installed layouts, including layout mods,
+remain in use. Closing/reopening reuses the prepared pages.
 This integration candidate passes ARM execution checks. Live Eden checks
 of appearance, rotation, controls and resource loading remain pending.
 
@@ -127,7 +126,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.30
+  version = 0.3.31
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.

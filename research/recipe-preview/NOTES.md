@@ -193,3 +193,17 @@ resource loading, UI layering and rendering are not proven by the ARM harness.
   after 03495408 reverses content; then idle and detach on the parent update.
 - Actual rendering, dynamic capture, aspect-ratio mod interaction and physical
   controller rotation still need live Eden verification.
+
+
+### 0.3.31 correction: +0x2e0 holds text bindings
+
+The 0.3.30 +0x2e0/root interpretation above was incorrect. Synced crash Core
+return +0x85ec is BindPreview's guessed visibility virtual; its target is heap
+data. Native 03471FF0 uses the first entry as a text binding. Follow +0x48 to
+adapter, +8 to payload, +0x18 to method table, +0x5e0 to text setter. SetPaneText
+(03C1B588) payload is a Pane; SetGroupText (03C47B90) payload is a group, which
+requires bounded member traversal. This is already verified by Fitting Room's
+PricePane. Walk the resolved caption's parents to RootPane/L_CraftBtn_00, then
+clear Pane +0x58 bit 0. RootPane here belongs to the button's caption layout.
+The corrected fixture reproduces 0.3.30's crash before rebuilding, then tests
+direct/group binding and unknown setter handling with the corrected binary.

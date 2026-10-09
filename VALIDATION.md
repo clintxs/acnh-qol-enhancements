@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.30 DIY preview rendering and return
+# Unified QoL validation — 0.3.31 DIY preview startup crash
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -820,3 +820,29 @@ manifest hashes, deploy/source parity. Live Eden retest remains required for
 model appearance/rotation, absence of the craft button, 16:10 layout, B back to
 the same recipe grid, app reopening and normal workbench crafting/cooking.
 No running game, installed mod, save or synced log is modified.
+
+
+## 0.3.31 DIY app startup crash in button hiding
+
+The synced 0.3.30 log records the first fault at 78.001 seconds: execution jumps
+to heap address 0x214E360B60, with Core return offset 0x85EC. Disassembly of the
+shipped ELF maps that return to the visibility virtual invoked by BindPreview.
+The button +0x2e0 array contains text-binding records, not nested layout roots.
+Reading a record's +0x1b0 as a visibility controller calls heap data as code.
+The old regression fixture invented a root at this position and masked the bug.
+
+The corrected fixture places a real binding/adapter/payload/method-table shape
+at +0x2e0 and a heap-data call target in the previously miscast field. Running
+it against the unchanged 0.3.30 ELF reproduces a CPU exception during app setup.
+The revised C++ follows the same typed text-binding interpretation used by
+Fitting Room's PricePane: SetPaneText identifies a Pane; SetGroupText identifies
+a bounded member group that must first be resolved to a Pane. It then walks
+at most 16 parents to RootPane/L_CraftBtn_00 and clears only Pane +0x58 bit 0.
+Unknown bindings leave visibility unchanged; crafting/focus rejection remains.
+No guessed visibility virtual is called.
+
+The rebuilt 0.3.31 passes direct/group binding coverage, unrelated-flag
+preservation, unknown-binding handling, opening/model/navigation/B/reopening
+regressions and all Core checks at two ASLR bases. Archive integrity and source/
+deploy parity are checked before delivery. Live Eden rendering, 16:10, rotation
+and B behavior remain unverified. No game install, save or synced log is changed.
