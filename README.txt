@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.27 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.28 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -90,7 +90,7 @@ this package does not supply an aspect-ratio patch.
 CORE SETTINGS / AMIIBO TIMEOUT
 DIY RECIPE PREVIEWS (CORE)
 
-Added in 0.3.24, updated through 0.3.27. Select a recipe in the NookPhone DIY Recipes app to open the
+Added in 0.3.24, updated through 0.3.28. Select a recipe in the NookPhone DIY Recipes app to open the
 workbench-style preview, with a larger rotatable model and required materials.
 The crafting button is hidden and crafting is disabled in this phone view.
 Left/right follows the app's current list, including filters and sorting, and
@@ -98,9 +98,10 @@ wraps at the ends. Press B to return to the app with its category, selected
 recipe and scroll position preserved. Normal workbench crafting is unchanged.
 This is built into Core; no additional feature folder or setting is required.
 
-0.3.27 prepares the preview before the app's UI memory pool is shrunk. It
-also runs opening/return transitions from the active preview and keeps the
-app's layout intact if preparation fails. Diagnostic progress messages remain.
+0.3.28 fixes the opening stall caused by waiting for an idle state that a
+new preview never enters. Closing/reopening the app retains its prepared
+preview. Preparation still happens before the UI memory pool is shrunk;
+the app remains usable if preparation fails. Progress messages remain.
 This integration candidate passes ARM execution checks. Live Eden checks
 of appearance, rotation, controls and resource loading remain pending.
 
@@ -124,7 +125,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.27
+  version = 0.3.28
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.

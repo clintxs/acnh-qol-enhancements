@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.27 DIY recipe preview setup fix
+# Unified QoL validation — 0.3.28 DIY recipe preview opening fix
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -19,8 +19,8 @@ by the local tests below.
   `exl_main` installs only the content-mount continuation hook and performs no
   configuration reads. Activation executes the real compiled registry/parser and
   installers; a second activation performs no additional reads or installations.
-- Full suite installs 69 disjoint modeled hook ranges (Core discovery 1,
-  DIY preview 3, Catalog 16, Pockets 16, Faster Dialogue 7, Fitting Room 11,
+- Full suite installs 70 disjoint modeled hook ranges (Core discovery 1,
+  DIY preview 4, Catalog 16, Pockets 16, Faster Dialogue 7, Fitting Room 11,
   Amiibo 1, Faster Crafting 2, Shopping Card 11 behavior + 1 allocation support), plus the private
   fitting input vtable entry. No embedded binary replacement arrays, IPS or
   dialogue code-cave helper remain in the collection.
@@ -695,3 +695,57 @@ Live Eden verification of 0.3.27 remains pending for full resource loading,
 rendering/layering, rotation, controller input, app/phone reopening and ordinary
 workbench crafting/cooking. The native tests do not establish these live results.
 No installed mod, running game, save or synced log was modified.
+
+
+## 0.3.28 DIY preview initial-state stall and app reopening
+
+The synced Core 0.3.27 log reaches successful construction, layout binding,
+child creation and `activating prepared page`; it contains no crash/backtrace.
+The user reports that buttons stop responding while background music continues.
+The last progress message alone does not establish a hang inside activation.
+
+A native execution reproduction establishes the opening-state defect:
+034942F0 constructs the preview's state table and leaves it in `cInit` (0),
+with both request slots empty. Its 03494768 update sets a resident capability
+flag on the first frame and never transitions to `cIdle` (1). The 0.3.27 compiled
+integration waits for state 1 before requesting appearance, so the reproduction
+leaves both request slots empty indefinitely with app input suspended. Earlier
+activation fixtures incorrectly forced state 1 and masked this condition.
+
+0.3.28 accepts settled initial state 0 and idle state 1, matching the native
+appear-readiness contract, and calls the native +0xF0 readiness query before
+requesting appearance. A regression holds layout readiness false and verifies
+that no dataset is borrowed or appear request queued until readiness returns. Reused pages still wait for idle entry to finish
+before borrowing the app's recipe list. A post-activation log records recipe
+state and page lifecycle, distinguishing an activation failure from a later
+transition failure. No crafting or navigation behavior was changed.
+
+02E9D538 is the app's deactivation callback, not page destruction; native code
+only removes its layout from the rendering registry. Discarding the session
+there made subsequent app opens lose their prepared preview. The session now
+retains its owned child and queues idle to cancel unfinished transitions.
+A newly initialized phone page replaces any old resident session. Callback
+binding does not depend on a previous session's address. Tests cover reopening
+without additional allocations and replacement of a resident's page.
+
+The expanded regression executes native state-table initialization and initial
+updates, actual activation begin/end wrappers, recursive update eligibility,
+callback registration and unregistration, and child removal. It verifies state
+0 remains unchanged by activation, the compiled integration queues appearance,
+and callback/active lists recover their sentinels after removal. These run at
+both ASLR bases. The resource/rendering service boundary, native manager frame
+scheduler and asynchronous transitions remain modeled. In particular, the
+0.3.27 assumption of a permanently paused parent was too strong: 03768DB0
+recomputes flags and advances lifecycle 3 to 4 on subsequent manager updates.
+The existing tests that artificially keep lifecycle 3 cover immediate removal;
+they do not establish live manager scheduling or deferred lifecycle-4 removal.
+
+The pinned Docker build and `python3 tools/check.py core` pass. Suite, source and
+custom-example archive integrity, suite manifest hashes and deployed/source
+parity are checked before release. Older archives are preserved.
+
+Live verification is still required for appearance, model rotation, controller
+navigation/B return, repeated app/phone reopening and ordinary workbench
+crafting/cooking. This release fixes a reproduced opening stall; local tests
+cannot establish that every live preview issue is resolved. No running game,
+installed mod, save or synced log is modified.

@@ -17,13 +17,15 @@ All addresses are offsets from the loaded main module.
 | 02E99D94 | Separate phone row-5 callback (retained) |
 | 02E99D98 | Phone B/favorite command callback (retained) |
 | 02E9FBB0 | Phone per-frame model/icon update |
-| 02E9D538 | Phone resource cleanup |
+| 02E9D538 | Phone deactivation (retains owned pages) |
 | 03479AB8 | Native workbench child construction reference |
 | 03492B50 | Common preview page constructor |
 | 04A3B778 | Concrete workbench preview virtual table |
 | 034930B0 | Preview callback binding |
 | 03492FEC | Preview B/favorite command callback |
 | 034940E0 | Preview per-frame model update |
+| 034942F0 | Native preview state table initialization (initial state 0) |
+| 03494768 | Initial-state update (no automatic idle transition) |
 | 034949A8 | Preview appear entry |
 | 03494FF0 | Recipe selection entry: count, model/material load, animation |
 | 03495408 | Return-to-list entry: reverse animation/reset |
@@ -52,8 +54,7 @@ The preview page is 0x1C210 bytes, has count/index at +0x260/+0x264, layout at
 data at +8 and six material entries at +0x2C with stride 0x18. Native copying
 omits alignment padding; it is not a raw 0xD0-byte memcpy.
 
-The implementation borrows the phone's dataset while its input and updates are
-suspended. It does not reconstruct a recipe catalog, sort by recipe ID or move
+The implementation borrows the phone's dataset while its input is suspended. It does not reconstruct a recipe catalog, sort by recipe ID or move
 the app's selection. A child is allocated on the native UI heap, registered in
 the parent's pending-child list, initialized and activated through the native
 page API. Version 0.3.27 prepares the child from the native page-initialization
@@ -73,22 +74,35 @@ icon's state names. The supplied 0.3.25 crash resolves to this null-array site;
 the native regression reproduces it with null TLS and checks the corrected
 scope. Live heap values were unavailable in that log. The prior libc allocation
 also bypassed native heap ownership and is no longer used for this page.
-Parent cleanup removes the active child before clearing the session;
-an already removed child is not cleaned up twice. Native ownership frees page,
+Phone deactivation removes an active child, cancels unfinished transitions and
+queues idle for its next activation. It retains the session and owned child;
+02E9D538 removes the layout from its rendering registry but does not destroy
+the page. A new phone initialization resets the resident session before
+preparing a new child, so a replacement UI manager never borrows an old page.
+An already removed child is not removed twice. Native ownership frees page,
 layout, model and dialog allocations. Sessions are separate for each resident.
 
-Native state 1 is idle, 2 appear, 3 play, 4 select recipe and 5 return to list.
-The two deferred request slots at +0x1F0/+0x1F4 are selected by byte +0x200.
-Wait for idle after initialization before lending the dataset, because idle
-entry clears it. Child activation disables parent updates (+0x164), so the
-preview's own update override drives these transitions. On return, remove the
-active child through the native API after restoring the parent update flag
-and returning from child-callback iteration. Detachment runs from the parent's
-own update, then restores input. Retain the initialized child for reuse. Its
-layout layer is one above the phone's. Open through the normal appear request, then select the app's
-index. B requests state 5 and waits for its hide animation before returning to
-idle and restoring the phone. This avoids the native full-screen disappear
-path, which also manipulates the parent crafting screen/global dialogs.
+Native state 0 is initial, 1 idle, 2 appear, 3 play, 4 select recipe and 5
+return to list. The two deferred request slots at +0x1F0/+0x1F4 are selected by
+byte +0x200. Version 0.3.28 accepts settled state 0 as well as 1 before lending
+the dataset and requesting appearance, and retains the native virtual +0xF0
+layout-readiness check. Native 034942F0 initializes state 0;
+03494768 only updates a capability flag and never requests state 1. Waiting
+for state 1 therefore stalls forever on a new page. On reuse, wait for idle
+entry to finish because it clears borrowed data. The former activation fixture
+incorrectly forced state 1, hiding this failure.
+
+Child activation clears parent +0x164 for the current frame. The native manager
+subsequently traverses the page tree (03768DB0), advances lifecycle 3 to 4 and
+recomputes update flags. It does not permanently pause the parent. Preview
+transitions run from its own update override. After B's hide animation and idle
+reset, detach from the parent's own update after child iteration returns.
+Native removal at lifecycle 3 unlinks immediately; at lifecycle 4 it marks 5
+for the manager's deferred sweep. Retain the initialized child for reuse. Its
+layout layer is one above the phone's. Open through the normal appear request,
+then select the app's index. B requests state 5 and waits for its hide animation
+before returning to idle and restoring input. This avoids the native full-screen
+disappear path, which also manipulates the parent crafting screen/global dialogs.
 
 The preview gets a private copy of its virtual table (including ABI headers).
 Override layout binding and model update, return no craft focus target at
@@ -119,8 +133,11 @@ this feature's hooks. A mismatch disables only the preview feature. Core's
 amiibo fix and optional modules still activate independently.
 
 `tests/recipe_preview_arm_test.py` runs the compiled C++ at two ASLR bases.
-It executes native heap shrink/allocation and child activation/removal, with
-engine service boundaries modeled. It executes base/common page, 270 icon and state-machine constructors with
+It executes native heap shrink/allocation, preview state-table initialization,
+initial-state updates, child activation/removal and callback registration, with
+engine service boundaries modeled. An initial-state regression preserves native
+state 0 through activation and checks that compiled code requests appearance.
+The native manager scheduler, async transitions and renderer remain modeled. It executes base/common page, 270 icon and state-machine constructors with
 manager/current/default heaps, modeling their allocation and string services.
 It models asynchronous readiness, rendering and animations,
 and executes the native recipe copy, list count, next/previous navigation,

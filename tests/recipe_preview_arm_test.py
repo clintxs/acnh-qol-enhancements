@@ -13,7 +13,7 @@ from unicorn.arm64_const import *
 HOOKS = (0x2e9cde0, 0x2e9fbb0, 0x2e9d538, 0x376890c)
 GUARDS = (0x2e9cf2c, 0x2e9cfe8, 0x3492b50, 0x34930b0, 0x3493430,
           0x34940e0, 0x3492fec, 0x3494d8c, 0x34947d0, 0x3495408,
-          0x346fdb0, 0x3473ac8, 0x376890c, 0x3769260, 0x3768c7c)
+          0x346fdb0, 0x3473ac8, 0x376890c, 0x3769260, 0x3768c7c, 0x3492e74)
 
 
 class PreviewMachine(Machine):
@@ -41,6 +41,7 @@ class PreviewMachine(Machine):
         self.dispatching_confirmation = False
         self.updating_preview = False
         self.hidden = True
+        self.ready = True
         self.reloads = []
         self.sounds = []
         self.tls = self.aux(0x200)
@@ -66,6 +67,7 @@ class PreviewMachine(Machine):
         self.global_pointer(0x4ab2230, manager)
         self.layout_table = self.aux(0x200)
         self.write(self.layout_table + 0x140, self.stub('hidden'))
+        self.write(self.layout_table + 0x148, self.stub('ready'))
         self.write(self.layout_table + 0x1a8, self.stub('button_source'))
         self.write(self.layout_table + 0x1b8, base + 0x375ab74)
         self.write(self.layout_table + 0x1c0, base + 0x375b8e0)
@@ -127,10 +129,13 @@ class PreviewMachine(Machine):
         # Native lists are circular sentinel lists; nodes use native offsets.
         self.write(page + 0x50, page + 0x50)
         self.write(page + 0x58, page + 0x50)
-        self.write(page + 0x64, 0x10, 4)
+        self.write(page + 0x64, 0x28, 4)
         self.write(page + 0x68, page + 0x68)
         self.write(page + 0x70, page + 0x68)
         self.write(page + 0x7c, 0x38, 4)
+        for head in (0x128, 0x140):
+            self.write(page + head, page + head)
+            self.write(page + head + 8, page + head)
         manager = self.aux()
         self.write(manager + 0xb8, self.heap)
         self.write(page + 0x98, manager)
@@ -228,6 +233,10 @@ class PreviewMachine(Machine):
         self.frame(page)  # Activate the child already prepared during app setup.
         preview = self.prepared[page]
         assert self.read(self.tls + 0xa8) == self.previous_heap
+        if self.read(preview + 0x1f0, 4) == 1:
+            # Native state processing precedes the page's own frame callback.
+            # App deactivation queues idle to cancel an unfinished transition.
+            self.settle(preview, 1)
         self.preview_frame(preview)
         assert self.read(preview + 0x1f0, 4) == 2
         assert self.read(preview + 0x1c200) == page + 0x8a350
@@ -320,7 +329,8 @@ class PreviewMachine(Machine):
             assert self.read(args[1] + 0xa8, 4) == 2
             self.write(args[0] + 0x164, 0, 1)
             self.write(args[1] + 0xa8, 3, 4)
-            self.settle(args[1], 1)
+            # Activation does not change the recipe state. A new preview is
+            # still cInit (0); only a previously closed one is cIdle (1).
         elif action == 'show_preview':
             # Model generic UI activation, execute the real preview request.
             u.reg_write(UC_ARM64_REG_PC, self.base + 0x3494090)
@@ -334,6 +344,8 @@ class PreviewMachine(Machine):
             assert args[1] == 0
         elif action == 'hidden':
             result = int(self.hidden)
+        elif action == 'ready':
+            result = int(self.ready)
         elif action == 'reload':
             self.reloads.append(args[1])
         elif action == 'sound':
@@ -416,7 +428,6 @@ class NativeLifecycleMachine(PreviewMachine):
         action = getattr(self, 'native_actions', {}).get(pc - self.base)
         if action in ('activate_begin', 'activate_end', 'deactivate_begin',
                       'deactivate_end', 'register_updates', 'unregister_updates'):
-            if action == 'activate_begin': self.settle(self.reg(0), 1)
             if action == 'deactivate_begin':
                 assert not self.updating_preview, 'removal invalidates native child-update iterator'
                 self.events.append(('remove_child', self.read(self.reg(0) + 0x48), self.reg(0)))
@@ -483,6 +494,81 @@ class NativeConstructorMachine(PreviewMachine):
             u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
             return
         super().service(u, pc, size, user)
+
+
+class NativeActivationMachine(NativeConstructorMachine):
+    """Execute activation and update registration, retaining native page state."""
+    def __init__(self, base):
+        super().__init__(base)
+        self.native_actions.pop(0x3769260)
+        self.native_actions.pop(0x3768c7c)
+        self.native_actions[0x264bce0] = 'no_animation'  # Resident capability query.
+
+    def service(self, u, pc, size, user):
+        if pc == self.base + 0x3c5c660:
+            # Rendering service boundary; actual activation begin/end wrappers,
+            # recursive update eligibility and callback-list registration run.
+            self.events.append(('register_layout', self.reg(0)))
+            u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
+            return
+        super().service(u, pc, size, user)
+
+
+def check_native_startup(base):
+    m = NativeActivationMachine(base)
+    phone = m.phone()
+    preview = m.prepared[phone]
+    # Execute the actual preview state-table initializer. The resource-loading
+    # boundary normally invokes this before the manager seals its heap.
+    m.heap_sealed = False
+    m.write(m.tls + 0xa8, m.heap)
+    m.write(base + 0x59e7600, m.heap_manager)
+    m.write(base + 0x4ab2698, base + 0x59e7600)
+    for offset in range(0, 0x18, 8):
+        pointer = struct.unpack_from('<Q', RAW, 0x4a3d900 + offset)[0]
+        m.write(base + 0x4a3d900 + offset, base + pointer)
+    m.invoke(base + 0x34942f0, preview, preview + 0x1a8)
+    m.write(m.tls + 0xa8, m.previous_heap)
+    m.heap_sealed = True
+    assert m.read(preview + 0x1b0, 4) == 0
+    assert m.read(preview + 0x1f0) == 0xffffffffffffffff
+    names = m.read(preview + 0x1e8)
+    assert m.string(m.read(names + 8)) == 'cInit'
+    assert m.string(m.read(names + 0x18)) == 'cIdle'
+    # The start-state update only sets a resident capability flag. It does
+    # not transition to idle, even after multiple updates.
+    for frame in range(3):
+        m.write(preview + 0x1b4, frame, 4)
+        m.invoke(base + 0x3494768, preview)
+        assert m.read(preview + 0x1b0, 4) == 0
+        assert m.read(preview + 0x1f0) == 0xffffffffffffffff
+    # Exercise both callback-list registration paths without replacing them
+    # with no-ops, as the previous lifecycle fixture did.
+    m.write(preview + 0x120, 3, 4)
+    m.confirm(phone)
+    m.frame(phone)
+    assert m.read(preview + 0xa8, 4) == 3
+    assert m.read(preview + 0x1b0, 4) == 0
+    assert m.read(phone + 0x138, 4) == 1
+    assert m.read(phone + 0x150, 4) == 1
+    assert m.read(phone + 0x130) == preview + 0xb0
+    assert m.read(phone + 0x148) == preview + 0xe8
+    m.ready = False
+    m.preview_frame(preview)
+    assert m.read(preview + 0x1f0) == 0xffffffffffffffff
+    assert m.read(preview + 0x1c200) == 0
+    m.ready = True
+    m.preview_frame(preview)
+    assert m.read(preview + 0x1f0, 4) == 2, 'new preview must appear from cInit'
+    assert m.read(preview + 0x1c200) == phone + 0x8a350
+    assert 'activated; state=0 lifecycle=3' in m.text
+    # Remove through the actual native API and verify sentinel/list recovery.
+    m.invoke(base + 0x3768c7c, phone, preview)
+    assert m.read(phone + 0x138, 4) == 0
+    assert m.read(phone + 0x150, 4) == 0
+    assert m.read(phone + 0x128) == phone + 0x128
+    assert m.read(phone + 0x140) == phone + 0x140
+    assert m.read(phone + 0x78, 4) == 0
 
 
 def check_native_constructor(base, heap_source):
@@ -653,6 +739,29 @@ def check_lists(base):
     assert len([e for e in m.events if e[0] == 'remove_child']) == 1
 
 
+def check_app_reopening(base):
+    m = PreviewMachine(base)
+    phone = m.phone()
+    preview = m.open(phone)
+    allocated = m.next_preview
+    for unfinished in (False, True):
+        if unfinished: m.write(preview + 0x1f0, 4, 4)
+        m.hook(0x2e9d538, phone)
+        assert m.read(preview + 0x1f0, 4) == 1
+        assert m.read(preview + 0x1f4, 4) == 0xffffffff
+        m.write(phone + 0x164, 1, 1)  # Manager re-enables the reopened app.
+        assert m.open(phone) == preview
+        assert m.next_preview == allocated
+    # A replacement manager can construct a different page for this resident.
+    # Resource binding must still replace A before initialization assigns it.
+    m.hook(0x2e9d538, phone)
+    replacement = m.phone(resident=1, prepare=False)
+    m.write(replacement + 0x1f8, 0, 1)
+    m.hook(0x2e9cde0, replacement)
+    m.prepare(replacement)
+    assert m.open(replacement) != preview
+
+
 def check_failures(base):
     for case in ('empty', 'invalid_index', 'unavailable_item', 'allocation', 'no_heap', 'busy'):
         m = PreviewMachine(base)
@@ -687,6 +796,7 @@ def check_failures(base):
 
 if __name__ == '__main__':
     for base in (0x7100000000, 0x7200000000):
+        check_native_startup(base)
         check_native_heap_shrink(base)
         check_native_heap_dependency(base)
         for heap_source in ('manager', 'current', 'default'):
@@ -694,5 +804,6 @@ if __name__ == '__main__':
         check_flow(base)
         check_flow(base, NativeLifecycleMachine)
         check_lists(base)
+        check_app_reopening(base)
         check_failures(base)
-    print('PASS: native heap shrink/allocation failure, preparation before shrink, native child activation/removal with paused parent, native null-heap crash reproduction, page/270-icon/state constructors with manager/current/default heaps, native 35-row layout construction and confirmation dispatch, Core phone preview lifecycle, borrowed recipe/materials, native navigation/wrap, craft rejection, B return, reuse, teardown and fail-closed fingerprints at two ASLR bases')
+    print('PASS: native cInit initialization/update and opening without fabricated idle transition, native child activation/update registration/removal, native heap shrink/allocation failure, preparation before shrink, native null-heap crash reproduction, page/270-icon/state constructors with manager/current/default heaps, native 35-row layout construction and confirmation dispatch, Core phone preview lifecycle, borrowed recipe/materials, native navigation/wrap, craft rejection, B return, reuse, teardown and fail-closed fingerprints at two ASLR bases')

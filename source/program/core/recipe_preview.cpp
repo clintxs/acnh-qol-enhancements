@@ -9,7 +9,7 @@ namespace address {
 constexpr std::uintptr_t PhoneVtable = 0x049e8178;
 constexpr std::uintptr_t PhoneBind = 0x02e9cde0;
 constexpr std::uintptr_t PhoneFrame = 0x02e9fbb0;
-constexpr std::uintptr_t PhoneCleanup = 0x02e9d538;
+constexpr std::uintptr_t PhoneDeactivate = 0x02e9d538;
 constexpr std::uintptr_t PhoneConfirm = 0x02e99d90;
 constexpr std::uintptr_t PhoneRender = 0x02e96b80;
 constexpr std::uintptr_t GridRefresh = 0x0335b620;
@@ -286,20 +286,17 @@ HOOK_DEFINE_TRAMPOLINE(InitializeNativePage) {
         const auto resident = At<unsigned char>(page, field::Resident);
         if (resident >= Sessions.size()) return;
         auto &session = Sessions[resident];
-        if (session.phone && session.phone != page) return;
+        // This is construction/resource initialization, so any prior resident
+        // page belongs to an old UI manager. Never retain its child pointer.
+        session = {};
         session.phone = page;
-        if (!session.preview && !PreparePreview(session))
+        if (!PreparePreview(session))
             Logging.Log("[QoL Enhancements/Core] DIY preview: preparation failed; app remains available\n");
     }
 };
 HOOK_DEFINE_TRAMPOLINE(BindPhoneRecipes) {
     static void Callback(void *phone) {
         Orig(phone);
-        const auto resident = At<unsigned char>(phone, field::Resident);
-        if (resident >= Sessions.size()) return;
-        auto &session = Sessions[resident];
-        if (session.phone && session.phone != phone) return;
-        session.phone = phone;
         auto layout = At<void *>(phone, field::PhoneLayout);
         if (layout) ReplaceCallback(layout, 0x430, address::PhoneConfirm,
                                     reinterpret_cast<std::uintptr_t>(&ConfirmRecipe));
@@ -311,7 +308,11 @@ void AdvancePreview(Session &session) {
     auto layout = At<void *>(preview, field::PreviewLayout);
     switch (session.phase) {
     case Phase::Loading:
-        if (Settled(preview, 1) && layout) {
+        // Native initialization leaves a new page in cInit (0), which never
+        // requests cIdle (1). Both accept appearance (native virtual +0xf0).
+        // A reused page reaches cIdle, whose entry clears the borrowed list;
+        // wait for that entry before lending the data again.
+        if ((Settled(preview, 0) || Settled(preview, 1)) && layout && Virtual<bool>(preview, 0xf0)) {
             At<void *>(preview, field::PreviewRecipes) = static_cast<std::byte *>(phone) + field::PhoneRecipes;
             Virtual(preview, 0xa8);
             session.phase = Phase::Appearing;
@@ -380,17 +381,28 @@ HOOK_DEFINE_TRAMPOLINE(UpdatePhoneRecipes) {
         SuspendPhone(*session, true);
         Logging.Log("[QoL Enhancements/Core] DIY preview: activating prepared page\n");
         Native<void (*)(void *, void *)>(address::ActivateChild)(phone, session->preview);
+        Logging.Log("[QoL Enhancements/Core] DIY preview: activated; state=%u lifecycle=%u\n",
+                    At<unsigned>(session->preview, field::State),
+                    At<unsigned>(session->preview, field::Lifecycle));
     }
 };
-HOOK_DEFINE_TRAMPOLINE(CleanupPhoneRecipes) {
+HOOK_DEFINE_TRAMPOLINE(DeactivatePhoneRecipes) {
     static void Callback(void *phone) {
         if (auto session = PhoneSession(phone)) {
             if (session->preview) {
                 const auto lifecycle = At<unsigned>(session->preview, field::Lifecycle);
                 if (lifecycle == 3 || lifecycle == 4 || lifecycle == 6)
                     Native<void (*)(void *, void *)>(address::RemoveChild)(phone, session->preview);
+                // Virtual +0x178 deactivates the app; it does not destroy its
+                // owned pages. Keep the prepared child for the next app open,
+                // but cancel any unfinished transition and enter idle first.
+                At<int>(session->preview, field::Requests) = -1;
+                At<int>(session->preview, field::Requests + 4) = -1;
+                Request(session->preview, 1);
             }
-            *session = {};
+            session->phase = Phase::Idle;
+            session->closeRequested = false;
+            SuspendPhone(*session, false);
         }
         Orig(phone);
     }
@@ -411,6 +423,7 @@ bool InstallRecipePreview() {
         {0x03493430, {0x10ffdde9, 0x93407d08, 0x9a9f8108, 0x8b081548, 0xa9017d09}},
         {0x034940e0, {0xa9bb7bfd, 0xa90167fa, 0xa9025ff8, 0xa90357f6, 0xa9044ff4}},
         {0x03492fec, {0xb9401029, 0x91407008, 0x91072108, 0x71000d3f, 0x540000e0}},
+        {0x03492e74, {0xa9be7bfd, 0xf9000bf3, 0x910003fd, 0xf9400008, 0xaa0003f3}},
         {0x03494d8c, {0xf9400268, 0xaa1303e0, 0xb9426661, 0xf9414508, 0xd63f0100}},
         {0x034947d0, {0xa9bc7bfd, 0xf9000bf7, 0xa90257f6, 0xa9034ff4, 0x910003fd}},
         {0x03495408, {0xb941b808, 0x71000d1f, 0x54000941, 0xd10103ff, 0xa9017bfd}},
@@ -440,7 +453,7 @@ bool InstallRecipePreview() {
     InitializeNativePage::InstallAtOffset(address::InitializePage);
     BindPhoneRecipes::InstallAtOffset(address::PhoneBind);
     UpdatePhoneRecipes::InstallAtOffset(address::PhoneFrame);
-    CleanupPhoneRecipes::InstallAtOffset(address::PhoneCleanup);
+    DeactivatePhoneRecipes::InstallAtOffset(address::PhoneDeactivate);
     Logging.Log("[QoL Enhancements/Core] DIY preview: READY; native view-only page; app list navigation\n");
     return true;
 }
