@@ -490,3 +490,24 @@ Switch hardware and other emulators/game versions are not validated targets.
   personal list, restart and compare his text without/with B/R; also check a
   listed villager and an unlisted speaker. Alternate-language name capture is
   locally tested but has not been confirmed in a live game.
+
+
+## 0.3.22 unnamed dialogue
+
+- Rename the public preference to `faster_unnamed`, preserving `faster_player`
+  as an alias. Host checks cover both spellings, cross-file overrides,
+  malformed values and mixed-alias duplicates retaining the earlier layer.
+- Reuse the existing seven C++ hooks. Name capture observes the same native
+  null-data/zero-capacity/initial-NUL branches that suppress the name pane.
+  Nonempty malformed names remain named even when UTF-8 conversion fails.
+- Native ARM checks cover all eight reported message groups plus an unlisted
+  group and variable labels in talk/balloon windows, both alias spellings,
+  disabled settings, absent sources, independent blue UI, unobserved name
+  preparation and message-bank/label/speaker-generation changes at two bases.
+- The new longer bank cases exposed overlapping mock string/vtable storage;
+  move the pending-bank test buffer away from the fake vtable. Production
+  code does not use those test addresses.
+- Existing Core activation/configuration and 6,890 dialogue reveal/input/rate
+  cases pass, along with 6,916 localized name cases across all 14 supplied
+  languages. These are local ARM checks; the new category still needs an Eden
+  test with the actual mirror/storage/Niko/amiibo/stretching/drop-off prompts.

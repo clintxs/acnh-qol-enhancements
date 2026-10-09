@@ -10,7 +10,7 @@ from core_arm_test import Machine, RAW, DEFAULT, SLUGS
 from unicorn.arm64_const import *
 
 HOOKS = (0x1afa00c, 0x1afdec0, 0x1afded4, 0x1afdefc, 0x1a969e0, 0x1b04824, 0x1b04b80)
-CUSTOM = b"base_speed=2\nboost_speed=4\nfaster_ui=true\nfaster_player=true\nfaster_npc_list=Timmy,Tommy,Orville,Wilbur,Kapp'n\n"
+CUSTOM = b"base_speed=2\nboost_speed=4\nfaster_ui=true\nfaster_unnamed=true\nfaster_npc_list=Timmy,Tommy,Orville,Wilbur,Kapp'n\n"
 GP = [globals()[f'UC_ARM64_REG_X{i}'] for i in range(31)]
 Q = [globals()[f'UC_ARM64_REG_Q{i}'] for i in range(32)]
 
@@ -59,7 +59,7 @@ class DialogueMachine(Machine):
         self.fast = 2.4
         self.speaker('rcm', source=False)
         self.bank_safe, self.bank_label = self.ram + 0x67000, self.ram + 0x67100
-        self.bank_methods, self.pending_bank = self.ram + 0x67200, self.ram + 0x67300
+        self.bank_methods, self.pending_bank = self.ram + 0x67200, self.ram + 0x67400
         self.get_bank, self.get_label, self.ensure_bank = base + 0x1b00f00, base + 0x1b00f04, base + 0x1b00f08
         self.write(self.meta + 0x170, self.bank_methods)
         self.write(self.bank_methods + 0x10, self.get_bank)
@@ -314,7 +314,8 @@ def main():
                 total += 1
         # The self category must work with no entity, and be independent of UI
         # and NPC settings. Pending next-message IDs must not change this one.
-        for prefs, player_boost, ui_boost in ((b'faster_player=true', True, False),
+        for prefs, player_boost, ui_boost in ((b'faster_unnamed=true', True, False),
+                (b'faster_unnamed=false', False, False), (b'faster_player=true', True, False),
                 (b'faster_ui=true', False, True), (b'faster_player=false', False, False)):
             player = DialogueMachine(base, prefs)
             for window, bank in itertools.product((0, 1, 2), ('FTR_WorkingTable', 'SYS_Get_Fish', 'SYS_Get_Insect', 'SYS_Get_DiveFish',
@@ -378,7 +379,7 @@ def main():
                 expected, expected_calls = m.run(case, int(player_boost))
                 assert result == expected and calls == expected_calls, (prefs, case)
                 total += 1
-        assert 'base=2 boost=4 faster_ui=true faster_player=true npc_count=6' in custom.text
+        assert 'base=2 boost=4 faster_ui=true faster_unnamed=true npc_count=6' in custom.text
         if 'SELECT reason=' in custom.text:
             # Opening UI often lasts hundreds of eligible frames. Repeated UI
             # must not exhaust diagnostics before the first NPC conversation.
@@ -417,7 +418,7 @@ def main():
             probe.u.mem_write(probe.bank_label, b'X' * 64)
             probe.input(0)
             assert 'label=<unterminated>' in probe.text
-            assert 'DIAGNOSTIC: npc-handle-v4' in probe.text
+            assert 'DIAGNOSTIC: unnamed-v1' in probe.text
             total += 142
             probe.speaker('rcm', stale=True)
             probe.bank('SP_rcm_00_common')

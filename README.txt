@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.21 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.22 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -23,7 +23,7 @@ MODULES
 Faster Crafting: automatic 1x-to-3x ramp for crafting and cooking.
 Catalog: catalog/recipe stars, catalog badges and furniture-variation markers.
 Pockets: Grab 5/10, direct storage withdrawal, Y-to-storage and footer hints.
-Faster Dialogue: faster default reveal; B/R boost; optional NPC/UI/player boost.
+Faster Dialogue: faster default reveal; B/R boost; optional NPC/UI/unnamed boost.
 Fitting Room: Y toggles a shopping bag; native bulk checkout includes bag items.
 Shopping Card: Nook's Cranny/Able Sisters purchases use ABD savings; Nook's
 sales deposit to savings and use the ordinary “Thank you! Please come again!”
@@ -100,7 +100,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.21
+  version = 0.3.22
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.
@@ -142,7 +142,7 @@ crafting, customization and cooking still need an Eden test.
 PERSONAL FASTER DIALOGUE SETTINGS
 Install the optional separate faster-dialogue-custom-example ZIP alongside
 Core and Faster Dialogue to try the requested preset: base 2x, B/R 4x, automatic
-4x for Timmy, Tommy, Orville, Wilbur, Kapp'n and recognized UI/player narration.
+4x for Timmy, Tommy, Orville, Wilbur, Kapp'n and UI dialogs and unnamed gameplay messages.
 The personal mod contains:
   romfs/qol-enhancements/config/faster-dialogue.custom.ini
 
@@ -150,7 +150,7 @@ Edit this file to customize:
   base_speed = 2
   boost_speed = 4
   faster_ui = true
-  faster_player = true
+  faster_unnamed = true
   faster_npc_list = Timmy, Tommy, Orville, Wilbur, Kapp'n
 
 NPC lists accept localized names shown above the dialogue bubble and internal
@@ -169,7 +169,7 @@ The previous lookup incorrectly treated voice-position coordinates as a handle.
 The user confirmed the corrected diagnostic build works in game.
 Speeds preserve the game's language/FPS-adjusted fast rate; animations and
 scripted waits can limit conversation speed. Native overrides take priority.
-No preferences in either file: base 2, held 4, automatic UI/player/NPC boost off.
+No preferences in either file: base 2, held 4, automatic UI/unnamed/NPC boost off.
 
 Keep the personal mod folder when replacing the seven suite folders. Do not
 reinstall the example preset over your edited preferences. Enable only one
@@ -182,16 +182,23 @@ is raised to base after both files are loaded. Up to 64 entries of 95 UTF-8 byte
 All five dialogue preferences also work in the regular faster-dialogue.ini;
 keep personal edits in the custom file to preserve them across suite updates.
 
-faster_ui covers blue system dialog windows. Independent faster_player covers
-valid player speakers and the reviewed FTR_WorkingTable, SYS_Player,
-SYS_Get_Fish, SYS_Get_Insect and SYS_Get_DiveFish banks. This includes DIY
-prompts/results, recipe learning, catches and other SYS_Player self narration.
-It reads the active message bank, so no speaker entity is needed. Known self
-banks take priority over window color. Unknown banks/missing speakers alone
-never imply player; known self banks also work in balloon windows.
-Add faster_player = true to your existing personal INI and restart. Missing
-faster_player defaults to false unless inherited from the regular file.
-The player-window and NPC fixes were confirmed working by the user.
+faster_ui covers blue system dialog windows. Independent faster_unnamed covers
+regular gameplay bubbles whose current native name preparation confirms there
+is no displayed name. This includes player thoughts and other unnamed messages,
+regardless of their English wording, inserted item names or message group.
+The observed result belongs to the current message bank/label, context and
+speaker handle; an empty cached name or failed text conversion is not enough.
+Named speakers keep NPC matching. Unknown names retain base speed unless a
+legacy fallback applies: valid player speakers or the reviewed FTR_WorkingTable,
+SYS_Player, SYS_Get_Fish, SYS_Get_Insect and SYS_Get_DiveFish banks.
+A confirmed name overrides those fallbacks. With unknown name metadata,
+reviewed self banks retain their previous priority over window color.
+Add faster_unnamed = true to your personal INI and restart. It defaults to false
+unless inherited. faster_player remains an alias for old personal files.
+Use one spelling per file; both in the same file count as a duplicate and retain
+that setting's earlier-layer value. Either spelling can override the other in
+a later file. The broader unnamed classifier is new in 0.3.22 and needs a live
+test with the reported storage/mirror/Niko/amiibo/stretching/drop-off messages.
 Kapp'n songs/travel retain native scripting; no skip is added.
 
 LOGS

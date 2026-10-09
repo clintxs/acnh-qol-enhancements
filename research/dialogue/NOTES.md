@@ -257,3 +257,37 @@ ASCII-insensitive exact matching; full Unicode case folding/normalization is
 not implemented. Old English aliases and Kapp'n profile expansion are retained.
 Native constructor/getter paths and the actual callbacks are exercised with all
 14 supplied name banks in ARM tests; live name capture is not yet confirmed.
+
+## 0.3.22 unnamed gameplay category
+
+`faster_unnamed` replaces the public `faster_player` spelling; both map to the
+same preference and duplicate-key bit. Either spelling may override an earlier
+file. Supplying both in one file is a duplicate and restores the previous layer.
+The default remains false. Internal MessageKind::Unnamed replaces Player.
+
+The existing native name-preparation hooks also observe tag presence. At
+01B04B80..01B04B8C, null UTF-16 data, zero capacity or an initial NUL branches
+to 01B04DA8, which clears talk presentation +31C. A nonempty raw name stays
+Named even when UTF-8 conversion fails or exceeds the localized matching bound.
+No new hooks or engine calls are needed. Both talk and balloon styles reach
+name preparation through 01AF9DA4; that path subsequently dispatches all three
+window kinds (01AF9DB4..01AF9DF4).
+
+NameBegin clears the previous observation and snapshots context, source/handle
+and bounded nonempty active bank/label SafeStrings (+2488/+24F8). NameReady
+records Unknown/Named/Unnamed only if those owners and identifiers still match.
+CurrentSpeaker revalidates them. Confirmed unnamed talk/balloon windows use
+Unnamed, while blue dialogs use Ui. Named state blocks legacy self guesses.
+Unknown state retains the previous five-bank/player-entity fallbacks, including
+the legacy self-bank priority over blue windows. Empty cached names, unobserved
+preparation and failed conversion are not evidence of an unnamed message.
+
+The reported examples map to FTR_Storeroom, FTR_DressingTable, FTR_Chest,
+OBJ_WherearenMncBox, OBJ_WherearenAmiiboDevice, OBJ_HotelAmiiboDevice,
+OBJ_Radio_RadioGymnastics and OBJ_PurchaseBox. They require no added allowlist;
+item names and other variable text do not change the presence test. Local ARM
+checks cover all these groups plus an unlisted group and varied labels at both
+bases, native empty-name branches, named/malformed names, missing sources,
+message/source/generation changes, independent UI and legacy alias behavior.
+The existing reveal gates, seven hooks and localized-NPC matching remain tested.
+This classifier still needs an Eden test with those real interactions.

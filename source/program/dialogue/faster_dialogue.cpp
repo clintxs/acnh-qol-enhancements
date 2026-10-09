@@ -17,6 +17,7 @@ namespace layout {
 constexpr std::size_t TextManager = 0x208, ManagerText = 0x28, TalkContext = 0x20;
 constexpr std::size_t WindowKind = 0x2c, ActiveSpeaker = 0xc0;
 constexpr std::size_t ActiveMessageBank = 0x2488;
+constexpr std::size_t ActiveMessageLabel = 0x24f8;
 constexpr unsigned MessageBankBytes = 64;
 constexpr std::size_t SpeakerEntityHandle = 8;
 constexpr std::size_t HeldButtons = 8, HeldFast = 0x21b4, EffectiveFast = 0x21b7, RendererFast = 0x205;
@@ -28,10 +29,15 @@ constexpr unsigned NpcEntity = 10, PlayerEntity = 0x4f, DialogWindow = 1, Balloo
 constexpr std::uint16_t BoostButtons = 0x4002; // B/R; L is deliberately excluded.
 } // namespace layout
 Settings Preferences{};
+enum class NameTag { Unknown, Named, Unnamed };
 struct ResolvedName {
     std::uintptr_t manager{}, source{};
     unsigned handle{};
     char name[NpcNameBytes]{};
+    std::uintptr_t context{};
+    char bank[layout::MessageBankBytes]{}, label[layout::MessageBankBytes]{};
+    bool messageKnown{};
+    NameTag tag = NameTag::Unknown;
 };
 ResolvedName Name{};
 template <class T> T Read(std::uintptr_t object, std::size_t offset = 0) {
@@ -42,6 +48,28 @@ template <class T> T Read(std::uintptr_t object, std::size_t offset = 0) {
 std::uintptr_t Main(std::uintptr_t offset) {
     return exl::util::GetMainModuleInfo().m_Text.m_Start + offset;
 }
+bool CopyMessageId(std::uintptr_t manager, std::size_t field, char *output) {
+    output[0] = 0;
+    const auto data = Read<std::uintptr_t>(manager, field);
+    if (!data) return false;
+    for (unsigned i = 0; i < layout::MessageBankBytes; ++i) {
+        const auto c = Read<char>(data, i);
+        if (!c) { output[i] = 0; return i != 0; }
+        if (i + 1 < layout::MessageBankBytes) output[i] = c;
+    }
+    output[0] = 0;
+    return false;
+}
+bool NameOwnerMatches(std::uintptr_t manager, std::uintptr_t context, std::uintptr_t source) {
+    return Name.manager == manager && Name.context == context && Name.source == source &&
+           (!source || Name.handle == Read<unsigned>(source, layout::SpeakerEntityHandle));
+}
+bool NameMessageMatches(std::uintptr_t manager) {
+    char bank[layout::MessageBankBytes]{}, label[layout::MessageBankBytes]{};
+    return Name.messageKnown && CopyMessageId(manager, layout::ActiveMessageBank, bank) &&
+           CopyMessageId(manager, layout::ActiveMessageLabel, label) &&
+           !std::strcmp(Name.bank, bank) && !std::strcmp(Name.label, label);
+}
 bool NativeFunction(std::uintptr_t function) {
     const auto &text = exl::util::GetMainModuleInfo().m_Text;
     return function && function >= text.m_Start && function - text.m_Start < text.m_Size && !(function & 3);
@@ -49,12 +77,13 @@ bool NativeFunction(std::uintptr_t function) {
 enum class SpeakerLookup {
     Manager, Context, Window, Source,
     EmptyHandle, Registry, Entity, EntityKind, NpcType, NpcMethod, NpcMismatch,
-    NpcName, NpcNameTooLong, Npc, UiDialog, PlayerEntity, PlayerBank
+    NpcName, NpcNameTooLong, Npc, UiDialog, PlayerEntity, PlayerBank, UnnamedTag
 };
 struct Speaker {
     SpeakerLookup lookup = SpeakerLookup::Manager;
     unsigned window = ~0u, entityKind = ~0u;
     MessageKind kind = MessageKind::Unknown;
+    NameTag tag = NameTag::Unknown;
     unsigned handle{};
     std::uintptr_t entity{};
     unsigned entityHandle = ~0u, entityFlags = ~0u;
@@ -78,29 +107,28 @@ Speaker CurrentSpeaker(std::uintptr_t text) {
     // manager+2480's SafeString (data +2488) when starting the current message.
     // Read that owned active bank each update, never a pending ID or last-bank
     // cache. Live DIY/catch messages use window 2 (balloon), so recognize known
-    // self banks BEFORE restricting UI and entity lookup by window kind.
-    // Unrecognized balloons still receive no automatic category boost.
-    const auto bank = Read<std::uintptr_t>(manager, layout::ActiveMessageBank);
-    if (bank) {
-        bool terminated = false;
-        for (unsigned i = 0; i < sizeof(result.bank); ++i) {
-            const auto c = Read<char>(bank, i);
-            if (!c) { terminated = true; break; }
-            if (i + 1 < sizeof(result.bank)) result.bank[i] = c;
-        }
-        if (!terminated) result.bank[0] = 0; // Never classify a truncated bank.
-        if (IsPlayerMessageBank(result.bank)) {
-            result.lookup = SpeakerLookup::PlayerBank;
-            result.kind = MessageKind::Player;
-            return result;
-        }
+    // self banks remain a fallback until native name preparation is observed.
+    CopyMessageId(manager, layout::ActiveMessageBank, result.bank);
+    const auto source = Read<std::uintptr_t>(manager, layout::ActiveSpeaker);
+    const auto tag = result.tag = NameOwnerMatches(manager, context, source) && NameMessageMatches(manager)
+                   ? Name.tag : NameTag::Unknown;
+    if (window != layout::DialogWindow && tag == NameTag::Unnamed) {
+        result.lookup = SpeakerLookup::UnnamedTag;
+        result.kind = MessageKind::Unnamed;
+        return result;
+    }
+    // A confirmed name always beats a legacy self-bank guess. Preserve the
+    // previous five-bank fallback (including its UI priority) when unknown.
+    if (tag == NameTag::Unknown && IsUnnamedMessageBank(result.bank)) {
+        result.lookup = SpeakerLookup::PlayerBank;
+        result.kind = MessageKind::Unnamed;
+        return result;
     }
     if (window == layout::DialogWindow) {
         result.lookup = SpeakerLookup::UiDialog; result.kind = MessageKind::Ui; return result;
     }
     if (window != 0) return result; // Balloon/unknown is not automatically UI.
     result.lookup = SpeakerLookup::Source;
-    const auto source = Read<std::uintptr_t>(manager, layout::ActiveSpeaker);
     if (!source) return result; // Absence alone is NOT proof of a UI message.
     // The NPC component's constructor at 01d9e224..01d9e254 copies the entity's
     // generation handle (+230) into this TalkSource's +8 field. In that block,
@@ -128,8 +156,8 @@ Speaker CurrentSpeaker(std::uintptr_t text) {
     if (result.entityFlags & 2) return result;
     result.lookup = SpeakerLookup::EntityKind;
     const auto kind = result.entityKind = Read<unsigned>(entity, layout::EntityKind);
-    if (kind == layout::PlayerEntity) {
-        result.lookup = SpeakerLookup::PlayerEntity; result.kind = MessageKind::Player; return result;
+    if (kind == layout::PlayerEntity && tag != NameTag::Named) {
+        result.lookup = SpeakerLookup::PlayerEntity; result.kind = MessageKind::Unnamed; return result;
     }
     if (kind != layout::NpcEntity) return result;
     // Match native 01b00164..01b001e8's NPC RTTI check before borrowing the
@@ -229,10 +257,13 @@ HOOK_DEFINE_INLINE(DialogueNameBegin) {
         // identity. x0 is the presentation context; context+0 is its manager.
         Name = {};
         if (!registers->X[0]) return;
+        Name.context = registers->X[0];
         Name.manager = Read<std::uintptr_t>(registers->X[0]);
         if (!Name.manager) return;
         Name.source = Read<std::uintptr_t>(Name.manager, layout::ActiveSpeaker);
         if (Name.source) Name.handle = Read<unsigned>(Name.source, layout::SpeakerEntityHandle);
+        Name.messageKnown = CopyMessageId(Name.manager, layout::ActiveMessageBank, Name.bank) &&
+                            CopyMessageId(Name.manager, layout::ActiveMessageLabel, Name.label);
     }
 };
 HOOK_DEFINE_INLINE(DialogueNameReady) {
@@ -243,10 +274,15 @@ HOOK_DEFINE_INLINE(DialogueNameReady) {
         // Borrow only for this copy: the holder resides in the native frame.
         const auto data = registers->X[19];
         const auto units = registers->W[0];
-        if (!Name.manager || !Name.source || !Name.handle || !data || !units || units > MaxLabelUnits ||
-            registers->X[24] != Name.source ||
-            Read<std::uintptr_t>(Name.manager, layout::ActiveSpeaker) != Name.source ||
-            Read<unsigned>(Name.source, layout::SpeakerEntityHandle) != Name.handle) return;
+        if (!Name.manager ||
+            !NameOwnerMatches(Name.manager, Read<std::uintptr_t>(Name.manager, layout::TalkContext), registers->X[24]) ||
+            Read<std::uintptr_t>(Name.manager, layout::ActiveSpeaker) != Name.source) return;
+        // Exactly mirror native 01b04b80..01b04b8c: null data, zero capacity
+        // or an initial NUL suppresses the name tag. A failed UTF-8 conversion
+        // of a nonempty native name remains Named, never inferred Unnamed.
+        if (NameMessageMatches(Name.manager))
+            Name.tag = data && units && Read<char16_t>(data) ? NameTag::Named : NameTag::Unnamed;
+        if (!Name.source || !Name.handle || !data || !units || units > MaxLabelUnits) return;
         std::array<char16_t, MaxLabelUnits> buffer{};
         std::memcpy(buffer.data(), reinterpret_cast<const void *>(data), units * sizeof(char16_t));
         CopyLabelName({buffer.data(), units}, Name.name);
@@ -283,11 +319,12 @@ HOOK_DEFINE_INLINE(DialogueSelectSpeed) {
         constexpr const char *reasons[]{
             "no-manager", "no-context", "unsupported-window", "no-source", "empty-handle", "no-registry",
             "invalid-entity", "other-entity-kind", "npc-type-unready", "foreign-npc-method",
-            "npc-type-mismatch", "no-npc-name", "npc-name-too-long", "npc", "ui-dialog", "player-entity", "player-bank"
+            "npc-type-mismatch", "no-npc-name", "npc-name-too-long", "npc", "ui-dialog", "player-entity", "player-bank", "unnamed-tag"
         };
         static Speaker previous{};
         static unsigned previousSpeed = 0, reports = 0;
         const bool changed = !reports || previous.lookup != speaker.lookup ||
+            previous.tag != speaker.tag ||
             previous.window != speaker.window || previous.entityKind != speaker.entityKind ||
             previous.handle != speaker.handle || previous.entity != speaker.entity ||
             previous.entityHandle != speaker.entityHandle || previous.entityFlags != speaker.entityFlags ||
@@ -295,10 +332,11 @@ HOOK_DEFINE_INLINE(DialogueSelectSpeed) {
             std::strcmp(previous.bank, speaker.bank) || std::strcmp(previous.localizedName, speaker.localizedName);
         if (changed && reports < 128) {
             ++reports; previous = speaker; previousSpeed = speed;
-            Logging.Log("[QoL Enhancements/Faster Dialogue] SELECT reason=%s window=%u entity_kind=%u kind=%u npc=%s speed=%u bank=%s handle=%08x entity=0x%lx entity_handle=%08x entity_flags=%08x name=%s\n",
+            Logging.Log("[QoL Enhancements/Faster Dialogue] SELECT reason=%s window=%u entity_kind=%u kind=%u npc=%s speed=%u bank=%s handle=%08x entity=0x%lx entity_handle=%08x entity_flags=%08x name=%s name_tag=%u\n",
                         reasons[static_cast<unsigned>(speaker.lookup)], speaker.window, speaker.entityKind,
                         static_cast<unsigned>(speaker.kind), speaker.id, speed, speaker.bank,
-                        speaker.handle, speaker.entity, speaker.entityHandle, speaker.entityFlags, speaker.localizedName);
+                        speaker.handle, speaker.entity, speaker.entityHandle, speaker.entityFlags, speaker.localizedName,
+                        static_cast<unsigned>(speaker.tag));
         }
 #endif
     }
@@ -364,7 +402,7 @@ bool Install() {
     if (NormalizeSettings(Preferences))
         Logging.Log("[QoL Enhancements/Faster Dialogue] WARNING: boost_speed below base_speed; using base speed for both\n");
 #if CAS_VERBOSE_DIALOGUE_TRACE
-    Logging.Log("[QoL Enhancements/Faster Dialogue] DIAGNOSTIC: npc-handle-v4; owned speaker handle and player window fixes\n");
+    Logging.Log("[QoL Enhancements/Faster Dialogue] DIAGNOSTIC: unnamed-v1; current-message native name-tag classification\n");
 #endif
     DialogueNameBegin::InstallAtOffset(address::NameBegin);
     DialogueNameReady::InstallAtOffset(address::NameReady);
@@ -373,9 +411,9 @@ bool Install() {
     DialogueForwardSpeed::InstallAtOffset(address::ForwardFast);
     DialogueMainRate::InstallAtOffset(address::MainRate);
     DialogueRendererRate::InstallAtOffset(address::RendererRate);
-    Logging.Log("[QoL Enhancements/Faster Dialogue] READY: C++ hooks; base=%u boost=%u faster_ui=%s faster_player=%s npc_count=%u\n",
+    Logging.Log("[QoL Enhancements/Faster Dialogue] READY: C++ hooks; base=%u boost=%u faster_ui=%s faster_unnamed=%s npc_count=%u\n",
                 Preferences.baseSpeed, Preferences.boostSpeed, Preferences.fasterUi ? "true" : "false",
-                Preferences.fasterPlayer ? "true" : "false", Preferences.npcCount);
+                Preferences.fasterUnnamed ? "true" : "false", Preferences.npcCount);
     return true;
 }
 } // namespace qol::dialogue

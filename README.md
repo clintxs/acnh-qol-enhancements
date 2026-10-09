@@ -166,7 +166,7 @@ version = 0.3.17
 base_speed = 2
 boost_speed = 4
 faster_ui = false
-faster_player = true
+faster_unnamed = true
 ```
 
 A `faster-dialogue.custom.ini` containing just `faster_ui = true` keeps all the
@@ -199,7 +199,7 @@ My Custom Faster Dialogue Settings/
 base_speed = 2
 boost_speed = 4
 faster_ui = true
-faster_player = true
+faster_unnamed = true
 faster_npc_list = Timmy, Tommy, Orville, Wilbur, Kapp'n
 ```
 
@@ -209,8 +209,8 @@ example preset over edited preferences. Only one mod should supply the custom
 path; normal RomFS precedence applies if there are duplicates. The custom file
 cannot activate an absent Faster Dialogue module.
 
-Preferences absent from both files retain base 2 / held B/R 4, with UI/player/list boost off. A listed
-NPC, recognized player message or UI uses `boost_speed` automatically; holding B/R selects that
+Preferences absent from both files retain base 2 / held B/R 4, with UI/unnamed/list boost off. A listed
+NPC, confirmed unnamed message or UI uses `boost_speed` automatically; holding B/R selects that
 same tier and never stacks to 8. This prototype supports **2 and 4** for both
 speed keys; a boost below the base is raised to the base. These are nominal tiers relative to the live native fast rate,
 including language/FPS adjustments, not fixed wall-clock multipliers. Native
@@ -241,26 +241,27 @@ to its value before the file. A supplied list replaces the earlier one. The
 boost/base relationship is normalized after both files have loaded.
 
 `faster_ui` covers native system dialog windows (the blue dialogs). Independent
-`faster_player` covers valid player speakers and five reviewed self-message
-banks: `FTR_WorkingTable`, `SYS_Player`, `SYS_Get_Fish`, `SYS_Get_Insect`, and
-`SYS_Get_DiveFish`. These include DIY workbench prompts/results, recipe learning,
-fish/bug/sea-creature catches and other SYS_Player self narration. The active
-message bank is read directly, so no speaker entity is required. Matching uses
-internal bank names across locales, not displayed text. Known self banks take
-priority over window color; unknown banks never become self merely because a
-speaker is missing. Known player banks also match balloon windows (type 2),
-as used by live DIY/catch messages. Unrecognized balloons and unknown window
-types receive no automatic boost.
+`faster_unnamed` covers regular gameplay bubbles whose current native name
+preparation confirms that no name is displayed. This includes player thoughts
+and other unnamed messages, regardless of wording, language or inserted item
+names. Storage sheds, mirrors/dressers, Niko's notes, amiibo-device thoughts,
+group stretching and shop drop-off prompts need no per-message allowlist.
 
-Add `faster_player = true` to your **existing personal INI** and restart; an older
-personal file keeps this new option off. Each automatic category selects the
-same `boost_speed`; holding B/R never stacks another boost. Live 0.2.1 logs
-showed the correct workbench/fish banks rejected by an early window-2 check;
-0.2.2 fixes that restriction, and the subsequent live log confirms player-bank
-selection at speed 4 for workbench/fish messages. That log also revealed the
-NPC bug: the old lookup interpreted a voice-position vector as an entity handle.
-0.2.3 reads the speaker's owned handle instead, and the user confirmed the
-corrected diagnostic build works in game. See
+The captured result is checked against the current message bank/label, context
+and speaker handle. An empty cache or failed name conversion does not prove a
+message is unnamed. Named speakers keep NPC matching; blue dialogs keep their
+independent UI setting. When name preparation is unknown, the previous valid
+player-speaker and five reviewed bank fallbacks remain: `FTR_WorkingTable`,
+`SYS_Player`, `SYS_Get_Fish`, `SYS_Get_Insect`, and `SYS_Get_DiveFish`. Confirmed
+names override those guesses. Unknown names alone never trigger a boost.
+
+Add `faster_unnamed = true` to your **existing personal INI** and restart. The
+old `faster_player` key remains a compatibility alias. Use one spelling per
+file: supplying both counts as a duplicate and restores the earlier layer's
+value. Either spelling can override the other in a later file. The default is
+false unless inherited. Automatic categories select the same `boost_speed`;
+holding B/R never stacks another boost. The broader classifier is new in
+0.3.22 and needs live confirmation with the reported interactions. See
 [research notes](research/dialogue/NOTES.md).
 There is no song/travel skipping, forced reveal, voice cleanup or emote filtering.
 
@@ -273,16 +274,18 @@ python3 tools/package_dialogue_diagnostic.py
 ```
 
 The diagnostic ZIP replaces Core only. Keep the Faster Dialogue module and your
-personal settings, including `faster_player = true`, then fully restart. Test a
-workbench, catch message and listed NPC, briefly holding B/R for comparison.
+personal settings, including `faster_unnamed = true`, then fully restart. Test a
+mirror, storage shed, DIY notes, amiibo-device, stretching or drop-off prompt,
+plus a listed NPC, briefly holding B/R for comparison.
 Collect Eden's `QoL Enhancements/Faster Dialogue` lines before another session
-replaces the log. `DIAGNOSTIC: npc-handle-v4` identifies this build; `READY`
+replaces the log. `DIAGNOSTIC: unnamed-v1` identifies this build; `READY`
 shows loaded settings, `MESSAGE` shows active/cached banks, labels and reveal
-gates, and `SELECT` shows the classification, speed and entity handle details.
+gates, and `SELECT` shows the classification, speed and entity handle details. `name_tag` is 0 for unknown, 1 for named, and 2 for
+confirmed unnamed.
 MESSAGE runs in the input
 hook even when native reveal gates prevent SELECT. Logs stop after 256 MESSAGE
 or 128 SELECT transitions; repeated frames do not consume the limits. This
-diagnostic includes both player/NPC fixes and adds observations. Restore normal
+diagnostic includes the unnamed classifier and bounded observations. Restore normal
 Core after collecting the log. Old release ZIPs are preserved.
 
 ## Build and package

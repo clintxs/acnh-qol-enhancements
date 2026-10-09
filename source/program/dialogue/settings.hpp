@@ -7,11 +7,11 @@ namespace qol::dialogue {
 inline constexpr unsigned MaxNpcs = 64, NpcIdBytes = 16;
 struct Settings {
     unsigned baseSpeed = 2, boostSpeed = 4;
-    bool fasterUi = false, fasterPlayer = false;
+    bool fasterUi = false, fasterUnnamed = false;
     unsigned npcCount = 0;
     std::array<std::array<char, NpcNameBytes>, MaxNpcs> npcs{};
 };
-enum class MessageKind { Unknown, Npc, Ui, Player };
+enum class MessageKind { Unknown, Npc, Ui, Unnamed };
 constexpr char Lower(char c) { return c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c; }
 inline bool Equal(std::string_view a, std::string_view b) {
     if (a.size() != b.size()) return false;
@@ -20,7 +20,7 @@ inline bool Equal(std::string_view a, std::string_view b) {
 }
 // Reviewed self-message banks from the supplied 3.0.3 resources. Matching
 // exact basenames avoids treating NPC banks or all SYS_/FTR_ messages as self.
-inline bool IsPlayerMessageBank(std::string_view bank) {
+inline bool IsUnnamedMessageBank(std::string_view bank) {
     const auto slash = bank.find_last_of('/');
     if (slash != std::string_view::npos) bank.remove_prefix(slash + 1);
     if (bank.ends_with(".msbt")) bank.remove_suffix(5);
@@ -58,7 +58,7 @@ inline bool AddNpc(Settings &settings, std::string_view name) {
 inline unsigned SelectSpeed(const Settings &settings, MessageKind kind,
                             std::string_view npc, bool held, std::string_view localizedName = {}) {
     bool automatic = (kind == MessageKind::Ui && settings.fasterUi) ||
-                     (kind == MessageKind::Player && settings.fasterPlayer);
+                     (kind == MessageKind::Unnamed && settings.fasterUnnamed);
     if (kind == MessageKind::Npc)
         for (unsigned i = 0; i < settings.npcCount; ++i)
             automatic |= Equal(npc, settings.npcs[i].data()) ||
@@ -90,8 +90,10 @@ inline unsigned ApplySettings(std::string_view input, Settings &output) {
         const auto key = core::Trim(line.substr(0, equals));
         const auto value = core::Trim(line.substr(equals + 1));
         if (key == "enabled" || key == "version") continue; // Validated by Core.
+        // Old/new spellings address one preference, including duplicate-key
+        // handling. Either spelling may override the earlier file's value.
         const unsigned bit = key == "base_speed" ? 1 : key == "boost_speed" ? 2 :
-                             key == "faster_ui" ? 4 : key == "faster_npc_list" ? 8 : key == "faster_player" ? 16 : 0;
+                             key == "faster_ui" ? 4 : key == "faster_npc_list" ? 8 : (key == "faster_unnamed" || key == "faster_player") ? 16 : 0;
         if (!bit) { ++warnings; continue; }
         if (seen & bit) { duplicate |= bit; ++warnings; continue; }
         seen |= bit;
@@ -99,7 +101,7 @@ inline unsigned ApplySettings(std::string_view input, Settings &output) {
             if (!ParseSpeed(value, bit == 1 ? output.baseSpeed : output.boostSpeed)) ++warnings;
         } else if (bit == 4 || bit == 16) {
             if (value == "true" || value == "false")
-                (bit == 4 ? output.fasterUi : output.fasterPlayer) = value == "true";
+                (bit == 4 ? output.fasterUi : output.fasterUnnamed) = value == "true";
             else ++warnings;
         } else {
             output.npcCount = 0;
@@ -117,7 +119,7 @@ inline unsigned ApplySettings(std::string_view input, Settings &output) {
     if (duplicate & 1) output.baseSpeed = previous.baseSpeed;
     if (duplicate & 2) output.boostSpeed = previous.boostSpeed;
     if (duplicate & 4) output.fasterUi = previous.fasterUi;
-    if (duplicate & 16) output.fasterPlayer = previous.fasterPlayer;
+    if (duplicate & 16) output.fasterUnnamed = previous.fasterUnnamed;
     if (duplicate & 8) { output.npcCount = previous.npcCount; output.npcs = previous.npcs; }
     return warnings;
 }

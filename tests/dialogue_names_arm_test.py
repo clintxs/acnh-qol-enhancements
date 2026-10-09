@@ -9,7 +9,7 @@ import tempfile
 from compression import zstd
 from dialogue_arm_test import DialogueMachine, DEFAULT
 from elf_loader import ROOT
-from unicorn.arm64_const import UC_ARM64_REG_X0, UC_ARM64_REG_SP, UC_ARM64_REG_PC, UC_ARM64_REG_LR
+from unicorn.arm64_const import UC_ARM64_REG_X0, UC_ARM64_REG_X19, UC_ARM64_REG_X24, UC_ARM64_REG_SP, UC_ARM64_REG_PC, UC_ARM64_REG_LR
 sys.path.insert(0, str(ROOT / 'qol-enhancements/tools'))
 from sarc_tool import read_sarc
 from msbt_tool import read_msbt
@@ -68,10 +68,89 @@ class NameMachine(DialogueMachine):
         result, _ = self.run((1, 0, 0, 0, 0, 1, 1, -1.), 0)
         return result[0x21b7]
 
+    def message(self, bank, label='001'):
+        self.bank(bank)
+        # Model the manager's second owned SafeString, the active message label.
+        data = self.ram + 0x69a00
+        self.write(self.meta + 0x24f8, data)
+        self.u.mem_write(data, label.encode() + b'\0')
+
+    def prepare_only(self):
+        self.u.reg_write(UC_ARM64_REG_X0, self.context)
+        self.u.reg_write(UC_ARM64_REG_SP, self.stack + 0x3000)
+        self.execute(0x1b04808, (0x1b04838,))
+
+    def fallback_label(self, value='', null_data=False, capacity=64):
+        # The source-less name resolver is modeled. Execute the real start
+        # and final empty-name branch through both compiled hooks, without
+        # invoking the unrelated UI lookup used by the fallback resolver.
+        self.prepare_only()
+        data = self.ram + 0x69b00
+        self.u.mem_write(data, value.encode('utf-16-le') + b'\0\0')
+        self.u.reg_write(UC_ARM64_REG_X19, 0 if null_data else data)
+        self.u.reg_write(UC_ARM64_REG_X24, 0)
+        self.u.reg_write(UC_ARM64_REG_X0, capacity)
+        self.execute(0x1b04b80, (0x1b04da8, 0x1b04b90))
+
+
+def check_unnamed(base):
+    banks = ('FTR_Storeroom', 'FTR_DressingTable', 'FTR_Chest', 'OBJ_WherearenMncBox',
+             'OBJ_WherearenAmiiboDevice', 'OBJ_HotelAmiiboDevice',
+             'OBJ_Radio_RadioGymnastics', 'OBJ_PurchaseBox', 'UnlistedFutureMessage')
+    for preferences, enabled in ((b'faster_unnamed=true', True), (b'faster_player=true', True),
+                                 (b'faster_unnamed=false', False)):
+        m = NameMachine(base, preferences)
+        for window in (0, 2):
+            m.speaker('owl', window=window)
+            for bank in banks:
+                for label in ('001', '002', 'Variable_Item_Name'):
+                    m.message(bank, label)
+                    m.prepare_only()
+                    assert m.tier() == 1 # No result yet; empty cache is not proof.
+                    m.label('')
+                    assert m.tier() == (3 if enabled else 1), (window, bank, label)
+                    m.label('Blathers')
+                    assert m.tier() == 1 # A named NPC never becomes unnamed.
+                    m.label('\ud800')
+                    assert m.tier() == 1 # Failed conversion of a nonempty name.
+            m.speaker(window=window, source=False)
+            for null_data, capacity in ((False, 64), (True, 64), (False, 0)):
+                m.message('OBJ_PurchaseBox')
+                m.fallback_label(null_data=null_data, capacity=capacity)
+                assert m.stop == 0x1b04da8 and m.tier() == (3 if enabled else 1)
+        m.speaker('owl')
+        m.message('FTR_DressingTable')
+        m.label('')
+        m.message('FTR_DressingTable', 'AnotherLabel')
+        assert m.tier() == 1 # Different label cannot inherit a previous result.
+        m.label('')
+        m.message('OBJ_PurchaseBox', 'AnotherLabel')
+        assert m.tier() == 1 # Different bank, same label.
+        m.label('')
+        m.handle += 1
+        m.speaker('owl')
+        assert m.tier() == 1 # Reused source allocation, different generation.
+        m.message('SYS_Player')
+        m.label('Blathers')
+        assert m.tier() == 1 # A known name overrides the legacy self-bank guess.
+        m.speaker('owl', window=1)
+        m.label('')
+        assert m.tier() == 1 # Confirmed blue dialogs use faster_ui.
+        m.speaker('owl', window=3)
+        m.label('')
+        assert m.tier() == 1 # Unknown window kind stays excluded.
+    ui = NameMachine(base, b'faster_ui=true')
+    ui.speaker('owl', window=1)
+    ui.message('OBJ_PurchaseBox')
+    ui.label('')
+    assert ui.tier() == 3
+    print(f'PASS {base:#x}: unnamed native branch, all eight reported message groups plus unlisted/variable labels, alias, unknown/named/malformed names, source-less/null/zero-capacity names, message/generation isolation and independent UI')
+
 
 def main():
     count = 0
     for base in (0x7100000000, 0x7200000000):
+        check_unnamed(base)
         m = NameMachine(base, 'faster_npc_list=Blathers,Sócrates,フータ,Блезерс,傅达,🦉'.encode(), regular=base == 0x7200000000)
         m.speaker('owl')
         for name in ('Blathers', 'blathers', 'Sócrates', 'フータ', 'Блезерс', '傅达', '🦉'):

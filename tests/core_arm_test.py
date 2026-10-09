@@ -10,7 +10,7 @@ from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
 SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'shopping-card', 'faster-crafting')
 COUNTS = (16, 16, 7, 11, 10, 2)
-DEFAULT = b'enabled=true\nversion=0.3.21\n'
+DEFAULT = b'enabled=true\nversion=0.3.22\n'
 
 def expected_hook_count(machine, enabled):
     # The existing verbose-dialogue build adds a Catalog message trace hook.
@@ -255,7 +255,7 @@ def check_amiibo_hook():
     print('PASS: Core-only default amiibo hook; regular/custom precedence, absent Core config, 0 untouched native behavior, 1/450/9000/65535 native stores/countdown/expiry, invalid-file fallback, ignored legacy Amiibo files and once-only activation at two bases')
 
 def check_custom_preferences():
-    for custom, summary in ((b'', 'base=2 boost=4 faster_ui=false faster_player=false npc_count=0'),
+    for custom, summary in ((b'', 'base=2 boost=4 faster_ui=false faster_unnamed=false npc_count=0'),
                             (b'base_speed=4\nboost_speed=2', 'base=4 boost=4'),
                             (b'base_speed=2\nboost_speed=2', 'base=2 boost=2'),
                             (b'base_speed=0\nfaster_ui=yes', 'base=2 boost=4 faster_ui=false'),
@@ -313,25 +313,25 @@ def check_config_layers():
                 m.boot(); m.activate()
                 assert len(m.hooks) == expected_hook_count(m, [name == slug for name in SLUGS]), m.text
                 assert 'WARNING:' in m.text and 'BOOT_OK' in m.text
-        regular = DEFAULT + b'base_speed=4\nboost_speed=2\nfaster_ui=true\nfaster_player=true\nfaster_npc_list=Timmy,Tommy'
+        regular = DEFAULT + b'base_speed=4\nboost_speed=2\nfaster_ui=true\nfaster_unnamed=true\nfaster_npc_list=Timmy,Tommy'
         cases = (
-            (b'base_speed=2\nfaster_ui=false\nfaster_npc_list=Wilbur', 'base=2 boost=2 faster_ui=false faster_player=true npc_count=1'),
-            (b'base_speed=bad\nfaster_ui=bad', 'base=4 boost=4 faster_ui=true faster_player=true npc_count=2'),
-            (b'faster_npc_list=', 'base=4 boost=4 faster_ui=true faster_player=true npc_count=0'),
-            (b'base_speed=2\nversion=bad', 'base=4 boost=4 faster_ui=true faster_player=true npc_count=2'),
-            (b'base_speed=2\nbase_speed=2', 'base=4 boost=4 faster_ui=true faster_player=true npc_count=2'),
+            (b'base_speed=2\nfaster_ui=false\nfaster_npc_list=Wilbur', 'base=2 boost=2 faster_ui=false faster_unnamed=true npc_count=1'),
+            (b'base_speed=bad\nfaster_ui=bad', 'base=4 boost=4 faster_ui=true faster_unnamed=true npc_count=2'),
+            (b'faster_npc_list=', 'base=4 boost=4 faster_ui=true faster_unnamed=true npc_count=0'),
+            (b'base_speed=2\nversion=bad', 'base=4 boost=4 faster_ui=true faster_unnamed=true npc_count=2'),
+            (b'base_speed=2\nbase_speed=2', 'base=4 boost=4 faster_ui=true faster_unnamed=true npc_count=2'),
         )
         for custom, summary in cases:
             m = Machine(base, {'faster-dialogue': regular, 'faster-dialogue.custom': custom})
             m.boot(); m.activate()
             assert summary in m.text and 'BOOT_OK' in m.text, m.text
         # All preference keys work equally in either file.
-        preferences = b"base_speed=2\nboost_speed=4\nfaster_ui=true\nfaster_player=true\nfaster_npc_list=Timmy,Tommy,Orville,Wilbur,Kapp'n"
+        preferences = b"base_speed=2\nboost_speed=4\nfaster_ui=true\nfaster_unnamed=true\nfaster_npc_list=Timmy,Tommy,Orville,Wilbur,Kapp'n"
         for files in ({'faster-dialogue': DEFAULT + preferences},
                       {'faster-dialogue': DEFAULT, 'faster-dialogue.custom': preferences}):
             m = Machine(base, files)
             m.boot(); m.activate()
-            assert 'base=2 boost=4 faster_ui=true faster_player=true npc_count=6' in m.text, m.text
+            assert 'base=2 boost=4 faster_ui=true faster_unnamed=true npc_count=6' in m.text, m.text
     print('PASS: shared regular/custom order, enabled/version overrides for all six modules, atomic metadata, failure fallback, inheritance and settings parity at two bases')
 
 if __name__ == '__main__':

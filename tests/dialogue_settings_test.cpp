@@ -6,7 +6,7 @@ using namespace qol::dialogue;
 int main() {
     Settings settings{};
     assert(!ParseSettings("", settings));
-    for (auto kind : {MessageKind::Npc, MessageKind::Ui, MessageKind::Player, MessageKind::Unknown}) {
+    for (auto kind : {MessageKind::Npc, MessageKind::Ui, MessageKind::Unnamed, MessageKind::Unknown}) {
         assert(SelectSpeed(settings, kind, "rcm", false) == 2);
         assert(SelectSpeed(settings, kind, "rcm", true) == 4);
     }
@@ -35,14 +35,20 @@ int main() {
     assert(ParseSettings(list, settings) == 1 && settings.npcCount == MaxNpcs);
     assert(!ParseSettings("faster_ui=true", settings));
     assert(SelectSpeed(settings, MessageKind::Ui, "", false) == 4);
-    assert(SelectSpeed(settings, MessageKind::Player, "", false) == 2);
+    assert(SelectSpeed(settings, MessageKind::Unnamed, "", false) == 2);
     assert(!ParseSettings("faster_player=true", settings));
-    assert(SelectSpeed(settings, MessageKind::Player, "", false) == 4);
+    assert(SelectSpeed(settings, MessageKind::Unnamed, "", false) == 4);
     assert(SelectSpeed(settings, MessageKind::Ui, "", false) == 2);
     assert(SelectSpeed(settings, MessageKind::Npc, "rcm", false) == 2);
     assert(SelectSpeed(settings, MessageKind::Unknown, "", false) == 2);
-    assert(ParseSettings("faster_player=yes", settings) == 1 && !settings.fasterPlayer);
-    assert(ParseSettings("faster_player=true\nfaster_player=false", settings) == 1 && !settings.fasterPlayer);
+    assert(ParseSettings("faster_player=yes", settings) == 1 && !settings.fasterUnnamed);
+    assert(ParseSettings("faster_player=true\nfaster_player=false", settings) == 1 && !settings.fasterUnnamed);
+    assert(!ParseSettings("faster_unnamed=true", settings) && settings.fasterUnnamed);
+    assert(!ApplySettings("faster_player=false", settings) && !settings.fasterUnnamed);
+    assert(!ApplySettings("faster_unnamed=true", settings) && settings.fasterUnnamed);
+    assert(ApplySettings("faster_player=false\nfaster_unnamed=false", settings) == 1 && settings.fasterUnnamed);
+    assert(ParseSettings("faster_unnamed=true\nfaster_player=false", settings) == 1 && !settings.fasterUnnamed);
+    assert(ParseSettings("faster_unnamed=yes", settings) == 1 && !settings.fasterUnnamed);
     // Layer inheritance, valid false overrides, list replacement/clearing, and
     // invalid/duplicate custom values preserving their regular-file values.
     settings = {};
@@ -50,10 +56,10 @@ int main() {
                           "faster_ui=true\nfaster_player=true\nfaster_npc_list=Timmy,Tommy", settings));
     assert(!ApplySettings("base_speed=2\nfaster_ui=false\nfaster_npc_list=Wilbur", settings));
     assert(!NormalizeSettings(settings));
-    assert(settings.baseSpeed == 2 && settings.boostSpeed == 2 && !settings.fasterUi && settings.fasterPlayer);
+    assert(settings.baseSpeed == 2 && settings.boostSpeed == 2 && !settings.fasterUi && settings.fasterUnnamed);
     assert(settings.npcCount == 1 && Equal(settings.npcs[0].data(), "doc"));
     assert(ApplySettings("boost_speed=bad\nfaster_player=bad\nfaster_npc_list=Timmy\nfaster_npc_list=Tommy", settings) == 3);
-    assert(settings.boostSpeed == 2 && settings.fasterPlayer && settings.npcCount == 1);
+    assert(settings.boostSpeed == 2 && settings.fasterUnnamed && settings.npcCount == 1);
     assert(Equal(settings.npcs[0].data(), "doc"));
     assert(!ApplySettings("faster_npc_list=", settings) && settings.npcCount == 0);
     assert(!ParseSettings("faster_npc_list=Blathers,Sócrates,フータ,傅达,Блезерс,Mr. Resetti", settings));
@@ -92,9 +98,9 @@ int main() {
     assert(!CopyLabelName(std::u16string(64, u'A'), label) && !label[0]);
     for (auto bank : {"FTR_WorkingTable", "SYS_Player", "SYS_Get_Fish", "SYS_Get_Insect", "SYS_Get_DiveFish",
                       "TalkFtr/FTR_WorkingTable", "TalkSys/SYS_Player.msbt"})
-        assert(IsPlayerMessageBank(bank));
+        assert(IsUnnamedMessageBank(bank));
     for (auto bank : {"", "SYS_Get_Fish_Extra", "NotSYS_Player", "SP_rcm_00_common", "SYS_Door",
                       "OBJ_RcoMachine", "TalkSys/SYS_Player.msbt/Unknown", "FTR_WorkingTableExtra"})
-        assert(!IsPlayerMessageBank(bank));
-    puts("PASS: dialogue defaults, aliases/IDs, independent UI/player/NPC policy, exact self-message banks, non-stacking boost, invalid keys/values, duplicates and bounded lists");
+        assert(!IsUnnamedMessageBank(bank));
+    puts("PASS: dialogue defaults, aliases/IDs, independent UI/unnamed/NPC policy, exact self-message banks, non-stacking boost, invalid keys/values, duplicates and bounded lists");
 }
