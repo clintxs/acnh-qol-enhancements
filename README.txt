@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.17 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.18 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -10,7 +10,7 @@ Fully close ACNH. Disable the standalone Catalog Aware Shops, QoL Pockets
 Interactions, Able Sisters Bag Prototype, all Faster Interactions versions,
 Amiibo Scan - 5 Minutes, and the historical Optimized UI/Grab 5 patches.
 
-For the full suite, copy all seven “QoL Enhancements” folders into the game's
+For the full suite, copy all eight “QoL Enhancements” folders into the game's
 mods folder, then enable them in Eden. For selected features, copy Core plus
 only the feature folders you want. Restart the game after changing modules.
 
@@ -20,6 +20,7 @@ ACNH v3 release still needs testing. Other mods must also avoid subsdk6 and
 our hook/layout files. Core supplies the suite's only main.npdm.
 
 MODULES
+Faster Crafting: automatic native 3x mash-A boost for crafting and cooking.
 Catalog: catalog/recipe stars, catalog badges and furniture-variation markers.
 Pockets: Grab 5/10, direct storage withdrawal, Y-to-storage and footer hints.
 Faster Dialogue: faster default reveal; B/R boost; optional NPC/UI/player boost.
@@ -82,7 +83,7 @@ this package does not supply an aspect-ratio patch.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.17
+  version = 0.3.18
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.
@@ -101,6 +102,21 @@ Other modules currently have only enabled/version settings. Pockets captions
 remain a separate translation resource, outside module configuration layering.
 Whole-line #/; comments, a UTF-8 BOM, CRLF and valid UTF-8 text up to 4 KiB per file
 are supported. Versions use numeric major.minor.patch.
+
+FASTER CRAFTING / COOKING
+New in 0.3.18. Install Core plus “QoL Enhancements - Faster Crafting”.
+Enabled by default, independently of Faster Dialogue. The existing native
+mash-A maximum (3x) applies immediately during crafting/cooking. No synthetic
+A presses, menu confirmations, skips or recipe/item changes. Native animation
+gates and exit resets remain active. This includes workbench customization
+through the shared crafting state. NPC animations retain native behavior.
+For ordinary speed with manual mash-A, set enabled = false in:
+  romfs/qol-enhancements/config/faster-crafting.ini
+Or preserve that preference across updates in a personal mod containing:
+  romfs/qol-enhancements/config/faster-crafting.custom.ini
+The custom file needs only enabled = false. Keep the regular module installed.
+Fully restart the game after changing settings. Native ARM/config checks pass;
+crafting, customization and cooking still need an Eden test.
 
 PERSONAL FASTER DIALOGUE SETTINGS
 Install the optional separate faster-dialogue-custom-example ZIP alongside
@@ -134,7 +150,7 @@ Speeds preserve the game's language/FPS-adjusted fast rate; animations and
 scripted waits can limit conversation speed. Native overrides take priority.
 No preferences in either file: base 2, held 4, automatic UI/player/NPC boost off.
 
-Keep the personal mod folder when replacing the seven suite folders. Do not
+Keep the personal mod folder when replacing the eight suite folders. Do not
 reinstall the example preset over your edited preferences. Enable only one
 mod providing the custom file. Fully restart after changes. The custom file
 may include enabled/version and can override a disabled regular configuration.

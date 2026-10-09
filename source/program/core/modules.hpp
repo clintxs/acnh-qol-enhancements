@@ -13,6 +13,6 @@ struct ModuleDescription {
     // Prepare their allocation support whenever the package marker is present.
     bool (*prepareResources)() = nullptr;
 };
-extern const std::array<ModuleDescription, 6> Modules;
+extern const std::array<ModuleDescription, 7> Modules;
 void ActivateModules();
 } // namespace qol::core

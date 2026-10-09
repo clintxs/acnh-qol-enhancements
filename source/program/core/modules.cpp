@@ -18,6 +18,7 @@
 
 namespace able_bag { bool Install(); }
 namespace qol::amiibo { bool Install(); }
+namespace qol::crafting { bool Install(); }
 
 namespace qol::core {
 namespace {
@@ -81,13 +82,14 @@ std::atomic<bool> ActivationStarted{false};
 
 // Minimum PACKAGE versions accepted by Core. Raise only when older assets
 // stop being compatible; release versions still advance with the whole suite.
-const std::array<ModuleDescription, 6> Modules{{
+const std::array<ModuleDescription, 7> Modules{{
     {"Catalog", "catalog", {0, 1, 0}, InstallCatalog},
     {"Pockets", "pockets", {0, 1, 0}, InstallPockets},
     {"Faster Dialogue", "faster-dialogue", {0, 1, 0}, dialogue::Install, dialogue::Configure},
     {"Fitting Room", "fitting-room", {0, 1, 0}, able_bag::Install},
     {"Amiibo", "amiibo", {0, 1, 0}, amiibo::Install},
     {"Shopping Card", "shopping-card", {0, 3, 2}, shopping::Install, nullptr, shopping::PrepareResources},
+    {"Faster Crafting", "faster-crafting", {0, 3, 18}, crafting::Install},
 }};
 
 void ActivateModules() {

@@ -8,9 +8,9 @@ from unicorn import Uc, UC_ARCH_ARM64, UC_MODE_ARM, UC_HOOK_CODE, UC_HOOK_MEM_WR
 from unicorn.arm64_const import *
 from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
-SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'amiibo', 'shopping-card')
-COUNTS = (16, 16, 7, 11, 1, 10)
-DEFAULT = b'enabled=true\nversion=0.3.17\n'
+SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'amiibo', 'shopping-card', 'faster-crafting')
+COUNTS = (16, 16, 7, 11, 1, 10, 2)
+DEFAULT = b'enabled=true\nversion=0.3.18\n'
 
 def expected_hook_count(machine, enabled):
     # The existing verbose-dialogue build adds a Catalog message trace hook.
@@ -133,7 +133,7 @@ def check_all_subsets():
             before = (len(m.hooks), len(m.opened), len(m.logs))
             m.activate()
             assert before == (len(m.hooks), len(m.opened), len(m.logs))
-    print('PASS: all 64 module subsets at two bases; deferred activation, isolated C++ hooks, C++ dialogue hooks, once-only reads')
+    print('PASS: all 128 module subsets at two bases; deferred activation, isolated C++ hooks, C++ dialogue hooks, once-only reads')
 
 def check_errors():
     for slug in SLUGS:
@@ -170,7 +170,7 @@ def check_errors():
         m.boot(); m.activate()
         assert 'Faster Dialogue] DISABLED' in m.text and 'Amiibo: ENABLED' in m.text
         assert not any(m.base + offset in m.hooks for offset in (0x1afa00c, 0x1afdec0))
-    m = Machine(0x7100000000, {slug: b'enabled=true\nversion=0.1.0' for slug in SLUGS[:-1]})
+    m = Machine(0x7100000000, {slug: b'enabled=true\nversion=0.1.0' for slug in SLUGS[:5]})
     m.boot(); m.activate()
     assert len(m.hooks) == expected_hook_count(m, (True,) * 5) and 'BOOT_OK' in m.text and 'enabled_modules=5 errors=0' in m.text
     m = Machine(0x7100000000, {'amiibo': DEFAULT, 'faster-dialogue': DEFAULT})
@@ -225,12 +225,13 @@ def check_config_layers():
     for base in (0x7100000000, 0x7200000000):
         for slug in SLUGS:
             # Core supplies the naming and merge behavior for every module.
+            accepted_version = b'0.3.18' if slug == 'faster-crafting' else b'0.3.2'
             for regular, custom, active in (
                 (DEFAULT, b'enabled=false', False),
                 (DEFAULT.replace(b'true', b'false'), b'enabled=true', True),
                 (DEFAULT, b'', True),
                 (DEFAULT, b'version=0.0.1', False),
-                (DEFAULT, b'version=0.3.2', True),
+                (DEFAULT, b'version=' + accepted_version, True),
                 (DEFAULT, b'enabled=false\nversion=bad', True),
                 (DEFAULT, b'enabled=false\nenabled=true', True),
                 (None, b'enabled=true\nversion=0.3.2', False),
@@ -273,7 +274,7 @@ def check_config_layers():
             m = Machine(base, files)
             m.boot(); m.activate()
             assert 'base=2 boost=4 faster_ui=true faster_player=true npc_count=6' in m.text, m.text
-    print('PASS: shared regular/custom order, enabled/version overrides for all six modules, atomic metadata, failure fallback, inheritance and settings parity at two bases')
+    print('PASS: shared regular/custom order, enabled/version overrides for all seven modules, atomic metadata, failure fallback, inheritance and settings parity at two bases')
 
 if __name__ == '__main__':
     check_all_subsets()
