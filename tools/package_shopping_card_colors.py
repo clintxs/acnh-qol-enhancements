@@ -1,6 +1,7 @@
 """Package optional appearance replacements; preserve the main suite release."""
 from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED
+import argparse
 import hashlib
 import json
 import build_shopping_card_layout as card
@@ -11,9 +12,15 @@ FOLDER = 'QoL Enhancements - Shopping Card'
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--revision', type=int, default=1)
+    args = parser.parse_args()
+    if args.revision < 1:
+        parser.error('--revision must be positive')
     version = release_version().replace('.', '_')
     suite = ROOT / 'dist' / f'qol-enhancements-v{version}_for_acnh_v3_0_3.zip'
-    output = ROOT / 'dist' / f'shopping-card-colors-v{version}_for_acnh_v3_0_3.zip'
+    revision = f'_r{args.revision}' if args.revision > 1 else ''
+    output = ROOT / 'dist' / f'shopping-card-colors-v{version}_for_acnh_v3_0_3{revision}.zip'
     if output.exists():
         raise SystemExit(f'Refusing to replace existing color options: {output}')
     files = {'README.md': (ROOT / 'SHOPPING_CARD_COLORS.md').read_bytes()}

@@ -418,3 +418,18 @@ Switch hardware and other emulators/game versions are not validated targets.
   only that layout inside the existing Shopping Card folder; their archive
   entries and SHA-256 manifest are verified after writing. Green restores the
   user's confirmed appearance. No executable or module configuration included.
+
+### Color options revision 2 — lighter bell-bag card
+
+- The user requested a lighter card matching the bell bag rather than the
+  counter. Sample the light body in the supplied Nook Shopping screenshot:
+  median sRGB (249,191,116), approximated in linear RGBA as (242,133,45,255).
+  Apply this to the gold card face only.
+- Existing gold structure/native-palette checks pass. Comparing against the
+  revision 1 optional ZIP confirms only foreground card texture colors change:
+  descriptors, alpha coverage, backing, counter/badge, layout, original
+  textures and other resources are identical. All changed RGB channels are
+  lighter. The exported preview was inspected; live appearance remains pending.
+- Package as a separate r2 archive, preserving revision 1 and the 0.3.16 suite.
+  The packager verifies the green restore option against the original release
+  and verifies every ZIP entry after writing. Core remains 0.3.16.

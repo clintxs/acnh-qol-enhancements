@@ -450,3 +450,14 @@ Card folder, avoiding competing mods that override the same resource. Green
 is checked byte-for-byte against the released 0.3.16 suite. No Core or marker
 version change is needed. Existing layout/texture checks accept --palette gold;
 the preview now reads serialized window colors instead of a hardcoded green.
+
+
+### Gold revision 2: bell-bag face
+
+The user clarified the card should match the light bell bag, rather than the
+HUD's darker gold fill. The supplied Nook Shopping screenshot's bell-bag body
+samples around sRGB (249,191,116); convert to linear (242,133,45,255) for the
+card face. Retain the existing counter palette, border, stripe, details and
+chip. This changes only foreground color pixels; serialized geometry, alpha
+coverage and original resources remain identical to revision 1. The optional
+packager accepts --revision 2 to preserve old archives without changing Core.
