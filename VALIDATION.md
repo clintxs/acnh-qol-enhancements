@@ -1,11 +1,11 @@
-# Unified QoL validation — 0.3.12 Shopping Card material-color prototype
+# Unified QoL validation — 0.3.13 Shopping Card textured-icon prototype
 
 Validated locally on October 8, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
 dialogue fix and subsequently the corrected 0.2.3 NPC diagnostic build work in Eden. The user also confirmed Nook’s Cranny transactions in Shopping Card 0.3.1.
 The user confirmed the corrected savings HUD in 0.3.4 and balance animation
 in 0.3.5 and the restored counter in 0.3.10. Configuration layering, the
-0.3.12 icon-color correction, aspect-ratio placement and Able Sisters still need a live check. No running game or save files were accessed by the
+0.3.13 textured icon, aspect-ratio placement and Able Sisters still need a live check. No running game or save files were accessed by the
 local tests below.
 
 ## Build and loader
@@ -126,9 +126,10 @@ compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
   Hidden cash text is restored after feedback; native cash current/target and
   cached amounts remain unchanged. Actual rendered animation and audible sound
   are not established by these engine-boundary tests.
-- Resource checks preserve every existing pane/material and non-layout archive
-  member byte for byte. The added subtree starts hidden, carries an independent
-  24-byte amount buffer, and uses native rounded-window textures/vector shapes.
+- Resource checks preserve every existing pane/material and font/animation archive
+  member byte for byte. Original texture settings/payloads are preserved inside
+  an extended BNTX container. The added subtree starts hidden, carries an independent
+  24-byte amount buffer, and uses native rounded windows and ordinary textured pictures.
   The eight-unit oval rim, centered card transform, dark foreground card
   edge, separate white backing behind the oval and right-hand Bells badge
   are checked. Both later icon experiments failed live despite local checks:
@@ -152,7 +153,7 @@ compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
   RoundRectShape records for white backing/dark edge/green face. The component
   shrinks to 29 panes/69 sections/7,444 bytes, below the live-confirmed recovery's
   budget. Original panes, materials, textures and animations are preserved.
-- A new ARM test executes the original section reader at 00268550, PIC shape
+- The 0.3.11 ARM test executed the original section reader at 00268550, PIC shape
   selection at 00282D9C, shape resolver/constructor and RoundRect mesh generation
   from the exported resource at two ASLR bases. Only allocation and imported
   sinf/cosf are modeled; loader relocations are supplied. Each silhouette yields
@@ -170,7 +171,7 @@ compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
   could not supply the intended dark/green colors.
 - 0.3.12 adds a separate foreground material for each silhouette, with white
   pane colors. Layout count stays 29 panes/69 sections; size is 7,588 bytes.
-  Tests execute native material decoding (002745C0), Picture drawing setup
+  The 0.3.12 tests executed native material decoding (002745C0), Picture drawing setup
   (00283B50) from entry to return, material setup (00278410), and foreground constant writes (00278BDC)
   at two ASLR bases. Deliberately conflicting pane colors leave the correct
   normalized white/dark/green material constants; a shared-white material
@@ -179,7 +180,24 @@ compile-time offset assertions. Ordinary InlineCtx layout is unchanged.
   matrix binding and GPU upload/draw are modeled;
   those CPU tests do not establish live appearance or antialiasing. The raster
   preview now reads material colors for shapes instead of their ignored pane
-  colors. Eden verification remains pending.
+  colors. The user subsequently reported split, distorted card geometry.
+  These shape-path tests did not establish GPU rendering and are superseded
+  by the texture checks below.
+
+- 0.3.13 abandons the unused native shape path. Two ordinary 136-byte PICs
+  clone the native Bells icon's material/sampler and full-image UV coordinates.
+  The entire foreground card is one RGBA8 image; its white backing is another,
+  drawn before the oval. The layout has 24 panes/63 sections/7,100 bytes.
+- Both textures are appended to the embedded BNTX. Original seven payloads and
+  format/dimension/channel/tiling fields remain byte-identical. Checks cover
+  required relocation pointers and their section bounds, both new descriptors,
+  full independent block-linear decoding, stripe/chip/detail colors and partial
+  alpha coverage at rounded corners. Native 3.0.3 dictionary lookup (00263368
+  and 00263410) resolves all original and added texture names at two bases and
+  rejects missing names; SDK relocation and strcmp are modeled.
+- The preview resolves exported PIC/material/texture references and decodes
+  packaged image bytes. Its oval is illustrative. GPU loading/sampling/drawing,
+  native output colors and continued counter visibility require an Eden check.
 
 ## Conditional dialogue
 

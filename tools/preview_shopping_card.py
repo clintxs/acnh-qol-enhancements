@@ -1,100 +1,89 @@
-"""Preview the exported card PIC geometry; this is not a game renderer.
+"""Preview actual packaged card pixels; native oval/font/GPU still need playtest.
 
-Requires Pillow and NumPy (available in Codex's bundled artifact runtime).
-Native oval, font and animation rendering still require an Eden playtest.
+Requires Pillow from the artifact runtime. Decodes the exported BNTX byte order,
+resolves each PIC's material texture index and uses its serialized dimensions.
+The oval is illustrative, not a recreation of the game's renderer.
 """
 from pathlib import Path
 import argparse
-import math
-import sys
+import base64
+import json
 import struct
-from PIL import Image, ImageDraw
-import numpy as np
-
-# The artifact runtime has Pillow; the default Python has archive compression.
-# Generate/decompress the layout there, then read the serialized BFLYT here.
 import subprocess
+import sys
+from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def decode(data, width, height):
+    output = bytearray(len(data))
+    for address in range(0,len(data),4):
+        gob, local = divmod(address,512)
+        byte_x = (local & 15) | ((local >> 1) & 16) | ((local >> 3) & 32)
+        x = (gob % (width//16))*16 + byte_x//4
+        y = (gob//(width//16))*8 + ((local >> 4) & 1) + ((local >> 5) & 6)
+        position = 4*(y*width+x)
+        output[position:position+4] = data[address:address+4]
+    return Image.frombytes('RGBA',(width,height),bytes(output))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('output', type=Path)
-    parser.add_argument('--layout-python', default='python3', help='Python with compression.zstd')
+    parser.add_argument('output',type=Path)
+    parser.add_argument('--layout-python',default='python3')
     args = parser.parse_args()
-    code = """import sys
-sys.path.insert(0, 'tools')
+    # The default Python has zstd; the artifact Python has Pillow.
+    code = """import sys,json,base64
+sys.path.insert(0,'tools')
 from compression import zstd
 import build_shopping_card_layout as c
 from layout_io import resources
-r = resources(zstd.decompress(next(iter(c.build().values()))))
-sys.stdout.buffer.write(next(v for k,v in r.items() if k.endswith('.bflyt')))
+r=resources(zstd.decompress(next(iter(c.build().values()))))
+print(json.dumps({k:base64.b64encode(v).decode() for k,v in r.items() if k.endswith(('.bflyt','.bntx'))}))
 """
-    data = subprocess.check_output([args.layout_python, '-c', code], cwd=ROOT)
-    sys.path.insert(0, str(ROOT / 'tools'))
-    from layout_io import layout_sections, pane_name
-    sections = layout_sections(data)
-    panes = {pane_name(p): p for p in sections if p[:4] in (b'pic1', b'pan1')}
-    shapes = next(p for p in sections if p[:4] == b'spi1')
+    resources = {k:base64.b64decode(v) for k,v in json.loads(subprocess.check_output(
+        [args.layout_python,'-c',code],cwd=ROOT)).items()}
+    sys.path.insert(0,str(ROOT/'tools'))
+    from shopping_bntx import textures
+    from layout_io import layout_sections,pane_name
+    sections = layout_sections(next(v for k,v in resources.items() if k.endswith('.bflyt')))
+    panes = {pane_name(p):p for p in sections if p[:4] in (b'pic1',b'pan1')}
     material_table = next(p for p in sections if p[:4] == b'mat1')
-    count = struct.unpack_from('<H', material_table, 8)[0]
-    offsets = (*struct.unpack_from(f'<{count}I', material_table, 12), len(material_table))
-    materials = [material_table[a:b] for a,b in zip(offsets, offsets[1:])]
+    count = struct.unpack_from('<H',material_table,8)[0]
+    offsets = (*struct.unpack_from(f'<{count}I',material_table,12),len(material_table))
+    materials = [material_table[a:b] for a,b in zip(offsets,offsets[1:])]
+    table = next(p for p in sections if p[:4] == b'txl1')
+    names = [table[12+o:table.index(0,12+o)].decode() for o in
+             struct.unpack_from(f'<{struct.unpack_from("<H",table,8)[0]}I',table,12)]
+    images = {t.name:t for t in textures(next(v for k,v in resources.items() if k.endswith('.bntx')))}
     scale = 4
-    size = (160 * scale, 120 * scale)
-
-    def layer(prefixes):
-        canvas = Image.new('RGBA', size)
-        for name, p in panes.items():
-            if not any(name.startswith(prefix + '_') for prefix in prefixes): continue
-            x,y = struct.unpack_from('<2f', p,44)
-            w,h = struct.unpack_from('<2f', p,76)
-            left=(x-w/2+80)*scale; top=(60-y-h/2)*scale
-            right=left+w*scale; bottom=top+h*scale
-            if p[103] & 1:
-                index = struct.unpack_from('<I', p, 104)[0]
-                offset = struct.unpack_from('<I', shapes, 12 + 4 * index)[0]
-                kind, reserved, radius, divisions = struct.unpack_from('<HHII', shapes, offset)
-                assert kind == 1 and not reserved
-                r = radius * scale
-                polygon = []
-                for cx, cy, angle in ((right-r,top+r,-90), (right-r,bottom-r,0),
-                                      (left+r,bottom-r,90), (left+r,top+r,180)):
-                    for i in range(divisions + 1):
-                        a = math.radians(angle + 90 * i / divisions)
-                        polygon.append((cx + r * math.cos(a), cy + r * math.sin(a)))
-                material_index = struct.unpack_from('<H', p, 100)[0]
-                ImageDraw.Draw(canvas).polygon(polygon, fill=tuple(materials[material_index][40:44]))
-                continue
-            x0,y0=int(np.floor(left)),int(np.floor(top))
-            x1,y1=int(np.ceil(right)),int(np.ceil(bottom))
-            xx,yy=np.meshgrid(np.arange(x0,x1)+.5,np.arange(y0,y1)+.5)
-            u=np.clip((xx-left)/(right-left),0,1)[...,None]
-            v=np.clip((yy-top)/(bottom-top),0,1)[...,None]
-            c=np.frombuffer(p[84:100],dtype=np.uint8).reshape(4,4).astype(float)
-            values=(1-u)*(1-v)*c[0]+u*(1-v)*c[1]+(1-u)*v*c[2]+u*v*c[3]
-            coverage=np.clip(np.minimum(xx+.5,right)-np.maximum(xx-.5,left),0,1)*np.clip(np.minimum(yy+.5,bottom)-np.maximum(yy-.5,top),0,1)
-            values[...,3] *= coverage
-            tile=Image.fromarray(np.rint(values).astype(np.uint8))
-            canvas.alpha_composite(tile,(x0,y0))
-        return canvas
-
-    back=layer(('P_CardRim',))
-    front=layer(('P_CardEdge','P_CardFace','P_CardShape'))
-    # Show the backing occlusion and foreground using an illustrative oval.
-    preview=Image.new('RGBA',(400*scale,200*scale),(244,232,197,255))
-    back=back.rotate(6,resample=Image.Resampling.BICUBIC)
-    front=front.rotate(6,resample=Image.Resampling.BICUBIC)
-    location=(120*scale,0)
-    preview.alpha_composite(back,location)
-    draw=ImageDraw.Draw(preview)
+    preview = Image.new('RGBA',(400*scale,200*scale),(244,232,197,255))
+    def draw_picture(name):
+        pane = panes[name]
+        material = materials[struct.unpack_from('<H',pane,100)[0]]
+        texture = images[names[struct.unpack_from('<H',material,44)[0]]]
+        width,height = struct.unpack_from('<2I',texture.info,0x24)
+        tile = decode(texture.data,width,height)
+        # Linear UI colors are converted to sRGB on the output framebuffer.
+        def srgb(value):
+            v=value/255
+            return round(255*(12.92*v if v<=.0031308 else 1.055*v**(1/2.4)-.055))
+        channels = tile.split()
+        tile = Image.merge('RGBA',(*[c.point(srgb) for c in channels[:3]],channels[3]))
+        w,h = struct.unpack_from('<2f',pane,76)
+        tile = tile.resize((round(w*scale),round(h*scale)),Image.Resampling.LANCZOS)
+        parent = panes['N_CardBacking_00' if name == 'P_CardRim_00' else 'N_CardIcon_00']
+        angle = struct.unpack_from('<f',parent,64)[0]
+        tile = tile.rotate(angle,resample=Image.Resampling.BICUBIC,expand=True)
+        preview.alpha_composite(tile,(round(200*scale-tile.width/2),round(68*scale-tile.height/2)))
+    draw_picture('P_CardRim_00')
+    draw = ImageDraw.Draw(preview)
     draw.ellipse((47*scale,58*scale,353*scale,186*scale),fill='white')
-    draw.ellipse((55*scale,66*scale,345*scale,178*scale),fill=(40,116,82,255))
-    preview.alpha_composite(front,location)
-    preview=preview.resize((800,400),Image.Resampling.LANCZOS)
+    draw.ellipse((55*scale,66*scale,345*scale,178*scale),fill=(110,180,154,255))
+    draw_picture('P_CardIcon_00')
     args.output.parent.mkdir(parents=True,exist_ok=True)
-    preview.convert('RGB').save(args.output)
+    preview.resize((800,400),Image.Resampling.LANCZOS).convert('RGB').save(args.output)
     print(args.output)
 
 if __name__ == '__main__': main()

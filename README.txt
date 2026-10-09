@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.12 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.13 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -39,11 +39,13 @@ has green text and sits at the lower right.
 The oval has a thicker white rim; the centered card has a dark edge, with
 its white backing behind the oval. 0.3.10 restored the counter; the user
 confirmed it works. 0.3.11's rounded card lost its colors because native shape
-drawing skips pane vertex colors. 0.3.12 uses separate material colors for the
-white backing, dark edge and green face. The layout remains compact. Native
-material decoding/color setup pass; rendered appearance still needs an Eden
-playtest. The Bells badge retains its shift about 16 screen pixels left at
-1280-pixel width.
+drawing skips pane vertex colors. 0.3.12 corrected colors but still rendered
+split, distorted geometry. 0.3.13 uses an ordinary textured picture for the
+complete card and a separate white backing behind the oval. The card textures
+include smooth corner coverage. Original cash texture pixels/settings, panes,
+materials and animations are preserved. Packaged image decoding and native
+texture-name lookup pass; rendered appearance still needs an Eden playtest.
+The Bells badge retains its shift about 16 screen pixels left at 1280-pixel width.
 Savings changes use native count-up/down animation and sound.
 Entering shops, switching residents and unchanged balances are silent.
 0.3.4 corrects the HUD path missed in 0.3.2–0.3.3, which
@@ -56,7 +58,7 @@ No new save fields, SD files, MSBT replacements or permissions are required.
 Disable/remove Shopping Card and restart for a clean uninstall; completed
 transactions remain ordinary saved money/item changes. Nook transactions were
 confirmed in 0.3.1, the savings HUD in 0.3.4 and animation in 0.3.5; the
-0.3.12 icon-color correction, Able Sisters and catalog checkout need live testing.
+0.3.13 textured icon, Able Sisters and catalog checkout need live testing.
 0.3.7 still showed cash outside Nook’s Cranny; 0.3.8 follows native catalog
 open/close/destruction events independently of the shop or HUD’s UI context.
 The latest catalog screenshot shows the savings presentation.
@@ -71,7 +73,7 @@ this package does not supply an aspect-ratio patch.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.12
+  version = 0.3.13
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.

@@ -8,7 +8,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 GROUPS = {
     'core': ['core_arm_test.py'],
-    'shopping': ['shopping_layout_test.py', 'shopping_shape_arm_test.py', 'shopping_display_arm_test.py'],
+    'shopping': ['shopping_layout_test.py', 'shopping_texture_arm_test.py', 'shopping_display_arm_test.py'],
     'dialogue': ['dialogue_arm_test.py'],
     'pockets': ['storage_hint_arm_test.py'],  # Includes full arm_stack_test.
     'fitting': ['purchase_arm_test.py', 'feedback_arm_test.py'],  # Each includes runtime coverage.

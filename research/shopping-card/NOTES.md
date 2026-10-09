@@ -1,6 +1,6 @@
 # Shopping Card — ACNH 3.0.3
 
-Prototype 0.3.12, October 8, 2026. Original mapped main SHA-256:
+Prototype 0.3.13, October 8, 2026. Original mapped main SHA-256:
 `b1ae8e2a0d82f9f38f711c132d1751b221baf9d6411b2be06ebc4bb502ac912d`.
 Build ID: `FF1D1C05670DB6021C85B624A710B963`.
 All implementation uses readable Exlaunch C++ hooks. No new game item or data
@@ -291,11 +291,11 @@ The three silhouette PICs are 108 bytes each, zero UVs/flag 1/index 0..2.
 Dimensions/radii are 94x66/15 (white), 82x54/9 (dark), and 76x48/6 (green),
 with 16 corner subdivisions. White backing stays behind the oval; front card
 and stripe/chip/text details retain the same centered transform. New component:
-29 panes, 69 sections, 7,444 bytes. Check shopping_shape_arm_test.py for actual
+29 panes, 69 sections, 7,444 bytes. The historical shopping_shape_arm_test.py checked actual
 native parser/PIC-selection/mesh execution at two bases and bounded buffers.
 Its allocations and sin/cos imports are modeled, material/GPU/full-layout
 loading is not. The local raster preview cannot establish GPU antialiasing.
-Eden still needs to confirm this previously unused shape path renders properly.
+The subsequent live screenshots did not render this shape path properly.
 
 
 ### Shape material colors (0.3.12)
@@ -327,3 +327,41 @@ also checked against the exported shape dimensions. Pink pane colors intentional
 with materials: the shape constants remain the correct white/dark/green. A white
 material override reproduces the old failure. This closes the color coverage gap;
 GPU drawing, full-layout loading and antialiasing still require an Eden playtest.
+
+
+### Ordinary textured card (0.3.13)
+
+The user screenshot of 0.3.12 has corrected colors but still shows separated,
+distorted geometry. CPU mesh/material tests did not establish the full shape
+shader/transform path, and its exact rendering fault remains unproven. Stop
+using that path. The current builder appends two standard textured PICs cloned
+from P_Icon_00 (136 bytes, one full-image UV set, shape flag zero). Materials
+preserve native filtering, wrapping and shader options, changing only texture
+indices. No runtime hooks/payment behavior change in this version.
+
+The foreground card is a single 256x192 RGBA8_UNORM texture on a 128x96 pane:
+82x54 dark rounded silhouette, 76x48 green face, stripe/chip/detail marks baked
+into one image. A separate 94x66 white silhouette draws before the oval. Both
+share the existing centered/tilted transform. Colors are stored in the same
+linear domain as prior pane colors; preview converts to sRGB illustratively.
+Four-by-four coverage samples per texture pixel supply smooth alpha corners.
+The picture textures use Tegra block-linear storage with one-GOB block height.
+
+The hash-checked embedded BNTX originally contains seven textures. Rebuild its
+name table, ResDic, BRTI descriptors and two-section relocation table with two
+additional textures; preserve the original seven image payloads and format,
+dimensions, channels and tiling fields exactly. Dictionary key references use
+low bits first starting at the end of each string. The builder reproduces all
+original dictionary nodes, then extends them for the new names. Pointer offsets
+and bounds are independently checked against the serialized relocation table.
+
+shopping_texture_arm_test.py executes the game's actual inline dictionary
+traversal at 00263368/00263410 (from ArcResourceAccessor) at zero and 7100000000
+bases. All original/new names resolve to their expected indices and absent
+keys fail. SDK relocation and imported strcmp are modeled; GPU is not executed.
+The inverse GOB decoder walks physical bytes independently of the encoder and
+checks the full bitmap, semantic detail pixels and partial corner alpha.
+The preview resolves actual exported texture/material bindings and image bytes,
+not just the source drawing formula. Layout is 24 panes/63 sections/7,100 bytes;
+original cash presentation, 16:9 canvas/root, badge shift and animation remain.
+Eden still must verify GPU loading, rendered icon, cash visibility and feedback.

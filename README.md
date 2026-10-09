@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.12 Shopping Card material-color prototype** for ACNH **3.0.3 on Eden**. One Core
+**0.3.13 Shopping Card textured-icon prototype** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -89,18 +89,23 @@ a white backing behind the oval; the white Bells badge sits at the lower right.
 ordinary cash counters disappear; the user confirmed the recovery works.
 0.3.11 replaced the stepped corners with native rounded geometry but rendered
 all three card silhouettes white: this drawing path skips pane vertex colors.
-0.3.12 gives the white backing, dark edge and green face separate material
-colors. The component stays compact (29 panes/69 sections). Local checks now
-execute native material decoding and shape color setup, and reproduce the
-0.3.11 white-material failure. The final rendered appearance still needs an
-Eden playtest. The badge remains shifted left by about 16 screen pixels at
-1280-pixel width.
+0.3.12 corrected those material colors, but its live screenshot still shows
+split, distorted geometry. 0.3.13 replaces that unused shape path with two
+ordinary textured pictures, using the native Bells icon's material and UV
+settings. One foreground image contains the entire green card, dark border,
+stripe, chip and details; its white backing remains behind the oval. Smooth
+corner coverage is baked into the textures. The component is 24 panes/63 sections.
+Original cash texture pixels/settings, panes, materials, fonts and animations
+are preserved. Local checks decode the packaged image byte order and execute
+native texture-name lookup. GPU rendering still needs an Eden playtest.
+The badge remains shifted left by about 16 screen pixels at 1280-pixel width.
 Balance changes count up/down with the native increase/decrease/finish animation
 and sound feedback. First display, resident/room switches and unchanged balances
 stay silent. Outside those shops, closing the catalog returns to the ordinary Bells presentation. Pockets and other shared cash counters keep
 showing pocket Bells. The 0.3.2 change removes savings substitution from their
 refresh paths, which caused a false money animation/sound after closing pockets.
-The card icon is made from native vector panes; no texture or font is replaced.
+The two card textures are appended to the embedded texture container; no original
+texture pixels or fonts are replaced.
 The default package preserves the original 1920×1080 (16:9) canvas, root and
 anchor transforms. No 16:10-specific offset is bundled. Any future adjustment
 for a 16:10 mod should be a separate optional replacement of this layout, merged
@@ -121,7 +126,7 @@ checkout, but the user reported its HUD still showed cash outside Nook’s Crann
 0.3.8 follows the catalog’s native opening, closing and destruction events
 instead of assuming it shares the HUD’s UI context. This display correction
 was followed by a catalog screenshot showing the savings presentation.
-Catalog checkout and the 0.3.12 icon-color correction still need live verification. Catalog gift orders use a separate
+Catalog checkout and the 0.3.13 textured icon still need live verification. Catalog gift orders use a separate
 native sending/payment path and are not covered by this prototype; their
 payment remains unchanged. Nook Stop and phone catalog purchases, insufficient
 savings, cancellation, order limits, delivery and screen transitions need live
@@ -145,7 +150,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.12
+version = 0.3.13
 base_speed = 2
 boost_speed = 4
 faster_ui = false

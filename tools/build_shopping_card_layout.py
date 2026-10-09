@@ -1,7 +1,8 @@
 """Add a separate, hidden savings display to the native top-right currency part.
 
-Uses native rounded-window textures and untextured vector panes for the green
-card. Original panes, animation, fonts and textures remain byte-for-byte intact.
+Uses native rounded windows and ordinary textured picture panes for the card.
+Original panes, animation and fonts remain intact; native texture pixels/settings
+are preserved while two card pictures are appended to the embedded BNTX.
 No item or MSBT resources are added. Requires the local hash-checked 3.0.3 dump.
 """
 from pathlib import Path
@@ -11,6 +12,8 @@ import struct
 from layout_io import archive_entries, layout_sections, pane_name, resources
 from build_layouts import text_pane, PANE_TYPES
 from build_catalog_badge_layout import material_records
+from shopping_bntx import append_card, textures
+from shopping_card_texture import NAMES as TEXTURES, CANVAS as CARD_CANVAS
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSET = 'LBellCounterRT'
@@ -19,28 +22,12 @@ EXPECTED = 'b3f008cab7d267ecd7631a915e27af1dfdc8f0ca6d2fecc9d97be801604a5a92'
 CARD = 'N_ShoppingCard_00'
 NUMBER = 'T_SavingsNum_00'
 GREEN = bytes((40, 116, 82, 255))
-CREAM = bytes((255, 241, 195, 255))
-INK = bytes((53, 57, 48, 255))
-CARD_COLORS = (bytes((255,255,255,255)), INK, bytes((84,183,120,255)))
 OVAL_CENTER = (-25, -2)
 OVAL_SIZE = (306, 128)
 RIM = 8
 CARD_CENTER = (-25, 52)
 BADGE_SHIFT = 24  # Retain the requested ~16 screen-pixel label shift.
 CARD_ANGLE = 6  # Slight tilt after the native HUD parent's -3-degree rotation.
-# nn::ui2d::RoundRectShape resource: type, reserved, radius, corner subdivisions.
-# Verified against 3.0.3's section reader (0x268550), shape resolver (0x2649c0),
-# Picture resource constructor (0x282d30), and RoundRect constructor (0x28db20).
-CARD_RADII = (15, 9, 6)
-CORNER_DIVISIONS = 16
-
-
-def shape_section():
-    records = [struct.pack('<HHII', 1, 0, radius, CORNER_DIVISIONS) for radius in CARD_RADII]
-    offsets = [12 + 4 * len(records) + 12 * i for i in range(len(records))]
-    body = struct.pack('<HH', len(records), 0) + struct.pack('<3I', *offsets) + b''.join(records)
-    return struct.pack('<4sI', b'spi1', 8 + len(body)) + body
-
 
 def rename(section, name):
     result = bytearray(section)
@@ -52,6 +39,25 @@ def edit_layout(data):
     sections = layout_sections(data)
     panes = {pane_name(s): s for s in sections if s[:4] in PANE_TYPES}
     assert CARD not in panes
+    texture_slot = next(i for i,s in enumerate(sections) if s[:4] == b'txl1')
+    old_table = sections[texture_slot]
+    texture_count = struct.unpack_from('<H', old_table, 8)[0]
+    names = []
+    for offset in struct.unpack_from(f'<{texture_count}I', old_table, 12):
+        start = 12 + offset
+        names.append(old_table[start:old_table.index(0,start)].decode('ascii'))
+    assert not set(TEXTURES).intersection(names)
+    names.extend(TEXTURES)
+    texture_table = bytearray(struct.pack('<4sIHH', b'txl1',0,len(names),0))
+    strings = b''.join(name.encode() + b'\0' for name in names)
+    position = 4 * len(names)
+    for name in names:
+        texture_table.extend(struct.pack('<I', position))
+        position += len(name) + 1
+    texture_table.extend(strings)
+    texture_table.extend(bytes(-len(texture_table) % 4))
+    struct.pack_into('<I', texture_table, 4, len(texture_table))
+    sections[texture_slot] = bytes(texture_table)
     material_slot = next(i for i, s in enumerate(sections) if s[:4] == b'mat1')
     records = material_records(sections[material_slot])
     # Two copies of the native rounded window give the green fill the same
@@ -83,23 +89,14 @@ def edit_layout(data):
     text_material[40:44] = GREEN
     struct.pack_into('<H', label, 88, len(records))
     records.append(bytes(text_material))
-    solid = bytearray(records[0])
-    assert len(solid) == 44
-    solid[:28] = b'ShoppingCardSolid'.ljust(28, b'\0')
-    solid[36:40] = bytes(4)
-    solid[40:44] = bytes((255, 255, 255, 255))
-    solid_index = len(records)
-    records.append(bytes(solid))
-    shape_materials = []
-    for index, color in enumerate(CARD_COLORS):
-        # Native Picture geometry draws in material mode 2 (00283E38), which
-        # skips pane vertex colors. Give each silhouette its own foreground
-        # material color; sharing the white quad material made 0.3.11 all white.
-        shape_material = bytearray(solid)
-        shape_material[:28] = f'CardRound{index}'.encode().ljust(28, b'\0')
-        shape_material[40:44] = color
-        shape_materials.append(len(records))
-        records.append(bytes(shape_material))
+    picture_materials = []
+    native_icon_material = records[struct.unpack_from('<H', panes['P_Icon_00'],100)[0]]
+    for index in range(2):
+        picture_material = bytearray(native_icon_material)
+        picture_material[:28] = f'CardPicture{index}'.encode().ljust(28, b'\0')
+        struct.pack_into('<H', picture_material,44,texture_count + index)
+        picture_materials.append(len(records))
+        records.append(bytes(picture_material))
     material = bytearray(sections[material_slot][:12])
     struct.pack_into('<H', material, 8, len(records))
     position = 12 + 4 * len(records)
@@ -109,7 +106,6 @@ def edit_layout(data):
     material.extend(b''.join(records))
     struct.pack_into('<I', material, 4, len(material))
     sections[material_slot] = bytes(material)
-    sections.insert(material_slot + 1, shape_section())
 
     group = rename(panes['N_Pos_01'], CARD)
     group[8] = 2  # Starts hidden even if Core/module is disabled.
@@ -118,33 +114,21 @@ def edit_layout(data):
     struct.pack_into('<f', icon, 64, CARD_ANGLE)
     backing = rename(icon, 'N_CardBacking_00')
     opening, closing = struct.pack('<4sI', b'pas1', 8), struct.pack('<4sI', b'pae1', 8)
-    pieces, rim_pieces = [], []
-    def rectangle(x, y, width, height, color, output=pieces, prefix='P_CardShape', shape=None):
-        index = sum(pane_name(p).startswith(prefix + '_') for p in output)
-        pane = rename(panes['P_Icon_00'][:104], f'{prefix}_{index:02}')
-        pane[8:12] = bytes((3, 0, 255, 0))
-        struct.pack_into('<3f', pane, 44, x, y, 0)
-        struct.pack_into('<3f', pane, 56, 0, 0, 0)
-        struct.pack_into('<2f', pane, 68, 1, 1)
-        struct.pack_into('<2f', pane, 76, width, height)
-        pane[84:100] = (white if shape is not None else bytes(color)) * 4
-        material_index = solid_index if shape is None else shape_materials[shape]
-        struct.pack_into('<HBB', pane, 100, material_index, 0, int(shape is not None))
-        # PIC flag bit 0 selects native geometry. The shape index follows the
-        # UV array; there are no UVs on these solid-color shapes (offset 104).
-        if shape is not None:
-            pane.extend(struct.pack('<I', shape))
-        struct.pack_into('<I', pane, 4, len(pane))
-        output.append(bytes(pane))
-    # The white backing is drawn BEFORE the oval, so its lower outline is
-    # occluded by the oval. The dark edge belongs to the foreground card icon.
-    rectangle(0, 0, 94, 66, white, rim_pieces, 'P_CardRim', shape=0)
-    rectangle(0, 0, 82, 54, INK, prefix='P_CardEdge', shape=1)
-    rectangle(0, 0, 76, 48, (84, 183, 120, 255), prefix='P_CardFace', shape=2)
-    rectangle(0, 10, 76, 8, CREAM)
-    rectangle(-23, -7, 14, 12, (240, 204, 101, 255))
-    rectangle(16, -12, 22, 3, CREAM)
-    rectangle(9, -19, 36, 3, CREAM)
+    def picture(name, material_index):
+        pane = rename(panes['P_Icon_00'], name)
+        assert len(pane) == 136 and pane[102:104] == bytes((1,0))
+        pane[8:12] = bytes((3,0,255,0))
+        struct.pack_into('<3f', pane,44,0,0,0)
+        struct.pack_into('<3f', pane,56,0,0,0)
+        struct.pack_into('<2f', pane,68,1,1)
+        struct.pack_into('<2f', pane,76,*CARD_CANVAS)
+        pane[84:100] = white * 4
+        struct.pack_into('<H', pane,100,material_index)
+        return bytes(pane)
+    # One normal picture holds the complete colored card, including its edge
+    # and details. Its white backing draws before the oval and stays occluded.
+    rim_pieces = [picture('P_CardRim_00',picture_materials[0])]
+    pieces = [picture('P_CardIcon_00',picture_materials[1])]
     number = text_pane(panes['T_Num_00'], NUMBER, '999,999,999', -25, 0, 260, 56, .76, True)
     unit = rename(panes['N_Pos_00'], 'N_CardBells_00')
     # The native badge window uses a right-hand origin: place that origin
@@ -185,6 +169,8 @@ def patch_archive(data):
         if content.startswith(b'SARC'):
             content, nested = patch_archive(content)
             count += nested
+        elif entry.name == 'timg/__Combined.bntx':
+            content = append_card(content)
         elif entry.name == f'blyt/{ASSET}.bflyt':
             content = edit_layout(content)
             count += 1
@@ -206,6 +192,12 @@ def build():
     old, new = resources(original), resources(modified)
     assert old.keys() == new.keys()
     for name in old:
-        if not name.endswith(f'/{ASSET}.bflyt'):
+        if name.endswith('/timg/__Combined.bntx'):
+            before,after = textures(old[name]),textures(new[name])
+            assert len(after) == len(before) + 2
+            for a,b in zip(before,after):
+                assert a.name == b.name and a.data == b.data
+                assert a.info[16:96] == b.info[16:96]  # Formats, dimensions, channels and tiling.
+        elif not name.endswith(f'/{ASSET}.bflyt'):
             assert new[name] == old[name], name
     return {f'romfs/Layout/{ASSET}.Nin_NX_NVN.zs': zstd.compress(modified)}
