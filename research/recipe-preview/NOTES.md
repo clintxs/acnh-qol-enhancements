@@ -16,13 +16,49 @@ the preview pose at the native setter and overrides the color before its stack
 copy. The user accepts the 0.3.43 cream background. 0.3.44 corrects a missing
 carrier level in drawable ownership; the user confirms turning and tilt work.
 0.3.45 preserves native poses for walls, floors, rugs and fences and doubles
-movement speed for other items.
-Left/right recipe navigation remains unfinished.
+movement speed for other items. The user reports that 0.3.45 looks good.
+Left/right recipe navigation remains unfinished; see the deferred follow-ups below.
 
 This implementation retains MenuRecipe's material panel. It adds a hidden
 capture surface to the loaded layout and temporarily hides the grid, scrollbar
 and cursor only after native item-model allocation returns a handle. It neither
 constructs a WorkCraftInfoSeq page nor loads WorkBenchInfo/WorkBenchBG resources.
+
+## Deferred follow-ups — October 9, 2026
+
+The user accepts the current 0.3.45 result and explicitly requests documenting
+these items for later. This is a backlog, not authorization to implement them now.
+
+1. **Hotel request banner placement/layering.** The DIY app's “Required: X”
+   banner is partially covered by the opaque 3D capture surface. In the native
+   workbench preview, the banner appears over the lower-right corner of the
+   preview. Make it fully visible in that corner in DIY app preview mode while
+   retaining the app's normal banner placement when returning to the grid.
+   Reference screenshots show the same cardboard chair request:
+   [workbench placement](references/hotel-request-workbench.jpeg),
+   [ordinary app grid](references/hotel-request-app-grid.jpeg), and
+   [app preview overlap](references/hotel-request-app-preview-overlap.jpeg).
+2. **Sensible initial item orientation.** Use the game's native initial preview
+   positioning/orientation data when available. Backpacks are a reported example:
+   the workbench initially presents their front toward the camera. Investigate
+   the per-item/carrier poses described above before choosing category-specific
+   angle overrides. Opening an ordinary item should start at its sensible native
+   orientation, then allow the existing right-stick rotation and tilt. Retain the
+   accepted fixed poses for wallpapers, floors, rugs and fences.
+3. **Recipe navigation inside preview mode.** Left/right on both the left stick
+   and the D-pad should move through recipes in the app's current list/category
+   order, updating the 3D item and existing crafting/material information while
+   keeping the preview open. The right stick remains the model rotation/tilt
+   control. B should return to the DIY app grid at the current recipe.
+4. **Vertical tilt in workbench previews.** Extend the DIY preview's right-stick
+   up/down tilt to native workbench 3D previews as well. The user suggests a
+   separate setting, enabled by default and optionally disabled. Keep this
+   independently configurable from the DIY app preview feature; no setting name
+   or implementation has been selected yet.
+
+The attached reference images are retained here so later work does not depend
+on the original files remaining in Downloads. No runtime, configuration, build
+or release changes accompany this backlog update.
 
 ## 0.3.33 loading-crash correction
 
