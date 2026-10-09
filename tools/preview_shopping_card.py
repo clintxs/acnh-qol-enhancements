@@ -12,6 +12,7 @@ import struct
 import subprocess
 import sys
 from PIL import Image, ImageDraw
+from shopping_card_texture import PALETTES
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -32,7 +33,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('output',type=Path)
     parser.add_argument('--layout-python',default='python3')
-    parser.add_argument('--palette',choices=('green','gold'),default='green')
+    parser.add_argument('--palette',choices=tuple(PALETTES),default='green')
     args = parser.parse_args()
     # The default Python has zstd; the artifact Python has Pillow.
     code = """import sys,json,base64

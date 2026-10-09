@@ -470,3 +470,20 @@ to linear RGBA (242,144,62,255) before writing the RGBA8_UNORM card face.
 This replaces the screenshot estimate from revision 2. Other palette fields,
 geometry, texture settings and the green default are unchanged. Package with
 --revision 3 and retain all previous archives.
+
+
+### Color options revision 4: Hotel Blue and Poki Red
+
+The user requested two screenshot-inspired alternatives. Sample Hotel Blue's
+counter (#4575F5), ticket face (#7094F9), and red accent (#EB4E4C). Convert to
+linear RGBA for materials/textures and add navy edge #354F83. Separate the
+stripe from the cream details with an optional Palette.stripe value, falling
+back to the detail color for green/gold/Poki. Use the Poki bag's sampled coral
+#F8A486 as its card face, with deeper warm-red #D96459 counter and #833F35
+border; retain cream details and a gold chip. All are appearance variants of
+the Bells savings HUD, without new currency behavior.
+
+Builders keep the same transforms, texture descriptors, smooth alpha coverage
+and allocation guard. Preview CLI choices now come from the palette registry;
+optional archive names expand hyphens to spaces for Hotel Blue and Poki Red.
+Package --revision 4 alongside previous downloads. Core remains 0.3.16.

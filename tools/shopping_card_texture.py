@@ -21,6 +21,7 @@ class Palette:
     face: tuple
     detail: tuple
     chip: tuple
+    stripe: tuple | None = None
 
 
 # Linear RGBA, as used by the native materials and RGBA8_UNORM textures.
@@ -32,6 +33,13 @@ PALETTES = {
                      (84,183,120,255), (255,241,195,255), (240,204,101,255)),
     'gold': Palette((130,97,16,255), (255,241,195,255), (70,48,6,255),
                     (242,144,62,255), (255,241,195,255), (240,204,101,255)),
+    # Screenshot samples: hotel counter #4575F5, ticket #7094F9 and red #EB4E4C.
+    'hotel-blue': Palette((15,45,233,255), (255,241,195,255), (9,20,58,255),
+                          (41,76,242,255), (255,241,195,255), (255,241,195,255),
+                          stripe=(212,19,18,255)),
+    # Poki bag sample #F8A486, paired with a deeper warm-red counter/edge.
+    'poki-red': Palette((177,32,25,255), (255,241,195,255), (58,13,9,255),
+                        (239,95,61,255), (255,241,195,255), (240,204,101,255)),
 }
 
 
@@ -52,7 +60,7 @@ def color_at(x, y, backing, palette):
     if inside(x, y, 76, 48, 6):
         color = palette.face
         if inside(x, y - 10, 76, 8):
-            color = palette.detail
+            color = palette.stripe or palette.detail
         elif inside(x + 23, y + 7, 14, 12):
             color = palette.chip
         elif inside(x - 16, y + 4.5, 22, 3) or inside(x - 9, y + 11.5, 36, 3):
@@ -60,7 +68,7 @@ def color_at(x, y, backing, palette):
     return color
 
 
-@lru_cache(maxsize=4)
+@lru_cache(maxsize=8)
 def pixels(backing, palette_name='green'):
     palette = PALETTES[palette_name]
     samples = 4

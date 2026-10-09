@@ -444,3 +444,24 @@ Switch hardware and other emulators/game versions are not validated targets.
   converts back to exactly #F9C687. The exported preview was inspected.
 - The r3 archive preserves previous downloads and includes the byte-identical
   green restore option. Core remains 0.3.16; live appearance remains pending.
+
+### Color options revision 4 — Hotel Blue and Poki Red
+
+- Add Hotel Blue and Poki Red alongside the existing green and gold options.
+  Hotel screenshot medians: counter sRGB #4575F5 -> linear (15,45,233),
+  ticket #7094F9 -> (41,76,242), red accent #EB4E4C -> (212,19,18).
+  Use these for counter, card face and stripe, with navy #354F83 edge.
+- Poki bag screenshot median #F8A486 -> linear (239,95,61) supplies its coral
+  card face. Pair it with deeper warm red #D96459 counter and #833F35 edge;
+  preserve cream details and the gold chip. Both themes retain Bells/savings
+  behavior. No Poki or hotel currency hooks are added.
+- Allow a separate optional stripe color, defaulting to the detail color for
+  existing palettes. All four pass existing layout checks. Preview each new
+  theme from the serialized materials/textures and inspect locally. Native
+  texture tests cover each new palette's face/edge/chip/stripe/details and
+  independent byte-order decoding, original textures and SDK relocation/name
+  lookup. Actual in-game appearance remains pending.
+- Revision 4 includes all four choices with readable Hotel Blue/Poki Red folder
+  names. Green must match the main 0.3.16 ZIP byte-for-byte; green/gold also
+  match revision 3. The package verifies all entries and its checksum manifest.
+  Previous archives and the Core executable remain unchanged.

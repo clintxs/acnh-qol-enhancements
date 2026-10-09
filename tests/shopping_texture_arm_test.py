@@ -111,7 +111,8 @@ for texture,backing in zip(after[7:],(True,False)):
     if not backing:
         assert pixel(0,0) == palette.face
         assert pixel(40,0) == palette.edge
-        assert pixel(0,10) == palette.detail and pixel(-23,-7) == palette.chip
+        assert pixel(0,10) == (palette.stripe or palette.detail)
+        assert pixel(-23,-7) == palette.chip
         assert pixel(16,-4.5) == palette.detail and pixel(9,-11.5) == palette.detail
 print('PASS: original seven textures preserved; two RGBA8 images, independent GPU-byte-order decode, complete colored card and antialiased corners')
 

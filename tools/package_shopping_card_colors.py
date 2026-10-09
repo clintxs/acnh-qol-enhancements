@@ -26,7 +26,7 @@ def main():
     files = {'README.md': (ROOT / 'SHOPPING_CARD_COLORS.md').read_bytes()}
     for name in card.PALETTES:
         for path, data in card.build(name).items():
-            files[f'{name.title()}/{FOLDER}/{path}'] = data
+            files[f'{name.replace("-", " ").title()}/{FOLDER}/{path}'] = data
             if name == 'green':
                 # The fallback must restore the user's known-working release,
                 # rather than a newly regenerated approximation of that art.
