@@ -56,6 +56,12 @@ these items for later. This is a backlog, not authorization to implement them no
    independently configurable from the DIY app preview feature; no setting name
    or implementation has been selected yet.
 
+The user is also considering grouping DIY app previews, workbench vertical tilt,
+the crafting quantity wrap tweak and Faster Crafting into one **Crafting**
+submodule. This remains tentative; see the
+[Crafting grouping note](../crafting/NOTES.md#possible-crafting-submodule-grouping--october-9-2026).
+No move out of Core or module reorganization is authorized yet.
+
 The attached reference images are retained here so later work does not depend
 on the original files remaining in Downloads. No runtime, configuration, build
 or release changes accompany this backlog update.

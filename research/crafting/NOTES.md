@@ -100,3 +100,21 @@ must not be mistaken for a fresh input.
 The native selector/input-repeat path, any recipe-dependent quantity limits,
 module placement and settings have not been investigated or selected. This
 entry records the intended interaction only; no runtime or release changes.
+
+
+## Possible Crafting submodule grouping — October 9, 2026
+
+The user is considering one **Crafting** submodule containing:
+
+- The crafting quantity selector wrap tweak documented above.
+- DIY Recipes app 3D previews and their follow-ups.
+- Vertical up/down tilt for workbench previews.
+- The existing Faster Crafting feature.
+
+This is a tentative packaging direction, not a decision to reorganize or begin
+implementation. It would bring together the current Core DIY preview feature,
+the existing Faster Crafting submodule and the deferred UI changes. Feature
+settings, migration/compatibility and the final module boundary remain undecided.
+The proposed separate, default-on workbench tilt setting remains recorded in
+[the preview follow-ups](../recipe-preview/NOTES.md#deferred-follow-ups--october-9-2026).
+No modules, defaults, configuration files or release packages change now.
