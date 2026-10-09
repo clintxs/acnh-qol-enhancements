@@ -109,10 +109,11 @@ if palette.balance is not None:
     assert number_material[28:40] == native_number_material[28:40]
     assert number[104:112] == old_panes['T_Num_00'][104:112]
     assert struct.unpack_from('<H', number, 88)[0] != struct.unpack_from('<H', old_panes['T_Num_00'], 88)[0]
-    assert args.palette == 'island' and palette.background == (255,255,255,255)
-    assert palette.balance == palette.counter == palette.face
-    assert palette.rim == palette.stripe and palette.caption == (255,255,255,255)
-    print('PASS: Island white oval, blue card/balance, matching mint stripe/outline/badge, white caption, independent number material and unchanged native cash text')
+    assert args.palette == 'island' and palette.background == palette.caption
+    assert palette.background != (255,255,255,255)
+    assert palette.counter == palette.face
+    assert palette.balance == palette.rim == palette.stripe
+    print('PASS: Island off-white oval/caption, blue card, matching mint balance/stripe/outline/badge, independent number material and unchanged native cash text')
 else:
     assert number_material == native_number_material
 

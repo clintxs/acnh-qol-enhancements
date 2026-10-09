@@ -23,12 +23,12 @@ border and red stripe, with cream details and outlines. Poki Red uses the Poki
 bag's light coral-red for the card, a deeper warm-red counter and border,
 cream details/outlines and a gold chip. Colors are based on the supplied
 screenshots. These options still display Bells and spend savings.
-Island takes its colors from the ACNH edition Switch: a white oval,
-turquoise-blue card and balance (#6ABDC4), and a mint-green strip (#95E2C5).
-The oval outline, card backing and Bells bubble match the mint-green strip.
-The card has a darker blue-teal edge and white details, and the Bells caption
-is white. Its number material is separate from
-ordinary cash, so the native cash counter keeps its original cream digits.
+Island takes its colors from the ACNH edition Switch: a turquoise-blue card
+(#6ABDC4) and mint-green strip (#95E2C5). The oval outline, card backing,
+balance and Bells bubble match the mint-green strip. Revision 2 uses a warm
+off-white (#F8F6EF) for the oval background and Bells caption.
+The card has a darker blue-teal edge and white details. Its number material is
+separate from ordinary cash, so the native cash counter keeps its original cream digits.
 ADB Teal reproduces the working 0.3.16 layout exactly. All retain the same card
 shape, detail positions, native 16:9 canvas and balance animations/sounds.
 

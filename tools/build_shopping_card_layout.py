@@ -93,7 +93,7 @@ def edit_layout(data, palette_name='green'):
     records.append(bytes(text_material))
     number = bytearray(text_pane(panes['T_Num_00'], NUMBER, '999,999,999', -25, 0, 260, 56, .76, True))
     if palette.balance is not None:
-        # Island puts blue digits on white. Clone the number material so cash
+        # Island colors its balance independently. Clone the material so cash
         # and every existing palette retain their native cream text exactly.
         balance_material = bytearray(records[struct.unpack_from('<H', number, 88)[0]])
         balance_material[:28] = b'CardBalanceText'.ljust(28, b'\0')
