@@ -431,3 +431,22 @@ The previous border still appeared black in-game. Increase its linear RGBA to
 contrast with the card face. Raise both detail lines another 1.5 layout units
 (one screen pixel at 1280 width), from -6/-13 to -4.5/-11.5. Only foreground
 texture pixels change. Keep the working layout, backing and resource support.
+
+
+### Optional gold palette (0.3.16 assets, October 9, 2026)
+
+The user confirmed 0.3.16's appearance and requested a vanilla-colored gold
+variant. Keep green as the main suite default, with byte-identical generation.
+Pass a named palette through the existing layout/texture builders. The gold
+counter/caption and cream rim/badge copy the original T_Bell_00 and
+W_BaseL_00LT linear material colors (130,97,16,255) and (255,241,195,255).
+The card uses the same gold face, a darker gold border (70,48,6,255), cream
+details and the existing chip color. Shape, line positions and texture
+descriptors stay unchanged. Native cash panes/materials/textures are preserved.
+
+package_shopping_card_colors.py creates one optional archive with Gold and
+Green choices. Each choice merges a single resource into the existing Shopping
+Card folder, avoiding competing mods that override the same resource. Green
+is checked byte-for-byte against the released 0.3.16 suite. No Core or marker
+version change is needed. Existing layout/texture checks accept --palette gold;
+the preview now reads serialized window colors instead of a hardcoded green.

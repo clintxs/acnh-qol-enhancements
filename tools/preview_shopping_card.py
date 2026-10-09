@@ -32,6 +32,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('output',type=Path)
     parser.add_argument('--layout-python',default='python3')
+    parser.add_argument('--palette',choices=('green','gold'),default='green')
     args = parser.parse_args()
     # The default Python has zstd; the artifact Python has Pillow.
     code = """import sys,json,base64
@@ -39,16 +40,16 @@ sys.path.insert(0,'tools')
 from compression import zstd
 import build_shopping_card_layout as c
 from layout_io import resources
-r=resources(zstd.decompress(next(iter(c.build().values()))))
+r=resources(zstd.decompress(next(iter(c.build(sys.argv[1]).values()))))
 print(json.dumps({k:base64.b64encode(v).decode() for k,v in r.items() if k.endswith(('.bflyt','.bntx'))}))
 """
     resources = {k:base64.b64decode(v) for k,v in json.loads(subprocess.check_output(
-        [args.layout_python,'-c',code],cwd=ROOT)).items()}
+        [args.layout_python,'-c',code,args.palette],cwd=ROOT)).items()}
     sys.path.insert(0,str(ROOT/'tools'))
     from shopping_bntx import textures
     from layout_io import layout_sections,pane_name
     sections = layout_sections(next(v for k,v in resources.items() if k.endswith('.bflyt')))
-    panes = {pane_name(p):p for p in sections if p[:4] in (b'pic1',b'pan1')}
+    panes = {pane_name(p):p for p in sections if p[:4] in (b'pic1',b'pan1',b'wnd1')}
     material_table = next(p for p in sections if p[:4] == b'mat1')
     count = struct.unpack_from('<H',material_table,8)[0]
     offsets = (*struct.unpack_from(f'<{count}I',material_table,12),len(material_table))
@@ -59,16 +60,20 @@ print(json.dumps({k:base64.b64encode(v).decode() for k,v in r.items() if k.endsw
     images = {t.name:t for t in textures(next(v for k,v in resources.items() if k.endswith('.bntx')))}
     scale = 4
     preview = Image.new('RGBA',(400*scale,200*scale),(244,232,197,255))
+    # Linear UI colors are converted to sRGB on the output framebuffer.
+    def srgb(value):
+        v=value/255
+        return round(255*(12.92*v if v<=.0031308 else 1.055*v**(1/2.4)-.055))
+    def window_color(name):
+        material = materials[struct.unpack_from('<H',panes[name],128)[0]]
+        return tuple(srgb(v) for v in material[40:43]) + (material[43],)
+
     def draw_picture(name):
         pane = panes[name]
         material = materials[struct.unpack_from('<H',pane,100)[0]]
         texture = images[names[struct.unpack_from('<H',material,44)[0]]]
         width,height = struct.unpack_from('<2I',texture.info,0x24)
         tile = decode(texture.data,width,height)
-        # Linear UI colors are converted to sRGB on the output framebuffer.
-        def srgb(value):
-            v=value/255
-            return round(255*(12.92*v if v<=.0031308 else 1.055*v**(1/2.4)-.055))
         channels = tile.split()
         tile = Image.merge('RGBA',(*[c.point(srgb) for c in channels[:3]],channels[3]))
         w,h = struct.unpack_from('<2f',pane,76)
@@ -79,8 +84,8 @@ print(json.dumps({k:base64.b64encode(v).decode() for k,v in r.items() if k.endsw
         preview.alpha_composite(tile,(round(200*scale-tile.width/2),round(68*scale-tile.height/2)))
     draw_picture('P_CardRim_00')
     draw = ImageDraw.Draw(preview)
-    draw.ellipse((47*scale,58*scale,353*scale,186*scale),fill='white')
-    draw.ellipse((55*scale,66*scale,345*scale,178*scale),fill=(110,180,154,255))
+    draw.ellipse((47*scale,58*scale,353*scale,186*scale),fill=window_color('W_SavingsRim_00'))
+    draw.ellipse((55*scale,66*scale,345*scale,178*scale),fill=window_color('W_SavingsBase_00'))
     draw_picture('P_CardIcon_00')
     args.output.parent.mkdir(parents=True,exist_ok=True)
     preview.resize((800,400),Image.Resampling.LANCZOS).convert('RGB').save(args.output)

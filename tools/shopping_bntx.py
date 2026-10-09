@@ -91,7 +91,7 @@ def swizzle_rgba(raw, width, height):
     return bytes(output)
 
 
-def append_card(original):
+def append_card(original, palette_name='green'):
     source = textures(original)
     assert len(source) == 7 and not set(NAMES).intersection(t.name for t in source)
     # Start from the native icon descriptor, retaining opaque GPU object storage.
@@ -103,7 +103,7 @@ def append_card(original):
         struct.pack_into('<I', info, 0x34, 0)  # Block-height exponent zero.
         struct.pack_into('<I', info, 0x50, WIDTH * HEIGHT * 4)
         info[0x58:0x5c] = bytes((2,3,4,5))  # RGBA channel sources.
-        source.append(Texture(name, bytes(info), swizzle_rgba(pixels(backing),WIDTH,HEIGHT)))
+        source.append(Texture(name, bytes(info), swizzle_rgba(pixels(backing, palette_name),WIDTH,HEIGHT)))
     names = [texture.name for texture in source]
     filename = string(original, integer(original, 16) - 2)
     output = bytearray(original[:0x198])

@@ -14,7 +14,7 @@ from layout_io import archive_entries, layout_sections, pane_name, resources
 from build_layouts import text_pane, PANE_TYPES
 from build_catalog_badge_layout import material_records
 from shopping_bntx import append_card, textures
-from shopping_card_texture import NAMES as TEXTURES, CANVAS as CARD_CANVAS
+from shopping_card_texture import NAMES as TEXTURES, CANVAS as CARD_CANVAS, PALETTES
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSET = 'LBellCounterRT'
@@ -22,7 +22,6 @@ ASSET = 'LBellCounterRT'
 EXPECTED = 'b3f008cab7d267ecd7631a915e27af1dfdc8f0ca6d2fecc9d97be801604a5a92'
 CARD = 'N_ShoppingCard_00'
 NUMBER = 'T_SavingsNum_00'
-GREEN = bytes((40, 116, 82, 255))
 OVAL_CENTER = (-25, -2)
 OVAL_SIZE = (306, 128)
 RIM = 8
@@ -36,7 +35,9 @@ def rename(section, name):
     return result
 
 
-def edit_layout(data):
+def edit_layout(data, palette_name='green'):
+    palette = PALETTES[palette_name]
+    counter = bytes(palette.counter)
     sections = layout_sections(data)
     panes = {pane_name(s): s for s in sections if s[:4] in PANE_TYPES}
     assert CARD not in panes
@@ -61,8 +62,8 @@ def edit_layout(data):
     sections[texture_slot] = bytes(texture_table)
     material_slot = next(i for i, s in enumerate(sections) if s[:4] == b'mat1')
     records = material_records(sections[material_slot])
-    # Two copies of the native rounded window give the green fill the same
-    # white rim as Bells, without tinting away the rim in a shared material.
+    # Two copies of the native rounded window give the colored fill the same
+    # light rim as Bells, without tinting away the rim in a shared material.
     def window(template, name, x, y, width, height, color):
         pane = rename(template, name)
         struct.pack_into('<2f', pane, 44, x, y)
@@ -75,19 +76,19 @@ def edit_layout(data):
             struct.pack_into('<H', pane, offset, len(records))
             records.append(bytes(material))
         return bytes(pane)
-    white = bytes((255, 255, 255, 255))
-    outline = window(panes['W_BaseL_00'], 'W_SavingsRim_00', *OVAL_CENTER, *OVAL_SIZE, white)
-    background = bytearray(window(panes['W_BaseL_00'], 'W_SavingsBase_00', *OVAL_CENTER, *OVAL_SIZE, GREEN))
+    rim = bytes(palette.rim)
+    outline = window(panes['W_BaseL_00'], 'W_SavingsRim_00', *OVAL_CENTER, *OVAL_SIZE, rim)
+    background = bytearray(window(panes['W_BaseL_00'], 'W_SavingsBase_00', *OVAL_CENTER, *OVAL_SIZE, counter))
     # Scale the complete native window so its corner/frame geometry shrinks
     # with the fill, leaving an eight-unit rim on each side.
     struct.pack_into('<2f', background, 68, *((size - 2 * RIM) / size for size in OVAL_SIZE))
-    badge = window(panes['W_BellBase_00'], 'W_CardBellBase_00', 0, 0, 96, 40, white)
+    badge = window(panes['W_BellBase_00'], 'W_CardBellBase_00', 0, 0, 96, 40, rim)
     label = bytearray(text_pane(panes['T_Bell_00'], 'T_SavingsLabel_00', 'Bells',
                                 -16, 2, 121.5, 31.95, .5, True))
     label[92:96] = panes['T_Bell_00'][92:96]  # Native Bells badge alignment.
     text_material = bytearray(records[struct.unpack_from('<H', label, 88)[0]])
     text_material[:28] = b'CardBellsText'.ljust(28, b'\0')
-    text_material[40:44] = GREEN
+    text_material[40:44] = counter
     struct.pack_into('<H', label, 88, len(records))
     records.append(bytes(text_material))
     picture_materials = []
@@ -123,11 +124,11 @@ def edit_layout(data):
         struct.pack_into('<3f', pane,56,0,0,0)
         struct.pack_into('<2f', pane,68,1,1)
         struct.pack_into('<2f', pane,76,*CARD_CANVAS)
-        pane[84:100] = white * 4
+        pane[84:100] = bytes((255,255,255,255)) * 4
         struct.pack_into('<H', pane,100,material_index)
         return bytes(pane)
     # One normal picture holds the complete colored card, including its edge
-    # and details. Its white backing draws before the oval and stays occluded.
+    # and details. Its light backing draws before the oval and stays occluded.
     rim_pieces = [picture('P_CardRim_00',picture_materials[0])]
     pieces = [picture('P_CardIcon_00',picture_materials[1])]
     number = text_pane(panes['T_Num_00'], NUMBER, '999,999,999', -25, 0, 260, 56, .76, True)
@@ -161,19 +162,19 @@ def edit_layout(data):
     return bytes(output)
 
 
-def patch_archive(data):
+def patch_archive(data, palette_name='green'):
     start, entries = archive_entries(data)
     output = bytearray(data[:start])
     count = 0
     for entry in sorted(entries, key=lambda entry: entry.start):
         content = entry.content
         if content.startswith(b'SARC'):
-            content, nested = patch_archive(content)
+            content, nested = patch_archive(content, palette_name)
             count += nested
         elif entry.name == 'timg/__Combined.bntx':
-            content = append_card(content)
+            content = append_card(content, palette_name)
         elif entry.name == f'blyt/{ASSET}.bflyt':
-            content = edit_layout(content)
+            content = edit_layout(content, palette_name)
             count += 1
         alignment = min((start + entry.start) & -(start + entry.start), 4096)
         output.extend(bytes((-len(output)) % alignment))
@@ -184,11 +185,13 @@ def patch_archive(data):
     return bytes(output), count
 
 
-def build():
+def build(palette_name='green'):
+    if palette_name not in PALETTES:
+        raise ValueError(f'Unknown Shopping Card palette: {palette_name}')
     packed = (ROOT.parent / f'vanilla-3.0.3/Layout/{ASSET}.Nin_NX_NVN.zs').read_bytes()
     assert hashlib.sha256(packed).hexdigest() == EXPECTED, 'Unsupported original currency layout'
     original = zstd.decompress(packed)
-    modified, count = patch_archive(original)
+    modified, count = patch_archive(original, palette_name)
     assert count == 1
     header = (ROOT / 'source/program/shopping/resource_budget.hpp').read_text()
     floor = int(re.search(r'CounterResourceMinimumBytes = (\d+)', header)[1])

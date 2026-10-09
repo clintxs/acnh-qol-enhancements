@@ -5,6 +5,7 @@ code performs dictionary traversal and string comparisons are modeled. GPU
 sampling/drawing still requires an Eden playtest.
 """
 from pathlib import Path
+import argparse
 from compression import zstd
 import hashlib
 import struct
@@ -16,6 +17,11 @@ import build_shopping_card_layout as card
 import shopping_card_texture as art
 from layout_io import resources
 from shopping_bntx import textures
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--palette', choices=tuple(card.PALETTES), default='green')
+args = parser.parse_args()
+palette = card.PALETTES[args.palette]
 
 
 def read(data, offset, fmt='I'):
@@ -74,7 +80,7 @@ def relocate(data, base):
 
 
 original = resources(zstd.decompress((card.ROOT.parent / f'vanilla-3.0.3/Layout/{card.ASSET}.Nin_NX_NVN.zs').read_bytes()))
-modified = resources(zstd.decompress(next(iter(card.build().values()))))
+modified = resources(zstd.decompress(next(iter(card.build(args.palette).values()))))
 key = next(k for k in original if k.endswith('.bntx'))
 before,after = textures(original[key]),textures(modified[key])
 # Walk the resource block chain independently of texture-table pointers.
@@ -96,17 +102,17 @@ for texture,backing in zip(after[7:],(True,False)):
     assert struct.unpack_from('<2I',texture.info,0x24) == (art.WIDTH,art.HEIGHT)
     assert read(texture.info,0x34) == 0 and texture.info[0x58:0x5c] == bytes((2,3,4,5))
     decoded = decode_rgba(texture.data,art.WIDTH,art.HEIGHT)
-    assert decoded == art.pixels(backing)
+    assert decoded == art.pixels(backing,args.palette)
     assert any(0 < a < 255 for a in decoded[3::4]) # Smooth coverage at corners.
     def pixel(x,y):
         column = int((x+64)*2); row = int((48-y)*2)
         return tuple(decoded[4*(row*art.WIDTH+column):4*(row*art.WIDTH+column)+4])
     assert pixel(-63,47)[3] == 0 and pixel(0,0)[3] == 255
     if not backing:
-        assert pixel(0,0) == art.FACE
-        assert pixel(40,0) == art.INK
-        assert pixel(0,10) == art.CREAM and pixel(-23,-7) == art.CHIP
-        assert pixel(16,-4.5) == art.CREAM and pixel(9,-11.5) == art.CREAM
+        assert pixel(0,0) == palette.face
+        assert pixel(40,0) == palette.edge
+        assert pixel(0,10) == palette.detail and pixel(-23,-7) == palette.chip
+        assert pixel(16,-4.5) == palette.detail and pixel(9,-11.5) == palette.detail
 print('PASS: original seven textures preserved; two RGBA8 images, independent GPU-byte-order decode, complete colored card and antialiased corners')
 
 from nso_reader import image

@@ -397,3 +397,24 @@ Switch hardware and other emulators/game versions are not validated targets.
    reopening silently and switching residents. Gift payment is unchanged and
    needs a separate implementation; check the native gift flow for regressions.
    Restart with Shopping Card disabled/removed and verify native payment.
+
+## Optional Shopping Card colors — October 9, 2026
+
+- The user confirmed the 0.3.16 green appearance. Add a gold option without
+  changing the Core version or transaction hooks. The original Bells caption
+  material supplies linear RGBA (130,97,16,255); its rim material supplies
+  cream (255,241,195,255). These exact colors are checked against vanilla for
+  the gold counter/caption and rim/badge. The card face uses the same gold,
+  with a darker gold edge (70,48,6,255), cream stripe/details and gold chip.
+- Existing layout checks pass for both palettes: original panes/materials,
+  font/animation resources, 24 panes/63 sections, 7,100-byte BFLYT, native 16:9
+  placement and scoped resource-budget guard. No geometry changes.
+- Gold passes packaged pixel decoding, smooth corner coverage, original seven
+  textures preserved and actual SDK relocation/native texture-name traversal
+  at both existing bases. Its exported pixel preview was inspected. GPU color
+  and final appearance still need an Eden check.
+- The existing suite/package check passes against the untouched 0.3.16 ZIP,
+  including byte-identical green layout. Optional Gold/Green choices replace
+  only that layout inside the existing Shopping Card folder; their archive
+  entries and SHA-256 manifest are verified after writing. Green restores the
+  user's confirmed appearance. No executable or module configuration included.
