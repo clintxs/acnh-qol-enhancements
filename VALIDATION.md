@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.50 DIY preview navigation
+# Unified QoL validation — 0.3.51 preview controls and scene pose
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,31 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.51 Horizontal controls and effect attachment pose
+
+The user confirms left-stick navigation in 0.3.50, but reports no D-pad movement,
+vertical stick movement changing recipes, and faucet effects drifting on rotation.
+The prior direction constants confused a grid scroll enum with logical input bits.
+Native input routes kinds 0/1 to Y and 2/3 to X; preview navigation now reads masks
+4/8 and ignores up/down, including synthesized vertical stick button bits.
+
+A new hook runs after native type-42 item-root update, copies the owned pose into
+validated type-6 carrier components, and preserves native framing for fixed types.
+Native drawable transforms then copy that stored pose before bone evaluation.
+The final matrix override alone previously changed drawing without updating the
+scene pose that effect attachments use. Workbench rotation also writes the actual
+carrier component. Other actors, stale handles, dead entities, parent/type mismatches,
+missing components and fixed previews are excluded.
+
+Compiled checks at two ASLR bases cover horizontal navigation and vertical button/
+stick rejection. They execute native steady-state item-root update, carrier-to-
+drawable transform, and bone attachment matrix composition under yaw/tilt, with
+skeleton evaluation modeled. Fixed/invalid/closed ownership cases retain their
+original component values. These checks establish stored-pose and attachment
+composition behavior; live kitchenette particles and game scheduling need Deck
+confirmation. Core, Crafting and shared Pockets input regressions and package
+hash/source/binary parity are checked before delivery.
 
 ## 0.3.50 DIY preview recipe navigation
 

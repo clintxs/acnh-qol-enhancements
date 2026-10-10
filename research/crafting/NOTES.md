@@ -192,3 +192,12 @@ array. The native grid restoration/focus routines maintain selection and scroll
 position; the native workbench item-change routine updates the existing actor.
 See [navigation implementation](../recipe-preview/NOTES.md#recipe-navigation--0350).
 The user also confirms a noticeable speed difference with the 0.3.49 expansion.
+
+
+## DIY preview input and attached effects — 0.3.51
+
+Correct the horizontal logical button masks and ignore vertical navigation.
+Publish the rotating pose into native scene carriers before drawable/bone
+transforms so effect attachments share the displayed model's pose. See
+[implementation evidence](../recipe-preview/NOTES.md#horizontal-input-and-scene-pose--0351).
+Live particle behavior remains to be confirmed.

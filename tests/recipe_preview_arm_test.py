@@ -21,10 +21,10 @@ def layout_asset(name):
     r = resources(zstd.decompress((ASSETS / (name + '.Nin_NX_NVN.zs')).read_bytes()))
     return next(v for k, v in r.items() if k.endswith('/' + name + '.bflyt'))
 MENU = layout_asset('MenuRecipe')
-HOOKS = (0x267d64, 0x2e9cde0, 0x2e9fbb0, 0x2e9d538, 0x3c58d24, 0x39392b0, 0x32b9fcc, 0x32b9e08, 0x6021a4, 0x39f63f0)
+HOOKS = (0x267d64, 0x2e9cde0, 0x2e9fbb0, 0x2e9d538, 0x3c58d24, 0x39392b0, 0x32b9fcc, 0x32b9e08, 0x6021a4, 0x39f63f0, 0x192a590)
 GUARDS = HOOKS + (0x32bd990, 0x32ba5e4, 0x3dbb160, 0x27d1d0, 0x3a17390, 0x3a174f0, 0x3c66298, 0x2e93798, 0x2e96a80, 0x3c4b880, 0x2ea0754, 0x2b0c810, 0x32ba000, 0x3c4bac4, 0x2b0e20c, 0x32b9750, 0x1513a48, 0x32be2b0, 0x32ba034, 0x192a1f0, 0x19362f4)
 GUARDS += (0x27bfb4, 0x27bfe4, 0x27d550, 0x27e208)
-GUARDS += (0x32ba168, 0x3764290, 0x335b4a0, 0x3763e14, 0x3765104, 0x375f29c, 0x375f240)
+GUARDS += (0x32ba168, 0x3764290, 0x335b4a0, 0x3763e14, 0x3765104, 0x3c49700, 0x3c49710, 0x19282fc)
 
 class PreviewMachine(Machine):
     def __init__(self, base):
@@ -102,6 +102,9 @@ class PreviewMachine(Machine):
         self.write(entity+0x15c,0x42,4)
         self.write(entity+0x394,1,4)
         self.write(entity+0x274,0x112345,4)
+        self.u.mem_write(base+0x192a590,RAW[0x192a590:0x192a590+20])
+        self.write(self.module.find('UpdatePreviewActor','OrigRef'),base+0x192a590)
+        self.write(entity+0x174,4,4); self.write(entity+0x39c,3,4)
         self.model_entity=entity
         self.entity_manager=manager
         component_methods=self.alloc(0x108); self.write(self.component,component_methods)
@@ -209,6 +212,8 @@ class PreviewMachine(Machine):
             n = self.read(pointer + 12, 4)
             self.built = bytes(u.mem_read(pointer, n)); self.build_pointer = pointer
             result = 1
+        elif action == 'bone_world':
+            u.mem_write(self.reg(1),self.bone_world)  # Skeleton evaluation boundary.
         elif action == 'input': self.events.append(('native_input', self.reg(0)))
         elif action == 'typed': result = self.reg(0)
         elif action == 'layout_access':
@@ -1171,7 +1176,7 @@ def navigation_fixture(base):
     def step(held=0,left=(0,0),**kwargs):
         m.input(page,held,left=left,**kwargs); m.frame(phone)
     def press(direction,stick=False):
-        step(); step(0 if stick else (2 if direction>0 else 1),left=(direction,0) if stick else (0,0))
+        step(); step(0 if stick else (8 if direction>0 else 4),left=(direction,0) if stick else (0,0))
     def selected(expected):
         assert m.read(phone+0x218,4)==expected, (expected,m.read(phone+0x218,4),m.read(grid+0x298,4),m.read(m.controller+0x74,1),m.events[-8:],m.text[-1000:])
         row=m.invoke(base+0x3765104,grid,expected)
@@ -1201,19 +1206,23 @@ def navigation_fixture(base):
     press(-1); selected(0)
     # One input dispatch queues one UI update; duplicate consumed snapshots
     # cannot double-step. Held repeat has delay and cadence, release/reverse immediate.
-    step(); m.input(page,2); snapshot=m.last_input_row
+    step(); m.input(page,8); snapshot=m.last_input_row
     snap=m.alloc(); m.write(snap+8,8,4); m.write(snap+0x10,snapshot)
     m.hook(0x3c58d24,page,snap,0); m.frame(phone); selected(1)
-    for _ in range(12): step(2); selected(1)
-    step(2); selected(2)
-    for _ in range(4): step(2); selected(2)
-    step(2); selected(3)
-    step(1); step(1); selected(2)
+    for _ in range(12): step(8); selected(1)
+    step(8); selected(2)
+    for _ in range(4): step(8); selected(2)
+    step(8); selected(3)
+    step(4); step(4); selected(2)
     press(1); selected(3)
-    for held,left,kwargs in ((3,(0,0),{}),(0,(0,1),{}),(0,(0.4,0),{}),(0,(1,1),{}),
-                             (0,(float('nan'),0),{}),(2,(0,0),{'blocked':1}),
-                             (2,(0,0),{'consumed':2}),(0,(1,0),{'consumed_axes':1})):
+    for held,left,kwargs in ((12,(0,0),{}),(0,(0,1),{}),(0,(0.4,0),{}),(0,(1,1),{}),
+                             (0,(float('nan'),0),{}),(8,(0,0),{'blocked':1}),
+                             (8,(0,0),{'consumed':8}),(0,(1,0),{'consumed_axes':1})):
         step(); step(held,left,**kwargs); selected(3)
+    # Native UI input also synthesizes kinds 0/1 for vertical stick movement.
+    # Test the actual held bits alongside the axes, not only zero-button mocks.
+    for held,left in ((1,(0,1)),(2,(0,-1)),(3,(0,0))):
+        step(); step(held,left); selected(3)
     # Inconsistent/busy lists never index an invalid row or change the model.
     next_recipe=m.read(recipes+4*8)
     for location,value,size in ((phone+0x1f0,0,4),(grid+0x3cc,count-1,4),
@@ -1225,9 +1234,9 @@ def navigation_fixture(base):
         m.write(location,old,size)
         step(blocked=1); step(); selected(3)
     # Missing snapshots clear queued navigation. B wins over same-frame next.
-    step(); m.input(page,2); m.hook(0x3c58d24,page,0,0); m.frame(phone); selected(3)
+    step(); m.input(page,8); m.hook(0x3c58d24,page,0,0); m.frame(phone); selected(3)
     press(1); selected(4)
-    step(); m.input(page,0x22); m.frame(phone)
+    step(); m.input(page,0x28); m.frame(phone)
     assert m.read(phone+0x218,4)==4
     assert m.read(panes['L_BtnList_00']+0x58,1)&1
     row=m.invoke(base+0x3765104,grid,4)
@@ -1237,6 +1246,77 @@ def navigation_fixture(base):
     assert len([e for e in m.events if e[0]=='spawn'])==2
     m.hook(0x2e9d538,phone)
     print(f'PASS: linear d-pad/left-stick navigation across rows and pooled viewports; native index/focus/material/model updates, held repeat, input gates, invalid/busy lists, fixed poses, endpoints and B cursor/reopen; ASLR {base:#x}')
+
+def scene_pose_fixture(base):
+    m=PreviewMachine(base); phone,page,row,panes=m.phone()
+    m.confirm(page); m.frame(phone); m.frame(phone)
+    root=m.model_entity
+    m.write(base+0x59e7790,m.alloc())  # Native thread singleton, allocator boundary modeled.
+    registry=m.read(m.entity_manager+0x1c0); entries=m.read(registry+8)
+    carrier=m.alloc(0x450); component=m.alloc(0x300); methods=m.alloc(0x180)
+    m.write(carrier,methods); m.write(methods+0x20,m.stub('accept'))
+    for off,value in ((0x150,1),(0x15c,6),(0x230,0x112345),(0x234,0x12345)):
+        m.write(carrier+off,value,4)
+    m.write(carrier+0x68,component); m.write(entries+8,carrier)
+    m.u.mem_write(component,bytes(m.u.mem_read(m.component,0x2c8)))
+    m.write(component+0x48,carrier)
+    drawable=m.alloc(0x400); mesh=m.alloc(0x300); mesh_methods=m.alloc(0x180)
+    m.write(drawable+0x230,0x212345,4); m.write(drawable+0x234,0x112345,4)
+    m.write(drawable+0x15c,0x6f,4); m.write(entries+16,drawable)
+    m.write(mesh,mesh_methods); m.write(mesh+0x48,drawable)
+    for off in (0x108,0x110,0x118): m.write(mesh_methods+off,m.stub('noop'))
+    m.u.mem_write(component+0x2a0,struct.pack('<3f',1,1,1))
+    # Execute native effect attachment composition; skeleton evaluation supplies
+    # a bone world matrix derived from the real drawable component, without
+    # the final drawing override. This reproduces the prior mesh/effect split.
+    effect=m.alloc(0x450); model=m.alloc(0x280); wrappers=m.alloc(); wrapper=m.alloc(); bone=m.alloc(); bone_methods=m.alloc()
+    m.write(model+0x38,wrappers); m.write(wrappers,wrapper); m.write(wrapper,bone)
+    m.write(bone,bone_methods); m.write(bone_methods+0x70,m.stub('bone_world'))
+    m.u.mem_write(model+0x268,struct.pack('<3f',1,1,1))
+    m.u.mem_write(effect+0x3a4,struct.pack('<3f',1,1,1))
+    local=(1,0,0,3,0,1,0,5,0,0,1,7)
+    m.u.mem_write(effect+0x344,struct.pack('<12f',*local))
+    output=m.alloc(48)
+    previous=None
+    for right in ((0,0),(1,0),(0,1),(-1,-1)):
+        m.input(page,0,right=right); m.frame(phone)
+        m.hook(0x192a590,root)
+        expected=bytes(m.u.mem_read(m.controller+0x80,12))
+        assert bytes(m.u.mem_read(component+0x2bc,12))==expected
+        m.invoke(base+0x19282fc,mesh)  # Actual carrier -> drawable pose copy.
+        assert bytes(m.u.mem_read(mesh+0x2bc,12))==expected
+        m.bone_world=m.drawable_matrix(mesh)
+        assert m.bone_world==m.drawable_matrix(mesh,protected=True)
+        matrix=struct.unpack('<12f',m.bone_world)
+        m.u.reg_write(UC_ARM64_REG_X8,output); m.invoke(base+0x5fc344,effect,model)
+        attached=struct.unpack('<12f',m.u.mem_read(output,48))
+        point=tuple(sum(matrix[i*4+j]*local[j*4+3] for j in range(3))+matrix[i*4+3] for i in range(3))
+        assert all(abs(attached[i*4+3]-point[i])<1e-4 for i in range(3))
+        if previous is not None: assert point!=previous
+        previous=point
+    # UI input may arrive after the scene tick. Drawing must keep the same
+    # stored pose as bones until the next native scene update, avoiding drift.
+    before=m.drawable_matrix(mesh)
+    m.input(page,0,right=(1,1)); m.frame(phone)
+    assert m.drawable_matrix(mesh,protected=True)==before
+    m.hook(0x192a590,root); m.invoke(base+0x19282fc,mesh)
+    assert m.drawable_matrix(mesh,protected=True)!=before
+    saved=bytes(m.u.mem_read(component,0x2c8))
+    for location,value,size in ((root+0x230,0x12344,4),(root+0x248,2,4),
+                               (root+0x394,5,4),(carrier+0x230,0x112344,4),
+                               (carrier+0x234,0x12344,4),(carrier+0x15c,0x6f,4),
+                               (carrier+0x248,2,4),(component+0x48,0,8),
+                               (m.module.find('PreviewFixedPose'),1,1)):
+        old=m.read(location,size); m.write(location,value,size)
+        m.u.mem_write(component+0x2bc,bytes(12)); before=bytes(m.u.mem_read(component,0x2c8))
+        m.hook(0x192a590,root); assert bytes(m.u.mem_read(component,0x2c8))==before
+        m.write(location,old,size); m.u.mem_write(component,saved)
+    m.hook(0x2e9d538,phone)
+    m.u.mem_write(component+0x2bc,bytes(12)); m.hook(0x192a590,root)
+    assert bytes(m.u.mem_read(component+0x2bc,12))==bytes(12)
+    print(f'PASS: actual carrier/drawable scene pose, native bone attachment composition under yaw/tilt, generation/parent/type/dead/fixed/close guards; skeleton evaluation modeled; ASLR {base:#x}')
+
+for base in (0x7100000000,0x7200000000): scene_pose_fixture(base)
 
 for base in (0x7100000000,0x7200000000): navigation_fixture(base)
 

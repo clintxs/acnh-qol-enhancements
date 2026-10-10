@@ -28,6 +28,7 @@ constexpr std::uintptr_t DrawModelLayer = 0x039392b0, RenderLayers = 0x04abdb78;
 constexpr std::uintptr_t SetModelRotation = 0x032b9e08;
 constexpr std::uintptr_t BuildModelMatrix = 0x006021a4, DrawLayerContents = 0x039f63f0;
 constexpr std::uintptr_t ItemParamGlobalSlot = 0x04ac0428;
+constexpr std::uintptr_t UpdateItemActor = 0x0192a590;
 constexpr std::uintptr_t UpdateModelTransform = 0x032b9fcc, EntityManager = 0x04ab27c0;
 constexpr std::uintptr_t CapturePicture = 0x03a17390, AlternateCapturePicture = 0x03a174f0;
 }
@@ -51,14 +52,15 @@ constexpr std::size_t RightStick = 0x0c, ConsumedAxes = 0x40;
 constexpr std::size_t LayerCount = 0x20, Layers = 0x28, LayerClearColor = 0x9c;
 constexpr std::size_t DrawLayer = 0x3d0, RendererState = 0x248, DrawInfo = 0x18, DrawView = 8;
 constexpr std::size_t ComponentOwner = 0x48, ComponentAngles = 0x2bc, ComponentPoseSize = 0x2c8;
-constexpr std::size_t EntityHandle = 0x230, ParentHandle = 0x234;
+constexpr std::size_t EntityHandle = 0x230, ParentHandle = 0x234, EntityComponent = 0x68;
 constexpr std::size_t EntityRegistry = 0x1c0, RegistryEntries = 8, EntityFlags = 0x248;
 constexpr std::size_t EntityKind = 0x15c, ItemChildren = 0x274, ItemChildCount = 0x394;
 constexpr std::size_t EntityPhase = 0x288, EntityStage = 0x5e8;
 }
 constexpr unsigned WorkbenchModelMode = 2, ConfirmMask = 0x10, BackMask = 0x20, PhoneShortcutKind = 5;
-// Native grid shortcuts 0375F240/0375F29C use kinds 1/0 for right/left.
-constexpr unsigned LeftMask = 1, RightMask = 2, LeftStickMask = 1, RightStickMask = 2;
+// Native 03C49700/03C49710 route kinds 2/3 to X, kinds 0/1 to Y.
+// These are logical UI button bits, including synthesized stick directions.
+constexpr unsigned LeftMask = 4, RightMask = 8, LeftStickMask = 1, RightStickMask = 2;
 constexpr unsigned NavigationDelay = 12, NavigationRepeat = 4; // UI updates, normally 30 Hz.
 constexpr float NavigationThreshold = 0.5f;
 constexpr unsigned TransformPending = 1, MaterialPending = 6;
@@ -77,7 +79,7 @@ constexpr std::array<float, 4> PreviewBackground{1.5950871f, 1.3879482f, 0.87512
 // that worker must not inspect the UI thread's mutable Session objects.
 std::atomic<const void *> PreviewClearColor{};
 std::atomic<void *> PreviewController{};
-std::atomic<bool> PreviewFixedPose{};
+std::atomic<bool> PreviewFixedPose{}, PreviewScenePose{};
 std::atomic<unsigned> PreviewHandle{}, PreviewAngleZ{}, MatrixCalls{}, MatrixMatches{}, BackgroundApplied{};
 std::atomic<std::uint64_t> PreviewAngleXY{};
 // Type 42 creates up to four type-6 item carriers; each carrier creates the
@@ -258,6 +260,47 @@ void PublishCarriers(void *controller) {
             Logging.Log("[QoL Enhancements/Crafting] DIY preview: mesh carrier published; slot=%u handle=%u\n", i, child);
     }
 }
+// Update actual scene poses before child transforms/bone evaluation. The final
+// render-matrix override alone leaves bone-attached effects at the old angle.
+// Native workbench rotation likewise changes the carrier component itself
+// (032BF898 -> 0358DCB8), rather than rotating an already evaluated mesh.
+HOOK_DEFINE_TRAMPOLINE(UpdatePreviewActor) {
+    static void Callback(void *actor) {
+        Orig(actor); // Finish native item/category framing and child creation first.
+        const auto handle = PreviewHandle.load(std::memory_order_acquire);
+        if (!handle || !actor || PreviewFixedPose.load(std::memory_order_acquire) ||
+            At<unsigned>(actor, field::EntityHandle) != handle ||
+            At<unsigned>(actor, field::EntityKind) != PreviewActorKind ||
+            (At<unsigned>(actor, field::EntityFlags) & 2)) return;
+        const auto count = At<unsigned>(actor, field::ItemChildCount);
+        if (count > PreviewCarriers.size()) return;
+        auto storage = *Native<void **>(address::EntityManager);
+        auto manager = storage ? At<void *>(storage) : nullptr;
+        auto registry = manager ? At<void *>(manager, field::EntityRegistry) : nullptr;
+        auto entries = registry ? At<void *>(registry, field::RegistryEntries) : nullptr;
+        if (!entries) return;
+        const auto xy = PreviewAngleXY.load(std::memory_order_acquire);
+        const auto z = PreviewAngleZ.load(std::memory_order_relaxed);
+        bool applied = false;
+        for (unsigned i = 0; i < count; ++i) {
+            const auto childHandle = At<unsigned>(actor, field::ItemChildren + i * sizeof(unsigned));
+            auto child = childHandle ? At<void *>(entries, (childHandle >> 17) & 0x7ff8u) : nullptr;
+            if (!child || At<unsigned>(child, field::EntityHandle) != childHandle ||
+                At<unsigned>(child, field::ParentHandle) != handle ||
+                At<unsigned>(child, field::EntityKind) != 6 ||
+                (At<unsigned>(child, field::EntityFlags) & 2)) continue;
+            auto component = At<void *>(child, field::EntityComponent);
+            if (!component || At<void *>(component, field::ComponentOwner) != child) continue;
+            // Same secondary Angle32 fields written by native 032B9E08.
+            // Native 019282FC then copies them into each drawable, so its
+            // bone matrices and attached effects inherit the displayed pose.
+            At<std::uint64_t>(component, field::ComponentAngles) = xy;
+            At<unsigned>(component, field::ComponentAngles + 8) = z;
+            applied = true;
+        }
+        if (applied) PreviewScenePose.store(true, std::memory_order_release);
+    }
+};
 struct ModelMatrix { float values[12]; }; // ARM64 returns this 48-byte object through x8.
 HOOK_DEFINE_TRAMPOLINE(BuildPreviewMatrix) {
     static ModelMatrix Callback(void *component) {
@@ -265,7 +308,10 @@ HOOK_DEFINE_TRAMPOLINE(BuildPreviewMatrix) {
         // Native 0192A590 derives carrier angles/framing from item preview
         // parameters (including mRemakeFence). Preserve those matrices for
         // flat surfaces/fences instead of replacing them with controller XYZ.
-        if (!handle || !component || PreviewFixedPose.load(std::memory_order_acquire)) return Orig(component);
+        // Once the scene owns the pose, render that exact pose too. Using a
+        // newer UI angle here would put the mesh one update ahead of its bones.
+        if (!handle || !component || PreviewFixedPose.load(std::memory_order_acquire) ||
+            PreviewScenePose.load(std::memory_order_acquire)) return Orig(component);
         MatrixCalls.fetch_add(1, std::memory_order_relaxed);
         auto owner = At<void *>(component, field::ComponentOwner);
         if (!owner) return Orig(component);
@@ -277,7 +323,7 @@ HOOK_DEFINE_TRAMPOLINE(BuildPreviewMatrix) {
         if (!matches) return Orig(component);
         // 0192A1F0 -> type 6 -> 019362F4 -> type 6F. Its 019282FC
         // transform copies the carrier, not the controller actor. Substitute
-        // the owned pose at the final matrix boundary without scene mutation.
+        // the owned pose at the final matrix boundary as a render fallback.
         alignas(16) std::array<std::byte, field::ComponentPoseSize> pose{};
         std::memcpy(pose.data(), component, pose.size());
         At<std::uint64_t>(pose.data(), field::ComponentAngles) = PreviewAngleXY.load(std::memory_order_acquire);
@@ -463,6 +509,7 @@ void Close(Session &s) {
     s.navigation = s.heldNavigation = s.pendingNavigation = 0; s.navigationWait = 0;
     if (s.ownsRenderer) {
         ReportRendererTrace();
+        PreviewScenePose.store(false, std::memory_order_release);
         PreviewHandle.store(0, std::memory_order_release);
         for (auto &carrier : PreviewCarriers) carrier.store(0, std::memory_order_release);
         PreviewController.store(nullptr, std::memory_order_release);
@@ -674,6 +721,7 @@ void NavigatePreview(Session &s) {
     s.pendingNavigation = 0;
     s.item = item;
     s.fixedPose = UsesFixedPreviewPose(static_cast<std::uint16_t>(item));
+    PreviewScenePose.store(false, std::memory_order_release);
     PreviewFixedPose.store(s.fixedPose, std::memory_order_release);
     for (auto &carrier : PreviewCarriers) carrier.store(0, std::memory_order_release);
     s.tilt = s.stickX = s.stickY = 0;
@@ -810,6 +858,7 @@ bool Begin(Session &s) {
     MatrixMatches.store(0, std::memory_order_relaxed);
     BackgroundApplied.store(0, std::memory_order_relaxed);
     s.fixedPose = UsesFixedPreviewPose(static_cast<std::uint16_t>(s.item));
+    PreviewScenePose.store(false, std::memory_order_release);
     PreviewFixedPose.store(s.fixedPose, std::memory_order_release);
     PreviewController.store(controller, std::memory_order_release);
     Logging.Log("[QoL Enhancements/Crafting] DIY preview: native fixed pose=%u item=%u\n",
@@ -922,8 +971,10 @@ bool InstallRecipePreview() {
         {0x0335b4a0, {0xb40003a0, 0xb9429808, 0x7100091f, 0x54000063, 0xb4000341}},
         {0x03763e14, {0xf9416c08, 0xf100011f, 0xb9429809, 0x7a421920, 0x54000d61}},
         {0x03765104, {0xb943d408, 0x6b01011f, 0x5400038d, 0xb942e808, 0x1ac80c29}},
-        {0x0375f29c, {0xb900695f, 0xa9002d09, 0x9100c3ff, 0xd65f03c0, 0xd10143ff}},
-        {0x0375f240, {0xb9006d14, 0xf0011428, 0xd000426b, 0x911f2d6b, 0xf9401129}},
+        {0x03c49700, {0xbd54a260, 0xb901233c, 0xbd000720, 0x1400000a, 0xbd54a660}},
+        {0x03c49710, {0xbd54a660, 0xb901233c, 0x5280002e, 0x14000005, 0xbd54a260}},
+        {0x0192a590, {0xd104c3ff, 0x6d093bef, 0x6d0a33ed, 0x6d0b2beb, 0x6d0c23e9}},
+        {0x019282fc, {0xd10103ff, 0xa9017bfd, 0xf90013f5, 0xa9034ff4, 0x910043fd}},
     };
     const auto &main = exl::util::GetMainModuleInfo();
     for (const auto &f : fingerprints) if (f.offset + sizeof(f.words) > main.m_Text.m_Size ||
@@ -958,9 +1009,10 @@ bool InstallRecipePreview() {
     DrawPreviewLayer::InstallAtOffset(address::DrawModelLayer);
     SetPreviewRotation::InstallAtOffset(address::SetModelRotation);
     TraceModelTransform::InstallAtOffset(address::UpdateModelTransform);
+    UpdatePreviewActor::InstallAtOffset(address::UpdateItemActor);
     BuildPreviewMatrix::InstallAtOffset(address::BuildModelMatrix);
     DrawPreviewContents::InstallAtOffset(address::DrawLayerContents);
-    Logging.Log("[QoL Enhancements/Crafting] DIY preview: READY; carrier-scoped drawable pose; A opens, B returns\n");
+    Logging.Log("[QoL Enhancements/Crafting] DIY preview: READY; scene carrier pose; horizontal recipe navigation; A opens, B returns\n");
     return true;
 }
 } // namespace qol::crafting

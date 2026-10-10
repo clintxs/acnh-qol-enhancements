@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.50 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.51 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -105,7 +105,7 @@ The DIY app keeps its existing materials panel. Press A on a recipe to open the
 selection and scroll position are retained. This view has no crafting button
 or crafting action. In preview mode, left/right on the D-pad or left stick moves
 through the current sorted/filtered recipe list, across rows and scrolling pages.
-Holding repeats after a short delay; navigation stops at the first/last recipe.
+Up/down leaves the recipe selection alone. Holding repeats after a short delay; navigation stops at the first/last recipe.
 Materials follow the model. B returns to the grid with the current card selected
 and visible. Changing recipes resets rotation/tilt and retains fixed-type poses.
 
@@ -139,7 +139,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.50
+  version = 0.3.51
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.
@@ -160,11 +160,11 @@ remain a separate translation resource, outside module configuration layering.
 Whole-line #/; comments, a UTF-8 BOM, CRLF and valid UTF-8 text up to 4 KiB per file
 are supported. Versions use numeric major.minor.patch.
 
-CRAFTING MODULE / SETTINGS (0.3.50)
+CRAFTING MODULE / SETTINGS (0.3.51)
 Install Core plus “QoL Enhancements - Crafting”. This replaces the former
 “QoL Enhancements - Faster Crafting” folder; remove that old folder when updating.
 Move any personal faster-crafting.custom.ini preferences to crafting.custom.ini.
-Remove old version overrides in that custom file, or update them to 0.3.50.
+Remove old version overrides in that custom file, or update them to 0.3.51.
 Old faster-crafting.ini/custom paths are no longer read.
 DIY app previews are now optional Crafting behavior, not always-on Core behavior.
 
@@ -172,7 +172,7 @@ Regular settings: romfs/qol-enhancements/config/crafting.ini
 Personal overlay: romfs/qol-enhancements/config/crafting.custom.ini
 Defaults in the regular file:
   enabled = true
-  version = 0.3.50
+  version = 0.3.51
   diy_app_preview = true
   workbench_preview_tilt = true
   crafting_quantity_wrap = true

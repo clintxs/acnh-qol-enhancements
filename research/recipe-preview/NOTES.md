@@ -530,8 +530,9 @@ rows and preserving the selected card on B. Phone +8A350/+8A358 is the current
 recipe count/pointer array (already filtered/sorted); +218 is the recipe index.
 Do not use the pooled button index as the recipe index. Clamp at list ends.
 
-Input row +0 masks 1/2 are left/right (native grid setup 0375F29C/0375F240
-initializes shortcut kinds 0/1). Left stick is +4/+8, consumed-axis bit 0; right
+The original 0.3.50 implementation incorrectly treated input row +0 masks 1/2
+as left/right; 0375F29C/0375F240 initialize a scroll enum, not button kinds.
+This assumption is corrected in 0.3.51 below. Left stick is +4/+8, consumed-axis bit 0; right
 stick remains +C/+10, bit 1. D-pad takes precedence; opposing directions cancel.
 Require horizontal stick magnitude >0.5 and greater than its vertical component.
 Observe blocking/consumption, preserve queued input on duplicate dispatch, and
@@ -569,3 +570,38 @@ with 32 pooled buttons cover both directions, page crossings and a partial last
 row. Checks include tap/hold/reverse, duplicate/blocked/consumed/missing input,
 list endpoints, B priority, cursor restoration and reopening. GPU appearance and
 actual Deck scrolling/loading timing still need live confirmation.
+
+
+## Horizontal input and scene pose — 0.3.51
+
+Native 03C49700 routes direction enum 4/8 (logical kinds 2/3) to X; 03C49710
+routes 1/2 (kinds 0/1) to Y. Use masks 4/8 for left/right. Test vertical held
+bits together with analog Y: zero-button analog mocks hid the 0.3.50 bug.
+All list/focus/repeat/consumption handling remains as in 0.3.50.
+
+Workbench 032BF898 reads carrier base yaw through 0358DB20 and sets it through
+0358DCB8 / virtual +160. It changes the real carrier pose. Our final 006021A4
+matrix override changed drawing alone. Bone-attached effects resolve a parent
+model and evaluate its bone world matrix (005FC650 -> 005FC344), then compose
+with effect-local matrix +344; altering only the mesh's final matrix cannot
+reliably align these attachments.
+
+After native item-root update 0192A590, UpdatePreviewActor copies the published
+secondary XYZ angles into each owned carrier component +2BC/+2C0/+2C4. This is
+the same storage native controller setter 032B9E08 uses. Native root initialization
+and category framing run first; walls/floors/rugs/fences skip the override. Validate
+root/child full handles, kind 42/6, parent, dead flag, component owner and at most
+four children. Update only inside the native actor update; no UI-thread scene
+mutation or forced entity phase. Native drawable transform 019282FC copies
+carrier base Euler, scale and secondary angles before model/bone processing.
+Keep the existing scoped render hook only until scene propagation begins. Once
+the scene owns the pose, use the real matrix: applying newer UI angles at draw
+time would move the mesh ahead of its bones by one scene update. Reset this
+state on recipe changes and closing.
+
+The ARM fixture runs native root's steady-state mode-4 path and actual drawable
+transform, then native effect attachment composition with modeled skeleton output.
+Yaw/tilt changes produce matching native (unoverridden) and displayed matrices,
+and the effect-local source point stays attached. Full skeleton/particle simulation,
+GPU appearance and runtime update ordering remain for live validation. All new
+native instruction dependencies participate in atomic installation fingerprints.

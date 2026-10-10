@@ -9,8 +9,8 @@ from unicorn.arm64_const import *
 from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
 SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'shopping-card', 'crafting')
-COUNTS = (16, 15, 7, 11, 11, 11)  # Pockets/Crafting share one additional Core input hook.
-DEFAULT = b'enabled=true\nversion=0.3.50\n'
+COUNTS = (16, 15, 7, 11, 11, 12)  # Pockets/Crafting share one additional Core input hook.
+DEFAULT = b'enabled=true\nversion=0.3.51\n'
 
 def expected_hook_count(machine, enabled):
     # The existing verbose-dialogue build adds a Catalog message trace hook.
@@ -339,7 +339,7 @@ def check_config_layers():
     print('PASS: shared regular/custom order, enabled/version overrides for all six modules, atomic metadata, failure fallback, inheritance and settings parity at two bases')
 
 def check_crafting_settings():
-    preview_sites=(0x267d64,0x2e9cde0,0x2e9fbb0,0x2e9d538,0x39392b0,0x32b9fcc,0x32b9e08,0x6021a4,0x39f63f0)
+    preview_sites=(0x267d64,0x2e9cde0,0x2e9fbb0,0x2e9d538,0x39392b0,0x32b9fcc,0x32b9e08,0x6021a4,0x39f63f0,0x192a590)
     speed_sites=(0x22fc6bc,0x2279a14)
     configs=(
         ({},False,False),
@@ -365,7 +365,7 @@ def check_crafting_settings():
             assert all((base+a in m.hooks)==speed for a in speed_sites),m.text
             assert all((base+a in m.hooks)==preview for a in preview_sites),m.text
             assert (base+0x3c58d24 in m.hooks)==preview
-            assert len(m.hooks)==2+2*speed+10*preview,m.text
+            assert len(m.hooks)==2+2*speed+11*preview,m.text
             assert (m.read(base+0x49e8378)!=base+0x2ea0754)==preview
             assert base+0xbc4144 in m.hooks
             if speed:
