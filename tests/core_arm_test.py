@@ -9,8 +9,8 @@ from unicorn.arm64_const import *
 from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
 SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'shopping-card', 'crafting')
-COUNTS = (16, 15, 7, 11, 11, 12)  # Pockets/Crafting share one additional Core input hook.
-DEFAULT = b'enabled=true\nversion=0.3.56\n'
+COUNTS = (16, 15, 7, 11, 11, 13)  # Pockets/Crafting share one additional Core input hook.
+DEFAULT = b'enabled=true\nversion=0.3.57\n'
 
 def expected_hook_count(machine, enabled):
     # The existing verbose-dialogue build adds a Catalog message trace hook.
@@ -357,6 +357,8 @@ def check_crafting_settings():
         ({'crafting':DEFAULT+b'diy_app_preview=false','crafting.custom':b'diy_app_preview=true\nversion=bad'},True,False),
         ({'crafting':DEFAULT+b'workbench_preview_tilt=false\ncrafting_quantity_wrap=false'},True,True),
         ({'crafting':DEFAULT,'crafting.custom':b'workbench_preview_tilt=false\ncrafting_quantity_wrap=false'},True,True),
+        ({'crafting':DEFAULT+b'crafting_quantity_wrap=false'},True,True),
+        ({'crafting':DEFAULT+b'diy_app_preview=false\nworkbench_preview_tilt=false'},True,False),
         ({'crafting':DEFAULT+b'diy_app_preview=bad\ncrafting_speed=bad'},True,True),
     )
     for base in (0x7100000000,0x7200000000):
@@ -366,13 +368,16 @@ def check_crafting_settings():
             assert all((base+a in m.hooks)==preview for a in preview_sites),m.text
             tilt=speed and not any(b'workbench_preview_tilt=false' in data for data in files.values())
             assert (base+0x192a590 in m.hooks)==(preview or tilt)
-            assert (base+0x3c58d24 in m.hooks)==(preview or tilt)
-            assert len(m.hooks)==2+2*speed+9*preview+2*(preview or tilt),m.text
+            quantity=speed and not any(b'crafting_quantity_wrap=false' in data for data in files.values())
+            assert (base+0x3764290 in m.hooks)==quantity
+            assert (base+0x3c58d24 in m.hooks)==(preview or tilt or quantity)
+            assert len(m.hooks)==2+2*speed+9*preview+int(preview or tilt)+quantity+int(preview or tilt or quantity),m.text
             assert ('workbench tilt: READY' in m.text)==tilt
             assert (m.read(base+0x49e8378)!=base+0x2ea0754)==preview
             assert base+0xbc4144 in m.hooks
             if speed:
-                assert 'workbench_preview_tilt=' in m.text and '(deferred)' in m.text
+                assert 'workbench_preview_tilt=' in m.text and '(deferred)' not in m.text
+            assert ('quantity wrap: READY' in m.text)==quantity
             assert not any('/faster-crafting' in name for name in m.opened)
         # Tilt has independent regular/custom control, including without DIY.
         m=Machine(base,{'crafting':DEFAULT+b'diy_app_preview=false\nworkbench_preview_tilt=false',
@@ -382,11 +387,27 @@ def check_crafting_settings():
         assert base+0x192a590 in m.hooks and base+0x3c58d24 in m.hooks
         assert all(base+a not in m.hooks for a in preview_sites)
         assert m.read(base+0x49e8378)==base+0x2ea0754
-        m=Machine(base,{'crafting':DEFAULT+b'diy_app_preview=false\nworkbench_preview_tilt=false'})
+        m=Machine(base,{'crafting':DEFAULT+b'diy_app_preview=false\nworkbench_preview_tilt=false\ncrafting_quantity_wrap=false'})
         m.write(base+0x192a590,0xdeadbeef,4); m.write(base+0x3c58d24,0xdeadbeef,4)
         m.boot(); m.activate()
         assert 'BOOT_OK' in m.text and len(m.hooks)==4
         assert base+0x192a590 not in m.hooks and base+0x3c58d24 not in m.hooks
+        # Quantity-only installation is independent of preview and actor hooks.
+        m=Machine(base,{'crafting':DEFAULT+b'diy_app_preview=false\nworkbench_preview_tilt=false'})
+        m.write(base+0x192a590,0xdeadbeef,4)
+        m.boot(); m.activate()
+        assert 'BOOT_OK' in m.text and 'quantity wrap: READY' in m.text
+        assert base+0x3764290 in m.hooks and base+0x3c58d24 in m.hooks
+        assert base+0x192a590 not in m.hooks and len(m.hooks)==6
+        # A quantity-specific compatibility conflict cannot disable previews/speed.
+        m=Machine(base,{'crafting':DEFAULT}); m.write(base+0x3765674,0xdeadbeef,4)
+        m.boot(); m.activate()
+        assert 'BOOT_PARTIAL' in m.text and 'quantity wrap: DISABLED' in m.text
+        assert 'DIY preview: READY' in m.text and 'workbench tilt: READY' in m.text
+        assert base+0x3764290 not in m.hooks and all(base+a in m.hooks for a in speed_sites)
+        m=Machine(base,{'crafting':DEFAULT+b'crafting_quantity_wrap=false'})
+        m.write(base+0x3765674,0xdeadbeef,4); m.boot(); m.activate()
+        assert 'BOOT_OK' in m.text and base+0x3764290 not in m.hooks
         # A workbench-only compatibility failure leaves DIY/speed available.
         m=Machine(base,{'crafting':DEFAULT}); m.write(base+0x32bd9cc,0xdeadbeef,4)
         m.boot(); m.activate()

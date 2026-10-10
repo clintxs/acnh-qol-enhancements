@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.56 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.57 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -141,7 +141,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.56
+  version = 0.3.57
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.
@@ -162,11 +162,11 @@ remain a separate translation resource, outside module configuration layering.
 Whole-line #/; comments, a UTF-8 BOM, CRLF and valid UTF-8 text up to 4 KiB per file
 are supported. Versions use numeric major.minor.patch.
 
-CRAFTING MODULE / SETTINGS (0.3.56)
+CRAFTING MODULE / SETTINGS (0.3.57)
 Install Core plus “QoL Enhancements - Crafting”. This replaces the former
 “QoL Enhancements - Faster Crafting” folder; remove that old folder when updating.
 Move any personal faster-crafting.custom.ini preferences to crafting.custom.ini.
-Remove old version overrides in that custom file, or update them to 0.3.56.
+Remove old version overrides in that custom file, or update them to 0.3.57.
 Old faster-crafting.ini/custom paths are no longer read.
 DIY app previews are now optional Crafting behavior, not always-on Core behavior.
 
@@ -174,7 +174,7 @@ Regular settings: romfs/qol-enhancements/config/crafting.ini
 Personal overlay: romfs/qol-enhancements/config/crafting.custom.ini
 Defaults in the regular file:
   enabled = true
-  version = 0.3.56
+  version = 0.3.57
   diy_app_preview = true
   workbench_preview_tilt = true
   crafting_quantity_wrap = true
@@ -194,15 +194,20 @@ Active settings:
   This scales the working animation; dialogue/transitions retain native timing.
   Short actions may finish before the ramp reaches its peak.
 
-Deferred settings (accepted, but currently have NO EFFECT):
-- crafting_quantity_wrap = true
+- crafting_quantity_wrap: defaults to true. Fresh down at 1 wraps to 10; fresh
+  up at 10 wraps to 1 (or the native maximum when lower). Holding stops at the
+  endpoint; release before pressing again to wrap. Supports the left stick and
+  d-pad in crafting and cooking. Set false for vanilla quantity controls.
+
+DIY right-stick horizontal rotation now matches the workbench. Workbench
+previews retain their displayed tilt during recipe switches to prevent flicker.
 Hotel request banners draw over the DIY preview’s bottom-right corner,
 returning to their native placement in the grid. During recipe switches, the
 outgoing DIY item retains its displayed pose until the replacement is framed.
 
 The regular marker must exist; a custom file alone cannot enable Crafting.
 Omitted custom values inherit the regular settings. Setting enabled=false
-turns off previews, workbench tilt and speed behavior; removing Crafting restores the
+turns off previews, workbench tilt, quantity wrap and speed behavior; removing Crafting restores the
 ordinary DIY app. Core's amiibo setting is independent and remains in Core.
 
 The ramp counts game updates, not wall-clock time. Suspended/busy updates pause

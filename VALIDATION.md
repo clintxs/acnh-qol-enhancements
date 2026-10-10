@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.56 workbench profile correction and diagnostics
+# Unified QoL validation — 0.3.57 quantity wrapping and preview controls
 
 Validated locally on October 10, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,49 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.57 Quantity wrapping, matching DIY yaw, and workbench transition poses
+
+The user confirms that 0.3.56 workbench tilt works. This release reverses DIY
+right-stick horizontal rotation to match the native workbench, retaining the
+working vertical sign, speed, item-specific starting poses and fixed categories.
+
+`crafting_quantity_wrap=true` is now active and remains the default. Input is
+scoped to native WorkBenchNumSelectPage / KitchenNumSelectPage. A neutral-observed
+latch permits a fresh endpoint press to select the opposite endpoint. Holding
+continues native repeats within the range and stops at the boundary; changing
+direction without neutral does not rearm wrapping. Native quantity ranges,
+material status, confirmation and cancellation remain native. Native list reset
+also disarms reused page/grid pointers during reopening. Setting false installs
+neither its list-reset hook nor its shared-input consumer. Installation remains
+independent of preview/tilt/speed settings and compatibility failures.
+
+The selector uses reversed rows (quantity = native count - selected row). It
+wraps using native grid reset, activation, row selection and focus; row selection
+fires the native quantity/material callback. The ARM fixture executes those
+bodies and 03469E1C's selected quantity store, plus native list movement/clamping
+for worst-case repeated holds, at two ASLR bases. Layout row visibility, cursor
+art, material text formatting, and repeat timing are modeled. Both exact page
+classes, d-pad/stick, resident row 3, native lower limits, blocking/consumption,
+reversal without release, disabled behavior and reused-page resets are covered.
+
+Workbench tilt previously reset on MaterialPending; the scene trampoline then
+removed the last tilt before skipping reapplication, exposing the old mesh's
+default orientation during loading. Keep the input tilt until a replacement is
+ready, and retain/reapply the displayed pose only on matching full child handles
+while loading. Native framing and new completed items still reset the new item.
+The regression holds the outgoing native matrix across pending updates and a
+native default-pose write, then checks reset for the replacement. Particle
+primary-angle alignment and native horizontal updates remain covered.
+
+Validation: pinned offline Docker build; nine host suites; Core's 64 module
+subsets/configuration layering at two ASLR bases; preview/quantity ARM fixtures;
+30,700 native crafting/cooking cases; 630 shared Pockets cases and 190 storage
+hint cases. Package hashes, source parity, extracted/deployed binary parity and
+ZIP integrity are checked before delivery. Older releases remain intact.
+Live Steam Deck confirmation is still required for quantity interaction and
+visible workbench transitions. No running game, save, synced log or installed
+mod was modified by these checks.
 
 ## 0.3.56 Native-selected workbench profile and input diagnostics
 

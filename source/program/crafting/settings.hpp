@@ -21,7 +21,6 @@ inline bool ParseCraftingSpeed(std::string_view value, unsigned &output) {
 struct Settings {
     bool diyAppPreview = true;
     bool workbenchPreviewTilt = true;
-    // Reserved preference: parse and preserve it, but install no behavior yet.
     bool craftingQuantityWrap = true;
     unsigned craftingSpeed = 3;
 };
@@ -66,4 +65,5 @@ inline unsigned ApplySettings(std::string_view input, Settings &output) {
 unsigned Configure(std::string_view input);
 bool Install();
 bool InstallFasterCrafting(unsigned maximumSpeed);
+bool InstallCraftingQuantityWrap();
 } // namespace qol::crafting

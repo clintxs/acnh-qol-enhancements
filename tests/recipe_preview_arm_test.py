@@ -39,6 +39,8 @@ class PreviewMachine(Machine):
         super().__init__(base, files)
         self.u.mem_map(self.ram + 0x200000, 0x800000)
         self.boot(); self.activate()
+        self.u.mem_write(base+0x3764290,RAW[0x3764290:0x3764290+20])
+        self.write(self.module.find('ResetQuantityGrid','OrigRef'),base+0x3764290)
         self.write(base+0x4ac0428,0)  # No live ItemParam resource until explicitly supplied.
         assert all(base + a in self.hooks for a in HOOKS)
         for name, action in [('BuildRecipeLayout', 'build'), ('BindPhoneRecipes', 'bind'),
@@ -699,7 +701,7 @@ for base in (0x7100000000, 0x7200000000):
     assert m.read(m.model_entity+0x398,1)==1  # Native material-publication gate.
     assert not m.read(m.controller+0x74,1)&1
     assert changed[0]==pose[0] and changed[2]==pose[2]
-    assert abs(((pose[1]-changed[1])&0xffffffff)/2**32*360-6)<.0001
+    assert abs(((changed[1]-pose[1])&0xffffffff)/2**32*360-6)<.0001
     m.input(page,0,right=(0,1)); m.frame(phone)
     tilted=angles()
     assert abs(((changed[0]-tilted[0])&0xffffffff)/2**32*360-6)<.0001
@@ -1522,6 +1524,120 @@ for base in (0x7100000000,0x7200000000): initial_pose_fixture(base)
 
 for base in (0x7100000000,0x7200000000): navigation_fixture(base)
 
+def quantity_wrap_fixture(base):
+    m=PreviewMachine(base)
+    page=m.alloc(0x600); grid=m.alloc(0x600); context=m.alloc(0x100)
+    m.write(page,base+0x4a3a7d8); m.write(page+0x578,grid)
+    m.write(page+0x210,m.alloc())
+    assert struct.unpack_from('<Q',RAW,0x4aca2e8)[0]+16==0x4a3a7d8
+    assert struct.unpack_from('<Q',RAW,0x4ac7288)[0]+16==0x49de8f0
+    for vtable in (0x4a3a7d8,0x49de8f0):
+        assert struct.unpack_from('<Q',RAW,vtable+0x50)[0]==0x3c58d24
+    methods=m.alloc(0x150); m.write(grid,methods)
+    for off,target in ((0x100,m.stub('noop')),(0x108,m.stub('noop')),
+                       (0x110,base+0x3765b70),(0x118,m.stub('noop')),(0x120,m.stub('noop'))):
+        m.write(methods+off,target)
+    layout=m.alloc(); layout_methods=m.alloc(); layout_ops=m.alloc(0xa0)
+    m.write(grid+0x270,layout); m.write(layout,layout_methods)
+    m.write(layout+8,m.alloc()); m.write(layout+0x18,layout_ops)
+    m.write(layout_methods+0x18,m.stub('noop')); m.write(layout_ops+0x98,m.stub('noop'))
+    states=m.alloc(8*8); m.write(context+0x18,8,4); m.write(context+0x20,states)
+    m.write(context+0x14,0x1400,4)
+    for i in range(8): m.write(states+8*i,m.alloc(0x130))
+    m.write(grid+0x2d8,context)
+    row_methods=m.alloc(0x148); m.write(row_methods+0x140,m.stub('noop')); m.write(row_methods+0xf0,m.stub('zero'))
+    input_methods=m.alloc(); m.write(input_methods+0x18,m.stub('noop'))
+    enter_methods=m.alloc(); m.write(enter_methods,m.stub('grid_enter'))
+    leave_methods=m.alloc(); m.write(leave_methods,m.stub('grid_leave'))
+    rows=m.alloc(10*8)
+    for i in range(10):
+        button=m.alloc(0x300); key=m.alloc(0x1500)
+        m.write(button,row_methods); m.write(button+0x218,key)
+        m.write(key,input_methods); m.write(key+0x18,context)
+        m.write(key+0x20,enter_methods); m.write(key+0x40,leave_methods)
+        m.write(key+0x14b0,0xff,4); m.write(rows+8*i,button)
+    m.write(grid+0x208,10,4); m.write(grid+0x210,rows)
+    for off,value in ((0x298,2),(0x2e0,3),(0x2e8,1),(0x2ec,3),(0x2f0,3),
+                      (0x2f4,3),(0x2f8,10),(0x3cc,10),(0x3d4,10),(0x3d0,10),
+                      (0x3d8,2),(0x3e8,5),(0x418,2),(0x434,7),(0x440,9),(0x430,7)):
+        m.write(grid+off,value,4)
+    delegate=m.alloc(); m.write(delegate+0x10,m.stub('zero')); m.write(grid+0x330,delegate)
+    key=m.alloc(); m.write(key+0x14,0xffffffff,4); m.write(grid+0x4c0,key)
+    # Execute the real quantity selection callback via the native grid's +370
+    # delegate. Formatting/material widgets are boundaries, not reimplemented.
+    sequence=m.alloc(0x1c300); seq_methods=m.alloc(0x230)
+    m.write(sequence,seq_methods); m.write(sequence+0x230,page)
+    m.write(seq_methods+0x228,m.stub('zero')); m.write(sequence+0x304,0x3ff,2)
+    selection_methods=m.alloc(); m.write(selection_methods,base+0x2d00198)
+    m.write(selection_methods+0x10,m.stub('accept'))
+    m.write(grid+0x370,selection_methods); m.write(grid+0x378,sequence)
+    m.write(grid+0x380,base+0x3469e1c); m.write(grid+0x388,0)
+    m.services[base+0x3464e40]=('preview','noop')
+    m.services[base+0x3465370]=('preview','details')
+    m.services[base+0x37654a0]=('preview','noop')
+    def selected(): return m.read(grid+0x440,4)
+    def step(direction=0,stick=False,repeat=False,**kwargs):
+        m.input(page,0 if stick else (1 if direction>0 else 2 if direction<0 else 0),
+                resident=3,left=(0,direction) if stick else (0,0),**kwargs)
+        row=m.last_input_row
+        if repeat and direction and not (m.read(row+0x3c,4)&3 or m.read(row+0x40,4)&1):
+            # Real native one-step movement/clamping; native input repeat timing
+            # is modeled to issue a step every update for a worst-case hold.
+            m.write(grid+0x3ec,2,4); m.write(grid+0x3f0,int(direction<0),4)
+            m.write(grid+0x3f4,(-direction)&0xffffffff,4)
+            m.invoke(base+0x375fd8c,grid)
+    def at(index):
+        m.write(grid+0x440,index,4)
+        m.write(grid+0x430,min(index,7),4); m.write(grid+0x438,0,4)
+        m.write(grid+0x418,2,4)
+    # A held control on open is disarmed, then both d-pad and stick can wrap.
+    step(-1); assert selected()==9
+    for page_class in (0x4a3a7d8,0x49de8f0):
+        m.write(page,base+page_class)
+        for stick in (False,True):
+            at(9); step(); step(-1,stick); assert selected()==0
+            assert m.read(sequence+0x1c2d8,4)==9  # Native quantity index = quantity-1.
+            assert m.read(grid+0x3e8,1)&2==0  # No native continuous looping.
+            at(0); step(); step(1,stick); assert selected()==9
+            assert m.read(sequence+0x1c2d8,4)==0
+            # Hold from the interior all the way to an endpoint and beyond.
+            at(5); step()
+            for _ in range(40): step(1,stick,repeat=True)
+            assert selected()==0
+            step(-1,stick); step(1,stick); assert selected()==0  # Reversal is not release.
+            step(); step(1,stick); assert selected()==9
+            for _ in range(40): step(-1,stick,repeat=True)
+            assert selected()==9
+            step(); step(-1,stick); assert selected()==0
+    # A blocked/consumed press cannot be queued until a later unblocked update.
+    for kwargs in ({'blocked':1},{'consumed':2},{'consumed_axes':1}):
+        at(9); step(); step(-1,True if 'consumed_axes' in kwargs else False,**kwargs)
+        assert selected()==9
+        step(-1); assert selected()==9
+        step(); step(-1); assert selected()==0
+    at(9); step(); m.write(m.read(page+0x210)+0x54,1,1); step(-1); assert selected()==9
+    m.write(m.read(page+0x210)+0x54,0,1); step(-1); assert selected()==9
+    # Native reset/reopen disarms cached controls, even with reused pointers.
+    step(); request=m.alloc(0x30); m.write(request,base+0x4a2b020)
+    m.u.mem_write(request+8,struct.pack('<3I',10,7,9)); m.write(request+0x16,1,1)
+    m.write(request+0x2c,3,4); m.hook(0x3764290,grid,request)
+    m.invoke(base+0x335b4a0,grid,0) # Native cAppear's reset is followed by activation.
+    step(-1); assert selected()==9
+    step(); step(-1); assert selected()==0
+    # Honor the native range when materials limit the selector below ten.
+    m.write(grid+0x3cc,4,4); m.write(grid+0x3d4,4,4); m.write(grid+0x3d0,4,4)
+    at(3); step(); step(-1); assert selected()==0
+    step(); step(1); assert selected()==3
+    # Ignore unrelated pages, malformed snapshots, horizontal input and A/B.
+    at(3); step(); old=m.read(page); m.write(page,base+0x4a3b3e0)
+    step(-1); assert selected()==3; m.write(page,old)
+    for held,left in ((0,(1,0)),(0x32,(0,0)),(3,(0,0)),(0,(0,float('nan')))):
+        step(); m.input(page,held,resident=3,left=left); assert selected()==3
+    assert any(e==('native_input',page) for e in m.events)
+    print(f'PASS: quantity endpoint wrap, native selection/material callback, native repeats stop through long holds, neutral rearm, d-pad/stick, crafting/cooking pages, native limits, blocking and reused-page reset; repeat timing/layout services modeled; ASLR {base:#x}')
+
+for base in (0x7100000000,0x7200000000): quantity_wrap_fixture(base)
+
 def workbench_tilt_fixture(base):
     m=PreviewMachine(base)
     root=m.model_entity
@@ -1586,8 +1702,13 @@ def workbench_tilt_fixture(base):
     assert abs((m.read(angle,4)-(1<<32))/2**32*360+60)<0.001
     for _ in range(60): input(-1); tick()
     assert abs(m.read(angle,4)/2**32*360-60)<0.001
-    # Pending/new items reset tilt; another viewer mode/instance has no effect.
-    m.write(m.controller+0x74,4,1); input(1); tick(); assert m.read(angle,4)==0
+    # The outgoing carrier keeps its displayed tilt throughout loading.
+    displayed=m.drawable_matrix(component); before=m.read(angle,4)
+    m.write(m.controller+0x74,4,1); input(1); tick(); assert m.read(angle,4)==before
+    assert m.drawable_matrix(component)==displayed
+    # A native parameter reset during loading must not expose the default pose.
+    m.u.mem_write(component+0x2b0,bytes(24)); tick()
+    assert m.drawable_matrix(component)==displayed
     m.write(m.controller+0x74,0,1); m.write(m.controller+0x94,item+1)
     input(); tick(); assert m.read(angle,4)==0
     for location,value,size in ((m.controller+0x50,26,4),(page,base+0x4a3b778,8),(m.controller+0x6c,0,4)):

@@ -379,7 +379,8 @@ void *PreviewCarrier(void *actor, unsigned index) {
     return component && At<void *>(component, field::ComponentOwner) == child ? component : nullptr;
 }
 void RestoreWorkbenchPose(void *actor) {
-    if (!WorkbenchActor(actor)) return;
+    auto controller = WorkbenchActor(actor);
+    if (!controller || (At<unsigned char>(controller, field::ModelFlags) & MaterialPending)) return;
     for (unsigned i = 0; i < WorkbenchPoses.size(); ++i) {
         auto &pose = WorkbenchPoses[i];
         auto component = PreviewCarrier(actor, i);
@@ -394,6 +395,24 @@ void RestoreWorkbenchPose(void *actor) {
             std::memcpy(static_cast<std::byte *>(component) + field::ComponentAngles,
                         pose.secondary.data(), sizeof(pose.secondary));
         pose.component = nullptr;
+    }
+}
+void HoldWorkbenchPose(void *actor) {
+    // A queued recipe resets the controller before the outgoing mesh vanishes.
+    // Preserve the last displayed pose until native framing replaces it. Full
+    // child handles prevent carrying the old tilt into newly allocated meshes.
+    if (!WorkbenchActor(actor)) return;
+    for (unsigned i = 0; i < WorkbenchPoses.size(); ++i) {
+        const auto &pose = WorkbenchPoses[i];
+        auto component = PreviewCarrier(actor, i);
+        if (!pose.component || component != pose.component ||
+            At<unsigned>(At<void *>(component, field::ComponentOwner), field::EntityHandle) != pose.handle) continue;
+        auto methods = At<void *>(component);
+        auto setAngles = methods ? At<void (*)(void *, const void *)>(methods, field::SetComponentAngles) : nullptr;
+        if (!setAngles) continue;
+        setAngles(component, pose.applied.data());
+        At<std::uint64_t>(component, field::ComponentAngles) = 0;
+        At<unsigned>(component, field::ComponentAngles + 8) = 0;
     }
 }
 void ApplyWorkbenchTilt(void *actor) {
@@ -429,9 +448,13 @@ HOOK_DEFINE_TRAMPOLINE(UpdatePreviewActor) {
     static void Callback(void *actor) {
         TraceWorkbenchModel(actor);
         const bool framing = actor && At<unsigned>(actor, field::ItemPoseState) == 2;
+        auto workbench = WorkbenchActor(actor);
+        const bool holdWorkbench = workbench && !framing &&
+            (At<unsigned char>(workbench, field::ModelFlags) & MaterialPending);
         RestoreWorkbenchPose(actor);
         Orig(actor); // Finish native item/category framing and child creation first.
-        ApplyWorkbenchTilt(actor);
+        if (holdWorkbench) HoldWorkbenchPose(actor);
+        else ApplyWorkbenchTilt(actor);
         const auto handle = PreviewHandle.load(std::memory_order_acquire);
         if (!handle || !actor ||
             At<unsigned>(actor, field::EntityHandle) != handle ||
@@ -864,9 +887,10 @@ bool WorkbenchTiltInput(void *page, void *snapshot, unsigned blocked) {
     const auto mode = At<unsigned>(controller, field::ModelMode);
     const auto item = At<std::uint64_t>(controller, field::CompletedItem); // Native completed item request.
     auto &state = WorkbenchInputState;
+    const bool pending = At<unsigned char>(controller, field::ModelFlags) & MaterialPending;
     const bool bindingChanged = state.controller != controller || state.page != page || state.handle != handle ||
-        state.mode != mode || state.item != item;
-    if (bindingChanged || !handle || (At<unsigned char>(controller, field::ModelFlags) & MaterialPending))
+        state.mode != mode || (!pending && state.item != item);
+    if (bindingChanged || !handle)
         state = {controller, page, handle, mode, item, 0, 0};
     WorkbenchTiltAngle.store(static_cast<unsigned>(static_cast<std::int32_t>(state.tilt * AngleUnitsPerDegree)), std::memory_order_relaxed);
     WorkbenchHandle.store(handle, std::memory_order_relaxed);
@@ -910,7 +934,7 @@ void RotatePreview(Session &s) {
     std::memcpy(angles.data(), static_cast<std::byte *>(s.controller) + field::ModelAngles, sizeof(angles));
     const float tilt = std::clamp(s.tilt - y * DegreesPerUpdate, -MaximumTilt, MaximumTilt);
     angles[0] = s.initialAngles[0] + static_cast<std::uint32_t>(static_cast<std::int32_t>(tilt * AngleUnitsPerDegree));
-    angles[1] -= static_cast<std::uint32_t>(static_cast<std::int32_t>(x * DegreesPerUpdate * AngleUnitsPerDegree));
+    angles[1] += static_cast<std::uint32_t>(static_cast<std::int32_t>(x * DegreesPerUpdate * AngleUnitsPerDegree));
     // Queue for the native late entity phase. The setter hook also protects
     // this pose from parameter animation writes in 032B9510. 032BE2B0 sets
     // the material-publication gate (+398); it is not a transform dirty flag.

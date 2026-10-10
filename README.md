@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.56 workbench tilt binding fix** for ACNH **3.0.3 on Eden**. One Core
+**0.3.57 crafting quantity wrap and preview controls** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -13,7 +13,7 @@ for installation, version policy and user-facing limits.
 | Pockets | QoL Pockets Interactions 0.1.4 | Editable Grab 5/10 captions |
 | Faster Dialogue | C++ hook rewrite of Faster Interactions 0.3.0, with conditional NPC/UI boost | Optional personal configuration |
 | Fitting Room | Able Sisters Bag prototype 0.3.7 | Fitting row badge and original counter layout |
-| Crafting | DIY app previews + configurable crafting/cooking speed ramp | Configuration only |
+| Crafting | DIY/workbench previews, quantity wrap + configurable crafting/cooking speed | Configuration only |
 | Shopping Card | Combined savings/cash routing prototype | Configuration + card currency layout |
 
 Faster tool-wheel animations and other workspace mods are not bundled in this
@@ -63,14 +63,14 @@ fingerprints only, checked before each feature's first hook.
 Install **QoL Enhancements - Crafting** with Core. This replaces the former
 Faster Crafting package; remove the old folder and rename personal
 `faster-crafting.custom.ini` preferences to `crafting.custom.ini`. Remove any old
-`version` override from that personal file (or update it to 0.3.56). The retired
+`version` override from that personal file (or update it to 0.3.57). The retired
 regular/custom paths are no longer read. Core alone no longer enables DIY previews.
 
 `romfs/qol-enhancements/config/crafting.ini` supplies these defaults:
 
 ```ini
 enabled = true
-version = 0.3.56
+version = 0.3.57
 diy_app_preview = true
 workbench_preview_tilt = true
 crafting_quantity_wrap = true
@@ -91,17 +91,21 @@ suspension and exit/reset behavior remains intact.
 up to 60 degrees each way at the DIY preview's movement speed. Set it to `false`
 to retain vanilla workbench controls. Wallpapers, floors, rugs and fences keep
 their native fixed poses. This setting works independently of `diy_app_preview`.
-**Quantity wrapping remains deferred:** its preference is accepted but has no effect.
+`crafting_quantity_wrap=true` lets a fresh down press at quantity 1 jump to 10,
+and a fresh up press at 10 jump to 1 (or the native maximum when lower). Hold
+either direction to reach an endpoint and stop; release before pressing again
+to wrap. Applies to the left stick and d-pad in crafting and cooking selectors.
+Set it to `false` for vanilla quantity controls.
 Hotel request banners now draw over the bottom-right corner of the DIY preview,
 returning to their native placement in the grid. DIY previews start from the
-game's item-specific workbench orientation, with right-stick rotation and tilt
+game's item-specific workbench orientation, with right-stick rotation matching the workbench horizontally and tilt
 relative to that pose. Changing recipes or reopening restores the native pose. During recipe changes,
 the outgoing item retains its displayed pose until its replacement is framed.
 
 A personal `crafting.custom.ini` may override only the desired keys; omitted or
 invalid preferences inherit the regular file. Duplicate keys retain the value
 from before that file. Crafting's regular marker must be installed and compatible;
-`enabled=false` disables its previews, tilt and speed hooks together. Core remains
+`enabled=false` disables its previews, tilt, quantity wrap and speed hooks together. Core remains
 required. Fully restart after changing module installation or settings.
 
 ## DIY Recipes app previews (Crafting)
@@ -251,7 +255,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.56
+version = 0.3.57
 base_speed = 2
 boost_speed = 4
 faster_ui = false

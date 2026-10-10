@@ -6,8 +6,7 @@ The marker is `crafting.ini`, followed by optional `crafting.custom.ini`; the
 retired `faster-crafting` paths are ignored. Core alone installs no DIY hooks.
 
 Defaults: `diy_app_preview=true`, `workbench_preview_tilt=true`,
-`crafting_quantity_wrap=true`, `crafting_speed=3`. Preview, workbench tilt and speed are active as of 0.3.54; quantity wrap is
-parsed/reserved only and still deferred.
+`crafting_quantity_wrap=true`, `crafting_speed=3`. All four settings are active as of 0.3.57.
 Hotel banner layering/placement is implemented in 0.3.48. Recipe navigation is
 implemented in 0.3.50; native starting orientations are restored in 0.3.53.
 
@@ -21,12 +20,11 @@ installation attempts so one feature's incompatibility does not suppress the
 other. Disabling `diy_app_preview` bypasses DIY-specific fingerprints and hooks.
 Workbench tilt shares the item actor trampoline and Core input dispatcher, and
 can install independently with DIY disabled. Both preview settings false leave
-those shared hooks uninstalled unless another enabled feature needs them.
+the actor hook uninstalled; quantity wrap can independently use shared input.
 
 Settings use the shared regular/custom layering policy: omitted/invalid keys
 inherit, duplicates restore the earlier layer, and malformed metadata or
-encoding/size failures reject that file atomically. The reserved settings are
-reported as deferred in startup logs. Module activation and settings loading
+encoding/size failures reject that file atomically. All four active settings are reported in startup logs. Module activation and settings loading
 still happen once after content mount. Core and Pockets/DIY share input only
 when at least one consumer is active.
 
@@ -238,3 +236,28 @@ carrier. New full-generation handles/components cannot inherit that pose.
 `workbench_preview_tilt` now installs behavior, default true. See the detailed
 [preview notes](../recipe-preview/NOTES.md#workbench-tilt-and-transition-retention--0354).
 Quantity wrapping remains deferred. No speed behavior changes.
+
+## Quantity endpoint wrapping — 0.3.57
+
+WorkBenchNumSelectPage is vtable 04A3A7D8 (constructor 0346A034);
+KitchenNumSelectPage is 049DE8F0 (02DE7C14). Both use shared input 03C58D24,
+page +578's native grid and grid +2E0's resident row. Grid rows are reversed:
+quantity = count - row. Count is the native material-limited range (2..10);
+never extend it or enable the generic grid's continuous-loop bit.
+
+A neutral-observed latch admits one fresh vertical endpoint press. Blocked,
+consumed, opposite, nonfinite or absent input does not queue a wrap. Direction
+reversal without neutral cannot rearm. ResetQuantityGrid wraps 03764290 to
+disarm cached pages on native cAppear/reopen, including pointer reuse. It does
+not change other lists. The fourth shared-input subscriber is scoped to the
+two exact quantity page classes; non-wrap input remains entirely native.
+
+Wrap uses a native 0x30-byte GridRequest, 03764290 reset, 0335B4A0 activation,
+03765674 selection (fires grid +370's quantity callback), and 03763E14 focus.
+03469E1C / 02DE79FC store quantity-1 at sequence +1C2D8, refresh make-button
+status/limit indicators, and call 03465370 for materials/count text. The ARM
+fixture runs the crafting callback and native movement/clamping, reset,
+activation and focus with graphical/material formatting boundaries modeled.
+Both page identities, nonzero resident, endpoint wraps, long held repeats,
+release/reversal, consumed/blocked input, native lower limits and reopening
+are covered at two ASLR bases. Live controller feel still needs confirmation.

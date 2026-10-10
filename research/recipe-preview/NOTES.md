@@ -790,3 +790,19 @@ A scene-side probe independently logs the first eight live native item-root
 handles (controller mode/state, framing state and child count), excluding the
 owned DIY renderer. This establishes the live model profile even if the shared
 page dispatcher is not reached. It runs only when workbench tilt is enabled.
+
+
+## Matching yaw direction and holding workbench transitions — 0.3.57
+
+The user confirms 0.3.56 workbench tilt, and reports that DIY yaw is reversed
+relative to native workbench controls. DIY now adds horizontal Angle32 input
+while retaining vertical sign, initial poses and six-degree update speed.
+
+Workbench input previously cleared tilt whenever MaterialPending was set.
+The scene hook then undid its prior contribution before returning early,
+exposing the outgoing item's default orientation for a capture. Pending input
+now preserves the current tilt and completed-item binding. During pending
+loading, the scene hook keeps/reapplies the cached displayed primary pose only
+to matching full child handles; native framing/new completed items still reset
+the new preview. The regression holds a tilted outgoing matrix across loading
+and a native default-pose write, then checks reset for the replacement.

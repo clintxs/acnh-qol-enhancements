@@ -60,5 +60,5 @@ int main() {
         assert(ApplySettings(invalid, parsed) == 1);
         assert(parsed.craftingSpeed == settings.craftingSpeed && parsed.diyAppPreview == settings.diyAppPreview);
     }
-    std::cout << "PASS: Crafting defaults, active/reserved settings, 1..30 speed range, overflow-safe maximum clamping, layered inheritance, duplicates, invalid values and atomic encoding/size errors\n";
+    std::cout << "PASS: Crafting defaults, independent feature settings, 1..30 speed range, overflow-safe maximum clamping, layered inheritance, duplicates, invalid values and atomic encoding/size errors\n";
 }
