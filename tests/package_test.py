@@ -23,7 +23,10 @@ assert b'amiibo_timeout_frames = 9000\n' in files[core_config]
 assert not any('/amiibo.ini' in name or 'QoL Enhancements - Amiibo/' in name for name in files)
 for name in configs:
     if name == core_config: continue
-    assert files[name].decode() == f'enabled = true\nversion = {package.release_version()}\n'
+    assert files[name].decode().startswith(f'enabled = true\nversion = {package.release_version()}\n'), name
+    label = name.split('/')[0].removeprefix('QoL Enhancements - ')
+    relative = name.split('/',1)[1]
+    assert files[name] == (package.ROOT / 'modules' / label / relative).read_bytes()
 assert sum('/Layout/' in name for name in files) == 7
 reference = json.loads((Path(__file__).parent / 'baseline_hashes.json').read_text())
 assert hashlib.sha256(files[f'{core}/exefs/main.npdm']).hexdigest() == reference['npdm_sha256']
@@ -31,10 +34,10 @@ assert files['START HERE - CORE IS REQUIRED.txt'].startswith(b'CORE IS REQUIRED'
 manifest = json.loads(files['SHA256.json'])
 assert set(manifest) == set(files) - {'SHA256.json'}
 for name, digest in manifest.items(): assert hashlib.sha256(files[name]).hexdigest() == digest
-# Resource generation must reproduce the current standalone modules exactly.
+# Resource generation must reproduce the reviewed module baselines exactly.
 for name, digest in reference['assets'].items():
     assert hashlib.sha256(files[name]).hexdigest() == digest, name
-print('PASS: seven mod folders, subsdk6 only, six versioned feature configs and default Core settings, six unchanged resources plus green Shopping Card layout and SHA-256 manifest')
+print('PASS: seven mod folders, subsdk6 only, six versioned feature configs and default Core settings, five inherited resources, revised basket and green Shopping Card layout and SHA-256 manifest')
 custom = package.custom_files()
 personal = [name for name in custom if '/config/' in name]
 assert len(personal) == 1 and personal[0].endswith('/faster-dialogue.custom.ini')

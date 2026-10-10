@@ -20,6 +20,7 @@ from shopping_bntx import textures
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--palette', choices=tuple(card.PALETTES), default='green')
+parser.add_argument('--fitting', action='store_true', help='Validate the fitting-room basket texture instead')
 args = parser.parse_args()
 palette = card.PALETTES[args.palette]
 
@@ -79,8 +80,14 @@ def relocate(data, base):
     return bytes(result)
 
 
-original = resources(zstd.decompress((card.ROOT.parent / f'vanilla-3.0.3/Layout/{card.ASSET}.Nin_NX_NVN.zs').read_bytes()))
-modified = resources(zstd.decompress(next(iter(card.build(args.palette).values()))))
+if args.fitting:
+    import build_layouts as fitting
+    import bag_texture as basket
+    original = resources(zstd.decompress((card.ROOT.parent / f'vanilla-3.0.3/Layout/{fitting.ASSETS[0]}.Nin_NX_NVN.zs').read_bytes()))
+    modified = resources(zstd.decompress(next(iter(fitting.build().values()))))
+else:
+    original = resources(zstd.decompress((card.ROOT.parent / f'vanilla-3.0.3/Layout/{card.ASSET}.Nin_NX_NVN.zs').read_bytes()))
+    modified = resources(zstd.decompress(next(iter(card.build(args.palette).values()))))
 key = next(k for k in original if k.endswith('.bntx'))
 before,after = textures(original[key]),textures(modified[key])
 # Walk the resource block chain independently of texture-table pointers.
@@ -88,33 +95,49 @@ container = modified[key]
 block = read(container,22,'H')
 assert container[block:block+4] == b'_STR'
 block += read(container,block+4)
-for _ in range(9):
+for _ in range(len(after)):
     assert container[block:block+4] == b'BRTI'
     assert read(container,block+4) == read(container,block+8,'Q')
     block += read(container,block+4)
 assert block == read(container,48,'Q') and container[block:block+4] == b'BRTD'
 assert block + read(container,block+8,'Q') == read(container,24)
-assert len(before) == 7 and len(after) == 9
+assert (len(before),len(after)) == ((10,11) if args.fitting else (7,9))
 for a,b in zip(before,after):
     assert a.name == b.name and a.data == b.data and a.info[16:96] == b.info[16:96]
-for texture,backing in zip(after[7:],(True,False)):
-    assert read(texture.info,0x1c) == 0x0b01
-    assert struct.unpack_from('<2I',texture.info,0x24) == (art.WIDTH,art.HEIGHT)
+if args.fitting:
+    texture = after[-1]
+    assert texture.name == basket.NAME and read(texture.info,0x1c) == 0x0b01
+    assert struct.unpack_from('<2I',texture.info,0x24) == (basket.SIZE,basket.SIZE)
     assert read(texture.info,0x34) == 0 and texture.info[0x58:0x5c] == bytes((2,3,4,5))
-    decoded = decode_rgba(texture.data,art.WIDTH,art.HEIGHT)
-    assert decoded == art.pixels(backing,args.palette)
-    assert any(0 < a < 255 for a in decoded[3::4]) # Smooth coverage at corners.
-    def pixel(x,y):
-        column = int((x+64)*2); row = int((48-y)*2)
-        return tuple(decoded[4*(row*art.WIDTH+column):4*(row*art.WIDTH+column)+4])
-    assert pixel(-63,47)[3] == 0 and pixel(0,0)[3] == 255
-    if not backing:
-        assert pixel(0,0) == palette.face
-        assert pixel(40,0) == palette.edge
-        assert pixel(0,10) == (palette.stripe or palette.detail)
-        assert pixel(-23,-7) == palette.chip
-        assert pixel(16,-4.5) == palette.detail and pixel(9,-11.5) == palette.detail
-print('PASS: original seven textures preserved; two RGBA8 images, independent GPU-byte-order decode, complete colored card and antialiased corners')
+    decoded = decode_rgba(texture.data,basket.SIZE,basket.SIZE)
+    assert decoded == basket.pixels()
+    def alpha(x,y):
+        column = int((x+basket.CANVAS/2)*basket.SIZE/basket.CANVAS)
+        row = int((basket.CANVAS/2-y)*basket.SIZE/basket.CANVAS)
+        return decoded[4*(row*basket.SIZE+column)+3]
+    assert alpha(0,-5) == alpha(0,16) == 255
+    assert alpha(0,10) == alpha(25,0) == alpha(0,-20) == 0
+    assert any(0 < a < 255 for a in decoded[3::4])
+    print('PASS: all ten original textures preserved, basket GPU byte order, solid body, handle cutout and antialiasing')
+else:
+    for texture,backing in zip(after[7:],(True,False)):
+        assert read(texture.info,0x1c) == 0x0b01
+        assert struct.unpack_from('<2I',texture.info,0x24) == (art.WIDTH,art.HEIGHT)
+        assert read(texture.info,0x34) == 0 and texture.info[0x58:0x5c] == bytes((2,3,4,5))
+        decoded = decode_rgba(texture.data,art.WIDTH,art.HEIGHT)
+        assert decoded == art.pixels(backing,args.palette)
+        assert any(0 < a < 255 for a in decoded[3::4]) # Smooth coverage at corners.
+        def pixel(x,y):
+            column = int((x+64)*2); row = int((48-y)*2)
+            return tuple(decoded[4*(row*art.WIDTH+column):4*(row*art.WIDTH+column)+4])
+        assert pixel(-63,47)[3] == 0 and pixel(0,0)[3] == 255
+        if not backing:
+            assert pixel(0,0) == palette.face
+            assert pixel(40,0) == palette.edge
+            assert pixel(0,10) == (palette.stripe or palette.detail)
+            assert pixel(-23,-7) == palette.chip
+            assert pixel(16,-4.5) == palette.detail and pixel(9,-11.5) == palette.detail
+    print('PASS: original seven textures preserved; two RGBA8 images, independent GPU-byte-order decode, complete colored card and antialiased corners')
 
 from nso_reader import image
 SDK = image(card.ROOT.parent/'Extracted/Animal Crossing_ New Horizons 3.0.3 [01006F8002326800][v2228224][UPD]/Program #0/0/sdk',

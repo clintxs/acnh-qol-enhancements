@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.59 crafting quantity wrap pause** for ACNH **3.0.3 on Eden**. One Core
+**0.3.60 fitting-room rendering fix** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -63,14 +63,14 @@ fingerprints only, checked before each feature's first hook.
 Install **QoL Enhancements - Crafting** with Core. This replaces the former
 Faster Crafting package; remove the old folder and rename personal
 `faster-crafting.custom.ini` preferences to `crafting.custom.ini`. Remove any old
-`version` override from that personal file (or update it to 0.3.59). The retired
+`version` override from that personal file (or update it to 0.3.60). The retired
 regular/custom paths are no longer read. Core alone no longer enables DIY previews.
 
 `romfs/qol-enhancements/config/crafting.ini` supplies these defaults:
 
 ```ini
 enabled = true
-version = 0.3.59
+version = 0.3.60
 diy_app_preview = true
 workbench_preview_tilt = true
 crafting_quantity_wrap = true
@@ -258,7 +258,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.59
+version = 0.3.60
 base_speed = 2
 boost_speed = 4
 faster_ui = false
@@ -428,3 +428,16 @@ for bounded SELECT logs. Future behavior changes use C++ hooks per AGENTS.md.
 Exlaunch is pinned to upstream f9f4b0dd07b68f97958cb9c79228bbca22ca80d5.
 Keep GPL-2.0 and framework third-party notices and distribute matching source
 with the binary. Game assets are never part of the source archive.
+
+## 0.3.60 Fitting Room rendering fix
+
+Replace both **Core** and **Fitting Room**, then fully restart the game. The
+basket now uses one antialiased texture instead of 70 rectangle panes. Its
+shape, padding, mint color and group animation are preserved. Purchases and
+capacity limits are unchanged.
+
+Core shares one resource-size hook between Shopping Card and Fitting Room,
+with independent exact-path allowances when their packages are installed.
+This includes disabled feature configurations because their RomFS layouts
+remain installed. No global resource table is replaced. The 16+ item flashing
+report still needs a Steam Deck retest; local checks do not execute GPU draws.

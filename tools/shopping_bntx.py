@@ -1,6 +1,6 @@
-"""Extend the hash-checked currency BNTX with two RGBA8 UI pictures.
+"""Append RGBA8 UI pictures to hash-checked currency and fitting-room BNTX assets.
 
-Restricted to this asset's little-endian, single-mip, 2D textures. Rebuild the
+Restricted to these assets' little-endian, single-mip, 2D textures. Rebuild the
 pointer tables/dictionary/relocations, retaining original image payloads and
 texture settings. Binary fields cross-checked with the local original and
 https://github.com/Tyulis/3DSkit/blob/master/doc/BNTX.md . No external source
@@ -104,6 +104,24 @@ def append_card(original, palette_name='green'):
         struct.pack_into('<I', info, 0x50, WIDTH * HEIGHT * 4)
         info[0x58:0x5c] = bytes((2,3,4,5))  # RGBA channel sources.
         source.append(Texture(name, bytes(info), swizzle_rgba(pixels(backing, palette_name),WIDTH,HEIGHT)))
+    return rebuild(original, source)
+
+
+def append_rgba(original, name, width, height, raw):
+    """Append one RGBA8 picture using the same relocation writer as the card."""
+    source = textures(original)
+    assert name not in {texture.name for texture in source}
+    info = bytearray(source[0].info)
+    struct.pack_into("<I", info, 0x1c, 0x0b01)
+    struct.pack_into("<2I", info, 0x24, width, height)
+    struct.pack_into("<I", info, 0x34, 0)
+    struct.pack_into("<I", info, 0x50, width * height * 4)
+    info[0x58:0x5c] = bytes((2,3,4,5))
+    source.append(Texture(name, bytes(info), swizzle_rgba(raw, width, height)))
+    return rebuild(original, source)
+
+
+def rebuild(original, source):
     names = [texture.name for texture in source]
     filename = string(original, integer(original, 16) - 2)
     output = bytearray(original[:0x198])

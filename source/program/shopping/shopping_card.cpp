@@ -1,6 +1,6 @@
 #include "lib.hpp"
 #include "shopping_card.hpp"
-#include "resource_budget.hpp"
+#include "program/core/resource_budget.hpp"
 #include "payment_policy.hpp"
 #include <array>
 #include <cstring>
@@ -41,7 +41,7 @@ constexpr unsigned PaneParent = 0x18, PaneFlags = 0x58, CashCurrent = 0x260;
 // MurmurHash3(name, 0), independently checked against native 005bd550.
 constexpr unsigned MarketSmall = 0xbe3cad72, MarketLarge = 0x8a17f484, Tailor = 0x91e12aa0;
 constexpr unsigned IndoorFieldType = 0x758f7eaf;
-bool installed{}, resourcesPrepared{};
+bool installed{};
 template<class T> T Read(std::uintptr_t object, unsigned offset = 0) {
     T result;
     std::memcpy(&result, reinterpret_cast<const void *>(object + offset), sizeof(result));
@@ -124,29 +124,6 @@ void SetCatalogOpen(std::uintptr_t owner, bool active) {
     if (active) catalogPlayers |= bit;
     else catalogPlayers &= ~bit;
 }
-// Native 03e3cad0 returns whether RSTB/RSTC supplied a size and writes a
-// uint32 size plus one metadata byte. Preserve the original lookup and flags,
-// then raise only this normalized path. A missing table entry gets the same
-// safe floor; larger allocations from other mods are never reduced. Installing
-// this with Shopping Card avoids shipping a conflicting global RSTC file.
-struct NativeResourceSize {
-    std::uint32_t bytes;
-    std::uint8_t flags;
-};
-HOOK_DEFINE_TRAMPOLINE(CounterResourceBudget) {
-    static bool Callback(std::uintptr_t manager, NativeResourceSize *size, std::uintptr_t path) {
-        const bool found = Orig(manager, size, path);
-        const auto text = path ? Read<const char *>(path, 8) : nullptr;
-        if (!size || !text || std::strcmp(text, CounterResourcePath)) return found;
-        if (!found) {
-            size->bytes = CounterResourceMinimumBytes;
-            size->flags = 0;
-        } else if (size->bytes < CounterResourceMinimumBytes) {
-            size->bytes = CounterResourceMinimumBytes;
-        }
-        return true;
-    }
-};
 HOOK_DEFINE_TRAMPOLINE(CatalogOpened) {
     static void Callback(std::uintptr_t owner) {
         Orig(owner);
@@ -455,23 +432,7 @@ unsigned AvailableBells(const std::uint8_t *player) {
         return CombinedBalance(player);
     return Fn<unsigned (*)(const std::uint8_t *)>(address::Wallet)(player);
 }
-bool PrepareResources() {
-    if (resourcesPrepared) return true;
-    // Validate independently: feature hooks may be disabled while RomFS still
-    // supplies the larger layout. Never install financial/UI behavior here.
-    constexpr std::array<std::uint32_t, 4> expected{
-        0xa9bb7bfd, 0xa90167fa, 0xa9025ff8, 0xa90357f6};
-    const auto &text = exl::util::GetMainModuleInfo().m_Text;
-    if (address::ResourceSizeQuery + sizeof(expected) > text.m_Size ||
-        std::memcmp(reinterpret_cast<const void *>(Main(address::ResourceSizeQuery)),
-                    expected.data(), sizeof(expected))) {
-        Logging.Log("[QoL Enhancements/Shopping Card] DISABLED: resource size instruction mismatch\n");
-        return false;
-    }
-    CounterResourceBudget::InstallAtOffset(address::ResourceSizeQuery);
-    resourcesPrepared = true;
-    return true;
-}
+bool PrepareResources() { return core::PrepareShoppingResources(); }
 bool Install() {
     struct Fingerprint { std::uintptr_t offset; std::array<std::uint32_t, 4> words; };
     const Fingerprint checks[]{

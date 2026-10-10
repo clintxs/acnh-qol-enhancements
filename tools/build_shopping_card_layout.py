@@ -201,7 +201,7 @@ def build(palette_name='green'):
     original = zstd.decompress(packed)
     modified, count = patch_archive(original, palette_name)
     assert count == 1
-    header = (ROOT / 'source/program/shopping/resource_budget.hpp').read_text()
+    header = (ROOT / 'source/program/core/resource_budget.hpp').read_text()
     floor = int(re.search(r'CounterResourceMinimumBytes = (\d+)', header)[1])
     # Vanilla's RSTC allowance includes 8 KiB beyond its expanded archive size.
     # Keep at least that overhead; current 1 MiB floor also leaves ample room

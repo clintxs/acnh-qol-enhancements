@@ -17,7 +17,7 @@ from resource_sizes import read_rstc,allocation
 
 QUERY = 0x3e3cad0
 PATH = 'Layout/LBellCounterRT.Nin_NX_NVN'
-header = (card.ROOT/'source/program/shopping/resource_budget.hpp').read_text()
+header = (card.ROOT/'source/program/core/resource_budget.hpp').read_text()
 assert f'"{PATH}"' in header
 MINIMUM = int(re.search(r'CounterResourceMinimumBytes = (\d+)',header)[1])
 raw,count,names = read_rstc((card.ROOT.parent/'vanilla-3.0.3/System/Resource/ResourceSizeTable.srsizetable').read_bytes())
@@ -28,11 +28,12 @@ assert vanilla_budget < expanded and expanded+8192 <= MINIMUM
 print(f'PASS: reproduces missing size allowance: native {vanilla_budget}, expanded archive {expanded}, scoped floor {MINIMUM}')
 
 class ResourceMachine(Machine):
-    def __init__(self,base,enabled,disabled=False):
+    def __init__(self,base,enabled,disabled=False,fitting=False):
         files = {'shopping-card':DEFAULT if enabled else DEFAULT.replace(b'true',b'false')} if enabled or disabled else {}
+        if fitting: files['fitting-room'] = DEFAULT.replace(b'true',b'false')
         super().__init__(base,files)
         self.boot();self.activate()
-        assert (base+QUERY in self.hooks) == (enabled or disabled)
+        assert (base+QUERY in self.hooks) == (enabled or disabled or fitting)
         assert (base+0x257abf0 in self.hooks) == enabled
         self.u.mem_write(base+QUERY,RAW[QUERY:QUERY+20])
         self.callback = self.module.find('CounterResourceBudget','Callback')
@@ -96,5 +97,32 @@ for base in (0x7100000000,0x7200000000):
     conflict = Machine(base,{'shopping-card':DEFAULT})
     conflict.write(base+QUERY,0xdeadbeef,4)
     conflict.boot();conflict.activate()
-    assert len(conflict.hooks) == 7 and 'resource support unavailable' in conflict.text
+    assert base+QUERY not in conflict.hooks and base+0x257abf0 not in conflict.hooks
+    assert 'resource support unavailable' in conflict.text
     print(f'PASS: native RSTC lookup plus compiled floor, exact scope, larger overrides/flags, missing table, disabled behavior, removal and conflict, base {base:#x}')
+
+# Fitting Room and Shopping Card independently request one shared hook; the
+# disabled fitting marker still installs resource support for its RomFS asset.
+fitting_path = 'Layout/LBtnListShopTailorBtn.Nin_NX_NVN'
+fitting_minimum = int(re.search(r'FittingResourceMinimumBytes = (\d+)',header)[1])
+import build_layouts
+fitting_expanded = len(zstd.decompress(next(iter(build_layouts.build().values()))))
+assert allocation(raw,count,fitting_path) == 144512
+assert fitting_expanded+8192 <= fitting_minimum
+for base in (0x7100000000,0x7200000000):
+    for shopping,fitting in ((False,False),(True,False),(False,True),(True,True)):
+        m = ResourceMachine(base,shopping,fitting=fitting)
+        for path,present,floor in ((PATH,shopping,MINIMUM),(fitting_path,fitting,fitting_minimum)):
+            native = m.query(path,False)
+            result = m.query(path,True) if shopping or fitting else native
+            if present:
+                assert result[0] == 1 and int.from_bytes(result[1][:4],'little') == floor
+                assert result[1][4:] == native[1][4:]
+            else: assert result == native
+        if shopping or fitting:
+            assert m.query(fitting_path+'.zs',True) == m.query(fitting_path+'.zs',False)
+    conflict = Machine(base,{'fitting-room':DEFAULT})
+    conflict.write(base+QUERY,0xdeadbeef,4);conflict.boot();conflict.activate()
+    assert base+QUERY not in conflict.hooks and base+0x311a538 not in conflict.hooks
+    assert 'resource support unavailable' in conflict.text
+print('PASS: independent fitting/card allocation floors, shared installation, disabled fitting marker, absent modules and fitting conflict')

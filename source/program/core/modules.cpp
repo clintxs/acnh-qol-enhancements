@@ -1,6 +1,7 @@
 #include "lib.hpp"
 #include "modules.hpp"
 #include "release.hpp"
+#include "resource_budget.hpp"
 #include "settings.hpp"
 #include "program/crafting/settings.hpp"
 #include "program/shopping/shopping_card.hpp"
@@ -100,7 +101,7 @@ const std::array<ModuleDescription, 6> Modules{{
     {"Catalog", "catalog", {0, 1, 0}, InstallCatalog},
     {"Pockets", "pockets", {0, 1, 0}, InstallPockets},
     {"Faster Dialogue", "faster-dialogue", {0, 1, 0}, dialogue::Install, dialogue::Configure},
-    {"Fitting Room", "fitting-room", {0, 1, 0}, able_bag::Install},
+    {"Fitting Room", "fitting-room", {0, 1, 0}, able_bag::Install, nullptr, PrepareFittingResources},
     {"Shopping Card", "shopping-card", {0, 3, 2}, shopping::Install, nullptr, shopping::PrepareResources},
     {"Crafting", "crafting", {0, 3, 46}, crafting::Install, crafting::Configure},
 }};

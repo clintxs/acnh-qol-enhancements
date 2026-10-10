@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.59 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.60 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -141,7 +141,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.59
+  version = 0.3.60
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.
@@ -162,11 +162,11 @@ remain a separate translation resource, outside module configuration layering.
 Whole-line #/; comments, a UTF-8 BOM, CRLF and valid UTF-8 text up to 4 KiB per file
 are supported. Versions use numeric major.minor.patch.
 
-CRAFTING MODULE / SETTINGS (0.3.59)
+CRAFTING MODULE / SETTINGS (0.3.60)
 Install Core plus “QoL Enhancements - Crafting”. This replaces the former
 “QoL Enhancements - Faster Crafting” folder; remove that old folder when updating.
 Move any personal faster-crafting.custom.ini preferences to crafting.custom.ini.
-Remove old version overrides in that custom file, or update them to 0.3.59.
+Remove old version overrides in that custom file, or update them to 0.3.60.
 Old faster-crafting.ini/custom paths are no longer read.
 DIY app previews are now optional Crafting behavior, not always-on Core behavior.
 
@@ -174,7 +174,7 @@ Regular settings: romfs/qol-enhancements/config/crafting.ini
 Personal overlay: romfs/qol-enhancements/config/crafting.custom.ini
 Defaults in the regular file:
   enabled = true
-  version = 0.3.59
+  version = 0.3.60
   diy_app_preview = true
   workbench_preview_tilt = true
   crafting_quantity_wrap = true
@@ -312,3 +312,9 @@ backup when testing purchases. See the source README for remaining live checks.
 Built with Exlaunch (GPL-2.0). LICENSE is inside Core; the matching source ZIP
 includes framework notices and reproducible build/package tools. Original game
 assets are required locally for rebuilding and are absent from the source ZIP.
+
+FITTING ROOM RENDERING FIX (0.3.60)
+Replace Core AND Fitting Room, then fully restart ACNH. The basket now uses
+one picture instead of 70 rectangles. Core supplies the required extra layout
+allocation. Bag capacity, prices, delivery and icon animation are unchanged.
+Please retest adding more than 16 items and scrolling between clothing rows.

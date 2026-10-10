@@ -1,13 +1,13 @@
 {
   "origins": {
-    "assets": "Catalog 0.8.1 / Able Sisters Bag 0.3.7"
+    "assets": "Catalog 0.8.1 / Able Sisters Bag 0.3.7 counter / QoL 0.3.60 textured basket"
   },
   "assets": {
     "QoL Enhancements - Catalog/romfs/Layout/LCatalogBtn.Nin_NX_NVN.zs": "c05d27b321ae10e9dd0db4bd0479c55a9302b8f1774635cad426beca46df3964",
     "QoL Enhancements - Catalog/romfs/Layout/LNatteeCatalogBtn.Nin_NX_NVN.zs": "f26ca446068f364334300936b39c74534f3e2c7770ca391822ca82ea3f7c659d",
     "QoL Enhancements - Catalog/romfs/Layout/LBtnListShopSonkatsuBtn.Nin_NX_NVN.zs": "ebd38151a432f15072386e9a99f550041834a8341e284dd9aeab22d907979501",
     "QoL Enhancements - Catalog/romfs/Layout/LHotelCatalogBtn.Nin_NX_NVN.zs": "90b5d945f737a774f6581121b62b99610265e5b8cdc601da192fc2d89f92b443",
-    "QoL Enhancements - Fitting Room/romfs/Layout/LBtnListShopTailorBtn.Nin_NX_NVN.zs": "6e90085711a6aee1abdd0f012b5dfb081f6c88fe4ad0af763dd6697211bcdc46",
+    "QoL Enhancements - Fitting Room/romfs/Layout/LBtnListShopTailorBtn.Nin_NX_NVN.zs": "871c61735b8a5710e2f5d98cc7d38dc0d6cc01185c459bf97e12220c752a3ae9",
     "QoL Enhancements - Fitting Room/romfs/Layout/LShopBuyTailorCounter.Nin_NX_NVN.zs": "270ed7cdfd872cc1c78326b86c3627e1caf694170066e5dd52eb927b28b4047f"
   },
   "npdm_sha256": "dc0bce7c73c6ef9822ddfffbe2af1a7115ae86f42e6f22796401a40f1feb0c37"

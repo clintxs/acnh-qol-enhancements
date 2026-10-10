@@ -1,9 +1,11 @@
-"""Add a geometric circular bag badge; preserve original panes and resources."""
+"""Add a textured circular bag badge; preserve original panes and resources."""
 from pathlib import Path
 from compression import zstd
-import struct, hashlib, json
+import struct, hashlib, json, re
 from layout_io import *
-from bag_geometry import segments, MINT
+from bag_geometry import MINT
+from bag_texture import NAME as BAG_TEXTURE, SIZE, CANVAS, pixels
+from shopping_bntx import append_rgba, textures
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ('LBtnListShopTailorBtn', 'LShopBuyTailorCounter')
 PANE_TYPES = {b'pan1',b'pic1',b'txt1',b'bnd1',b'prt1',b'wnd1'}
@@ -31,19 +33,35 @@ def edit_layout(data, name):
     sections=layout_sections(data)
     panes={pane_name(s):s for s in sections if s[:4] in PANE_TYPES}
     if name==ASSETS[0]:
-        # Use an untextured material and mint-colored rectangle vertices.
-        # The native renderer scales the vector outline with the item row.
+        # One picture per basket, instead of 70 drawing panes per visible row.
+        texture_index=next(i for i,s in enumerate(sections) if s[:4]==b'txl1')
+        texture_section=sections[texture_index]
+        texture_count=struct.unpack_from('<H',texture_section,8)[0]
+        names=[]
+        for offset in struct.unpack_from(f'<{texture_count}I',texture_section,12):
+            start=12+offset
+            names.append(texture_section[start:texture_section.index(0,start)].decode('ascii'))
+        assert BAG_TEXTURE not in names
+        names.append(BAG_TEXTURE)
+        table=bytearray(struct.pack('<4sIHH',b'txl1',0,len(names),0))
+        position=4*len(names)
+        for texture in names:
+            table.extend(struct.pack('<I',position));position+=len(texture)+1
+        table.extend(b''.join(texture.encode()+b'\0' for texture in names))
+        table.extend(bytes(-len(table)%4))
+        struct.pack_into('<I',table,4,len(table))
+        sections[texture_index]=bytes(table)
         material_index=next(i for i,s in enumerate(sections) if s[:4]==b'mat1')
         section=sections[material_index]
         count=struct.unpack_from('<H',section,8)[0]
         offsets=list(struct.unpack_from(f'<{count}I',section,12))+[len(section)]
         records=[section[a:b] for a,b in zip(offsets,offsets[1:])]
-        fill=struct.unpack_from('<H',panes['T_Price_01'],88)[0]
+        fill=struct.unpack_from('<H',panes['P_Equip_00'],100)[0]
         material=bytearray(records[fill])
-        assert len(material)==44
-        material[:28]=b'BagOutlineSolid'.ljust(28,b'\0')
+        material[:28]=b'BagBasketPicture'.ljust(28,b'\0')
         material[36:40]=bytes(4)
         material[40:44]=bytes([255]*4)
+        struct.pack_into('<H',material,44,texture_count)
         records.append(bytes(material))
         rebuilt=bytearray(section[:12])
         struct.pack_into('<H',rebuilt,8,len(records))
@@ -52,19 +70,16 @@ def edit_layout(data, name):
             rebuilt.extend(struct.pack('<I',offset));offset+=len(record)
         rebuilt.extend(b''.join(records));struct.pack_into('<I',rebuilt,4,len(rebuilt))
         sections[material_index]=bytes(rebuilt)
-        strokes=[]
-        for i,(x,y,width,height,angle) in enumerate(segments()):
-            pane=bytearray(panes['P_Equip_00'][:104])
-            pane[12:36]=f'P_BagStroke_{i:02}'.encode().ljust(24,b'\0')
-            pane[8]=3;pane[9]=0;pane[10]=255
-            struct.pack_into('<3f',pane,44,x,y,0)
-            struct.pack_into('<3f',pane,56,0,0,angle)
-            struct.pack_into('<2f',pane,68,1,1)
-            struct.pack_into('<2f',pane,76,width,height)
-            pane[84:100]=bytes(MINT)*4
-            struct.pack_into('<HBB',pane,100,count,0,0) # no texture coordinates
-            struct.pack_into('<I',pane,4,len(pane))
-            strokes.append(bytes(pane))
+        picture=bytearray(panes['P_Equip_00'])
+        picture[12:36]=b'P_BagIcon_00'.ljust(24,b'\0')
+        picture[8]=3;picture[9]=0;picture[10]=255
+        struct.pack_into('<3f',picture,44,0,0,0)
+        struct.pack_into('<3f',picture,56,0,0,0)
+        struct.pack_into('<2f',picture,68,1,1)
+        struct.pack_into('<2f',picture,76,CANVAS,CANVAS)
+        picture[84:100]=bytes(MINT)*4
+        struct.pack_into('<H',picture,100,count)
+        assert picture[102]==1 and len(picture)==136
         # Clone the worn marker's circle and use a separate visibility group.
         # Its original parent is animated from alpha zero; our group starts opaque.
         group=bytearray(panes['N_Equip_00'])
@@ -78,7 +93,7 @@ def edit_layout(data, name):
         background=bytearray(panes['P_EquipStripe_00'])
         background[12:36]=b'P_BagCircle_00'.ljust(24,b'\0')
         additions=[bytes(group),struct.pack('<4sI',b'pas1',8),bytes(background),
-                   *strokes,struct.pack('<4sI',b'pae1',8)]
+                   bytes(picture),struct.pack('<4sI',b'pae1',8)]
         parent='N_Scale_00'
     else:
         raise ValueError('Only the item-row layout is modified')
@@ -105,6 +120,8 @@ def patch(data, name):
         if content.startswith(b'SARC'):
             content,n=patch(content,name);count+=n
         elif e.name==f'blyt/{name}.bflyt':content=edit_layout(content,name);count+=1
+        elif e.name=='timg/__Combined.bntx':
+            content=append_rgba(content,BAG_TEXTURE,SIZE,SIZE,pixels());count+=1
         align=min((start+e.start)&-(start+e.start),4096)
         out.extend(bytes((-len(out))%align));offset=len(out)-start
         out.extend(content);struct.pack_into('<2I',out,e.node_offset+8,offset,len(out)-start)
@@ -122,11 +139,20 @@ def build():
             # also removes its experimental status pane.
             results[f'romfs/Layout/{name}.Nin_NX_NVN.zs']=packed
             continue
-        before=zstd.decompress(packed);after,count=patch(before,name);assert count==1
+        before=zstd.decompress(packed);after,count=patch(before,name);assert count==2
         old,new=resources(before),resources(after)
         assert old.keys()==new.keys()
         changes=[key for key in old if old[key]!=new[key]]
-        assert len(changes)==1 and changes[0].endswith(f'blyt/{name}.bflyt')
+        assert len(changes)==2
+        assert {key.split('/')[-1] for key in changes}=={f'{name}.bflyt','__Combined.bntx'}
+        key=next(key for key in changes if key.endswith('.bntx'))
+        previous,current=textures(old[key]),textures(new[key])
+        assert [t.name for t in current]==[t.name for t in previous]+[BAG_TEXTURE]
+        for a,b in zip(previous,current):
+            assert a.data==b.data and a.info[16:96]==b.info[16:96]
+        header=(ROOT/'source/program/core/resource_budget.hpp').read_text()
+        minimum=int(re.search(r'FittingResourceMinimumBytes = (\d+)',header)[1])
+        assert len(after)+8192 <= minimum
         output=zstd.compress(after);assert zstd.decompress(output)==after
         results[f'romfs/Layout/{name}.Nin_NX_NVN.zs']=output
     return results

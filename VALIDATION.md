@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.59 timed quantity wrap pause
+# Unified QoL validation — 0.3.60 fitting-room rendering fix
 
 Validated locally on October 10, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,46 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.60 Fitting-room badge rendering load and resource allowance
+
+The user reports UI flashing and unrelated elements changing size/position
+once the bag exceeds 16 items. The screenshot shows corrupted Bell and row
+presentation. This is consistent with shared renderer/resource exhaustion,
+but the exact GPU buffer and failure point have not been captured in Eden.
+
+Concrete findings: the old basket contains 70 individual picture strips plus
+its background circle. Seventeen simultaneously drawn badges would contribute
+1,207 picture panes. The prior archive expands to 144,496 bytes against a native
+RSTC allowance of 144,512 bytes, leaving only 16 bytes of archive headroom;
+the original allowance includes 8 KiB beyond the original archive. The
+16-entry motion ring wraps its index and stores no retained pane pointers.
+The native 16-item purchase-report limit applies only during checkout.
+
+Bake the same silhouette into a 128x128 RGBA8 picture with antialiased alpha,
+white RGB and the existing mint pane tint. Keep the original group/background,
+placement and scale; replace 70 strip panes with one picture. Seventeen visible
+badges now add 34 picture panes. Preserve native panes, materials, textures,
+animations and other archive entries. The expanded archive is 210,800 bytes.
+
+Move the existing Shopping Card resource allowance into Core, retaining one
+shared hook and independently enabled exact-path floors. Fitting Room requests
+512 KiB; Shopping Card keeps 1 MiB. Missing/disabled/invalid module behavior
+matches the existing installed-resource preparation contract. Never reduce a
+larger allowance or replace the global RSTC. Both Core and Fitting Room must
+be updated for this release.
+
+Checks: pinned build; all 64 module subsets at two ASLR bases; native RSTC
+lookup, independent floors, disabled/absent packages and fingerprint rejection;
+native SDK BNTX relocation and texture lookup at two bases; independent GPU
+byte-order decode and alpha-cutout checks; native layout preservation and
+constant two-picture badge cost; existing Shopping Card layout/texture checks;
+suite structure/manifest checks. The feedback regression crosses 16/17 and
+32/33 distinct bag entries while retaining the native scale/dirty propagation.
+
+Live verification remains required: reproduce with 17+ items, scroll through
+bagged rows, switch categories and remove/re-add items. These tests do not
+render GPU frames, establish the engine's exact draw limit, or access a save.
 
 ## 0.3.59 Half-second pause after a fresh endpoint wrap
 

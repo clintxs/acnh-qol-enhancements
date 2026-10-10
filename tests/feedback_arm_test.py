@@ -58,3 +58,16 @@ m.call(m.mod.find('4Play8Callback'),m.owner);m.badge();assert not m.read(m.pane+
 m.write(m.cursor+0x26c,1,1);m.toggle();assert m.taps==2
 m.write(m.cursor+0x26c,0,1);m.write(m.root+0x7018,0);m.toggle();assert m.taps==2
 print('PASS: native scale keys and dirty-transform propagation without cursor movement, alpha, removal, successful Y tap, hidden/unrelated cursor guards')
+
+# Cross both the reported 16-item threshold and animation-ring rollover.
+# Each selected item remains in the bag while the cursor stays on its row.
+m=FeedbackMachine()
+for i in range(33):
+    m.write(m.item+4,i*7,4)
+    m.toggle();assert m.size()==i+1
+    m.badge();m.render();assert m.scale()==.5
+    for frame in range(8):
+        m.call(m.mod.find('4Play8Callback'),m.owner);m.badge();m.render()
+    assert m.scale()==1 and m.read(m.pane+0x59,1)==255 and m.read(m.pane+0x58,1)&1
+assert m.taps==33
+print('PASS: 33 distinct bag additions across 16/17 and 32/33, animation ring reuse and final transforms')
