@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.46 Crafting module and settings
+# Unified QoL validation — 0.3.47 expanded Crafting speed
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,22 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.47 expanded Crafting speed
+
+`crafting_speed` now accepts integer peaks 1..6, with higher positive integers
+clamped to 6. The default remains 3 with the exact original curve. The 60-update
+ramp, native readiness/suspension/local-player gates and exit resets are unchanged.
+Peak 6 doubles vanilla’s 3x peak; total crafting time also includes the ramp and
+other native animation/UI timing.
+
+Parser checks cover all six peaks, overflow-sized decimals, malformed suffixes,
+regular/custom inheritance and duplicate rollback. The 24,252 compiled ARM
+crafting/cooking cases cover every ramp sample through both native paths at two
+bases, including maximum clamping and preserved GP/SIMD registers. Core activation and
+DIY preview regressions are also checked. Package manifests and source/binary
+parity are verified before delivery. Live 6x behavior still needs a Deck test.
+Workbench tilt, quantity wrap and preview UI follow-ups remain deferred.
 
 ## 0.3.46 Crafting module and settings
 

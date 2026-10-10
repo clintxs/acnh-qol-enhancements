@@ -11,9 +11,10 @@ workbench tilt and quantity wrap are parsed/reserved only and still deferred.
 Hotel banner, initial orientation and recipe navigation follow-ups remain open.
 
 Speed is the peak of the existing 60-update logarithmic ramp, accepting integer
-1..3 within the native animation-rate range. Peak 3 retains the original table
-exactly; lower peaks scale its gain by `(peak-1)/2`, preserving timing. Peak 1
-holds at 1x. Native actor/readiness/input/exit gates are unchanged. Both action
+1..6 as of 0.3.47. Peak 3 retains the original table exactly; other peaks scale
+its gain by `(peak-1)/2`, preserving timing. Above-maximum integers clamp to 6
+without overflow, including decimal values too large for an unsigned integer.
+Peak 1 holds at 1x. Native actor/readiness/input/exit gates are unchanged. Both action
 hooks and all preview hooks live in the same Crafting marker, with independent
 installation attempts so one feature's incompatibility does not suppress the
 other. Disabling `diy_app_preview` bypasses preview fingerprints and hooks.
@@ -147,3 +148,17 @@ The request for configurable speeds is implemented as `crafting_speed`, default 
 controlling the existing ramp's maximum at 1x, 2x or 3x. Ramp timing remains 60
 updates and crafting/customization/cooking share the preference. Separate speeds,
 other peaks or ramp timing settings are not included in this change.
+
+## Expanded speed range — 0.3.47
+
+The maximum supported `crafting_speed` is now 6, twice vanilla’s 3x mash peak.
+The default remains 3. Parsing saturates each decimal step at the named maximum
+and validates the entire value before assigning it, so large positive integers
+clamp safely while trailing garbage, zero and other malformed values inherit.
+Duplicate keys still restore the earlier layer. The installer shares the same
+maximum constant. Ramp timing and native gates are unchanged.
+
+Host parser tests cover all six peaks, huge decimals, invalid suffixes and
+layered duplicate rollback. ARM tests execute compiled crafting/cooking hooks
+at both bases for every ramp sample at peaks 1..6, including regular/custom
+clamping. The 6x peak still needs a live Steam Deck check.

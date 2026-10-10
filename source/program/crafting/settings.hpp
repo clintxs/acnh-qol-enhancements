@@ -2,6 +2,22 @@
 #include "program/core/config.hpp"
 
 namespace qol::crafting {
+inline constexpr unsigned MaximumCraftingSpeed = 6;
+
+inline bool ParseCraftingSpeed(std::string_view value, unsigned &output) {
+    // Saturate while parsing so even a very large decimal cannot overflow.
+    // Validate every character before publishing; malformed values inherit.
+    if (value.empty() || value.front() == '0') return false;
+    unsigned speed = 0;
+    for (const char digit : value) {
+        if (digit < '0' || digit > '9') return false;
+        const unsigned next = speed * 10 + (digit - '0');
+        speed = next > MaximumCraftingSpeed ? MaximumCraftingSpeed : next;
+    }
+    output = speed;
+    return true;
+}
+
 struct Settings {
     bool diyAppPreview = true;
     // Reserved preferences: parse and preserve them, but install no behavior yet.
@@ -33,9 +49,7 @@ inline unsigned ApplySettings(std::string_view input, Settings &output) {
         if (seen & bit) { duplicate |= bit; ++warnings; continue; }
         seen |= bit;
         if (bit == 8) {
-            // Stay within the existing native 1..3 animation-rate range.
-            if (value == "1" || value == "2" || value == "3") output.craftingSpeed = value[0] - '0';
-            else ++warnings;
+            if (!ParseCraftingSpeed(value, output.craftingSpeed)) ++warnings;
         } else if (value == "true" || value == "false") {
             (bit == 1 ? output.diyAppPreview : bit == 2 ? output.workbenchPreviewTilt :
                         output.craftingQuantityWrap) = value == "true";

@@ -18,6 +18,11 @@ Q = [globals()[f'UC_ARM64_REG_Q{i}'] for i in range(32)]
 def ramp(frame, maximum=3):
     return 1. + (maximum - 1.) * math.log1p(9. * min(frame, RAMP_FRAMES) / RAMP_FRAMES) / math.log(10.)
 
+def rate_tolerance(maximum):
+    # The scaled table adds float32 operations at peaks above 3. Allow a few
+    # ULPs there while keeping the confirmed default's original tight bound.
+    return 2e-7 if maximum <= 3 else 1e-6
+
 class CraftingMachine(Machine):
     def __init__(self, base, files, maximum=3):
         self.maximum = maximum
@@ -47,7 +52,7 @@ class CraftingMachine(Machine):
             assert after_q[1:] == before_q[1:]
             assert after_q[0] >> 32 == before_q[0] >> 32
             rate = struct.unpack('<f', (after_q[0] & 0xffffffff).to_bytes(4, 'little'))[0]
-            assert abs(rate - ramp(self.elapsed, self.maximum)) < 2e-7
+            assert abs(rate - ramp(self.elapsed, self.maximum)) < rate_tolerance(self.maximum)
             after_gp = [u.reg_read(reg) for reg in GP]
             assert after_gp == before_gp
             self.pending, self.bypass = None, native_pc
@@ -126,7 +131,7 @@ class CraftingMachine(Machine):
         assert self.recipe_checks == int(not cooking and not remote)
         expected = 1.25 if remote else (ramp(elapsed, self.maximum) if self.callbacks else min(3., max(1., native_count)))
         if not cooking and not remote and not ready: expected = 1.
-        assert abs(self.rate - expected) < 2e-7, (cooking, count, pressed, blocked, remote, ready, elapsed, self.rate, expected)
+        assert abs(self.rate - expected) < rate_tolerance(self.maximum), (cooking, count, pressed, blocked, remote, ready, elapsed, self.rate, expected)
         assert bytes(self.u.mem_read(self.obj + speed, 4)) == struct.pack('<f', self.rate)
 
     def native_frame_step(self, offset, instructions):
@@ -193,7 +198,14 @@ def check():
             ({'crafting': DEFAULT + b'crafting_speed=2'}, 2),
             ({'crafting': DEFAULT, 'crafting.custom': b'crafting_speed=2'}, 2),
             ({'crafting': DEFAULT + b'crafting_speed=2', 'crafting.custom': b'crafting_speed=3'}, 3),
-            ({'crafting': DEFAULT + b'crafting_speed=2', 'crafting.custom': b'crafting_speed=4'}, 2),
+            ({'crafting': DEFAULT + b'crafting_speed=4'}, 4),
+            ({'crafting': DEFAULT + b'crafting_speed=5'}, 5),
+            ({'crafting': DEFAULT + b'crafting_speed=6'}, 6),
+            ({'crafting': DEFAULT + b'crafting_speed=7'}, 6),
+            ({'crafting': DEFAULT + b'crafting_speed=2', 'crafting.custom': b'crafting_speed=6'}, 6),
+            ({'crafting': DEFAULT + b'crafting_speed=2', 'crafting.custom': b'crafting_speed=' + b'9' * 4000}, 6),
+            ({'crafting': DEFAULT + b'crafting_speed=2', 'crafting.custom': b'crafting_speed=999999999999999999x'}, 2),
+            ({'crafting': DEFAULT + b'crafting_speed=2', 'crafting.custom': b'crafting_speed=99\ncrafting_speed=1'}, 2),
             ({'crafting': DEFAULT + b'crafting_speed=2', 'crafting.custom': b'crafting_speed=1\ncrafting_speed=3'}, 2),
             ({'crafting': DEFAULT + b'crafting_speed=2', 'crafting.custom': b'crafting_speed=3\nversion=bad'}, 2),
         )
@@ -216,6 +228,6 @@ def check():
             m.boot(); m.activate()
             assert 'Crafting] DISABLED' in m.text and 'Amiibo timeout: READY' in m.text
             assert not any(base + site in m.hooks for site in HOOKS)
-    print(f'PASS: {cases} native crafting/cooking cases at two bases; logarithmic 60-frame 1..3x ramp, saturation/restarts, native frame reset/increments, readiness/suspension/local-player gates, native exit resets, manual A when disabled, isolated layered config, unchanged input/counters, SIMD/GP preservation, atomic fingerprints')
+    print(f'PASS: {cases} native crafting/cooking cases at two bases; logarithmic 60-frame 1..6x ramp, maximum clamping, saturation/restarts, native frame reset/increments, readiness/suspension/local-player gates, native exit resets, manual A when disabled, isolated layered config, unchanged input/counters, SIMD/GP preservation, atomic fingerprints')
 
 if __name__ == '__main__': check()

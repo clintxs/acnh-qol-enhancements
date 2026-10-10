@@ -34,7 +34,7 @@ float AutomaticRate(unsigned elapsedFrames) {
         3.000000000f,
     };
     const auto nativeRate = rates[elapsedFrames < RampFrames ? elapsedFrames : RampFrames];
-    // Preserve the confirmed default curve exactly. Lower settings scale its
+    // Preserve the confirmed default curve exactly. Other settings scale its
     // gain while retaining the same timing and per-action restart behavior.
     return MaximumSpeed == 3 ? nativeRate : 1.0f + (nativeRate - 1.0f) * (MaximumSpeed - 1) / 2.0f;
 }
@@ -54,7 +54,7 @@ HOOK_DEFINE_INLINE(AutomaticMashBoost) {
 } // namespace
 
 bool InstallFasterCrafting(unsigned maximumSpeed) {
-    if (maximumSpeed < 1 || maximumSpeed > 3) return false;
+    if (maximumSpeed < 1 || maximumSpeed > MaximumCraftingSpeed) return false;
     struct Fingerprint { std::uintptr_t offset; std::uint32_t words[5]; };
     // Original instructions only; behavior is implemented by the C++ callback.
     constexpr Fingerprint fingerprints[]{

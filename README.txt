@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.46 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.47 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -136,7 +136,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.46
+  version = 0.3.47
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.
@@ -157,11 +157,11 @@ remain a separate translation resource, outside module configuration layering.
 Whole-line #/; comments, a UTF-8 BOM, CRLF and valid UTF-8 text up to 4 KiB per file
 are supported. Versions use numeric major.minor.patch.
 
-CRAFTING MODULE / SETTINGS (0.3.46)
+CRAFTING MODULE / SETTINGS (0.3.47)
 Install Core plus “QoL Enhancements - Crafting”. This replaces the former
 “QoL Enhancements - Faster Crafting” folder; remove that old folder when updating.
 Move any personal faster-crafting.custom.ini preferences to crafting.custom.ini.
-Remove old version overrides in that custom file, or update them to 0.3.46.
+Remove old version overrides in that custom file, or update them to 0.3.47.
 Old faster-crafting.ini/custom paths are no longer read.
 DIY app previews are now optional Crafting behavior, not always-on Core behavior.
 
@@ -169,7 +169,7 @@ Regular settings: romfs/qol-enhancements/config/crafting.ini
 Personal overlay: romfs/qol-enhancements/config/crafting.custom.ini
 Defaults in the regular file:
   enabled = true
-  version = 0.3.46
+  version = 0.3.47
   diy_app_preview = true
   workbench_preview_tilt = true
   crafting_quantity_wrap = true
@@ -177,11 +177,11 @@ Defaults in the regular file:
 
 Active settings:
 - diy_app_preview: enable/disable the existing DIY app 3D preview independently.
-- crafting_speed: whole-number 1, 2 or 3; the peak of the existing logarithmic
+- crafting_speed: whole-number 1 through 6; the peak of the existing logarithmic
   ramp over 60 state updates. Starts at 1x and restarts for each crafting,
   customization or cooking action. Default 3 preserves the confirmed curve;
-  2 peaks at 2x, and 1 holds at 1x. Values outside this range retain the prior
-  setting and report a warning.
+  6 doubles vanilla’s 3x peak, and 1 holds at 1x. Values above 6 clamp to 6.
+  Zero and malformed values retain the prior setting and report a warning.
 
 Deferred settings (accepted, but currently have NO EFFECT):
 - workbench_preview_tilt = true
