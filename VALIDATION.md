@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.61 crafting quantity wrap timing
+# Unified QoL validation — 0.3.63 crafting quantity wrap timing
 
 Validated locally on October 10, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,24 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.63 Fresh-wrap pause adjusted to 300 ms
+
+The user requests 300 ms after trying 200 ms. Set WrapPauseTicks to 5,760,000
+(19.2 MHz * 0.3 seconds). Only this deadline changes: immediate endpoint wrap,
+held native repeat at expiry, early release cancellation and stopping at the
+next endpoint keep their existing behavior.
+
+The quantity ARM fixture checks tick 5,759,999 remains paused and 5,760,000
+resumes, at modeled 30/60/120 Hz, both ASLR bases, crafting/cooking pages,
+directions and d-pad/stick controls. It also covers release/restart, pressure
+jitter, native limits and input ownership. Clock and controller samples remain
+modeled; live feel needs a Steam Deck retest.
+
+Validation: pinned offline build, nine host suites, focused quantity ARM
+fixtures at two ASLR bases and 30,700 crafting/cooking cases all pass.
+Release ZIP integrity, manifest hashes and extracted/deployed/source parity
+are verified separately. The previous 0.3.62 dialogue update is retained.
 
 ## 0.3.61 Shorter pause after a fresh endpoint wrap
 

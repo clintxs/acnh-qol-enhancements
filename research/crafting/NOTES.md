@@ -317,3 +317,11 @@ Native 03C4B20C uses update-count initial/repeat parameters from snapshot+0x18
 and +0x1c, unless its input context overrides them. 200 ms is requested tuning;
 we have not measured the live quantity page's native delay. The fixture's 12/4
 repeat parameters are modeled inputs, not evidence of exact native defaults.
+
+
+## Fresh-wrap pause adjustment — 0.3.63
+
+User requests 300 ms after testing 200 ms. The deadline is now 5,760,000 ticks
+(19.2 MHz * 3 / 10); no latch/repeat behavior changes. Quantity tests derive
+frame counts from pause_ticks so the exact deadline remains covered at modeled
+30/60/120 Hz, including early release and restart of the pause.

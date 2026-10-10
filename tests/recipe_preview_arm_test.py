@@ -1660,9 +1660,9 @@ def quantity_wrap_fixture(base):
     for y in (-0.1,-0.2,-0.4,-0.49):
         step(-1,True,repeat=True,held=0,left=(0,y)); assert selected()==9
     step(-1,True,repeat=True); assert selected()==0
-    # Only a fresh endpoint wrap gets the 200 ms pause. Execute real
+    # Only a fresh endpoint wrap gets the 300 ms pause. Execute real
     # native button timers at its exact boundary, then repeat to the far end.
-    pause_ticks=3_840_000
+    pause_ticks=5_760_000
     for page_class in (0x4a3a7d8,0x49de8f0):
         m.write(page,base+page_class)
         for stick in (False,True):
@@ -1675,13 +1675,13 @@ def quantity_wrap_fixture(base):
                     assert m.read(m.last_input_row,4)&3==0
                     assert bytes(m.u.mem_read(m.last_input_row+4,8))==bytes(8)
                     frame_ticks=19_200_000//rate
-                    for _ in range(rate//5-1):
+                    for _ in range(pause_ticks//frame_ticks-1):
                         step(direction,stick,repeat=True,ticks=frame_ticks)
                         assert selected()==destination
                     step(direction,stick,repeat=True,ticks=frame_ticks-1)
                     assert selected()==destination
                     step(direction,stick,repeat=True,ticks=1)
-                    assert selected()==destination-direction # Native resumes immediately at 200 ms.
+                    assert selected()==destination-direction # Native resumes immediately at 300 ms.
                     for _ in range(100):
                         step(direction,stick,repeat=True,ticks=19_200_000//rate)
                     endpoint=9 if direction<0 else 0
@@ -1728,7 +1728,7 @@ def quantity_wrap_fixture(base):
     for held,left in ((0,(1,0)),(0x32,(0,0)),(3,(0,0)),(0,(0,float('nan')))):
         step(); m.input(page,held,resident=3,left=left); assert selected()==3
     assert any(e==('native_input',page) for e in m.events)
-    print(f'PASS: quantity endpoint wrap, 200 ms pause/resume boundary at 30/60/120 Hz, release cancels/restarts pause, no delay in range or repeat wrap at reached boundary, native button repeat and quantity/material callback, delayed stick buttons, pressure jitter and neutral rearm, d-pad/stick, crafting/cooking pages, native limits, blocking and reused-page reset; system clock/raw-to-logical input/layout services modeled; ASLR {base:#x}')
+    print(f'PASS: quantity endpoint wrap, 300 ms pause/resume boundary at 30/60/120 Hz, release cancels/restarts pause, no delay in range or repeat wrap at reached boundary, native button repeat and quantity/material callback, delayed stick buttons, pressure jitter and neutral rearm, d-pad/stick, crafting/cooking pages, native limits, blocking and reused-page reset; system clock/raw-to-logical input/layout services modeled; ASLR {base:#x}')
 
 for base in (0x7100000000,0x7200000000): quantity_wrap_fixture(base)
 
