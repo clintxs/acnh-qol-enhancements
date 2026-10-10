@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.74 fitting-room B diagnostic** for ACNH **3.0.3 on Eden**. One Core
+**0.3.75 fitting-room B input fix** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -512,3 +512,8 @@ Update Core and Fitting Room, then restart. Eden verification is pending.
 0.3.74 adds up to 48 WEAR_BACK log records to investigate the B shortcut not
 activating in Eden. It is a diagnostic build, not a confirmed fix. The user
 confirmed native Mabel dialogue already skips outfit praise for bag-only buys.
+
+0.3.75 fixes rejection of live B input carrying the accompanying bit-16 flag
+(0x10020). Other simultaneous controls are still excluded. Temporary diagnostic
+logging is removed. Native ARM tests replay the captured input; Eden retest is
+pending. Replace Core and Fitting Room, then restart.

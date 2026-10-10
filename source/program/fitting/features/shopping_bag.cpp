@@ -481,6 +481,10 @@ void Input(std::uintptr_t page, std::uintptr_t snapshot, unsigned blocked) {
 // Only the fitting room's live wear-choice delegate may use this shortcut.
 std::uintptr_t HandleWearChoiceBack(std::uintptr_t page, std::uintptr_t snapshot, unsigned blocked) {
     constexpr unsigned Back = 1u << 5, Accept = 1u << 4;
+    // Live Eden snapshots accompany A, B and direction presses with bit 16.
+    // It is not an additional choice button. Preserve it for native dispatch,
+    // while still rejecting all other simultaneous input bits.
+    constexpr unsigned AccompanyingInputFlag = 1u << 16;
     const auto owner = session.owner;
     const auto dialog = At<std::uintptr_t>(Main(address::DialogInstance));
     if (!snapshot || !IsOwner(owner) || !dialog ||
@@ -512,7 +516,7 @@ std::uintptr_t HandleWearChoiceBack(std::uintptr_t page, std::uintptr_t snapshot
     if (!pressed || (blocked & 1) || !context || !masks ||
         At<std::uint8_t>(context, 0x54) ||
         (At<unsigned>(context, 0x58) & At<unsigned>(masks, 0x10)) ||
-        (At<unsigned>(record, 0x3c) & (Back | Accept)) || buttons != Back) return 0;
+        (At<unsigned>(record, 0x3c) & (Back | Accept)) || (buttons & ~AccompanyingInputFlag) != Back) return 0;
     const unsigned style = At<unsigned>(dialog, 0x22c);
     if (style > 2 || !At<std::uintptr_t>(dialog, 0x248) ||
         !At<std::uintptr_t>(dialog, 0x250) || At<std::uintptr_t>(dialog, 0x258)) return 0;
@@ -536,52 +540,6 @@ std::uintptr_t HandleWearChoiceBack(std::uintptr_t page, std::uintptr_t snapshot
     return 0;
 }
 void WearChoiceInput(std::uintptr_t page, std::uintptr_t snapshot, unsigned blocked) {
-    // Bounded live diagnostic: fixture-created dialog state cannot establish
-    // which native readiness/binding guard rejects the actual fitting popup.
-    static unsigned reports{};
-    static std::uintptr_t lastDialog{};
-    static unsigned lastState = ~0u, lastButtons = ~0u;
-    const auto owner = session.owner;
-    if (reports < 48 && snapshot && IsOwner(owner)) {
-        const auto dialog = At<std::uintptr_t>(Main(address::DialogInstance));
-        const auto hint = At<std::uintptr_t>(page, 0x570);
-        const auto input = hint ? At<std::uintptr_t>(hint, 0xa0) : 0;
-        const int row = input ? At<int>(input, 0x10) : -1;
-        const int count = At<int>(snapshot, 8);
-        const auto rows = At<std::uintptr_t>(snapshot, 0x10);
-        const auto record = rows && row >= 0 && row < count && count <= 8 ? rows + row * 0x48 : 0;
-        const unsigned buttons = record ? At<unsigned>(record) : ~0u;
-        const unsigned state = dialog ? At<unsigned>(dialog, field::State) : ~0u;
-        if (dialog != lastDialog || state != lastState || buttons != lastButtons) {
-            ++reports; lastDialog = dialog; lastState = state; lastButtons = buttons;
-            Logging.Log("[QoL Enhancements/Fitting Room] WEAR_BACK page=%llx dialog=%llx vtable=%llx bound_page=%llx delegate=%llx expected=%llx kind=%u state=%u pending=%d/%d choice=%d row=%d key=%d buttons=%x consumed=%x blocked=%u choices=%llx/%llx/%llx\n",
-                page, dialog, dialog ? At<std::uintptr_t>(dialog) : 0,
-                dialog ? At<std::uintptr_t>(dialog, field::Page) : 0,
-                dialog ? At<std::uintptr_t>(dialog, 0x2388) : 0, owner + 0x1c4d0,
-                At<unsigned>(owner, 0x1c4f0), state,
-                dialog ? At<int>(dialog, 0x1f0) : -2, dialog ? At<int>(dialog, 0x1f4) : -2,
-                dialog ? At<int>(dialog, 0x220) : -2, row, input ? At<int>(input, 0x14) : -1,
-                buttons, record ? At<unsigned>(record, 0x3c) : 0, blocked,
-                dialog ? At<std::uintptr_t>(dialog, 0x248) : 0,
-                dialog ? At<std::uintptr_t>(dialog, 0x250) : 0,
-                dialog ? At<std::uintptr_t>(dialog, 0x258) : 0);
-            const auto context = At<std::uintptr_t>(page, 0x210);
-            const auto manager = context ? At<std::uintptr_t>(context, 0x48) : 0;
-            const auto cursors = manager ? At<std::uintptr_t>(manager, 0x20) : 0;
-            const auto cursor = cursors && row >= 0 && row < 8 &&
-                unsigned(row) < At<unsigned>(manager, 0x18) ? At<std::uintptr_t>(cursors, row * 8) : 0;
-            const auto style = dialog ? At<unsigned>(dialog, 0x22c) : ~0u;
-            const auto no = At<std::uintptr_t>(page, 0x578 + (style == 2 ? 8 : 0));
-            const auto yes = At<std::uintptr_t>(page, 0x588 + (style == 2 ? 8 : 0));
-            const auto noCursor = no ? At<std::uintptr_t>(no, 0x218) : 0;
-            Logging.Log("[QoL Enhancements/Fitting Room] WEAR_FOCUS style=%u context_block=%u context_mask=%x focus=%llx no=%llx yes=%llx row_mask=%x\n",
-                style, context ? At<std::uint8_t>(context, 0x54) : 0,
-                context ? At<unsigned>(context, 0x58) : 0,
-                cursor ? At<std::uintptr_t>(cursor, 0x10) : 0, noCursor,
-                yes ? At<std::uintptr_t>(yes, 0x218) : 0,
-                noCursor ? At<unsigned>(noCursor, 0x14b0) : 0);
-        }
-    }
     const auto record = HandleWearChoiceBack(page, snapshot, blocked);
     if (!record) { originalInput(page, snapshot, blocked); return; }
     // Forward one native A press only when No is already focused. Restore the

@@ -125,6 +125,25 @@ def main():
         m.call(base+0x31141cc,m.owner,m.d+0xf200,1)
         assert m.read(m.owner+0x1c318,4)==5
         checks+=1
+        # Replay live Eden 0.3.74 input: 0 -> 0x10020 -> 0 -> 0x10020.
+        # The accompanying flag is preserved when B is forwarded as native A.
+        m=BackMachine(base);m.press(0);m.press(0x10020)
+        assert m.read(m.cursor+0x10)==m.nc
+        assert m.read(m.d+0x220,4)==0xffffffff
+        for _ in range(30):m.press(0x10020)
+        assert m.read(m.d+0x220,4)==0xffffffff
+        m.press(0);m.press(0x10020)
+        assert m.read(m.d+0x220,4)==0
+        assert m.read(m.rows,4)==0x10020
+        checks+=1
+        for extra in (1,2,4,8,16,64,128,0x20000):
+            m=BackMachine(base);m.press(0)
+            # Isolate the shortcut: native arrows/A may independently act.
+            m.write(m.mod.find('L13originalInputE'),m.stub)
+            m.press(0x10020|extra)
+            assert m.read(m.cursor+0x10)==m.yc
+            assert m.read(m.rows+0x3c,4)==0
+            checks+=1
         # Already focused No, including the alternate visual style.
         for style in (0,1,2):
             m=BackMachine(base);m.write(m.d+0x22c,style,4)

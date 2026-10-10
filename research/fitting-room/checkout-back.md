@@ -66,3 +66,17 @@ of WEAR_BACK with successful module installation also identifies a page-hook
 coverage problem. Capture Eden logs before choosing a corrective change.
 User also confirmed the native exit dialogue skips outfit praise on bag-only
 purchases; no Mabel dialogue modification is needed.
+
+## Captured input fix (0.3.75)
+
+logs/eden_log.txt from the user's 0.3.74 run confirms matching page/delegate,
+kind 5, state 3, idle transitions, uncommitted choice, row 0/key 5, unblocked
+context, and Yes focused. Both B presses carry 0x10020, not exactly 0x20; A
+carries 0x10010 and a direction carries 0x10004. The strict equality guard
+therefore rejected the live presses. The precise meaning of bit 16 is not
+established by this trace; only its presence alongside ordinary inputs is.
+
+Ignore that single accompanying bit for the exclusive-B comparison, preserving
+the full snapshot and retaining every other guard. Remove temporary logging.
+Regression replays 0 / 0x10020 / hold / 0 / 0x10020 through native focus/input
+at both bases, alongside mixed-key rejection. Live retest remains pending.
