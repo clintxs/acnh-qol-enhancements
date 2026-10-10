@@ -26,7 +26,8 @@ template<class T> T &At(void *p, std::size_t offset = 0) {
     return *reinterpret_cast<T *>(static_cast<std::byte *>(p) + offset);
 }
 template<class F> F Native(std::uintptr_t offset) { return reinterpret_cast<F>(Main + offset); }
-struct InputState { void *page{}, *grid{}; bool armed{}; };
+struct InputState { void *page{}, *grid{}; bool armed{}, waitingForRelease{}; };
+constexpr float StickPressThreshold = 0.5f, StickReleaseThreshold = 0.15f;
 std::array<InputState, 4> Inputs{};
 unsigned NextSlot{};
 unsigned WrapReports{};
@@ -40,7 +41,9 @@ HOOK_DEFINE_TRAMPOLINE(ResetQuantityGrid) {
     static void Callback(void *grid, const void *request) {
         // Native cAppear (0346AEC8 / 02DE8A98) resets the list on each open.
         // Disarm a reused page/grid as well as freshly allocated instances.
-        for (auto &state : Inputs) if (state.grid == grid) state.armed = false;
+        for (auto &state : Inputs) if (state.grid == grid) {
+            state.armed = state.waitingForRelease = false;
+        }
         Orig(grid, request);
     }
 };
@@ -56,6 +59,13 @@ struct GridRequest {
     unsigned resident{};
 };
 static_assert(sizeof(GridRequest) == 0x30 && offsetof(GridRequest, resident) == 0x2c);
+void ConsumeVerticalInput(void *row) {
+    // 03C4B20C/03C48C70 dispatch logical direction buttons separately from
+    // the axis handlers in 03C4B880. Consume both paths, even when the stick's
+    // synthesized button arrives later than its raw axis threshold crossing.
+    At<unsigned>(row, 0x3c) |= 3;
+    At<unsigned>(row, 0x40) |= 1;
+}
 bool QuantityInput(void *page, void *snapshot, unsigned blocked) {
     if (!page || (At<std::uintptr_t>(page) != Main + address::WorkbenchQuantityPage &&
                   At<std::uintptr_t>(page) != Main + address::KitchenQuantityPage)) return false;
@@ -72,7 +82,8 @@ bool QuantityInput(void *page, void *snapshot, unsigned blocked) {
     const auto buttons = At<unsigned>(row), consumed = At<unsigned>(row, 0x3c);
     const float x = At<float>(row, 4), y = At<float>(row, 8);
     const bool validStick = x >= -1 && x <= 1 && y >= -1 && y <= 1;
-    const bool stickUp = validStick && y > 0.5f, stickDown = validStick && y < -0.5f;
+    const bool stickUp = validStick && y > StickPressThreshold;
+    const bool stickDown = validStick && y < -StickPressThreshold;
     const bool up = (buttons & 1) || (stickUp && y*y > x*x);
     const bool down = (buttons & 2) || (stickDown && y*y > x*x);
     auto input = At<void *>(page, field::PageInput);
@@ -83,9 +94,26 @@ bool QuantityInput(void *page, void *snapshot, unsigned blocked) {
         unavailable = !masks || (At<unsigned>(input, 0x58) & At<unsigned>(masks, 0x10));
     }
     const bool fresh = state.armed;
-    // A direction change, another input source, blocked input, or a missing
-    // sample is not a release. Both vertical controls must return to neutral.
-    state.armed = !unavailable && validStick && !(buttons & 3) && !stickUp && !stickDown;
+    // Releasing means returning the stick to center, not merely easing below
+    // the press threshold. Pressure changes/diagonals must not rearm a hold.
+    const bool released = !unavailable && validStick && !(buttons & 3) &&
+                          x*x + y*y <= StickReleaseThreshold*StickReleaseThreshold;
+    if (released) {
+        state.armed = true;
+        state.waitingForRelease = false;
+    } else if (unavailable || !validStick || up || down ||
+               x > StickPressThreshold || x < -StickPressThreshold || (buttons & 0x30)) {
+        state.armed = false;
+    }
+    // Preserve an armed latch while traveling from center to the press
+    // threshold. Once pressed, only the smaller release zone can rearm it.
+    if (state.waitingForRelease) {
+        // Resetting/focusing the grid restarts native repeat bookkeeping.
+        // Suppressing only the wrap frame lets the held stick step again at
+        // the destination (1 -> 10 -> 9). Keep it consumed until release.
+        ConsumeVerticalInput(row);
+        return false;
+    }
     if (!fresh || unavailable || up == down || (buttons & 0x30) ||
         (consumed & (buttons & 3)) || ((stickUp || stickDown) && (At<unsigned>(row, 0x40) & 1))) return false;
     const auto selected = At<unsigned>(grid, field::SelectedRow);
@@ -105,8 +133,9 @@ bool QuantityInput(void *page, void *snapshot, unsigned blocked) {
     Native<void (*)(void *, void *)>(address::ActivateGrid)(grid, nullptr);
     Native<void (*)(void *, unsigned)>(address::SelectGridRow)(grid, target);
     Native<void (*)(void *, bool)>(address::FocusGrid)(grid, false);
-    At<unsigned>(row, 0x3c) |= buttons & 3;
-    At<unsigned>(row, 0x40) |= 1;
+    state.armed = false;
+    state.waitingForRelease = true;
+    ConsumeVerticalInput(row);
     if (WrapReports++ < 4)
         Logging.Log("[QoL Enhancements/Crafting] quantity wrap: selected=%u maximum=%u resident=%u\n",
                     count-target, count, resident);

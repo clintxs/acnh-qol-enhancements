@@ -398,6 +398,7 @@ class PreviewMachine(Machine):
         return bytes(self.u.mem_read(self.matrix,48))
     def input(self, page, held, resident=0, blocked=0, consumed=0, left=(0,0), right=(0,0), consumed_axes=0):
         snapshot = self.alloc(); rows = self.alloc(8 * 0x48)
+        self.last_input_snapshot = snapshot
         self.write(snapshot + 8, 8, 4); self.write(snapshot + 0x10, rows)
         self.write(rows + resident * 0x48, held, 4); self.write(rows + resident * 0x48 + 0x3c, consumed, 4)
         self.last_input_row=rows + resident * 0x48
@@ -1575,17 +1576,35 @@ def quantity_wrap_fixture(base):
     m.services[base+0x3464e40]=('preview','noop')
     m.services[base+0x3465370]=('preview','details')
     m.services[base+0x37654a0]=('preview','noop')
+    # Run native logical-button dispatch and its repeat timer, rather than
+    # assuming the axis-consumed bit also suppresses synthesized directions.
+    clock=m.alloc(); clock_methods=m.alloc()
+    m.write(base+0x59f83f8,clock); m.write(clock,clock_methods)
+    m.write(clock_methods+0x48,m.stub('accept'))
+    timing=m.alloc(); m.write(timing,12,4); m.write(timing+4,4,4)
+    delegate_methods=m.alloc(); m.write(delegate_methods,base+0x3766448)
+    noop_methods=m.alloc(); m.write(noop_methods,m.stub('noop'))
+    native_keys=[]
+    for bit,offset in ((0,0x480),(1,0x490)):
+        key=m.alloc(0xc8); native_keys.append(key)
+        m.write(grid+offset,key); m.write(key+0x10,3,4); m.write(key+0x14,bit,4)
+        m.write(key+0xb8,0xffffffff,4); m.write(key+0xbc,0x101,2)
+        for kind in range(5):
+            slot=key+0x18+kind*0x20
+            m.write(slot,delegate_methods if kind in (1,3) else noop_methods)
+            m.write(slot+8,grid)
+            m.write(slot+0x10,base+(0x3762978 if kind==3 else 0x3762a98))
+    m.write(grid+0x30c,1,4) # Vertical list; up/down callbacks queue row steps.
     def selected(): return m.read(grid+0x440,4)
     def step(direction=0,stick=False,repeat=False,**kwargs):
-        m.input(page,0 if stick else (1 if direction>0 else 2 if direction<0 else 0),
-                resident=3,left=(0,direction) if stick else (0,0),**kwargs)
-        row=m.last_input_row
-        if repeat and direction and not (m.read(row+0x3c,4)&3 or m.read(row+0x40,4)&1):
-            # Real native one-step movement/clamping; native input repeat timing
-            # is modeled to issue a step every update for a worst-case hold.
-            m.write(grid+0x3ec,2,4); m.write(grid+0x3f0,int(direction<0),4)
-            m.write(grid+0x3f4,(-direction)&0xffffffff,4)
-            m.invoke(base+0x375fd8c,grid)
+        held=kwargs.pop('held',1 if direction>0 else 2 if direction<0 else 0)
+        left=kwargs.pop('left',(0,direction) if stick else (0,0))
+        m.write(grid+0x3ec,0,4)
+        m.input(page,held,resident=3,left=left,**kwargs)
+        if repeat or direction==0:
+            for key in native_keys:
+                m.invoke(base+0x3c4b20c,key,m.last_input_snapshot,timing,kwargs.get('blocked',0))
+            if m.read(grid+0x3ec,4): m.invoke(base+0x375fd8c,grid)
     def at(index):
         m.write(grid+0x440,index,4)
         m.write(grid+0x430,min(index,7),4); m.write(grid+0x438,0,4)
@@ -1598,17 +1617,44 @@ def quantity_wrap_fixture(base):
             at(9); step(); step(-1,stick); assert selected()==0
             assert m.read(sequence+0x1c2d8,4)==9  # Native quantity index = quantity-1.
             assert m.read(grid+0x3e8,1)&2==0  # No native continuous looping.
+            for _ in range(40): step(-1,stick,repeat=True)
+            assert selected()==0 # A wrapped stick cannot immediately scroll to 9.
             at(0); step(); step(1,stick); assert selected()==9
             assert m.read(sequence+0x1c2d8,4)==0
             # Hold from the interior all the way to an endpoint and beyond.
             at(5); step()
-            for _ in range(40): step(1,stick,repeat=True)
+            for _ in range(80): step(1,stick,repeat=True)
             assert selected()==0
             step(-1,stick); step(1,stick); assert selected()==0  # Reversal is not release.
             step(); step(1,stick); assert selected()==9
-            for _ in range(40): step(-1,stick,repeat=True)
+            for _ in range(80): step(-1,stick,repeat=True)
             assert selected()==9
             step(); step(-1,stick); assert selected()==0
+    # Pressure jitter below the press threshold is not a physical release.
+    # Logical stick buttons can arrive after the raw axis, and both routes
+    # must stay consumed after a wrap. Exercise the native repeat path too.
+    at(9); step(); step(-1,True,repeat=True,held=0); assert selected()==0
+    for y,held in ((-1,2),(-0.49,0),(-0.2,0),(-0.51,2),(-1,2))*12:
+        step(-1,True,repeat=True,held=held,left=(0,y)); assert selected()==0
+    step(-1,True,repeat=True,held=0x32)
+    assert selected()==0 and m.read(m.last_input_row+0x3c,4)&0x30==0 # A/B pass through.
+    step(repeat=True); step(-1,True,repeat=True); assert selected()==1
+    at(0); step(); step(1,True,repeat=True); assert selected()==9
+    for _ in range(40): step(1,True,repeat=True)
+    assert selected()==9
+    # Easing the stick mid-scroll must not rearm the eventual endpoint.
+    at(5); step(repeat=True)
+    for _ in range(80): step(1,True,repeat=True)
+    assert selected()==0
+    step(1,True,repeat=True,held=0,left=(0,0.4))
+    step(1,True,repeat=True); assert selected()==0
+    step(1,True,repeat=True,held=0,left=(1,0))
+    step(1,True,repeat=True); assert selected()==0
+    # A deliberate slow movement from neutral still counts as a fresh press.
+    at(9); step(repeat=True)
+    for y in (-0.1,-0.2,-0.4,-0.49):
+        step(-1,True,repeat=True,held=0,left=(0,y)); assert selected()==9
+    step(-1,True,repeat=True); assert selected()==0
     # A blocked/consumed press cannot be queued until a later unblocked update.
     for kwargs in ({'blocked':1},{'consumed':2},{'consumed_axes':1}):
         at(9); step(); step(-1,True if 'consumed_axes' in kwargs else False,**kwargs)
@@ -1634,7 +1680,7 @@ def quantity_wrap_fixture(base):
     for held,left in ((0,(1,0)),(0x32,(0,0)),(3,(0,0)),(0,(0,float('nan')))):
         step(); m.input(page,held,resident=3,left=left); assert selected()==3
     assert any(e==('native_input',page) for e in m.events)
-    print(f'PASS: quantity endpoint wrap, native selection/material callback, native repeats stop through long holds, neutral rearm, d-pad/stick, crafting/cooking pages, native limits, blocking and reused-page reset; repeat timing/layout services modeled; ASLR {base:#x}')
+    print(f'PASS: quantity endpoint wrap, native button dispatch/repeat timers and selection/material callback, long holds stop after scrolling and wrapping, delayed stick buttons, pressure jitter and neutral rearm, d-pad/stick, crafting/cooking pages, native limits, blocking and reused-page reset; raw-to-logical input/layout services modeled; ASLR {base:#x}')
 
 for base in (0x7100000000,0x7200000000): quantity_wrap_fixture(base)
 

@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.57 quantity wrapping and preview controls
+# Unified QoL validation — 0.3.58 joystick quantity wrapping
 
 Validated locally on October 10, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,37 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.58 Joystick quantity wrap release and repeat handling
+
+The user confirms d-pad wrapping in 0.3.57, but reports intermittent joystick
+overscroll (1 -> 10 -> 9) and held input continuing past an endpoint. The prior
+consumer suppressed only the wrap frame and rearmed as soon as the raw stick
+fell below its 0.5 press threshold. Native logical-button repeat dispatch is
+separate from raw axis consumption (03C4B20C / 03C48C70 versus 03C4B880).
+
+After wrapping, consume both vertical logical buttons and the left-stick axis
+on every input update until release. Require both no held vertical button and
+a centered stick (radius 0.15) to rearm; pressure changes below the 0.5 press
+threshold or a horizontal deflection cannot rearm an ongoing hold. Retain an
+armed latch during slow travel from neutral to the press threshold. Native
+page reopen clears both latches. Within-range scrolling, limits, confirmation,
+cancellation and the setting remain native/unchanged.
+
+The quantity ARM fixture now executes native 03C4B20C repeat timers,
+03762978 direction callbacks and 0375FD8C list movement, alongside native
+reset/activation/focus and the quantity/material callback. Cases cover long
+holds after both scrolling and wrapping, delayed logical stick buttons,
+pressure jitter, slow deliberate presses, direction reversal, both exact
+crafting/cooking page classes, material-limited ranges, blocked/consumed input
+and reused-page reopening at two ASLR bases. Raw-to-logical controller samples,
+layout construction and material text/GPU services remain modeled. Live Steam
+Deck confirmation is still required.
+
+Validation: pinned offline build; nine host suites; Core/configuration checks;
+preview/quantity ARM fixtures; crafting/cooking and shared Pockets regressions.
+Release packaging checks include manifest hashes, deployed/extracted binary
+parity, source archive parity and ZIP integrity. Older releases are preserved.
 
 ## 0.3.57 Quantity wrapping, matching DIY yaw, and workbench transition poses
 

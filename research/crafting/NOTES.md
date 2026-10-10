@@ -261,3 +261,22 @@ activation and focus with graphical/material formatting boundaries modeled.
 Both page identities, nonzero resident, endpoint wraps, long held repeats,
 release/reversal, consumed/blocked input, native lower limits and reopening
 are covered at two ASLR bases. Live controller feel still needs confirmation.
+
+
+## Joystick release/repeat correction — 0.3.58
+
+The 0.3.57 live report confirms d-pad behavior but shows stick overscroll after
+wrap and occasional continued scrolling. Axis consumption alone is insufficient:
+native 03C4B20C / 03C48C70 also read logical direction bits and their own repeat
+state. Consume vertical bits 0/1 unconditionally plus left-axis bit 0 after a
+wrap, continuing until both logical directions are released and the raw stick
+returns within radius 0.15. This also covers a delayed synthesized direction.
+Press remains at 0.5; crossing back below 0.5 must not rearm an already-used
+latch. Conversely, preserve an armed latch on the way out of center so a slow
+press still wraps. ResetQuantityGrid clears both latches on reopening.
+
+Quantity regression now executes 03C4B20C and 03762978, with native repeat
+intervals 12/4, before the existing real native list movement and callback.
+Tests include holds after wrap (remain at the destination), interior-to-boundary
+holds, sub-threshold pressure jitter, delayed logical bits and slow presses.
+Controller-to-logical translation and rendering/text boundaries remain modeled.
