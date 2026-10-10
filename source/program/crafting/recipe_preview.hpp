@@ -1,5 +1,5 @@
 #pragma once
 
-namespace qol::core {
+namespace qol::crafting {
 bool InstallRecipePreview();
 }

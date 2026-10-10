@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.45 fixed item poses and faster rotation** for ACNH **3.0.3 on Eden**. One Core
+**0.3.46 Crafting submodule and settings** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -13,15 +13,15 @@ for installation, version policy and user-facing limits.
 | Pockets | QoL Pockets Interactions 0.1.4 | Editable Grab 5/10 captions |
 | Faster Dialogue | C++ hook rewrite of Faster Interactions 0.3.0, with conditional NPC/UI boost | Optional personal configuration |
 | Fitting Room | Able Sisters Bag prototype 0.3.7 | Fitting row badge and original counter layout |
-| Faster Crafting | Automatic crafting/cooking speed ramp | Configuration only |
+| Crafting | DIY app previews + configurable crafting/cooking speed ramp | Configuration only |
 | Shopping Card | Combined savings/cash routing prototype | Configuration + card currency layout |
 
 Faster tool-wheel animations and other workspace mods are not bundled in this
 six-feature suite. Historical source notes under `docs/` describe each
 baseline; their old installation/packaging instructions refer to standalone mods.
 
-Core also includes the amiibo timeout fix and DIY Recipes app previews. These
-built-in features do not require an optional module.
+Core includes the amiibo timeout fix. DIY Recipes app previews now belong to
+the optional Crafting module, alongside the former Faster Crafting feature.
 
 Development releases advance numerically (for example, 0.9.0 → 0.10.0).
 Version 1.0.0 is reserved for the initial release.
@@ -58,7 +58,44 @@ code-cave helper remains. Amiibo's existing 9,000-update timeout is likewise a
 C++ hook; its behavior is unchanged. Expected instruction words are validation
 fingerprints only, checked before each feature's first hook.
 
-## DIY Recipes app previews
+## Crafting module
+
+Install **QoL Enhancements - Crafting** with Core. This replaces the former
+Faster Crafting package; remove the old folder and rename personal
+`faster-crafting.custom.ini` preferences to `crafting.custom.ini`. Remove any old
+`version` override from that personal file (or update it to 0.3.46). The retired
+regular/custom paths are no longer read. Core alone no longer enables DIY previews.
+
+`romfs/qol-enhancements/config/crafting.ini` supplies these defaults:
+
+```ini
+enabled = true
+version = 0.3.46
+diy_app_preview = true
+workbench_preview_tilt = true
+crafting_quantity_wrap = true
+crafting_speed = 3
+```
+
+`diy_app_preview` controls the existing DIY app preview independently of speed.
+`crafting_speed` accepts whole-number peaks **1, 2 or 3** for the existing
+60-update logarithmic ramp, restarting at 1x each action. The default 3 preserves
+the previous curve exactly; 2 reduces its peak to 2x, and 1 keeps it at 1x.
+Crafting, customization and cooking share this setting. Native readiness,
+suspension and exit/reset behavior remains intact.
+
+**Workbench tilt and quantity wrapping are deferred.** Their two settings are
+accepted and default to true, but have no effect until those features are built.
+Hotel-banner layering, initial orientation improvements and recipe navigation
+also remain on the documented backlog. No unimplemented UI behavior is enabled.
+
+A personal `crafting.custom.ini` may override only the desired keys; omitted or
+invalid preferences inherit the regular file. Duplicate keys retain the value
+from before that file. Crafting's regular marker must be installed and compatible;
+`enabled=false` disables its previews and speed hooks together. Core remains
+required. Fully restart after changing module installation or settings.
+
+## DIY Recipes app previews (Crafting)
 
 The user confirmed visible right-stick turning and tilting in 0.3.44 and
 accepted the cream background. 0.3.45 preserves the native workbench renderer's
@@ -68,18 +105,19 @@ full stick), retaining the dead zone and 60° tilt limit. Reopening resets the p
 
 Local checks use real ItemParam rows and execute compiled input/renderer hooks,
 checking native matrix preservation, fixed-to-rotating transitions, B cleanup
-and the doubled speed. **The fixed categories and new speed need a Deck test.**
+and the doubled speed. The user accepted 0.3.45. The module move and new
+settings need a Deck test.
 
 The existing DIY app keeps its materials panel, category, selection and scroll
 position. A opens the 3D preview in place of the grid; B releases the model and
 restores the grid. There is no crafting button or crafting action. Left/right
 recipe navigation within the preview is not implemented yet.
 
-Core adds a small capture surface to the **loaded MenuRecipe layout in memory**.
+Crafting adds a small capture surface to the **loaded MenuRecipe layout in memory**.
 Existing panes, animations and material/texture indices are preserved, including
 installed aspect-ratio edits. No workbench layout or extra RomFS file is used.
 If the capture binding or renderer is unavailable, the ordinary grid stays usable.
-Core and Pockets share one page-input hook, preserving Quick Store behavior.
+Crafting and Pockets share Core’s page-input hook, preserving Quick Store behavior.
 
 Compiled ARM checks cover native transform/clear behavior under explicitly
 modeled scheduling, input scope, B and restoration. Diagnostics are checked for
@@ -200,7 +238,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.45
+version = 0.3.46
 base_speed = 2
 boost_speed = 4
 faster_ui = false

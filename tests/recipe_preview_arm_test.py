@@ -32,6 +32,7 @@ class PreviewMachine(Machine):
         self.fail_spawn = False
         # Also execute the shared dispatcher with Pockets/Fitting Room installed.
         files = {'pockets': DEFAULT, 'fitting-room': DEFAULT} if base == 0x7200000000 else {}
+        files['crafting'] = DEFAULT
         super().__init__(base, files)
         self.u.mem_map(self.ram + 0x200000, 0x800000)
         self.boot(); self.activate()
@@ -979,19 +980,19 @@ for base in (0x7100000000, 0x7200000000):
     print(f'PASS: bounded render diagnostics observe native rejection/success and clear matches without forcing updates; scope ends before release, ASLR {base:#x}')
 
 for guard in GUARDS:
-    m=Machine(0x7100000000,{})
+    m=Machine(0x7100000000,{'crafting':DEFAULT})
     m.write(m.base+guard,0xdeadbeef,4); m.boot(); m.activate()
     assert all(m.base+a not in m.hooks for a in HOOKS)
     assert 'DIY preview: DISABLED' in m.text
 print('PASS: all renderer/layout/input fingerprints reject the entire integration atomically')
-m=Machine(0x7100000000,{'pockets':DEFAULT})
+m=Machine(0x7100000000,{'pockets':DEFAULT,'crafting':DEFAULT})
 m.write(m.base+0x32bd990,0xdeadbeef,4); m.boot(); m.activate()
 assert m.base+0x3c58d24 in m.hooks and m.base+0x2e9cde0 not in m.hooks
 assert 'QUICK_STORE_READY' in m.text and 'DIY preview: DISABLED' in m.text
 print('PASS: Pockets owns shared page input when the DIY integration declines installation')
 
 # A changed mode slot must decline atomically before any DIY hook is installed.
-m=Machine(0x7100000000,{})
+m=Machine(0x7100000000,{'crafting':DEFAULT})
 m.write(m.base+0x49e8378,m.base+0x2ea075c); m.boot(); m.activate()
 assert all(m.base+a not in m.hooks for a in HOOKS)
 assert 'renderer mode slot mismatch' in m.text

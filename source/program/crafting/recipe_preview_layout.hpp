@@ -4,7 +4,7 @@
 #include <cstring>
 #include <span>
 
-namespace qol::core::recipe_layout {
+namespace qol::crafting::recipe_layout {
 inline constexpr char SurfaceName[] = "N_QolPreview_00";
 inline constexpr char CaptureName[] = "N_QolCapture_00";
 inline constexpr char PictureName[] = "P_QolCapture_00";
@@ -150,4 +150,4 @@ inline std::size_t AddSurface(std::span<const std::byte> input, std::span<std::b
     Write(dest, 12, used); Write<std::uint16_t>(dest, 16, sections + 7);
     return used;
 }
-} // namespace qol::core::recipe_layout
+} // namespace qol::crafting::recipe_layout

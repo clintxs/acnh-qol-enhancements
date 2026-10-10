@@ -8,16 +8,19 @@ from unicorn import Uc, UC_ARCH_ARM64, UC_MODE_ARM, UC_HOOK_CODE, UC_HOOK_MEM_WR
 from unicorn.arm64_const import *
 from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
-SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'shopping-card', 'faster-crafting')
-COUNTS = (16, 15, 7, 11, 11, 2)  # Pockets shares Core's page-input hook.
-DEFAULT = b'enabled=true\nversion=0.3.45\n'
+SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'shopping-card', 'crafting')
+COUNTS = (16, 15, 7, 11, 11, 11)  # Pockets/Crafting share one additional Core input hook.
+DEFAULT = b'enabled=true\nversion=0.3.46\n'
 
 def expected_hook_count(machine, enabled):
     # The existing verbose-dialogue build adds a Catalog message trace hook.
     # Keep normal/diagnostic counts explicit; never infer them from installed hooks.
     trace_enabled = any('NookMessageTrace' in name for name in machine.module.symbols)
     resources = 'content:/qol-enhancements/config/shopping-card.ini' in machine.files
-    return 12 + int(resources) + sum(count for count, active in zip(COUNTS, enabled) if active) + (trace_enabled and enabled[0])
+    # Core has discovery + amiibo. Pockets and DIY previews share one input hook.
+    active = dict(zip(SLUGS, enabled))
+    shared_input = active.get('pockets', False) or active.get('crafting', False)
+    return 2 + int(resources) + int(shared_input) + sum(count for count, on in zip(COUNTS, enabled) if on) + (trace_enabled and enabled[0])
 
 class Machine:
     def __init__(self, base, files):
@@ -150,13 +153,13 @@ def check_errors():
             if b'version=0.4.0' in data:
                 assert 'BOOT_OK' in m.text and 'enabled_modules=1' in m.text
             else:
-                assert len(m.hooks) == 12 + (slug == 'shopping-card') and m.read(m.base + 0xbc4140, 4) == 0x52803848
+                assert len(m.hooks) == 2 + (slug == 'shopping-card') and m.read(m.base + 0xbc4140, 4) == 0x52803848
                 assert m.read(m.base + 0x1af9ff0, 4) == 0x528c0049
     for fault in ('open_error', 'read_error', 'size_error'):
         m = Machine(0x7100000000, {slug: DEFAULT for slug in SLUGS})
         setattr(m, fault, True)
         m.boot(); m.activate()
-        assert len(m.hooks) == 13 and 'BOOT_PARTIAL' in m.text
+        assert len(m.hooks) == 3 and 'BOOT_PARTIAL' in m.text
     # A startup conflict prevents even the Core discovery hook.
     m = Machine(0x7100000000, {})
     m.write(m.base + 0x37b5460, 0, 4)
@@ -209,7 +212,7 @@ def check_amiibo_hook():
             m.boot()
             assert len(m.hooks) == 1 and not m.opened
             m.activate()
-            assert len(m.hooks) == 11 + bool(frames) and 'BOOT_OK' in m.text, m.text
+            assert len(m.hooks) == 1 + bool(frames) and 'BOOT_OK' in m.text, m.text
             assert m.opened[:2] == ['content:/qol-enhancements/config/core.ini', 'content:/qol-enhancements/config/core.custom.ini']
             assert not any('/amiibo.' in name for name in m.opened)
             assert (base + 0xbc4144 in m.hooks) == bool(frames)
@@ -277,14 +280,14 @@ def check_custom_preferences():
         if marker: files['faster-dialogue'] = marker
         m = Machine(0x7100000000, files)
         m.boot(); m.activate()
-        assert len(m.opened) == 2 + (len(SLUGS) + 1 if marker else len(SLUGS)) and len(m.hooks) == 12
+        assert len(m.opened) == 2 + (len(SLUGS) + 1 if marker else len(SLUGS)) and len(m.hooks) == 2
     print('PASS: missing/malformed/oversized/unreadable custom preferences preserve defaults')
 
 def check_config_layers():
     for base in (0x7100000000, 0x7200000000):
         for slug in SLUGS:
             # Core supplies the naming and merge behavior for every module.
-            accepted_version = b'0.3.18' if slug == 'faster-crafting' else b'0.3.2'
+            accepted_version = b'0.3.46' if slug == 'crafting' else b'0.3.2'
             for regular, custom, active in (
                 (DEFAULT, b'enabled=false', False),
                 (DEFAULT.replace(b'true', b'false'), b'enabled=true', True),
@@ -335,9 +338,64 @@ def check_config_layers():
             assert 'base=2 boost=4 faster_ui=true faster_unnamed=true npc_count=6' in m.text, m.text
     print('PASS: shared regular/custom order, enabled/version overrides for all six modules, atomic metadata, failure fallback, inheritance and settings parity at two bases')
 
+def check_crafting_settings():
+    preview_sites=(0x267d64,0x2e9cde0,0x2e9fbb0,0x2e9d538,0x39392b0,0x32b9fcc,0x32b9e08,0x6021a4,0x39f63f0)
+    speed_sites=(0x22fc6bc,0x2279a14)
+    configs=(
+        ({},False,False),
+        ({'crafting.custom':b'diy_app_preview=true'},False,False),
+        ({'faster-crafting':DEFAULT},False,False),
+        ({'crafting':DEFAULT},True,True),
+        ({'crafting':DEFAULT.replace(b'true',b'false')},False,False),
+        ({'crafting':DEFAULT,'crafting.custom':b'enabled=false'},False,False),
+        ({'crafting':DEFAULT.replace(b'true',b'false'),'crafting.custom':b'enabled=true'},True,True),
+        ({'crafting':DEFAULT+b'diy_app_preview=false'},True,False),
+        ({'crafting':DEFAULT,'crafting.custom':b'diy_app_preview=false'},True,False),
+        ({'crafting':DEFAULT+b'diy_app_preview=false','crafting.custom':b'diy_app_preview=true'},True,True),
+        ({'crafting':DEFAULT+b'diy_app_preview=false','crafting.custom':b'diy_app_preview=bad'},True,False),
+        ({'crafting':DEFAULT+b'diy_app_preview=false','crafting.custom':b'diy_app_preview=true\ndiy_app_preview=true'},True,False),
+        ({'crafting':DEFAULT+b'diy_app_preview=false','crafting.custom':b'diy_app_preview=true\nversion=bad'},True,False),
+        ({'crafting':DEFAULT+b'workbench_preview_tilt=false\ncrafting_quantity_wrap=false'},True,True),
+        ({'crafting':DEFAULT,'crafting.custom':b'workbench_preview_tilt=false\ncrafting_quantity_wrap=false'},True,True),
+        ({'crafting':DEFAULT+b'diy_app_preview=bad\ncrafting_speed=bad'},True,True),
+    )
+    for base in (0x7100000000,0x7200000000):
+        for files,speed,preview in configs:
+            m=Machine(base,files); m.boot(); m.activate()
+            assert all((base+a in m.hooks)==speed for a in speed_sites),m.text
+            assert all((base+a in m.hooks)==preview for a in preview_sites),m.text
+            assert (base+0x3c58d24 in m.hooks)==preview
+            assert len(m.hooks)==2+2*speed+10*preview,m.text
+            assert (m.read(base+0x49e8378)!=base+0x2ea0754)==preview
+            assert base+0xbc4144 in m.hooks
+            if speed:
+                assert 'workbench_preview_tilt=' in m.text and '(deferred)' in m.text
+            assert not any('/faster-crafting' in name for name in m.opened)
+        # A disabled preview skips all its fingerprints and writable UI slots.
+        m=Machine(base,{'crafting':DEFAULT+b'diy_app_preview=false'})
+        m.write(base+0x32bd990,0xdeadbeef,4); m.write(base+0x49e8378,base+0x2ea075c)
+        m.boot(); m.activate()
+        assert 'BOOT_OK' in m.text and 'DIY preview: DISABLED' not in m.text
+        assert all(base+a in m.hooks for a in speed_sites)
+        assert all(base+a not in m.hooks for a in preview_sites)
+        assert m.read(base+0x49e8378)==base+0x2ea075c
+        # Speed incompatibility still permits the independent preview feature.
+        m=Machine(base,{'crafting':DEFAULT})
+        m.write(base+0x22fc6bc,0xdeadbeef,4); m.boot(); m.activate()
+        assert 'BOOT_PARTIAL' in m.text and 'DIY preview: READY' in m.text
+        assert all(base+a not in m.hooks for a in speed_sites)
+        assert all(base+a in m.hooks for a in preview_sites)
+        # Pockets can own the shared input hook with DIY previews disabled.
+        m=Machine(base,{'pockets':DEFAULT,'crafting':DEFAULT+b'diy_app_preview=false'})
+        m.boot(); m.activate()
+        assert 'BOOT_OK' in m.text and 'QUICK_STORE_READY' in m.text
+        assert base+0x3c58d24 in m.hooks and base+0x2e9cde0 not in m.hooks
+    print('PASS: Crafting marker/rename, independent DIY toggle, reserved preferences, layered defaults and failures, untouched disabled preview, isolated hook conflicts and shared Pockets input at two bases')
+
 if __name__ == '__main__':
     check_all_subsets()
     check_errors()
     check_amiibo_hook()
     check_custom_preferences()
     check_config_layers()
+    check_crafting_settings()

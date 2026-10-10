@@ -11,7 +11,7 @@ from build_shopping_card_layout import build as build_shopping
 
 ROOT = Path(__file__).resolve().parents[1]
 CORE_FOLDER = 'QoL Enhancements - Core (REQUIRED)'
-LABELS = ('Catalog', 'Pockets', 'Faster Dialogue', 'Fitting Room', 'Shopping Card', 'Faster Crafting')
+LABELS = ('Catalog', 'Pockets', 'Faster Dialogue', 'Fitting Room', 'Shopping Card', 'Crafting')
 
 def release_version():
     text = (ROOT / 'source/program/core/release.hpp').read_text()

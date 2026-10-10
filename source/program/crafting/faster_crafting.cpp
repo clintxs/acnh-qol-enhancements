@@ -1,4 +1,5 @@
 #include "lib.hpp"
+#include "settings.hpp"
 #include <cstring>
 
 namespace qol::crafting {
@@ -11,6 +12,7 @@ constexpr std::uintptr_t CookingMashRate = 0x02279a14;
 } // namespace address
 constexpr std::uintptr_t ActorStateFrames = 0x1c04;
 constexpr unsigned RampFrames = 60;
+unsigned MaximumSpeed = 3;
 
 float AutomaticRate(unsigned elapsedFrames) {
     // Sample 1 + 2 * log(1 + 9*t) / log(10), t = frame/60. A small constant
@@ -31,7 +33,10 @@ float AutomaticRate(unsigned elapsedFrames) {
         2.932283465f, 2.946255707f, 2.960006743f, 2.973543469f, 2.986872461f,
         3.000000000f,
     };
-    return rates[elapsedFrames < RampFrames ? elapsedFrames : RampFrames];
+    const auto nativeRate = rates[elapsedFrames < RampFrames ? elapsedFrames : RampFrames];
+    // Preserve the confirmed default curve exactly. Lower settings scale its
+    // gain while retaining the same timing and per-action restart behavior.
+    return MaximumSpeed == 3 ? nativeRate : 1.0f + (nativeRate - 1.0f) * (MaximumSpeed - 1) / 2.0f;
 }
 
 HOOK_DEFINE_INLINE(AutomaticMashBoost) {
@@ -48,7 +53,8 @@ HOOK_DEFINE_INLINE(AutomaticMashBoost) {
 };
 } // namespace
 
-bool Install() {
+bool InstallFasterCrafting(unsigned maximumSpeed) {
+    if (maximumSpeed < 1 || maximumSpeed > 3) return false;
     struct Fingerprint { std::uintptr_t offset; std::uint32_t words[5]; };
     // Original instructions only; behavior is implemented by the C++ callback.
     constexpr Fingerprint fingerprints[]{
@@ -67,13 +73,14 @@ bool Install() {
         if (expected.offset + sizeof(expected.words) > main.m_Text.m_Size ||
             std::memcmp(reinterpret_cast<const void *>(main.m_Text.m_Start + expected.offset),
                         expected.words, sizeof(expected.words))) {
-            Logging.Log("[QoL Enhancements/Faster Crafting] DISABLED: instruction mismatch at main+0x%lx\n", expected.offset);
+            Logging.Log("[QoL Enhancements/Crafting] DISABLED: instruction mismatch at main+0x%lx\n", expected.offset);
             return false;
         }
     }
+    MaximumSpeed = maximumSpeed;
     AutomaticMashBoost::InstallAtOffset(address::CraftingMashRate);
     AutomaticMashBoost::InstallAtOffset(address::CookingMashRate);
-    Logging.Log("[QoL Enhancements/Faster Crafting] READY: C++ hooks; logarithmic crafting/cooking ramp=1..3x over %u updates\n", RampFrames);
+    Logging.Log("[QoL Enhancements/Crafting] READY: C++ hooks; logarithmic crafting/cooking ramp=1..%ux over %u updates\n", MaximumSpeed, RampFrames);
     return true;
 }
 } // namespace qol::crafting

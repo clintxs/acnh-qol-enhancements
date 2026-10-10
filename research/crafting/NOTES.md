@@ -1,9 +1,33 @@
-# Automatic crafting/cooking boost (ACNH 3.0.3)
+# Crafting module (ACNH 3.0.3)
 
-All addresses below are offsets in the original `main.raw`. Behavior is C++
-Exlaunch inline hooks, independent of Faster Dialogue. The new Faster Crafting
-module's ordinary `enabled` setting defaults to true; Core provides the same
-regular/custom INI loading as every other module. No additional settings parser.
+As of 0.3.46, Crafting replaces Faster Crafting and owns the existing DIY app
+preview code formerly installed by Core. Its minimum package version is 0.3.46.
+The marker is `crafting.ini`, followed by optional `crafting.custom.ini`; the
+retired `faster-crafting` paths are ignored. Core alone installs no DIY hooks.
+
+Defaults: `diy_app_preview=true`, `workbench_preview_tilt=true`,
+`crafting_quantity_wrap=true`, `crafting_speed=3`. Preview and speed are active;
+workbench tilt and quantity wrap are parsed/reserved only and still deferred.
+Hotel banner, initial orientation and recipe navigation follow-ups remain open.
+
+Speed is the peak of the existing 60-update logarithmic ramp, accepting integer
+1..3 within the native animation-rate range. Peak 3 retains the original table
+exactly; lower peaks scale its gain by `(peak-1)/2`, preserving timing. Peak 1
+holds at 1x. Native actor/readiness/input/exit gates are unchanged. Both action
+hooks and all preview hooks live in the same Crafting marker, with independent
+installation attempts so one feature's incompatibility does not suppress the
+other. Disabling `diy_app_preview` bypasses preview fingerprints and hooks.
+
+Settings use the shared regular/custom layering policy: omitted/invalid keys
+inherit, duplicates restore the earlier layer, and malformed metadata or
+encoding/size failures reject that file atomically. The reserved settings are
+reported as deferred in startup logs. Module activation and settings loading
+still happen once after content mount. Core and Pockets/DIY share input only
+when at least one consumer is active.
+
+All addresses below are offsets in the original `main.raw`. Behavior is readable
+C++ Exlaunch hooks. The native speed-path history below describes the original
+Faster Crafting implementation retained by Crafting.
 
 ## Native paths
 
@@ -104,29 +128,22 @@ entry records the intended interaction only; no runtime or release changes.
 
 ## Possible Crafting submodule grouping — October 9, 2026
 
-The user is considering one **Crafting** submodule containing:
+Originally proposed, then approved for the implemented features in 0.3.46:
+one **Crafting** submodule containing:
 
 - The crafting quantity selector wrap tweak documented above.
 - DIY Recipes app 3D previews and their follow-ups.
 - Vertical up/down tilt for workbench previews.
 - The existing Faster Crafting feature, with configurable speed settings.
 
-This is a tentative packaging direction, not a decision to reorganize or begin
-implementation. It would bring together the current Core DIY preview feature,
-the existing Faster Crafting submodule and the deferred UI changes. Feature
-settings, migration/compatibility and the final module boundary remain undecided.
-The proposed separate, default-on workbench tilt setting remains recorded in
+The grouping is now implemented for DIY previews and faster crafting. Workbench
+tilt and quantity wrapping remain deferred behind accepted/reserved preferences.
+The workbench tilt default remains on, as recorded in
 [the preview follow-ups](../recipe-preview/NOTES.md#deferred-follow-ups--october-9-2026).
-No modules, defaults, configuration files or release packages change now.
 
+## Speed settings follow-up — implemented in 0.3.46
 
-## Deferred settings follow-up — Faster Crafting speeds (October 9, 2026)
-
-Add user-configurable speed settings for Faster Crafting. This joins the
-other deferred Crafting work; no implementation starts with this note.
-
-The current implementation uses a fixed logarithmic ramp from 1x to 3x over
-60 updates, shared by crafting/customization and cooking. The requested setting
-names, available speeds, defaults and whether ramp timing or separate action
-speeds should be configurable remain to be decided. Those details are not yet
-requirements. No current settings, behavior or release packages change.
+The request for configurable speeds is implemented as `crafting_speed`, default 3,
+controlling the existing ramp's maximum at 1x, 2x or 3x. Ramp timing remains 60
+updates and crafting/customization/cooking share the preference. Separate speeds,
+other peaks or ramp timing settings are not included in this change.

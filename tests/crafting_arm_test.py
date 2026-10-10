@@ -15,11 +15,12 @@ RAMP_FRAMES = 60
 GP = [globals()[f'UC_ARM64_REG_X{i}'] for i in range(31)]
 Q = [globals()[f'UC_ARM64_REG_Q{i}'] for i in range(32)]
 
-def ramp(frame):
-    return 1. + 2. * math.log1p(9. * min(frame, RAMP_FRAMES) / RAMP_FRAMES) / math.log(10.)
+def ramp(frame, maximum=3):
+    return 1. + (maximum - 1.) * math.log1p(9. * min(frame, RAMP_FRAMES) / RAMP_FRAMES) / math.log(10.)
 
 class CraftingMachine(Machine):
-    def __init__(self, base, files):
+    def __init__(self, base, files, maximum=3):
+        self.maximum = maximum
         self.native = False
         super().__init__(base, files)
         self.boot(); self.activate()
@@ -46,7 +47,7 @@ class CraftingMachine(Machine):
             assert after_q[1:] == before_q[1:]
             assert after_q[0] >> 32 == before_q[0] >> 32
             rate = struct.unpack('<f', (after_q[0] & 0xffffffff).to_bytes(4, 'little'))[0]
-            assert abs(rate - ramp(self.elapsed)) < 2e-7
+            assert abs(rate - ramp(self.elapsed, self.maximum)) < 2e-7
             after_gp = [u.reg_read(reg) for reg in GP]
             assert after_gp == before_gp
             self.pending, self.bypass = None, native_pc
@@ -123,7 +124,7 @@ class CraftingMachine(Machine):
         assert self.read(self.obj + counter, 4) == native_count
         assert self.hits == int(bool(self.callbacks) and not remote), (cooking, count, pressed, blocked, remote, ready, self.hits, self.callbacks)
         assert self.recipe_checks == int(not cooking and not remote)
-        expected = 1.25 if remote else (ramp(elapsed) if self.callbacks else min(3., max(1., native_count)))
+        expected = 1.25 if remote else (ramp(elapsed, self.maximum) if self.callbacks else min(3., max(1., native_count)))
         if not cooking and not remote and not ready: expected = 1.
         assert abs(self.rate - expected) < 2e-7, (cooking, count, pressed, blocked, remote, ready, elapsed, self.rate, expected)
         assert bytes(self.u.mem_read(self.obj + speed, 4)) == struct.pack('<f', self.rate)
@@ -138,11 +139,11 @@ def check():
     for base in (0x7100000000, 0x7200000000):
         # Default true, regular false, custom false, custom re-enable, absent.
         configs = (
-            ({'faster-crafting': DEFAULT}, True),
-            ({'faster-crafting': DEFAULT.replace(b'true', b'false')}, False),
-            ({'faster-crafting': DEFAULT, 'faster-crafting.custom': b'enabled=false'}, False),
-            ({'faster-crafting': DEFAULT.replace(b'true', b'false'), 'faster-crafting.custom': b'enabled=true'}, True),
-            ({'faster-crafting.custom': b'enabled=true'}, False),
+            ({'crafting': DEFAULT}, True),
+            ({'crafting': DEFAULT.replace(b'true', b'false')}, False),
+            ({'crafting': DEFAULT, 'crafting.custom': b'enabled=false'}, False),
+            ({'crafting': DEFAULT.replace(b'true', b'false'), 'crafting.custom': b'enabled=true'}, True),
+            ({'crafting.custom': b'enabled=true'}, False),
         )
         for files, enabled in configs:
             m = CraftingMachine(base, files)
@@ -185,11 +186,35 @@ def check():
                 m.u.reg_write(UC_ARM64_REG_LR, m.return_stop)
                 m.u.emu_start(base + start, 0, count=10000)
                 assert m.rate == 1.
+        # Actual regular/custom configuration reaches both native rate hooks.
+        # Peak 3 preserves the existing curve; peaks 1/2 scale its gain only.
+        speed_configs = (
+            ({'crafting': DEFAULT + b'crafting_speed=1'}, 1),
+            ({'crafting': DEFAULT + b'crafting_speed=2'}, 2),
+            ({'crafting': DEFAULT, 'crafting.custom': b'crafting_speed=2'}, 2),
+            ({'crafting': DEFAULT + b'crafting_speed=2', 'crafting.custom': b'crafting_speed=3'}, 3),
+            ({'crafting': DEFAULT + b'crafting_speed=2', 'crafting.custom': b'crafting_speed=4'}, 2),
+            ({'crafting': DEFAULT + b'crafting_speed=2', 'crafting.custom': b'crafting_speed=1\ncrafting_speed=3'}, 2),
+            ({'crafting': DEFAULT + b'crafting_speed=2', 'crafting.custom': b'crafting_speed=3\nversion=bad'}, 2),
+        )
+        for files, maximum in speed_configs:
+            m=CraftingMachine(base,files,maximum)
+            assert f'crafting_speed={maximum}' in m.text and 'BOOT_OK' in m.text
+            for cooking in (False, True):
+                for frame in range(RAMP_FRAMES+2):
+                    m.run(cooking=cooking,elapsed=frame)
+                    cases+=1
+                m.run(cooking=cooking,elapsed=60,ready=False)
+                m.run(cooking=cooking,elapsed=60,remote=True)
+        # The retired marker cannot activate the renamed package.
+        m=CraftingMachine(base,{'faster-crafting':DEFAULT,'faster-crafting.custom':b'enabled=true'})
+        assert not m.callbacks and 'Crafting: not installed' in m.text
+        assert not any('/faster-crafting' in name for name in m.opened)
         for offset in (*HOOKS, *GUARDS):
-            m = Machine(base, {'faster-crafting': DEFAULT, 'amiibo': DEFAULT})
+            m = Machine(base, {'crafting': DEFAULT, 'amiibo': DEFAULT})
             m.write(base + offset, 0xdeadbeef, 4)
             m.boot(); m.activate()
-            assert 'Faster Crafting] DISABLED' in m.text and 'Amiibo timeout: READY' in m.text
+            assert 'Crafting] DISABLED' in m.text and 'Amiibo timeout: READY' in m.text
             assert not any(base + site in m.hooks for site in HOOKS)
     print(f'PASS: {cases} native crafting/cooking cases at two bases; logarithmic 60-frame 1..3x ramp, saturation/restarts, native frame reset/increments, readiness/suspension/local-player gates, native exit resets, manual A when disabled, isolated layered config, unchanged input/counters, SIMD/GP preservation, atomic fingerprints')
 

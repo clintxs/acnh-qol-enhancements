@@ -53,18 +53,21 @@ these items for later. This is a backlog, not authorization to implement them no
 4. **Vertical tilt in workbench previews.** Extend the DIY preview's right-stick
    up/down tilt to native workbench 3D previews as well. The user suggests a
    separate setting, enabled by default and optionally disabled. Keep this
-   independently configurable from the DIY app preview feature; no setting name
-   or implementation has been selected yet.
+   independently configurable from the DIY app preview feature. In 0.3.46,
+   `workbench_preview_tilt=true` is accepted as a reserved preference; its
+   implementation remains deferred.
 
-The user is also considering grouping DIY app previews, workbench vertical tilt,
-the crafting quantity wrap tweak and Faster Crafting into one **Crafting**
-submodule. This remains tentative; see the
+The user approved grouping the existing DIY app previews and Faster Crafting
+into one optional **Crafting** submodule in 0.3.46; see the
 [Crafting grouping note](../crafting/NOTES.md#possible-crafting-submodule-grouping--october-9-2026).
-No move out of Core or module reorganization is authorized yet.
+DIY previews move from Core to Crafting and use `diy_app_preview=true`.
+The implementation now lives under `source/program/crafting/`. The follow-up UI
+changes above remain deferred; no workbench tilt or recipe navigation is added.
 
 The attached reference images are retained here so later work does not depend
-on the original files remaining in Downloads. No runtime, configuration, build
-or release changes accompany this backlog update.
+on the original files remaining in Downloads. The original backlog update made
+no runtime changes; 0.3.46 changes module ownership/settings only and leaves
+these UI follow-ups deferred.
 
 ## 0.3.33 loading-crash correction
 

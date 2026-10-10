@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.45 fixed item poses and faster rotation
+# Unified QoL validation — 0.3.46 Crafting module and settings
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,36 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.46 Crafting module and settings
+
+Crafting replaces Faster Crafting, requiring the new crafting.ini marker at
+minimum package version 0.3.46. The existing DIY renderer/layout code moves from
+Core to Crafting, preserving its confirmed 0.3.45 rendering, color, fixed item
+categories and right-stick movement. Core alone now installs discovery/amiibo
+only. Crafting and Pockets register their existing shared input handlers when
+needed; package order changes are covered by the two-base integration fixtures.
+
+Defaults are diy_app_preview=true, workbench_preview_tilt=true,
+crafting_quantity_wrap=true, crafting_speed=3. Preview and speed are active;
+tilt/wrap are accepted reserved settings with no hooks or runtime UI behavior.
+Speed config selects integer peaks 1..3 for the existing 60-update ramp. The
+default returns the original table exactly; lower peaks scale its gain. Native
+actor gates, suspension, recipe readiness and exit resets remain unchanged.
+
+Checks cover parser defaults, regular/custom overlays, invalid values, duplicate
+rollback and atomic file errors. Compiled activation checks cover all 64 module
+combinations, absent/disabled/retired markers, the independent preview toggle,
+reserved settings, incompatible preview/speed isolation, untouched disabled UI
+slots and Pockets sharing. Native crafting/cooking fixtures execute all ramp
+samples at each supported peak, readiness/local actor guards and register
+preservation. The full preview lifecycle, color, layout and 767 fixed-item
+regressions continue to execute after the source/module move. Core, Crafting and
+Pockets checks and package/source/hash parity are completed before delivery.
+
+The user accepted 0.3.45's visuals. The new module installation, settings and
+lower speed peaks still need a live Steam Deck test. Workbench tilt, quantity
+wrap and the other documented UI improvements remain deferred.
 
 ## 0.3.45 native fixed poses and doubled speed
 

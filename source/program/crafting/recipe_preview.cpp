@@ -1,13 +1,13 @@
 #include "lib.hpp"
 #include "recipe_preview.hpp"
 #include "recipe_preview_layout.hpp"
-#include "page_input.hpp"
+#include "program/core/page_input.hpp"
 #include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstring>
 
-namespace qol::core {
+namespace qol::crafting {
 namespace {
 namespace address {
 constexpr std::uintptr_t BuildLayout = 0x00267d64, FindPane = 0x0027d1d0;
@@ -104,7 +104,7 @@ constexpr std::array<unsigned, 8> FixedKinds{
 }
 bool UsesFixedPreviewPose(std::uint16_t itemId) {
     // Read the same live ItemParam table as native item-root update 0192A590.
-    // Keep this Core-only: Catalog may be disabled. Validate row identity and
+    // Keep this independent of Catalog, which may be disabled. Validate row identity and
     // runtime header fixups before classifying; do not guess from recipe IDs.
     auto slot = *Native<void **>(address::ItemParamGlobalSlot);
     auto table = slot ? At<void *>(slot) : nullptr;
@@ -214,7 +214,7 @@ HOOK_DEFINE_TRAMPOLINE(DrawPreviewContents) {
                 entry.info.load(std::memory_order_relaxed) != info ||
                 entry.view.load(std::memory_order_relaxed) != view) continue;
             if (BackgroundApplied.fetch_add(1, std::memory_order_relaxed) == 0)
-                Logging.Log("[QoL Enhancements/Core] DIY preview: HDR background applied for #E5DFC7 target\n");
+                Logging.Log("[QoL Enhancements/Crafting] DIY preview: HDR background applied for #E5DFC7 target\n");
             color = PreviewBackground.data(); break;
         }
         Orig(renderer, command, view, flags, color, info);
@@ -245,7 +245,7 @@ void PublishCarriers(void *controller) {
             At<unsigned>(actor, field::ItemChildren + i * sizeof(unsigned)) : 0;
         const auto previous = PreviewCarriers[i].exchange(child, std::memory_order_release);
         if (child && child != previous)
-            Logging.Log("[QoL Enhancements/Core] DIY preview: mesh carrier published; slot=%u handle=%u\n", i, child);
+            Logging.Log("[QoL Enhancements/Crafting] DIY preview: mesh carrier published; slot=%u handle=%u\n", i, child);
     }
 }
 struct ModelMatrix { float values[12]; }; // ARM64 returns this 48-byte object through x8.
@@ -274,7 +274,7 @@ HOOK_DEFINE_TRAMPOLINE(BuildPreviewMatrix) {
         At<unsigned>(pose.data(), field::ComponentAngles + 8) = PreviewAngleZ.load(std::memory_order_relaxed);
         if (PreviewHandle.load(std::memory_order_acquire) != handle) return Orig(component);
         if (MatrixMatches.fetch_add(1, std::memory_order_relaxed) == 0)
-            Logging.Log("[QoL Enhancements/Core] DIY preview: drawable matrix matched; entity=%u parent=%u\n",
+            Logging.Log("[QoL Enhancements/Crafting] DIY preview: drawable matrix matched; entity=%u parent=%u\n",
                         At<unsigned>(owner, field::EntityHandle), At<unsigned>(owner, field::ParentHandle));
         return Orig(pose.data());
     }
@@ -307,14 +307,14 @@ HOOK_DEFINE_TRAMPOLINE(TraceModelTransform) {
         if (TransformAttempts.fetch_add(1, std::memory_order_relaxed) >= 8) return;
         auto storage = *Native<void **>(address::EntityManager);
         auto manager = storage ? At<void *>(storage) : nullptr;
-        Logging.Log("[QoL Enhancements/Core] DIY preview: native transform; flags=%u->%u ready=%u entity_phase=%d entity_stage=%u\n",
+        Logging.Log("[QoL Enhancements/Crafting] DIY preview: native transform; flags=%u->%u ready=%u entity_phase=%d entity_stage=%u\n",
                     unsigned(before), unsigned(after), At<unsigned char>(controller, field::ModelReady),
                     manager ? At<int>(manager, field::EntityPhase) : -99,
                     manager ? At<unsigned>(manager, field::EntityStage) : 0xffffffffu);
     }
 };
 void ReportRendererTrace() {
-    Logging.Log("[QoL Enhancements/Core] DIY preview: render trace; native_updates=%u pending_attempts=%u applied=%u layer_draws=%u matched_layers=%u matrices=%u matched_matrices=%u backgrounds=%u\n",
+    Logging.Log("[QoL Enhancements/Crafting] DIY preview: render trace; native_updates=%u pending_attempts=%u applied=%u layer_draws=%u matched_layers=%u matrices=%u matched_matrices=%u backgrounds=%u\n",
                 TransformCalls.load(std::memory_order_relaxed), TransformAttempts.load(std::memory_order_relaxed),
                 TransformApplied.load(std::memory_order_relaxed), ClearCalls.load(std::memory_order_relaxed),
                 ClearMatches.load(std::memory_order_relaxed), MatrixCalls.load(std::memory_order_relaxed),
@@ -354,7 +354,7 @@ const void *WithSurface(const void *resource) {
     }
     if (result == resource && free && recipe_layout::AddSurface({input, size}, free->bytes)) {
         free->hash = hash; free->inputSize = size; result = free->bytes.data();
-        Logging.Log("[QoL Enhancements/Core] DIY preview: capture surface added to loaded MenuRecipe\n");
+        Logging.Log("[QoL Enhancements/Crafting] DIY preview: capture surface added to loaded MenuRecipe\n");
     }
     ResourceLock.clear(std::memory_order_release);
     return result;
@@ -480,7 +480,7 @@ void Close(Session &s) {
     Visible(s.capture, false);
     s.controller = s.parameters = nullptr; s.ownsRenderer = false;
     s.phase = Phase::DrainBack;
-    Logging.Log("[QoL Enhancements/Core] DIY preview: grid restored; renderer released\n");
+    Logging.Log("[QoL Enhancements/Crafting] DIY preview: grid restored; renderer released\n");
 }
 bool QueuePreview(Session &s) {
     const auto count = At<unsigned>(s.phone, field::Recipes);
@@ -490,13 +490,13 @@ bool QueuePreview(Session &s) {
     if (!PhoneReady(s.phone) || !recipeRow || selected >= count || count > 4096 || !recipes || !recipes[selected] ||
         At<std::uint16_t>(recipes[selected], 8) >= 0xfffe || !s.surface || !s.gridPane) {
         if (s.rejectedPresses++ < 8)
-            Logging.Log("[QoL Enhancements/Core] DIY preview: A declined; recipe_row=%u selected=%u count=%u surface=%p grid=%p input_row=%d\n",
+            Logging.Log("[QoL Enhancements/Crafting] DIY preview: A declined; recipe_row=%u selected=%u count=%u surface=%p grid=%p input_row=%d\n",
                         unsigned(recipeRow), selected, count, s.surface, s.gridPane, s.inputRow);
         return false;
     }
     s.item = At<std::uint64_t>(recipes[selected], 8);
     s.phase = Phase::Queued;
-    Logging.Log("[QoL Enhancements/Core] DIY preview: A queued from input; recipe_index=%u item=%u\n", selected, unsigned(s.item & 0xffff));
+    Logging.Log("[QoL Enhancements/Crafting] DIY preview: A queued from input; recipe_index=%u item=%u\n", selected, unsigned(s.item & 0xffff));
     return true;
 }
 unsigned ObserveFocus(void *layout) {
@@ -541,7 +541,7 @@ HOOK_DEFINE_TRAMPOLINE(BindPhoneRecipes) {
         if (s.cursorPane) s.cursorFlags = At<unsigned char>(s.cursorPane, field::PaneFlags);
         s.inputRow = ShortcutInputRow(s.layout);
         const auto focusBindings = ObserveFocus(s.layout);
-        Logging.Log("[QoL Enhancements/Core] DIY preview: app bound; surface=%p grid=%p input_row=%d focus_bindings=%u\n",
+        Logging.Log("[QoL Enhancements/Crafting] DIY preview: app bound; surface=%p grid=%p input_row=%d focus_bindings=%u\n",
                     s.surface, s.gridPane, s.inputRow, focusBindings);
     }
 };
@@ -574,7 +574,7 @@ void RotatePreview(Session &s) {
     s.tilt = tilt;
     PublishPose(s.controller);
     if (s.rotationReports++ < 4)
-        Logging.Log("[QoL Enhancements/Core] DIY preview: rotation queued; yaw=%08x pitch=%08x ready=%u flags=%u\n",
+        Logging.Log("[QoL Enhancements/Crafting] DIY preview: rotation queued; yaw=%08x pitch=%08x ready=%u flags=%u\n",
                     angles[1], angles[0], At<unsigned char>(s.controller, field::ModelReady),
                     At<unsigned char>(s.controller, field::ModelFlags));
 }
@@ -595,7 +595,7 @@ bool PreviewInput(void *layout, void *snapshot, unsigned blocked) {
         if (s.phase == Phase::Idle) {
             if (!confirmPress) return false;
             if (s.inputReports++ < 8)
-                Logging.Log("[QoL Enhancements/Core] DIY preview: A input; state=%d pending=%d/%d focus=%p blocked=%u consumed=%x\n",
+                Logging.Log("[QoL Enhancements/Crafting] DIY preview: A input; state=%d pending=%d/%d focus=%p blocked=%u consumed=%x\n",
                             At<int>(s.phone, field::State), At<int>(s.phone, field::Requests), At<int>(s.phone, field::Requests + 4),
                             s.focusedRow, unsigned(InputBlocked(s, blocked)), At<unsigned>(row, 0x3c));
             if (InputBlocked(s, blocked) || (At<unsigned>(row, 0x3c) & ConfirmMask) || !QueuePreview(s)) return false;
@@ -617,7 +617,7 @@ bool PreviewInput(void *layout, void *snapshot, unsigned blocked) {
             const auto x = StickAxis(At<float>(row, field::RightStick));
             const auto y = StickAxis(At<float>(row, field::RightStick + 4));
             if ((x != 0 || y != 0) && s.stickReports++ < 4)
-                Logging.Log("[QoL Enhancements/Core] DIY preview: right-stick snapshot; row=%d x=%08x y=%08x consumed=%x blocked=%u\n",
+                Logging.Log("[QoL Enhancements/Crafting] DIY preview: right-stick snapshot; row=%d x=%08x y=%08x consumed=%x blocked=%u\n",
                             s.inputRow, At<unsigned>(row, field::RightStick), At<unsigned>(row, field::RightStick + 4),
                             At<unsigned>(row, field::ConsumedAxes), unsigned(inputBlocked));
             if (inputBlocked) s.stickX = s.stickY = 0;
@@ -643,7 +643,7 @@ bool Begin(Session &s) {
     auto controller = context ? At<void *>(context, field::Controller) : nullptr;
     auto parameters = context ? At<void *>(context, field::Parameters) : nullptr;
     if (!controller || !parameters) {
-        Logging.Log("[QoL Enhancements/Core] DIY preview: missing renderer; context=%p controller=%p parameters=%p\n",
+        Logging.Log("[QoL Enhancements/Crafting] DIY preview: missing renderer; context=%p controller=%p parameters=%p\n",
                     context, controller, parameters);
         return false;
     }
@@ -652,7 +652,7 @@ bool Begin(Session &s) {
     const bool available = (mode == -1 && state == 0) || (mode == PhoneModelMode && state == PhoneModelState);
     if (!available || At<unsigned>(controller, field::ModelHandle) ||
         At<void *>(controller, field::BackgroundPage) || At<void *>(controller, field::VisibilityPage)) {
-        Logging.Log("[QoL Enhancements/Core] DIY preview: renderer refused; mode=%d state=%d handle=%u background=%p visibility=%p\n",
+        Logging.Log("[QoL Enhancements/Crafting] DIY preview: renderer refused; mode=%d state=%d handle=%u background=%p visibility=%p\n",
                     mode, state, At<unsigned>(controller, field::ModelHandle),
                     At<void *>(controller, field::BackgroundPage), At<void *>(controller, field::VisibilityPage));
         return false;
@@ -683,14 +683,14 @@ bool Begin(Session &s) {
     s.fixedPose = UsesFixedPreviewPose(static_cast<std::uint16_t>(s.item));
     PreviewFixedPose.store(s.fixedPose, std::memory_order_release);
     PreviewController.store(controller, std::memory_order_release);
-    Logging.Log("[QoL Enhancements/Core] DIY preview: native fixed pose=%u item=%u\n",
+    Logging.Log("[QoL Enhancements/Crafting] DIY preview: native fixed pose=%u item=%u\n",
                 unsigned(s.fixedPose), unsigned(s.item & 0xffff));
     const auto color = ItemLayerClearColor();
     PreviewClearColor.store(color, std::memory_order_release);
-    Logging.Log("[QoL Enhancements/Core] DIY preview: background #E5DFC7; layer_color=%p\n", color);
+    Logging.Log("[QoL Enhancements/Crafting] DIY preview: background #E5DFC7; layer_color=%p\n", color);
     Native<void (*)(void *, unsigned)>(address::ChangeState)(static_cast<std::byte *>(controller) + 8, 1);
     s.phase = Phase::Starting;
-    Logging.Log("[QoL Enhancements/Core] DIY preview: renderer acquired; previous_mode=%d previous_state=%d\n", mode, state);
+    Logging.Log("[QoL Enhancements/Crafting] DIY preview: renderer acquired; previous_mode=%d previous_state=%d\n", mode, state);
     return true;
 }
 HOOK_DEFINE_TRAMPOLINE(UpdatePhoneRecipes) {
@@ -699,13 +699,13 @@ HOOK_DEFINE_TRAMPOLINE(UpdatePhoneRecipes) {
         auto s = ForPhone(phone); if (!s) return;
         if (s->phase == Phase::Closing) { Close(*s); return; }
         if (s->phase == Phase::Queued) {
-            if (!Begin(*s)) { s->phase = Phase::Idle; Logging.Log("[QoL Enhancements/Core] DIY preview: renderer busy/unavailable; grid retained\n"); }
+            if (!Begin(*s)) { s->phase = Phase::Idle; Logging.Log("[QoL Enhancements/Crafting] DIY preview: renderer busy/unavailable; grid retained\n"); }
             return;
         }
         if (s->phase == Phase::Showing) RotatePreview(*s);
         if (s->phase == Phase::Showing && ++s->frames == 30) {
             ReportRendererTrace();
-            Logging.Log("[QoL Enhancements/Core] DIY preview: renderer status; handle=%u flags=%u state=%d\n",
+            Logging.Log("[QoL Enhancements/Crafting] DIY preview: renderer status; handle=%u flags=%u state=%d\n",
                         At<unsigned>(s->controller, field::ModelHandle),
                         At<unsigned char>(s->controller, 0x74), At<int>(s->controller, 0x10));
         }
@@ -727,7 +727,7 @@ HOOK_DEFINE_TRAMPOLINE(UpdatePhoneRecipes) {
         s->tilt = s->stickX = s->stickY = 0;
         Visible(s->gridPane, false); Visible(s->scrollPane, false); Visible(s->cursorPane, false);
         Visible(s->capture, true); Visible(s->surface, true); s->phase = Phase::Showing;
-        Logging.Log("[QoL Enhancements/Core] DIY preview: item model created; handle=%u\n", At<unsigned>(s->controller, field::ModelHandle));
+        Logging.Log("[QoL Enhancements/Crafting] DIY preview: item model created; handle=%u\n", At<unsigned>(s->controller, field::ModelHandle));
     }
 };
 HOOK_DEFINE_TRAMPOLINE(DeactivatePhoneRecipes) {
@@ -747,7 +747,6 @@ bool InstallRecipePreview() {
         {0x02e9cde0, {0xd10243ff, 0xa9037bfd, 0xa9046ffc, 0xa90567fa, 0xa9065ff8}},
         {0x02e9fbb0, {0xa9bb7bfd, 0xa90167fa, 0xa9025ff8, 0xa90357f6, 0xa9044ff4}},
         {0x02e9d538, {0xa9bd7bfd, 0xf9000bf5, 0xa9024ff4, 0x910003fd, 0xf9410814}},
-        {0x03c58d24, {0xf9410800, 0xb4000060, 0x12000042, 0x17ffcad4, 0xd65f03c0}},
         {0x032bd990, {0x6db923e9, 0xa9017bfd, 0x910043fd, 0xf90013fc, 0xa90367fa}},
         {0x032ba5e4, {0xd100c3ff, 0xa9017bfd, 0xf90013f3, 0x910043fd, 0xb9405008}},
         {0x03dbb160, {0xa9be7bfd, 0xa9014ff4, 0x910003fd, 0xb9400808, 0x2a0103f3}},
@@ -778,21 +777,27 @@ bool InstallRecipePreview() {
     const auto &main = exl::util::GetMainModuleInfo();
     for (const auto &f : fingerprints) if (f.offset + sizeof(f.words) > main.m_Text.m_Size ||
         std::memcmp(reinterpret_cast<const void *>(main.m_Text.m_Start + f.offset), f.words, sizeof(f.words))) {
-        Logging.Log("[QoL Enhancements/Core] DIY preview: DISABLED; instruction mismatch at main+0x%lx\n", f.offset); return false;
+        Logging.Log("[QoL Enhancements/Crafting] DIY preview: DISABLED; instruction mismatch at main+0x%lx\n", f.offset); return false;
     }
     Main = main.m_Text.m_Start;
     const auto modeSlot = Main + address::PhoneRendererModeSlot;
     if (!main.m_Data.InRange(modeSlot) || !main.m_Data.InRange(modeSlot + sizeof(std::uintptr_t) - 1) ||
         *reinterpret_cast<const std::uintptr_t *>(modeSlot) != Main + address::PhoneRendererMode) {
-        Logging.Log("[QoL Enhancements/Core] DIY preview: DISABLED; renderer mode slot mismatch\n");
+        Logging.Log("[QoL Enhancements/Crafting] DIY preview: DISABLED; renderer mode slot mismatch\n");
         return false;
     }
-    if (!RegisterPageInput(PreviewInput)) return false;
+    // Pockets may already own the shared trampoline. Its manager validates
+    // pristine instructions on first registration and reuses that owned hook;
+    // checking the original bytes again here would reject our own Pockets patch.
+    if (!core::RegisterPageInput(PreviewInput)) {
+        Logging.Log("[QoL Enhancements/Crafting] DIY preview: DISABLED; shared page input unavailable\n");
+        return false;
+    }
     auto slot = reinterpret_cast<volatile std::uintptr_t *>(modeSlot);
     const auto replacement = reinterpret_cast<std::uintptr_t>(&PhoneRendererMode);
     *slot = replacement;
     if (*slot != replacement) {
-        Logging.Log("[QoL Enhancements/Core] DIY preview: DISABLED; renderer mode slot write failed\n");
+        Logging.Log("[QoL Enhancements/Crafting] DIY preview: DISABLED; renderer mode slot write failed\n");
         return false;
     }
     BuildRecipeLayout::InstallAtOffset(address::BuildLayout);
@@ -804,7 +809,7 @@ bool InstallRecipePreview() {
     TraceModelTransform::InstallAtOffset(address::UpdateModelTransform);
     BuildPreviewMatrix::InstallAtOffset(address::BuildModelMatrix);
     DrawPreviewContents::InstallAtOffset(address::DrawLayerContents);
-    Logging.Log("[QoL Enhancements/Core] DIY preview: READY; carrier-scoped drawable pose; A opens, B returns\n");
+    Logging.Log("[QoL Enhancements/Crafting] DIY preview: READY; carrier-scoped drawable pose; A opens, B returns\n");
     return true;
 }
-} // namespace qol::core
+} // namespace qol::crafting

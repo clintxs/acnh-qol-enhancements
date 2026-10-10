@@ -2,7 +2,7 @@
 #include "modules.hpp"
 #include "release.hpp"
 #include "settings.hpp"
-#include "recipe_preview.hpp"
+#include "program/crafting/settings.hpp"
 #include "program/shopping/shopping_card.hpp"
 #include "program/dialogue/settings.hpp"
 #include "program/catalog/game/build_profile.hpp"
@@ -19,7 +19,6 @@
 #include <cstdio>
 
 namespace able_bag { bool Install(); }
-namespace qol::crafting { bool Install(); }
 
 namespace qol::core {
 namespace {
@@ -91,9 +90,7 @@ bool ActivateCoreSettings() {
             Logging.Log("[QoL Enhancements/Core] WARNING: %s config invalid/unreadable; retaining prior settings\n",
                         layer == ConfigLayer::Custom ? "custom" : "regular");
     }
-    const bool amiibo = InstallAmiiboTimeout(CorePreferences.amiiboTimeoutFrames);
-    const bool recipePreview = InstallRecipePreview();
-    return amiibo && recipePreview;
+    return InstallAmiiboTimeout(CorePreferences.amiiboTimeoutFrames);
 }
 } // namespace
 
@@ -105,7 +102,7 @@ const std::array<ModuleDescription, 6> Modules{{
     {"Faster Dialogue", "faster-dialogue", {0, 1, 0}, dialogue::Install, dialogue::Configure},
     {"Fitting Room", "fitting-room", {0, 1, 0}, able_bag::Install},
     {"Shopping Card", "shopping-card", {0, 3, 2}, shopping::Install, nullptr, shopping::PrepareResources},
-    {"Faster Crafting", "faster-crafting", {0, 3, 18}, crafting::Install},
+    {"Crafting", "crafting", {0, 3, 46}, crafting::Install, crafting::Configure},
 }};
 
 void ActivateModules() {

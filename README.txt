@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.45 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.46 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -20,7 +20,7 @@ ACNH v3 release still needs testing. Other mods must also avoid subsdk6 and
 our hook/layout files. Core supplies the suite's only main.npdm.
 
 MODULES
-Faster Crafting: automatic 1x-to-3x ramp for crafting and cooking.
+Crafting: DIY app 3D previews and configurable crafting/cooking speed ramp.
 Catalog: catalog/recipe stars, catalog badges and furniture-variation markers.
 Pockets: Grab 5/10, direct storage withdrawal, Y-to-storage and footer hints.
 Faster Dialogue: faster default reveal; B/R boost; optional NPC/UI/unnamed boost.
@@ -88,7 +88,7 @@ merged after updating the suite. Check in-game at 16:9 and 16:10 before release;
 this package does not supply an aspect-ratio patch.
 
 CORE SETTINGS / AMIIBO TIMEOUT
-DIY RECIPE PREVIEWS (CORE)
+DIY RECIPE PREVIEWS (CRAFTING)
 
 0.3.44's right-stick turning and tilting are confirmed working in-game.
 0.3.45 locks wallpapers, floors, rugs and fences to the workbench renderer's
@@ -98,7 +98,7 @@ Reopening resets the pose. The accepted cream background is unchanged.
 
 Local checks cover real item categories, native pose/matrix preservation,
 fixed-to-rotating transitions, B cleanup and doubled movement speed.
-The fixed categories and new speed STILL REQUIRE A STEAM DECK TEST.
+The user accepts 0.3.45. The module move/settings need a Steam Deck test.
 
 The DIY app keeps its existing materials panel. Press A on a recipe to open the
 3D preview in place of the grid; press B to return to the same grid. Category,
@@ -106,10 +106,10 @@ selection and scroll position are retained. This view has no crafting button
 or crafting action. Left/right recipe navigation in the preview is not
 implemented yet.
 
-Core adds a small capture surface to the loaded MenuRecipe layout in memory,
+Crafting adds a small capture surface to the loaded MenuRecipe layout in memory,
 preserving existing panes and installed layout/aspect-ratio edits. No workbench
 layout or additional feature folder is used. If the capture binding or renderer
-is unavailable, the original grid remains usable. Core and Pockets share their
+is unavailable, the original grid remains usable. Crafting and Pockets share Core’s
 page-input hook so Quick Store can remain enabled.
 
 Local ARM checks reproduce the native animation overwrite, verify the changed
@@ -136,7 +136,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.45
+  version = 0.3.46
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.
@@ -151,29 +151,55 @@ inherit them. This includes enabled and version. Both are required in the
 regular file, optional in the custom file. Invalid/duplicate metadata rejects
 that entire file; an invalid custom file retains the regular configuration.
 An absent/invalid regular marker cannot be activated by a custom file.
-Other modules currently have only enabled/version settings. Pockets captions
+Modules other than Faster Dialogue and Crafting have only enabled/version
+settings. Pockets captions
 remain a separate translation resource, outside module configuration layering.
 Whole-line #/; comments, a UTF-8 BOM, CRLF and valid UTF-8 text up to 4 KiB per file
 are supported. Versions use numeric major.minor.patch.
 
-FASTER CRAFTING / COOKING
-New in 0.3.18. Install Core plus “QoL Enhancements - Faster Crafting”.
-Enabled by default, independently of Faster Dialogue. The existing native
-mash-A maximum (3x) is reached with a logarithmic ramp from 1x over 60
-state updates, restarting for each crafting/cooking action.
-Speed is about 2.20x after 20 updates, 2.48x after 30, and 3x after 60.
-Suspended/busy updates pause the native counter. This counts game updates,
-not wall-clock time. No synthetic A presses, menu confirmations, skips or
-recipe/item changes. Native animation gates and exit resets remain active.
-This includes workbench customization through the shared crafting state.
-NPC animations retain native behavior.
-For ordinary speed with manual mash-A, set enabled = false in:
-  romfs/qol-enhancements/config/faster-crafting.ini
-Or preserve that preference across updates in a personal mod containing:
-  romfs/qol-enhancements/config/faster-crafting.custom.ini
-The custom file needs only enabled = false. Keep the regular module installed.
-Fully restart the game after changing settings. Native ARM/config checks pass;
-crafting, customization and cooking still need an Eden test.
+CRAFTING MODULE / SETTINGS (0.3.46)
+Install Core plus “QoL Enhancements - Crafting”. This replaces the former
+“QoL Enhancements - Faster Crafting” folder; remove that old folder when updating.
+Move any personal faster-crafting.custom.ini preferences to crafting.custom.ini.
+Remove old version overrides in that custom file, or update them to 0.3.46.
+Old faster-crafting.ini/custom paths are no longer read.
+DIY app previews are now optional Crafting behavior, not always-on Core behavior.
+
+Regular settings: romfs/qol-enhancements/config/crafting.ini
+Personal overlay: romfs/qol-enhancements/config/crafting.custom.ini
+Defaults in the regular file:
+  enabled = true
+  version = 0.3.46
+  diy_app_preview = true
+  workbench_preview_tilt = true
+  crafting_quantity_wrap = true
+  crafting_speed = 3
+
+Active settings:
+- diy_app_preview: enable/disable the existing DIY app 3D preview independently.
+- crafting_speed: whole-number 1, 2 or 3; the peak of the existing logarithmic
+  ramp over 60 state updates. Starts at 1x and restarts for each crafting,
+  customization or cooking action. Default 3 preserves the confirmed curve;
+  2 peaks at 2x, and 1 holds at 1x. Values outside this range retain the prior
+  setting and report a warning.
+
+Deferred settings (accepted, but currently have NO EFFECT):
+- workbench_preview_tilt = true
+- crafting_quantity_wrap = true
+Hotel request banner placement, improved initial orientation and recipe
+navigation are also deferred. Native workbench controls are unchanged.
+
+The regular marker must exist; a custom file alone cannot enable Crafting.
+Omitted custom values inherit the regular settings. Setting enabled=false
+turns off both preview and speed behavior; removing Crafting restores the
+ordinary DIY app. Core's amiibo setting is independent and remains in Core.
+
+The ramp counts game updates, not wall-clock time. Suspended/busy updates pause
+its native counter. No synthetic A presses, menu confirmations, skips, recipe
+or item changes. Native animation readiness gates and exit resets remain active.
+NPC animations retain native behavior. Fully restart after updating or editing
+settings. Local ARM/config checks cover the new module and settings; live Deck
+confirmation of this reorganization is still required.
 
 PERSONAL FASTER DIALOGUE SETTINGS
 Install the optional separate faster-dialogue-custom-example ZIP alongside
