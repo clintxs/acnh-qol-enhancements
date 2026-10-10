@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.70 contextual fitting-room hint
+# Unified QoL validation — 0.3.71 localized fixed Bag hint
 
 Validated locally on October 10, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,22 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.71 Fixed Bag caption and locale coverage
+
+The user reports that changing from Remove to Add retains excessive footer
+width and reverted to 0.3.69 with a fixed Bag caption. Restore that version's
+single-key hint, native focus behavior and transaction source. Remove the
+0.3.70 membership-based caption selection, cache invalidation and immediate
+focus calls. This avoids triggering the reported width transition; it does not
+claim to fix native dynamic-label measurement. Keep the trapezoid icon.
+
+Supply action translations in all 16 supported locales, including USpt/EUpt.
+Retain fitting_room.add_to_bag for compatibility and change the built-in English
+fallback to Bag. The removal key is no longer used. Locale tests load the actual
+shipped INI through the compiled parser and check the UTF-16 setter text.
+Native footer/caption tests and package checks cover the fixed behavior;
+translations and final visual fit are not native-speaker/live-game verified.
 
 ## 0.3.70 Contextual Add/Remove caption
 

@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.70 contextual fitting-room hint** for ACNH **3.0.3 on Eden**. One Core
+**0.3.71 localized fixed Bag hint** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -459,14 +459,13 @@ report still needs a Steam Deck retest; local checks do not execute GPU draws.
 
 ## Fitting Room caption (0.3.68)
 
-The native fitting-room footer now includes **Y: Add to bag**. Y still toggles
+The native fitting-room footer now includes **Y: Bag**. Y still toggles
 membership, including removing an already bagged item. Edit the Fitting Room
 module's `romfs/qol-enhancements/messages/fitting-room.ini` to change the label:
 
 ```ini
 [USen]
-fitting_room.add_to_bag=Add to bag
-fitting_room.remove_from_bag=Remove from bag
+fitting_room.add_to_bag=Bag
 ```
 
 Like Pockets, captions use UTF-8 and ACNH locale sections. Lookup uses the active
@@ -483,10 +482,13 @@ The basket body now has diagonal sides, a flat bottom and rounded corners.
 The handle, icon scale, circle and animation remain the same. It still renders
 as one texture picture, with no additional drawing panes.
 
-## Contextual fitting-room hint (0.3.70)
+## Fixed localized Bag hint (0.3.71)
 
-The Y caption shows **Remove from bag** when the hovered exact item/variant is
-already bagged, and **Add to bag** otherwise. Successful Y toggles refresh it
-immediately; cursor and category changes also update it. Both labels are editable
-in fitting-room.ini. An older add-only INI uses built-in English for removal.
-The trapezoid icon from 0.3.69 is unchanged.
+Restores the fixed-caption behavior of 0.3.69. The Add/Remove wording experiment
+could retain the wider label's width, so the footer now always describes the Y
+action as **Bag**. Y still adds/removes exact item variants. All 16 supported
+locale sections include action wording (put into a bag, rather than the noun).
+Edit `fitting_room.add_to_bag` in fitting-room.ini; the old removal key is unused.
+The built-in English fallback is also Bag. The trapezoid icon is unchanged.
+Translations are initial UI wording; live readability and native-speaker review
+remain useful, particularly for languages that require a longer phrase.

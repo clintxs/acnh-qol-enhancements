@@ -17,7 +17,6 @@ constexpr std::uintptr_t FittingVtable = 0x04a10620;
 constexpr std::uintptr_t SetPaneText = 0x03c1b588, SetGroupText = 0x03c47b90;
 }
 constexpr char CaptionKey[] = "fitting_room.add_to_bag";
-constexpr char RemoveCaptionKey[] = "fitting_room.remove_from_bag";
 constexpr char MessagesPath[] = "content:/qol-enhancements/messages/fitting-room.ini";
 constexpr int NativeY = 7;
 struct SafeString { std::uintptr_t vtable{}; const char *text{}; };
@@ -44,7 +43,7 @@ qol_pockets::text::Catalog Messages;
 bool MessagesAttempted{};
 char MessageFile[qol_pockets::text::MaxFileBytes];
 
-const char16_t *BagCaption(bool removing) {
+const char16_t *BagCaption() {
     // The footer is built after content mounting. Read once, including failures.
     if (!MessagesAttempted) {
         MessagesAttempted = true;
@@ -61,8 +60,8 @@ const char16_t *BagCaption(bool removing) {
         Logging.Log("[QoL Enhancements/Fitting Room] HINT_TEXT %s\n", valid ? "loaded" : "English fallback");
     }
     const auto locale = Function<unsigned (*)()>(address::GetActiveLocale)();
-    const auto *caption = Messages.Text(removing ? RemoveCaptionKey : CaptionKey, locale);
-    return caption ? caption : removing ? u"Remove from bag" : u"Add to bag";
+    const auto *caption = Messages.Text(CaptionKey, locale);
+    return caption ? caption : u"Bag";
 }
 
 HOOK_DEFINE_INLINE(AppendBagFooterHint) {
@@ -79,16 +78,14 @@ HOOK_DEFINE_INLINE(AppendBagFooterHint) {
             !Field<std::uintptr_t>(footer, 0x228)) return;
         for (int i = 0; i < count; ++i) {
             if (entries[i] && entries[i]->caption.text &&
-                (!std::strcmp(entries[i]->caption.text, CaptionKey) ||
-                 !std::strcmp(entries[i]->caption.text, RemoveCaptionKey))) return;
+                !std::strcmp(entries[i]->caption.text, CaptionKey)) return;
         }
         HintDescription hint;
         hint.button = NativeY;
         const auto player = Field<std::uint8_t>(owner, 0x1f8);
         hint.player = player < 8 ? player : 0xff;
         hint.caption = {Field<std::uintptr_t>(Main(address::BufferedStringVtableGot)) + 16, hint.key};
-        const char *key = FocusedItemIsBagged(owner) ? RemoveCaptionKey : CaptionKey;
-        std::memcpy(hint.key, key, std::strlen(key) + 1);
+        std::memcpy(hint.key, CaptionKey, sizeof(CaptionKey));
         Function<void (*)(std::uintptr_t, const HintDescription *, unsigned)>(address::AppendHint)(footer, &hint, 1);
     }
 };
@@ -97,9 +94,7 @@ HOOK_DEFINE_TRAMPOLINE(InitializeBagCaption) {
     static void Callback(std::uintptr_t message, std::uintptr_t binding,
                          const SafeString *bank, const SafeString *key) {
         Orig(message, binding, bank, key);
-        if (!message || !key || !key->text) return;
-        const bool removing = !std::strcmp(key->text, RemoveCaptionKey);
-        if (!removing && std::strcmp(key->text, CaptionKey)) return;
+        if (!message || !key || !key->text || std::strcmp(key->text, CaptionKey)) return;
         // Native initialization only copies bank/key and retains the binding.
         // State 12 bypasses subsequent message-bank resolution in 01aea9c8.
         // Its normal destructor still owns/cleans the initialized message.
@@ -109,7 +104,7 @@ HOOK_DEFINE_TRAMPOLINE(InitializeBagCaption) {
         const auto payload = adapter ? Field<std::uintptr_t>(adapter, 8) : 0;
         const auto setter = methods ? Field<std::uintptr_t>(methods, 0x5e0) : 0;
         if (!payload || (setter != Main(address::SetPaneText) && setter != Main(address::SetGroupText))) return;
-        const auto *caption = BagCaption(removing);
+        const auto *caption = BagCaption();
         unsigned length = 0;
         while (caption[length]) ++length;
         reinterpret_cast<void (*)(std::uintptr_t, const char16_t *, unsigned)>(setter)(payload, caption, length);
@@ -140,6 +135,6 @@ bool ValidateFittingHint() {
 void InstallFittingHint() {
     AppendBagFooterHint::InstallAtOffset(address::AppendFittingFooter);
     InitializeBagCaption::InstallAtOffset(address::InitializeMessage);
-    Logging.Log("[QoL Enhancements/Fitting Room] HINT_READY Y / Add to bag\n");
+    Logging.Log("[QoL Enhancements/Fitting Room] HINT_READY Y / Bag\n");
 }
 } // namespace able_bag

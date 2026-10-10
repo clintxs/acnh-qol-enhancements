@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.70 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.71 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -19,7 +19,9 @@ This avoids that executable-slot collision; compatibility with its eventual
 ACNH v3 release still needs testing. Other mods must also avoid subsdk6 and
 our hook/layout files. Core supplies the suite's only main.npdm.
 
-0.3.70: Corrected the preview shortcut to Y / Set quantity. Favorite uses X
+0.3.71: Restored the fixed Bag hint and added action captions for all 16 locales.
+
+0.3.67: Corrected the preview shortcut to Y / Set quantity. Favorite uses X
 in the workbench preview; recipe-grid controls keep their original bindings.
 
 0.3.66: Press X / Set quantity from the workbench 3D item preview to open
@@ -40,11 +42,10 @@ Catalog: catalog/recipe stars, catalog badges and furniture-variation markers.
 Pockets: Grab 5/10, direct storage withdrawal, Y-to-storage and footer hints.
 Faster Dialogue: faster default reveal; B/R boost; optional NPC/UI/unnamed boost.
 Fitting Room: Y toggles a shopping bag; native bulk checkout includes bag items.
-The footer switches between Y: Add to bag and Y: Remove from bag. Edit the
+The footer always shows the localized Y: Bag action. Edit the
 plain UTF-8 captions in the Fitting Room
 folder at romfs/qol-enhancements/messages/fitting-room.ini, then restart ACNH.
-Use [USen] with fitting_room.add_to_bag=Add to bag and
-fitting_room.remove_from_bag=Remove from bag, or add Pockets-style locale
+Use [USen] with fitting_room.add_to_bag=Bag, or edit the supplied locale
 sections. Missing translations fall back to USen, then built-in English.
 Shopping Card: Nook's Cranny/Able Sisters purchases use combined funds; Nook's
 sales deposit to savings and use the ordinary “Thank you! Please come again!”

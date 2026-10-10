@@ -65,8 +65,17 @@ if archive.exists():
     print('PASS: exact binary ZIP contents and source ZIP excludes generated binaries/game assets')
 
 caption_path = 'QoL Enhancements - Fitting Room/romfs/qol-enhancements/messages/fitting-room.ini'
-assert b'[USen]\nfitting_room.add_to_bag=Add to bag\n' in files[caption_path]
+assert b'[USen]\nfitting_room.add_to_bag=Bag\n' in files[caption_path]
 assert files[caption_path] == (package.ROOT/'modules/Fitting Room/romfs/qol-enhancements/messages/fitting-room.ini').read_bytes()
 print('PASS: editable fitting-room caption ships with Fitting Room independently of Pockets')
 
-assert b'fitting_room.remove_from_bag=Remove from bag\n' in files[caption_path]
+assert b'fitting_room.remove_from_bag=' not in files[caption_path]
+
+import configparser
+captions = configparser.ConfigParser(interpolation=None)
+captions.read_string(files[caption_path].decode('utf-8'))
+assert set(captions.sections()) == {'JPja','USen','USes','USfr','USpt','EUen','EUes','EUfr','EUde','EUit','EUpt','EUnl','EUru','KRko','CNzh','TWzh'}
+for locale in captions.sections():
+    assert list(captions[locale]) == ['fitting_room.add_to_bag']
+    assert captions[locale]['fitting_room.add_to_bag'].strip()
+print('PASS: fixed Bag action caption for all 16 supported locales')
