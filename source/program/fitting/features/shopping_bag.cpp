@@ -1,5 +1,6 @@
 #include "lib.hpp"
 #include "bag_policy.hpp"
+#include "fitting_hint.hpp"
 #include "program/shopping/shopping_card.hpp"
 #include <array>
 #include <cstring>
@@ -617,6 +618,7 @@ HOOK_DEFINE_TRAMPOLINE(Checkout) {
 };
 } // namespace
 bool Install() {
+    if (!ValidateFittingHint()) return false;
     struct Fingerprint { std::uintptr_t address; std::array<std::uint32_t, 4> words; };
     // Generated from the SHA256-checked local 3.0.3 mapped main; all sites must
     // pass before installing any hook. The page input body can already be hooked
@@ -643,6 +645,7 @@ bool Install() {
     }
     Logging.Log("[QoL Enhancements/Fitting Room] INPUT_HOOK_OK writable-data readback\n");
     originalInput = Fn<InputFn>(address::OriginalInput);
+    InstallFittingHint();
     Begin::InstallAtOffset(address::Begin);
     Destroy::InstallAtOffset(address::Destroy);
     Focus::InstallAtOffset(address::Focus);

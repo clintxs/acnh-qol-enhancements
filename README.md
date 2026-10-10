@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.67 corrected crafting shortcut buttons** for ACNH **3.0.3 on Eden**. One Core
+**0.3.68 fitting-room controller hint** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -456,3 +456,22 @@ with independent exact-path allowances when their packages are installed.
 This includes disabled feature configurations because their RomFS layouts
 remain installed. No global resource table is replaced. The 16+ item flashing
 report still needs a Steam Deck retest; local checks do not execute GPU draws.
+
+## Fitting Room caption (0.3.68)
+
+The native fitting-room footer now includes **Y: Add to bag**. Y still toggles
+membership, including removing an already bagged item. Edit the Fitting Room
+module's `romfs/qol-enhancements/messages/fitting-room.ini` to change the label:
+
+```ini
+[USen]
+fitting_room.add_to_bag=Add to bag
+```
+
+Like Pockets, captions use UTF-8 and ACNH locale sections. Lookup uses the active
+locale, then USen, then built-in English. Missing, unreadable or invalid files
+fall back safely; text must be a plain single line without game control codes.
+The shared parser accepts at most 127 UTF-16 units per label; short captions
+are recommended for the footer. Restart ACNH after editing. This message file
+belongs to Fitting Room and does not require the Pockets module to be enabled.
+Update both Core and Fitting Room to receive the feature and default INI.

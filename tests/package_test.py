@@ -63,3 +63,8 @@ if archive.exists():
         assert result.testzip() is None and set(result.namelist()) == set(custom)
         for name, data in custom.items(): assert result.read(name) == data
     print('PASS: exact binary ZIP contents and source ZIP excludes generated binaries/game assets')
+
+caption_path = 'QoL Enhancements - Fitting Room/romfs/qol-enhancements/messages/fitting-room.ini'
+assert b'[USen]\nfitting_room.add_to_bag=Add to bag\n' in files[caption_path]
+assert files[caption_path] == (package.ROOT/'modules/Fitting Room/romfs/qol-enhancements/messages/fitting-room.ini').read_bytes()
+print('PASS: editable fitting-room caption ships with Fitting Room independently of Pockets')

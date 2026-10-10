@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.67 corrected crafting shortcut buttons
+# Unified QoL validation — 0.3.68 fitting-room controller hint
 
 Validated locally on October 10, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,38 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.68 Fitting-room Y hint and editable caption
+
+Append a native KeyGuide descriptor at 03114f28 in the existing fitting-room
+footer rebuild, after A/B/Purchase and before its optional ticket hint. The
+native routine has already checked the footer type; x19 is the footer and x20
+is the owner at this site. The hint uses native Y ID 7 and the owner's player.
+Bounded pool/entry checks reserve a fifth slot for the ticket and reject duplicate
+tokens. Normal native hint-mode caching and UI teardown remain responsible for
+rebuilds/removal; no per-frame append or new input action is registered.
+
+InitializeBagCaption at 01aea210 forwards native initialization for every key.
+For the private fitting_room.add_to_bag token only, set the initialized parser
+state to 12 (no message resolution) and pass the UTF-16 caption through the
+verified pane/group setter at adapter +5e0. Native footer sizing follows. Native
+update and destruction were executed with this state in the regression test;
+no custom ownership pointers or allocations are introduced. The Pockets inline
+caption resolver at 02de4954 remains separate and untouched.
+
+The Pockets UTF-8 catalog parser reads fitting-room.ini once on the first actual
+caption render, with active-locale, USen and built-in English fallbacks. Ordinary
+footer captions do not trigger I/O. FS errors, malformed encoding, duplicates
+and oversized files fall back. The shipped INI provides the requested English
+label and allows users to add localized sections; no speculative translations.
+
+Checks: pinned build; all 64 module subsets at two bases; native fitting footer
+construction and descriptor copying with/without ticket, cached rebuild,
+limited capacity and wrong footer type; native message initialization/update/
+destruction plus modeled final text setter; exact-key routing, pane/group
+bindings, locale fallback, invalid/oversized/missing files and once-only reads.
+The native controller glyph and final caption spacing need an Eden live test.
+No save files were accessed or transaction behavior modified.
 
 ## 0.3.67 Corrected Y quantity shortcut and X Favorite
 
