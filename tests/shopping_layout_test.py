@@ -109,12 +109,18 @@ if palette.balance is not None:
     assert number_material[28:40] == native_number_material[28:40]
     assert number[104:112] == old_panes['T_Num_00'][104:112]
     assert struct.unpack_from('<H', number, 88)[0] != struct.unpack_from('<H', old_panes['T_Num_00'], 88)[0]
-    assert args.palette == 'island' and palette.background == palette.caption
+    assert args.palette in ('island', 'island-inverted') and palette.background == palette.caption
     assert palette.background != (255,255,255,255)
-    assert palette.balance == palette.rim == palette.counter
-    assert all(face > rim for face, rim in zip(palette.face[:3], palette.rim[:3]))
-    assert palette.stripe != palette.rim
-    print('PASS: Island pockets-cream oval/caption, lighter blue card against blue balance/outline/badge, mint stripe, independent number material and unchanged native cash text')
+    if args.palette == 'island':
+        assert palette.balance == palette.rim == palette.counter
+        assert all(face > rim for face, rim in zip(palette.face[:3], palette.rim[:3]))
+        assert palette.stripe != palette.rim
+        print('PASS: Island cream oval/caption/card accents, lighter blue card against blue balance/outline/badge, independent number material and unchanged native cash text')
+    else:
+        island = card.PALETTES['island']
+        assert palette.background == palette.caption == island.rim
+        assert palette.balance == palette.rim == island.background
+        print('PASS: Island Inverted swaps oval, balance, outline and Bells badge colors; native cash text unchanged')
 else:
     assert number_material == native_number_material
 

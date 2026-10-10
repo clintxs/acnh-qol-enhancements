@@ -4,7 +4,7 @@ Coordinates use the same layout units as the original vector design. Sampling
 averages premultiplied color, then stores straight RGBA for the native material.
 No Pillow/image editor or game asset is required to generate these pixels.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 
 PIXELS_PER_UNIT = 2
@@ -25,6 +25,7 @@ class Palette:
     background: tuple | None = None
     balance: tuple | None = None
     caption: tuple | None = None
+    backing: tuple | None = None
 
 
 def linear_rgba(red, green, blue):
@@ -62,6 +63,11 @@ PALETTES = {
                       caption=ISLAND_CREAM),
 }
 
+# Keep both card pictures identical while swapping only the currency UI colors.
+PALETTES['island-inverted'] = replace(
+    PALETTES['island'], rim=ISLAND_CREAM, background=ISLAND_BLUE,
+    balance=ISLAND_CREAM, caption=ISLAND_BLUE, backing=ISLAND_BLUE)
+
 
 def inside(x, y, width, height, radius=0):
     if abs(x) > width / 2 or abs(y) > height / 2:
@@ -73,7 +79,7 @@ def inside(x, y, width, height, radius=0):
 
 def color_at(x, y, backing, palette):
     if backing:
-        return palette.rim if inside(x, y, 94, 66, 15) else None
+        return (palette.backing or palette.rim) if inside(x, y, 94, 66, 15) else None
     if not inside(x, y, 82, 54, 9):
         return None
     color = palette.edge

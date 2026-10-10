@@ -31,6 +31,9 @@ The oval background, Bells caption, card square, both detail lines and stripe
 share the pockets UI's cream (#FFF9E3), sampled from the supplied screenshot.
 The card has a darker blue-teal edge. Its number material is
 separate from ordinary cash, so the native cash counter keeps its original cream digits.
+Island Inverted uses blue for the oval background and Bells text, and cream
+for the balance, oval outline and Bells bubble. Both card pictures remain
+identical to Island, including the blue backing and cream card accents.
 ADB Teal reproduces the working 0.3.16 layout exactly. All retain the same card
 shape, detail positions, native 16:9 canvas and balance animations/sounds.
 

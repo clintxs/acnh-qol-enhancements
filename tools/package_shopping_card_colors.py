@@ -15,6 +15,7 @@ COLOR_LABELS = {
     'hotel-blue': 'Hotel Blue',
     'poki-red': 'Poki Red',
     'island': 'Island',
+    'island-inverted': 'Island Inverted',
 }
 
 
