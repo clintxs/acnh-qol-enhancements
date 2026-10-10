@@ -23,6 +23,7 @@ def layout_asset(name):
 MENU = layout_asset('MenuRecipe')
 HOOKS = (0x267d64, 0x2e9cde0, 0x2e9fbb0, 0x2e9d538, 0x3c58d24, 0x39392b0, 0x32b9fcc, 0x32b9e08, 0x6021a4, 0x39f63f0)
 GUARDS = HOOKS + (0x32bd990, 0x32ba5e4, 0x3dbb160, 0x27d1d0, 0x3a17390, 0x3a174f0, 0x3c66298, 0x2e93798, 0x2e96a80, 0x3c4b880, 0x2ea0754, 0x2b0c810, 0x32ba000, 0x3c4bac4, 0x2b0e20c, 0x32b9750, 0x1513a48, 0x32be2b0, 0x32ba034, 0x192a1f0, 0x19362f4)
+GUARDS += (0x27bfb4, 0x27bfe4, 0x27d550, 0x27e208)
 
 class PreviewMachine(Machine):
     def __init__(self, base):
@@ -247,10 +248,13 @@ class PreviewMachine(Machine):
             self.gpu_depths.append((u.reg_read(UC_ARM64_REG_S0),self.reg(0),self.reg(1),self.reg(2),self.reg(3)))
         elif action == 'capture_data':
             result = self.capture_alpha if self.string(self.reg(1)) == 'CaptureBGAlpha' else 0
-        elif action in ('noop', 'bind', 'frame', 'deactivate'): pass
+        elif action == 'pane_draw': self.drawn.append(self.string(self.reg(0)+0xb0))
+        elif action in ('frame', 'deactivate'):
+            if getattr(self,'native_banner_check',None): self.native_banner_check(self.reg(0))
+        elif action in ('noop', 'bind'): pass
         else: raise AssertionError(action)
         u.reg_write(UC_ARM64_REG_X0, result); u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
-    def phone(self, resident=0, surface=True):
+    def phone(self, resident=0, surface=True, hotel=False):
         phone = self.alloc(0xf6380); page = self.alloc(0x600); grid = self.alloc(0x600)
         methods=self.alloc(0x208); self.write(phone,methods)
         self.write(methods+0x1a0,self.hooks[self.base+0x2e9fbb0])
@@ -269,17 +273,34 @@ class PreviewMachine(Machine):
         self.write(native+0x18,root); self.u.mem_write(root+0xb0,b'RootPane\0')
         self.write(root,self.pane_methods); self.write(root+0x20,root+0x20); self.write(root+0x28,root+0x20)
         panes = {}
-        for name in ('N_QolPreview_00', 'N_QolCapture_00', 'P_QolCapture_00', 'L_BtnList_00', 'L_ScrollBar_00', 'L_Cursor_00', 'N_Recipe_00'):
+        names = ('N_QolPreview_00', 'N_QolCapture_00', 'P_QolCapture_00', 'L_BtnList_00', 'L_ScrollBar_00', 'L_Cursor_00', 'N_Recipe_00')
+        if hotel: names += ('N_Contents_00', 'N_TradeBox_00', 'N_Align_02', 'P_TradeBoxBase_00', 'T_TradeBoxNum_00')
+        for name in names:
             pane = self.alloc(0x200); panes[name] = pane
             self.write(pane + 0x58, 0xa2 if name in ('N_QolPreview_00', 'N_QolCapture_00') else 0xa3, 1)
             self.u.mem_write(pane+0xb0,name.encode()+b'\0'); self.write(pane,self.pane_methods)
             self.write(pane+0x20,pane+0x20); self.write(pane+0x28,pane+0x20)
+            self.u.mem_write(pane+0x48,struct.pack('<4f',1,1,850,750))
             if surface or name != 'N_QolPreview_00': self.panes[(root, name)] = pane
-        children=[v for (r,n),v in self.panes.items() if r==root]
-        for i,pane in enumerate(children):
-            self.write(pane+8,children[i-1]+8 if i else root+0x20)
-            self.write(pane+16,children[i+1]+8 if i+1<len(children) else root+0x20)
-        self.write(root+0x20,children[-1]+8); self.write(root+0x28,children[0]+8)
+        parents = {name: root for name in names if (root,name) in self.panes}
+        if surface: parents['P_QolCapture_00'] = panes['N_QolPreview_00']
+        if hotel:
+            for child,parent in (('N_TradeBox_00','N_Contents_00'),('N_Align_02','N_TradeBox_00'),
+                                 ('P_TradeBoxBase_00','N_Align_02'),('T_TradeBoxNum_00','P_TradeBoxBase_00')):
+                parents[child] = panes[parent]
+            self.u.mem_write(panes['N_TradeBox_00']+0x30,struct.pack('<3f',90,-402,7))
+            self.u.mem_write(panes['N_Align_02']+0x30,struct.pack('<3f',30,0,0))
+            self.u.mem_write(panes['P_TradeBoxBase_00']+0x30,struct.pack('<3f',-60,0,0))
+            self.u.mem_write(panes['P_TradeBoxBase_00']+0x50,struct.pack('<2f',366,100))
+            self.u.mem_write(panes['T_TradeBoxNum_00']+0x100,b'12\0')
+        for parent in (root,*panes.values()):
+            children = [panes[name] for name,p in parents.items() if p==parent]
+            for i,pane in enumerate(children):
+                self.write(pane+0x18,parent)
+                self.write(pane+8,children[i-1]+8 if i else parent+0x20)
+                self.write(pane+16,children[i+1]+8 if i+1<len(children) else parent+0x20)
+            self.write(parent+0x20,children[-1]+8 if children else parent+0x20)
+            self.write(parent+0x28,children[0]+8 if children else parent+0x20)
         self.write(panes['P_QolCapture_00']+0x100,panes['N_QolCapture_00'])
         row = self.alloc(); rows = self.alloc(); self.write(rows, row)
         self.write(grid + 0x208, 1, 4); self.write(grid + 0x210, rows)
@@ -301,6 +322,17 @@ class PreviewMachine(Machine):
         self.hook(0x2e9cde0, phone)
         self.button(page,row,0)
         return phone, page, row, panes
+    def draw_order(self, root, panes):
+        # Real native recursive Pane drawing determines order/visibility;
+        # only individual GPU pane submissions are recorded at the boundary.
+        self.write(self.pane_methods+0xa0,self.base+0x27e140)
+        self.write(self.pane_methods+0xa8,self.stub('pane_draw'))
+        for pane in (root,*panes.values()):
+            self.write(pane+0x5a,255,1); self.write(pane+0x5c,16,1)
+        self.write(root+0x58,0xa3,1)
+        self.drawn=[]
+        self.invoke(self.base+0x27e140,root,0,0)
+        return self.drawn
     @property
     def model_events(self): return [e for e in self.events if e[0]!='native_input']
     def confirm(self, page, resident=0):
@@ -978,6 +1010,75 @@ for base in (0x7100000000, 0x7200000000):
     assert all(m.read(m.module.find('LayerDrawScopes')+i*32)==0 for i in range(8))
     assert m.read(m.module.find('ClearCalls'),4)==13
     print(f'PASS: bounded render diagnostics observe native rejection/success and clear matches without forcing updates; scope ends before release, ASLR {base:#x}')
+
+for base in (0x7100000000, 0x7200000000):
+    m=PreviewMachine(base)
+    phone,page,row,panes=m.phone(hotel=True)
+    banner=panes['N_TradeBox_00']; background=panes['P_TradeBoxBase_00']
+    surface=panes['N_QolPreview_00']; parent=panes['N_Contents_00']
+    root=m.read(parent+0x18)
+    original_links=bytes(m.u.mem_read(banner+8,24))
+    original_position=bytes(m.u.mem_read(banner+0x30,12))
+    original_scale=bytes(m.u.mem_read(banner+0x48,8))
+    def native_banner_check(current):
+        if current==phone:
+            assert bytes(m.u.mem_read(banner+8,24))==original_links
+            assert bytes(m.u.mem_read(banner+0x30,12))==original_position
+    m.native_banner_check=native_banner_check
+    def check_corner(width=850,height=750,box_width=366,box_height=100,scale=(1,1)):
+        assert m.read(banner+0x18)==surface
+        # Background center is -30 in the banner, which remains native.
+        x,y,z=struct.unpack('<3f',m.u.mem_read(banner+0x30,12))
+        assert abs(x+(-30+box_width/2)*scale[0]-(width/2-16))<1e-4
+        assert abs(y-box_height/2*scale[1]-(-height/2+16))<1e-4
+        assert z==7 and bytes(m.u.mem_read(banner+0x48,8))==original_scale
+        order=m.draw_order(root,panes)
+        assert order.index('P_QolCapture_00')<order.index('P_TradeBoxBase_00')<order.index('T_TradeBoxNum_00')
+        assert m.read(surface+0x20)==banner+8  # Banner is the last drawn child.
+        assert m.read(banner+0x58,1)&0x10  # Native matrices marked dirty.
+    m.confirm(page); m.frame(phone); m.frame(phone)
+    check_corner()
+    assert bytes(m.u.mem_read(panes['T_TradeBoxNum_00']+0x100,3))==b'12\0'
+    # Localized/wider content and aspect-mod dimensions remain right/bottom
+    # aligned after another native update; counts/styles are never replaced.
+    m.u.mem_write(background+0x50,struct.pack('<2f',600,100))
+    m.u.mem_write(surface+0x50,struct.pack('<2f',940,840))
+    m.u.mem_write(panes['T_TradeBoxNum_00']+0x100,b'999\0')
+    m.frame(phone); check_corner(940,840,600)
+    assert bytes(m.u.mem_read(panes['T_TradeBoxNum_00']+0x100,4))==b'999\0'
+    m.input(page,0x20); m.frame(phone)
+    native_banner_check(phone)
+    assert not m.read(surface+0x58,1)&1 and m.read(banner+0x58,1)&1
+    order=m.draw_order(root,panes)
+    assert 'P_TradeBoxBase_00' in order and 'P_QolCapture_00' not in order
+    m.input(page,0); m.confirm(page); m.frame(phone); m.frame(phone)
+    check_corner(940,840,600)
+    m.hook(0x2e9d538,phone); native_banner_check(phone)
+    # Native visibility remains authoritative for non-request recipes.
+    m.write(banner+0x58,m.read(banner+0x58,1)&~1,1)
+    m.confirm(page); m.frame(phone); m.frame(phone)
+    assert not m.read(banner+0x58,1)&1
+    assert 'P_TradeBoxBase_00' not in m.draw_order(root,panes)
+    m.hook(0x2e9d538,phone); native_banner_check(phone)
+    # Failed model creation or unsupported banner geometry does not alter
+    # the native hierarchy/placement, and does not stop the preview lifecycle.
+    m.fail_spawn=True; m.confirm(page); m.frame(phone); m.frame(phone)
+    native_banner_check(phone)
+    m.fail_spawn=False
+    for geometry in ('rotation','nan','broken_links'):
+        m.input(page,0)
+        if geometry=='rotation': m.u.mem_write(background+0x44,struct.pack('<f',15))
+        elif geometry=='nan': m.u.mem_write(background+0x50,struct.pack('<f',float('nan')))
+        else: m.write(banner+8,0)
+        m.native_banner_check=None
+        m.confirm(page); m.frame(phone); m.frame(phone)
+        assert m.read(surface+0x58,1)&1 and m.read(banner+0x18)==parent
+        assert bytes(m.u.mem_read(banner+0x30,12))==original_position
+        m.hook(0x2e9d538,phone)
+        m.u.mem_write(banner+8,original_links)
+        m.u.mem_write(background+0x44,struct.pack('<f',0))
+        m.u.mem_write(background+0x50,struct.pack('<f',600))
+    print(f'PASS: Hotel banner drawn after capture at bottom-right; dynamic widths/aspect dimensions, native count/visibility/updates, B/reopen/deactivation restoration and failure guards; ASLR {base:#x}')
 
 for guard in GUARDS:
     m=Machine(0x7100000000,{'crafting':DEFAULT})

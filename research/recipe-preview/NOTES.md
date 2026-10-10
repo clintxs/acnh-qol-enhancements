@@ -29,7 +29,7 @@ constructs a WorkCraftInfoSeq page nor loads WorkBenchInfo/WorkBenchBG resources
 The user accepts the current 0.3.45 result and explicitly requests documenting
 these items for later. This is a backlog, not authorization to implement them now.
 
-1. **Hotel request banner placement/layering.** The DIY app's “Required: X”
+1. **Hotel request banner placement/layering — implemented in 0.3.48.** The DIY app's “Required: X”
    banner is partially covered by the opaque 3D capture surface. In the native
    workbench preview, the banner appears over the lower-right corner of the
    preview. Make it fully visible in that corner in DIY app preview mode while
@@ -489,3 +489,34 @@ identity and both enum languages, then verify fixed input and native setter/
 root/carrier/drawable matrices. They also cover B cleanup, a rotating item after
 a fixed item, 6-degree horizontal movement and a 60-update full turn. GPU output
 and native resource-loaded poses still require the next live Deck test.
+
+
+## Hotel request banner overlay — 0.3.48
+
+The user now authorizes the Hotel banner fix. `MenuRecipe` has the native
+`N_TradeBox_00` group under `N_InOut_00/N_Contents_00`, with `N_Align_02` and
+`P_TradeBoxBase_00` beneath it. The opaque preview picture is a later root child,
+so the old banner was partly hidden. No resource replacement or duplicate text
+is needed: while Showing, move that same banner group after the preview picture
+inside `N_QolPreview_00`. Compute its translated position from the current
+background size/origin, intermediate translations and positive scales, placing
+its bottom/right edges 16 layout units inside the preview. Native localization,
+count, background sizing and visibility are retained.
+
+Before each original phone update, restore the native parent, sibling slot and
+XYZ translation, then place the updated banner again after the original returns.
+B, deactivation and renderer failure preserve/restore the native grid hierarchy.
+Unsupported or missing geometry declines only banner relocation. Intrusive list
+neighbors are checked before each move. Pane translations at +30, scales at +48,
+size at +50, origin at +5B, parent at +18 and child/sibling lists at +20/+08 come
+from native constructor 0027BFB4/0027BFE4 and traversal 0027E208. Dirty bit +58:10
+forces native subtree matrix recomputation (0027D550). Those instruction sites
+are compatibility fingerprints; behavior remains readable C++.
+
+Compiled ARM tests run native recursive Pane drawing, recording individual GPU
+pane submissions at the boundary. At two bases they verify picture-before-banner
+ordering, corner alignment with dynamic widths and changed preview dimensions,
+native text/visibility, repeated native updates, B/reopen/deactivation restoration,
+and no mutation on failed spawn or malformed geometry/links. Existing original
+and aspect-modified layout resources remain byte-preserved. Live placement still
+needs a Steam Deck check.

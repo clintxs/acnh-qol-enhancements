@@ -8,7 +8,8 @@ retired `faster-crafting` paths are ignored. Core alone installs no DIY hooks.
 Defaults: `diy_app_preview=true`, `workbench_preview_tilt=true`,
 `crafting_quantity_wrap=true`, `crafting_speed=3`. Preview and speed are active;
 workbench tilt and quantity wrap are parsed/reserved only and still deferred.
-Hotel banner, initial orientation and recipe navigation follow-ups remain open.
+Hotel banner layering/placement is implemented in 0.3.48. Initial orientation
+and recipe navigation follow-ups remain open.
 
 Speed is the peak of the existing 60-update logarithmic ramp, accepting integer
 1..6 as of 0.3.47. Peak 3 retains the original table exactly; other peaks scale

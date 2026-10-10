@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.47 expanded Crafting speed
+# Unified QoL validation — 0.3.48 Hotel preview banner
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,26 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.48 Hotel preview banner
+
+The existing Hotel Required: X group is temporarily placed after the capture
+picture as the preview’s last child. Its native background bounds determine a
+16-unit bottom/right inset, including dynamic widths, origin and container scale.
+The native text/count, visibility and background style remain authoritative.
+The original parent, sibling order and XYZ position are restored before each
+native phone update and on B/deactivation. Missing/unsupported banner geometry
+or inconsistent list links skip relocation; preview rendering remains available.
+No new hooks or workbench/layout resource replacements are added.
+
+At two ASLR bases, compiled integration tests execute native recursive Pane draw
+order with modeled GPU submissions. They check picture-before-banner layering,
+corner alignment across changing widths/preview dimensions, native content and
+hidden-banner behavior, repeated updates, B/reopen/deactivation cleanup and failed
+model creation or malformed geometry/links. Core activation, full DIY preview
+lifecycle/fixed poses and crafting speed regressions are checked before delivery,
+as are package hashes and source/binary parity. Live Hotel placement needs a
+Steam Deck test; the other documented preview/UI follow-ups remain deferred.
 
 ## 0.3.47 expanded Crafting speed
 

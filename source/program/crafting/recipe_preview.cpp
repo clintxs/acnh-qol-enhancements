@@ -1,6 +1,7 @@
 #include "lib.hpp"
 #include "recipe_preview.hpp"
 #include "recipe_preview_layout.hpp"
+#include "recipe_preview_banner.hpp"
 #include "program/core/page_input.hpp"
 #include <algorithm>
 #include <array>
@@ -371,6 +372,7 @@ struct Session {
     void *phone{}, *layout{}, *surface{}, *capture{}, *gridPane{}, *scrollPane{}, *cursorPane{};
     void *controller{}, *parameters{};
     void *focusedRow{};
+    recipe_banner::Placement hotelBanner{};
     Phase phase{};
     unsigned frames{};
     unsigned rejectedPresses{}, inputReports{}, stickReports{}, rotationReports{};
@@ -445,6 +447,7 @@ bool InputBlocked(Session &s, unsigned blocked) {
     return !masks || (mask & At<unsigned>(masks, field::GlobalBlockMask));
 }
 void Close(Session &s) {
+    recipe_banner::Restore(s.hotelBanner);
     s.stickX = s.stickY = 0;
     if (s.ownsRenderer) {
         ReportRendererTrace();
@@ -536,6 +539,8 @@ HOOK_DEFINE_TRAMPOLINE(BindPhoneRecipes) {
         s.gridPane = Find(root, "L_BtnList_00");
         s.scrollPane = Find(root, "L_ScrollBar_00");
         s.cursorPane = Find(root, "L_Cursor_00");
+        s.hotelBanner.pane = Find(root, "N_TradeBox_00");
+        s.hotelBanner.background = Find(s.hotelBanner.pane, "P_TradeBoxBase_00");
         if (s.gridPane) s.gridFlags = At<unsigned char>(s.gridPane, field::PaneFlags);
         if (s.scrollPane) s.scrollFlags = At<unsigned char>(s.scrollPane, field::PaneFlags);
         if (s.cursorPane) s.cursorFlags = At<unsigned char>(s.cursorPane, field::PaneFlags);
@@ -695,6 +700,9 @@ bool Begin(Session &s) {
 }
 HOOK_DEFINE_TRAMPOLINE(UpdatePhoneRecipes) {
     static void Callback(void *phone) {
+        // Give native layout/Hotel updates their original hierarchy and
+        // position, then anchor the resulting banner above the preview image.
+        if (auto s = ForPhone(phone)) recipe_banner::Restore(s->hotelBanner);
         Orig(phone);
         auto s = ForPhone(phone); if (!s) return;
         if (s->phase == Phase::Closing) { Close(*s); return; }
@@ -702,7 +710,10 @@ HOOK_DEFINE_TRAMPOLINE(UpdatePhoneRecipes) {
             if (!Begin(*s)) { s->phase = Phase::Idle; Logging.Log("[QoL Enhancements/Crafting] DIY preview: renderer busy/unavailable; grid retained\n"); }
             return;
         }
-        if (s->phase == Phase::Showing) RotatePreview(*s);
+        if (s->phase == Phase::Showing) {
+            recipe_banner::Place(s->hotelBanner, s->surface);
+            RotatePreview(*s);
+        }
         if (s->phase == Phase::Showing && ++s->frames == 30) {
             ReportRendererTrace();
             Logging.Log("[QoL Enhancements/Crafting] DIY preview: renderer status; handle=%u flags=%u state=%d\n",
@@ -727,6 +738,8 @@ HOOK_DEFINE_TRAMPOLINE(UpdatePhoneRecipes) {
         s->tilt = s->stickX = s->stickY = 0;
         Visible(s->gridPane, false); Visible(s->scrollPane, false); Visible(s->cursorPane, false);
         Visible(s->capture, true); Visible(s->surface, true); s->phase = Phase::Showing;
+        if (recipe_banner::Place(s->hotelBanner, s->surface))
+            Logging.Log("[QoL Enhancements/Crafting] DIY preview: Hotel banner over preview bottom-right\n");
         Logging.Log("[QoL Enhancements/Crafting] DIY preview: item model created; handle=%u\n", At<unsigned>(s->controller, field::ModelHandle));
     }
 };
@@ -753,6 +766,11 @@ bool InstallRecipePreview() {
         {0x03a17390, {0xa9bd7bfd, 0xa90157f6, 0xa9024ff4, 0x910003fd, 0xd00085c8}},
         {0x03a174f0, {0xa9bd7bfd, 0xa90157f6, 0xa9024ff4, 0x910003fd, 0xd00085c8}},
         {0x0027d1d0, {0xa9bd7bfd, 0xf9000bf5, 0xa9024ff4, 0x910003fd, 0xaa0003f4}},
+        // Hotel overlay uses Pane geometry, the matrix dirty flag and ordered children.
+        {0x0027bfb4, {0xbd4002c0, 0xbd003260, 0xbd4006c0, 0xbd003660, 0xbd400ac0}},
+        {0x0027bfe4, {0xbd400380, 0xbd004a60, 0xbd400780, 0xbd004e60, 0xf9401e88}},
+        {0x0027d550, {0x121c0109, 0x2a491069, 0x36000d89, 0x121b7908, 0xaa1303e0}},
+        {0x0027e208, {0x910082b6, 0xf94016b5, 0xeb1602bf, 0x54ffff20, 0xd503201f}},
         {0x03c66298, {0xf9402c00, 0xaa0203f5, 0xaa0103f4, 0xf9000fbf, 0xb40000a0}},
         {0x02e93798, {0x528000a8, 0x9a9f1102, 0x94231d66, 0x395ed2a8, 0xf902ba60}},
         {0x02e96a80, {0xf9410808, 0xf942c109, 0xb4000789, 0xf940042b, 0xb400074b}},
