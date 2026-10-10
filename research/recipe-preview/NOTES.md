@@ -758,3 +758,35 @@ It exercises resident 4, wrong profile/page, blocked/consumed/dead-zone input,
 tilting limits, stable native matrices/effects, native horizontal writes and
 fixed category bypass at both ASLR bases. GPU visuals and native horizontal
 input dispatch remain live validation boundaries.
+
+## Separate background index from controller profile — 0.3.56
+
+The 0.3.55 live log confirms installation/setting true but no vertical input
+messages, and the user confirms no tilt. Correction to the previous section:
+034951BC's 3 indexes an array at **context +40**, via +3*8. It toggles the
+selected background page's +239 visibility flag. It never writes controller
++50 and therefore does not establish the item model profile. Do not use that
+constant as a controller guard or describe it as a verified native profile.
+
+Use the existing WorkCraftInfo concrete page identity to scope input. Accept
+its current controller profile only if 032BD990's native mask accepts it:
+mode <18 and (0x32DEC & (1<<mode)). Fingerprint the mask instructions at
+032BD9CC instead of the unrelated background-page selection. Publish current
+profile/handle/controller together; scene ownership requires all to still match.
+Owned DIY controller remains excluded. No mode changes, extra input consumption
+or native dispatch suppression. The fixture exercises all accepted profiles,
+using profile 6/root-mode 4 for its initial example; this is a compatibility
+fixture, not a claim that the live workbench selects profile 6.
+
+The first 16 unique page-vtable/profile pairs with vertical right-stick motion
+are logged before filtering, with row, model state/handle/flags, consumed axes
+and dispatch blocking. Recognized workbench binding changes log selected row
+and page/global blocking. First four vertical movements per item and first
+four successful scene writes provide positive evidence across input and scene
+boundaries. Diagnostics do not alter input. This removes the mistaken hardcoded
+profile guard, but further live validation is required.
+
+A scene-side probe independently logs the first eight live native item-root
+handles (controller mode/state, framing state and child count), excluding the
+owned DIY renderer. This establishes the live model profile even if the shared
+page dispatcher is not reached. It runs only when workbench tilt is enabled.

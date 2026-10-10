@@ -63,7 +63,11 @@ constexpr std::size_t EntityKind = 0x15c, ItemChildren = 0x274, ItemChildCount =
 constexpr std::size_t EntityPhase = 0x288, EntityStage = 0x5e8;
 constexpr std::size_t ItemPoseState = 0x39c, ItemData = 0x360;
 }
-constexpr unsigned DiyModelMode = 2, WorkbenchModelMode = 3;
+constexpr unsigned DiyModelMode = 2;
+// CreateItemModel accepts these profiles (032BD990); the current profile is
+// owned by native UI scheduling. A background-page index is a separate enum.
+constexpr unsigned ItemModelProfiles = 0x32decu;
+bool IsItemModelProfile(unsigned mode) { return mode < 18 && (ItemModelProfiles & (1u << mode)); }
 constexpr unsigned ConfirmMask = 0x10, BackMask = 0x20, PhoneShortcutKind = 5;
 // Native 03C49700/03C49710 route kinds 2/3 to X, kinds 0/1 to Y.
 // These are logical UI button bits, including synthesized stick directions.
@@ -115,11 +119,13 @@ std::atomic<unsigned> TransformCalls{}, TransformAttempts{}, TransformApplied{},
 
 bool ActorHookInstalled{}, DiyHooksInstalled{};
 std::atomic<void *> WorkbenchController{};
-std::atomic<unsigned> WorkbenchHandle{}, WorkbenchTiltAngle{};
+std::atomic<unsigned> WorkbenchHandle{}, WorkbenchTiltAngle{}, WorkbenchMode{};
+std::atomic<unsigned> WorkbenchAppliedReports{};
+std::atomic<bool> WorkbenchTiltEnabled{};
 // Input state belongs to the UI dispatcher; carrier state belongs to the scene.
 struct WorkbenchInputState {
     void *controller{}, *page{};
-    unsigned handle{};
+    unsigned handle{}, mode{};
     std::uint64_t item{};
     float tilt{};
     unsigned rotationReports{};
@@ -335,10 +341,27 @@ void *WorkbenchActor(void *actor) {
         At<unsigned>(actor, field::EntityKind) != PreviewActorKind ||
         (At<unsigned>(actor, field::EntityFlags) & 2) ||
         At<unsigned>(controller, field::ModelHandle) != handle ||
-        At<unsigned>(controller, field::ModelMode) != WorkbenchModelMode ||
+        At<unsigned>(controller, field::ModelMode) != WorkbenchMode.load(std::memory_order_acquire) ||
         At<int>(controller, field::ModelState) != 1 ||
         controller == PreviewController.load(std::memory_order_acquire)) return nullptr;
     return controller;
+}
+void TraceWorkbenchModel(void *actor) {
+    if (!WorkbenchTiltEnabled.load(std::memory_order_acquire) || !actor ||
+        At<unsigned>(actor, field::EntityKind) != PreviewActorKind) return;
+    auto context = UiContext();
+    auto controller = context ? At<void *>(context, field::Controller) : nullptr;
+    const auto handle = At<unsigned>(actor, field::EntityHandle);
+    if (!controller || controller == PreviewController.load(std::memory_order_acquire) ||
+        !handle || At<unsigned>(controller, field::ModelHandle) != handle) return;
+    // Scene-thread-only, bounded evidence even if no page-input binding matches.
+    static std::array<unsigned, 8> seen{};
+    static unsigned count{};
+    if (count == seen.size() || std::find(seen.begin(), seen.end(), handle) != seen.end()) return;
+    seen[count++] = handle;
+    Logging.Log("[QoL Enhancements/Crafting] workbench tilt: model probe; mode=%u state=%d root=%u pose=%u children=%u\n",
+                At<unsigned>(controller, field::ModelMode), At<int>(controller, field::ModelState), handle,
+                At<unsigned>(actor, field::ItemPoseState), At<unsigned>(actor, field::ItemChildCount));
 }
 void *PreviewCarrier(void *actor, unsigned index) {
     const auto count = At<unsigned>(actor, field::ItemChildCount);
@@ -394,6 +417,9 @@ void ApplyWorkbenchTilt(void *actor) {
         setAngles(component, pose.applied.data());
         At<std::uint64_t>(component, field::ComponentAngles) = 0;
         At<unsigned>(component, field::ComponentAngles + 8) = 0;
+        if (WorkbenchAppliedReports.fetch_add(1, std::memory_order_relaxed) < 4)
+            Logging.Log("[QoL Enhancements/Crafting] workbench tilt: scene applied; root=%u carrier=%u pitch=%08x\n",
+                        At<unsigned>(actor, field::EntityHandle), pose.handle, pose.applied[0]);
     }
 }
 // Use primary scene rotation, as native item-viewer yaw does (032BF898 -> 0358DCB8).
@@ -401,6 +427,7 @@ void ApplyWorkbenchTilt(void *actor) {
 // secondary viewing angles +2BC rotate drawing but never reach that effect state.
 HOOK_DEFINE_TRAMPOLINE(UpdatePreviewActor) {
     static void Callback(void *actor) {
+        TraceWorkbenchModel(actor);
         const bool framing = actor && At<unsigned>(actor, field::ItemPoseState) == 2;
         RestoreWorkbenchPose(actor);
         Orig(actor); // Finish native item/category framing and child creation first.
@@ -800,28 +827,60 @@ float StickAxis(float value) {
 bool WorkbenchTiltInput(void *page, void *snapshot, unsigned blocked) {
     auto context = UiContext();
     auto controller = context ? At<void *>(context, field::Controller) : nullptr;
+    // Log before ownership/state/consumption guards, once for each page/mode
+    // combination with vertical input (bounded globally to 16). This reveals
+    // rejected native bindings without changing or consuming their input.
+    struct InputProbe { std::uintptr_t pageClass{}; unsigned mode{}; };
+    static std::array<InputProbe, 16> probes{};
+    static unsigned probeCount{};
+    if (page && controller && snapshot && probeCount < probes.size()) {
+        const auto count = At<unsigned>(snapshot, 8);
+        auto rows = At<std::byte *>(snapshot, 0x10);
+        const auto pageClass = At<std::uintptr_t>(page);
+        const auto mode = At<unsigned>(controller, field::ModelMode);
+        bool seen = false;
+        for (unsigned i = 0; i < probeCount; ++i) seen |= probes[i].pageClass == pageClass && probes[i].mode == mode;
+        if (!seen && rows && count <= 8) for (unsigned i = 0; i < count; ++i) {
+            auto row = rows + i * 0x48;
+            if (!StickAxis(At<float>(row, field::RightStick + 4))) continue;
+            probes[probeCount++] = {pageClass, mode};
+            Logging.Log("[QoL Enhancements/Crafting] workbench tilt: input probe; page=main+%lx mode=%u state=%d handle=%u flags=%u row=%u y=%d consumed=%u blocked=%u\n",
+                        pageClass - Main, mode, At<int>(controller, field::ModelState),
+                        At<unsigned>(controller, field::ModelHandle), At<unsigned char>(controller, field::ModelFlags),
+                        i, int(At<float>(row, field::RightStick + 4) * 1000), At<unsigned>(row, field::ConsumedAxes), blocked);
+            break;
+        }
+    }
     if (!page || !controller || controller == PreviewController.load(std::memory_order_acquire) ||
-        At<unsigned>(controller, field::ModelMode) != WorkbenchModelMode ||
+        !IsItemModelProfile(At<unsigned>(controller, field::ModelMode)) ||
         At<int>(controller, field::ModelState) != 1) return false;
-    // WorkCraftInfoSeq selects mode 3 in 034951BC. Its page is constructed
-    // with this vtable by 0346E7E8 and dispatches through SharedPageInput.
+    // WorkCraftInfo's page is constructed with this vtable by 0346E7E8 and
+    // dispatches through SharedPageInput. 034951BC selects background page 3,
+    // not the item controller's profile; retain the native-selected profile.
     // Controller +60 is the nested /L_LoadingIcon_00 (0346E9C0), NOT one of
     // page +3F8's top-level wrappers. The former array check rejected it.
     if (At<std::uintptr_t>(page) != Main + address::WorkbenchPageVtable) return false;
     const auto handle = At<unsigned>(controller, field::ModelHandle);
+    const auto mode = At<unsigned>(controller, field::ModelMode);
     const auto item = At<std::uint64_t>(controller, field::CompletedItem); // Native completed item request.
     auto &state = WorkbenchInputState;
-    if (state.controller != controller || state.page != page || state.handle != handle ||
-        state.item != item || !handle || (At<unsigned char>(controller, field::ModelFlags) & MaterialPending))
-        state = {controller, page, handle, item, 0, 0};
+    const bool bindingChanged = state.controller != controller || state.page != page || state.handle != handle ||
+        state.mode != mode || state.item != item;
+    if (bindingChanged || !handle || (At<unsigned char>(controller, field::ModelFlags) & MaterialPending))
+        state = {controller, page, handle, mode, item, 0, 0};
     WorkbenchTiltAngle.store(static_cast<unsigned>(static_cast<std::int32_t>(state.tilt * AngleUnitsPerDegree)), std::memory_order_relaxed);
     WorkbenchHandle.store(handle, std::memory_order_relaxed);
+    WorkbenchMode.store(mode, std::memory_order_relaxed);
     WorkbenchController.store(controller, std::memory_order_release);
     auto hint = At<void *>(page, field::ShortcutHint);
     auto key = hint ? At<void *>(hint, field::HintInput) : nullptr;
     const auto rowIndex = key ? At<unsigned>(key, field::InputRow) : 8;
     Session inputScope{}; inputScope.layout = page;
-    if (!handle || !snapshot || rowIndex >= 8 || InputBlocked(inputScope, blocked) ||
+    const bool inputBlocked = InputBlocked(inputScope, blocked);
+    if (bindingChanged)
+        Logging.Log("[QoL Enhancements/Crafting] workbench tilt: bound; mode=%u handle=%u row=%u flags=%u blocked=%u\n",
+                    mode, handle, rowIndex, At<unsigned char>(controller, field::ModelFlags), unsigned(inputBlocked));
+    if (!handle || !snapshot || rowIndex >= 8 || inputBlocked ||
         (At<unsigned char>(controller, field::ModelFlags) & MaterialPending)) return false;
     const auto count = At<unsigned>(snapshot, 8);
     auto rows = At<std::byte *>(snapshot, 0x10);
@@ -1254,7 +1313,7 @@ bool InstallWorkbenchPreviewTilt() {
         {address::Atan2, {0xb0005ef0, 0xf940ba11, 0x9105c210, 0xd61f0220, 0xb0005ef0}},
         {0x005f7b4c, {0xb9400028, 0xb902b008, 0xb9400428, 0xb902b408, 0xb9400828}},
         {0x019282fc, {0xd10103ff, 0xa9017bfd, 0xf90013f5, 0xa9034ff4, 0x910043fd}},
-        {0x034951b8, {0xb000b0f5, 0x52800069, 0xf9411ab5, 0xb9000be9, 0xf94002a8}},
+        {0x032bd9cc, {0x1ac82128, 0x5285bd89, 0x72a00069, 0x0a090108, 0x7a409904}},
         {0x0346e7d8, {0xf902ce9f, 0x9100414a, 0xf902d29f, 0xb9004a88, 0xf900028a}},
     };
     const auto &main = exl::util::GetMainModuleInfo();
@@ -1270,9 +1329,10 @@ bool InstallWorkbenchPreviewTilt() {
     }
     Main = main.m_Text.m_Start;
     if (!core::RegisterPageInput(WorkbenchTiltInput)) return false;
+    WorkbenchTiltEnabled.store(true, std::memory_order_release);
     if (!ActorHookInstalled) UpdatePreviewActor::InstallAtOffset(address::UpdateItemActor);
     ActorHookInstalled = true;
-    Logging.Log("[QoL Enhancements/Crafting] workbench tilt: READY; WorkCraftInfo mode 3; right-stick up/down; native horizontal controls; fixed surfaces/fences\n");
+    Logging.Log("[QoL Enhancements/Crafting] workbench tilt: READY; native-selected item profile; input binding probes; right-stick up/down\n");
     return true;
 }
 

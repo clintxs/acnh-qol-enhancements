@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.55 workbench tilt binding
+# Unified QoL validation — 0.3.56 workbench profile correction and diagnostics
 
 Validated locally on October 10, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,32 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.56 Native-selected workbench profile and input diagnostics
+
+The user reports that 0.3.55 still does not tilt. The synced log confirms
+BOOT_OK 0.3.55 and the enabled setting, but no vertical-input log entries.
+Further disassembly corrects the previous release's interpretation: 034951BC
+indexes context +40's background pages and changes page visibility. It never
+writes controller +50. Background page index 3 is not a model profile.
+
+Retain the concrete WorkCraftInfo page guard, and accept its current native
+item profile using the exact 032BD990 mask (0x32DEC, modes below 18). Publish
+that mode with the full model handle; the scene hook requires that both still
+match. Exclude the owned DIY controller. Do not change native mode selection.
+The fixture exercises every accepted profile on the workbench page and rejects
+the phone profile and unrelated pages. Layout allocation and native horizontal
+dispatch remain modeled, so these tests do not identify the live profile.
+
+Log vertical input before all ownership/state/consumption guards, bounded to
+16 unique page-class/profile pairs per boot. For matching workbench pages, log
+binding changes with resident row/loading/blocking state and the first four
+vertical movements per item; log the first four successful scene applications.
+Also log the first eight native item-root handles independently of input binding.
+These diagnostics distinguish rejected input bindings, blocked/consumed axes
+and scene propagation without consuming or modifying native input. The new
+build requires another live workbench test; it is not a confirmed live fix.
+The user-confirmed DIY flicker fix and all setting defaults remain unchanged.
 
 ## 0.3.55 Workbench tilt binding fix
 

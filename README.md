@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.55 workbench tilt binding fix** for ACNH **3.0.3 on Eden**. One Core
+**0.3.56 workbench tilt binding fix** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -63,14 +63,14 @@ fingerprints only, checked before each feature's first hook.
 Install **QoL Enhancements - Crafting** with Core. This replaces the former
 Faster Crafting package; remove the old folder and rename personal
 `faster-crafting.custom.ini` preferences to `crafting.custom.ini`. Remove any old
-`version` override from that personal file (or update it to 0.3.55). The retired
+`version` override from that personal file (or update it to 0.3.56). The retired
 regular/custom paths are no longer read. Core alone no longer enables DIY previews.
 
 `romfs/qol-enhancements/config/crafting.ini` supplies these defaults:
 
 ```ini
 enabled = true
-version = 0.3.55
+version = 0.3.56
 diy_app_preview = true
 workbench_preview_tilt = true
 crafting_quantity_wrap = true
@@ -251,7 +251,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.55
+version = 0.3.56
 base_speed = 2
 boost_speed = 4
 faster_ui = false

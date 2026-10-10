@@ -1544,12 +1544,12 @@ def workbench_tilt_fixture(base):
     input_context=m.alloc(); m.write(page+0x210,input_context)
     hint=m.alloc(); key=m.alloc(); m.write(page+0x570,hint); m.write(hint+0xa0,key)
     m.write(key+0x10,4,4)  # Test a nonzero resident row.
-    # 034951BC selects profile 3; profile 2 belongs to our DIY renderer.
-    assert struct.unpack_from('<I',RAW,0x34951bc)[0]==0x52800069
-    m.write(m.controller+0x60,loading); m.write(m.controller+0x50,3,4)
+    # 034951BC indexes background pages at context +40, not controller +50.
+    # Exercise an accepted item profile that differs from the old hardcoded 3.
+    m.write(m.controller+0x60,loading); m.write(m.controller+0x50,6,4)
     m.write(m.controller+0x10,1,4); m.write(m.controller+0x6c,0x12345,4)
     item=7498; m.write(m.controller+0x94,item); m.write(root+0x360,item)
-    m.write(root+0x174,2,4)  # Profile 3's native item-root mode (0408E920).
+    m.write(root+0x174,4,4)  # Profile 6 maps to root mode 4 (0408E92C).
     m.write(root+0x39c,0,4); m.write(root+0x3a0,0xfffe,2)
     default=m.alloc(); m.write(default,0xfffe); m.write(base+0x4ab37e0,default)
     sentinel=m.alloc(); m.write(sentinel,0xfffe,2); m.write(base+0x4ab3170,sentinel)
@@ -1590,10 +1590,23 @@ def workbench_tilt_fixture(base):
     m.write(m.controller+0x74,4,1); input(1); tick(); assert m.read(angle,4)==0
     m.write(m.controller+0x74,0,1); m.write(m.controller+0x94,item+1)
     input(); tick(); assert m.read(angle,4)==0
-    for location,value,size in ((m.controller+0x50,2,4),(page,base+0x4a3b778,8),(m.controller+0x6c,0,4)):
+    for location,value,size in ((m.controller+0x50,26,4),(page,base+0x4a3b778,8),(m.controller+0x6c,0,4)):
         old=m.read(location,size); m.write(location,value,size)
         before=m.read(angle,4); input(1); tick(); assert m.read(angle,4)==before, (hex(location),value,before,m.read(angle,4))
         m.write(location,old,size)
+    # Accept the native item-profile mask only on the concrete workbench page.
+    # Never interpret background index 3 as the controller's current profile.
+    accepted=[mode for mode in range(18) if (0x32dec >> mode)&1]
+    for mode in accepted:
+        m.write(m.controller+0x50,mode,4)
+        input(1); tick(); assert m.read(angle,4)!=0, mode
+    m.write(m.controller+0x50,6,4)
+    input(); tick()
+    probes=[line for line in m.logs if 'workbench tilt: input probe;' in line]
+    assert probes and any('mode=6 ' in line for line in probes)
+    before=len(probes)
+    for _ in range(20): input(1)
+    assert len([line for line in m.logs if 'workbench tilt: input probe;' in line])==before
     # Read real runtime BCSV kinds; all four fixed categories stay untouched.
     rows=m.alloc(); table=m.alloc(0x220); slot=m.alloc(); m.write(slot,table); m.write(base+0x4ac0428,slot)
     m.write(table+0x1f8,item,2); m.write(table+0x1d8,1,4); m.write(table+0x1e0,rows)
@@ -1607,7 +1620,7 @@ def workbench_tilt_fixture(base):
         m.write(row+4,zlib.crc32(kind.encode()),4)
         input(1); tick(); saved=bytes(m.u.mem_read(component+0x2b0,24))
         input(1); tick(); assert bytes(m.u.mem_read(component+0x2b0,24))==saved
-    print(f'PASS: native workbench page/visibility getters and profile-3 binding, resident input/native dispatch retained, tilt limits/dead zone/blocking, stable primary pose/effect angles, native yaw changes, pending-item reset and fixed categories; layout allocation and yaw dispatch modeled; ASLR {base:#x}')
+    print(f'PASS: native workbench page/visibility getters and native-selected profile binding, resident input/native dispatch retained, tilt limits/dead zone/blocking, stable primary pose/effect angles, native yaw changes, pending-item reset and fixed categories; layout allocation and yaw dispatch modeled; ASLR {base:#x}')
 
 for base in (0x7100000000,0x7200000000): workbench_tilt_fixture(base)
 
