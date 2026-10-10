@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.60 fitting-room rendering fix
+# Unified QoL validation — 0.3.61 crafting quantity wrap timing
 
 Validated locally on October 10, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,29 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.61 Shorter pause after a fresh endpoint wrap
+
+The user confirms the 0.3.59 pause/resume behavior and requests a shorter pause,
+approximately 200 ms. Change only the fresh-wrap deadline from 9,600,000 ticks
+(500 ms) to 3,840,000 ticks (200 ms). Native repeat takes over at expiry; holds
+that reach an endpoint from inside the range still require release to wrap.
+
+The native 03C4B20C repeat handler counts input updates using snapshot+0x18 /
++0x1c timing parameters (or context overrides), rather than a fixed millisecond
+delay. Its exact live quantity-page timing has not been established; 200 ms is
+the requested tuning value, not a claimed measurement of the game's default.
+
+ARM regressions cover both crafting/cooking pages, both directions, d-pad and
+stick, and 30/60/120 Hz: remain paused through tick 3,839,999, resume at
+3,840,000, stop at the next endpoint, cancel on release and restart a fresh
+pause. In-range repeat and input ownership remain covered. System time and
+controller samples are modeled; live feel still requires a Steam Deck retest.
+
+Validation: pinned offline build; nine host suites; all 64 module subsets at
+two ASLR bases; preview/quantity fixtures; 30,700 crafting/cooking cases;
+630 Pockets and 190 storage-hint cases. All pass. Release ZIP integrity,
+manifest hashes and extracted/deployed/source parity are verified separately.
 
 ## 0.3.60 Fitting-room badge rendering load and resource allowance
 

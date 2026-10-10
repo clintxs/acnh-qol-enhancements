@@ -33,7 +33,7 @@ struct InputState {
 };
 constexpr float StickPressThreshold = 0.5f, StickReleaseThreshold = 0.15f;
 // Horizon's system timer runs at 19.2 MHz (nn::os::detail::TickManagerImpl).
-constexpr std::uint64_t WrapPauseTicks = 19'200'000 / 2; // 500 ms, independent of UI frame rate.
+constexpr std::uint64_t WrapPauseTicks = 19'200'000 / 5; // 200 ms, independent of UI frame rate.
 std::array<InputState, 4> Inputs{};
 unsigned NextSlot{};
 unsigned WrapReports{};
@@ -123,7 +123,7 @@ bool QuantityInput(void *page, void *snapshot, unsigned blocked) {
             PauseVerticalInput(row);
         else
             state.wrapPaused = false;
-        // After 500 ms, hand the still-held direction back to native repeat.
+        // After 200 ms, hand the still-held direction back to native repeat.
         // Keep the wrap latch disarmed so the next boundary still stops.
         return false;
     }

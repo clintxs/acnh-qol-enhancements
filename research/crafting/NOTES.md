@@ -303,3 +303,17 @@ Tests run real 03C4B20C timers and 03762978 / 0375FD8C movement at modeled
 30/60/120 Hz with exact 500 ms boundary assertions, both directions and controls,
 both exact crafting/cooking pages, hold-to-next-boundary stopping, early release
 and timer restart, unchanged in-range input and consumed input at expiry.
+
+
+## Fresh-wrap timing adjustment — 0.3.61
+
+User confirmed the 0.3.59 behavior and requested approximately 200 ms instead
+of 500 ms. WrapPauseTicks is now 19,200,000 / 5 = 3,840,000. The neutral-input
+pause, release cancellation, one-wrap-per-gesture latch and native repeat
+resumption are unchanged. Tests cover the exact deadline at 30/60/120 Hz and
+restart after early release, with the same native repeat/movement fixture.
+
+Native 03C4B20C uses update-count initial/repeat parameters from snapshot+0x18
+and +0x1c, unless its input context overrides them. 200 ms is requested tuning;
+we have not measured the live quantity page's native delay. The fixture's 12/4
+repeat parameters are modeled inputs, not evidence of exact native defaults.
