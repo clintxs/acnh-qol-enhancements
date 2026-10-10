@@ -1,4 +1,4 @@
-# Shopping Card themes — QoL Enhancements 0.3.75 / ACNH 3.0.3
+# Shopping Card themes — QoL Enhancements 0.4.0 / ACNH 3.0.3
 
 Install the normal QoL Enhancements 0.3.23 or newer Core and Shopping Card first.
 This download contains optional appearance replacements, not a standalone mod.

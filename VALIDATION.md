@@ -1969,3 +1969,23 @@ Validation:
 
 No version bump or release archive was created. Live Eden log appearance remains
 unverified; the local checks execute compiled ARM with modeled engine services.
+
+
+## 0.4.0 release test build (2026-10-10)
+
+Bumped Core and all six feature markers to 0.4.0, updated current installation
+examples and release notes, and made compiled Core/logging fixtures read the
+release version from the source. Future-version fixtures now use 0.5.0.
+
+Validation: the pinned Docker toolchain rebuilt the shipping configuration
+with diagnostic dialogue tracing disabled. The full Core check group passed:
+host regressions, compiled logging policy, all 64 module combinations at two
+ASLR bases, version compatibility, regular/custom layering, and native recipe
+preview/workbench/input regressions. Package-content checks passed for all
+seven folders, feature versions, default Core settings, SHA-256 manifest,
+reviewed resource hashes and all 16 fitting-room caption locales.
+
+The binary suite, source and optional custom-dialogue example are packaged
+separately as 0.4.0 archives; previous releases are preserved. This is a local
+release test build for ACNH 3.0.3 on Eden. Live testing of the new defaults,
+speed limits and logging is still required before public release.

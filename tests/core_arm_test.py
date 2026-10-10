@@ -4,13 +4,16 @@ FS, hook installation, writable aliases and cache services are modeled. Every
 module installer and its validation run from the final ELF. No game/save writes.
 """
 from itertools import product
+import re
 from unicorn import Uc, UC_ARCH_ARM64, UC_MODE_ARM, UC_HOOK_CODE, UC_HOOK_MEM_WRITE
 from unicorn.arm64_const import *
 from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
 SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'shopping-card', 'crafting')
 COUNTS = (16, 15, 7, 13, 11, 17)  # Pockets/Crafting share one additional Core input hook.
-DEFAULT = b'enabled=true\nversion=0.3.75\n'
+RELEASE_VERSION = re.search(r'ReleaseVersion\[\] = "(\d+\.\d+\.\d+)"',
+                            (ROOT / 'qol-enhancements/source/program/core/release.hpp').read_text())[1]
+DEFAULT = f'enabled=true\nversion={RELEASE_VERSION}\n'.encode()
 
 def expected_hook_count(machine, enabled):
     # The existing verbose-dialogue build adds a Catalog message trace hook.
@@ -155,7 +158,7 @@ def check_all_subsets():
 def check_errors():
     for slug in SLUGS:
         for data, expected in ((b'enabled=true\nversion=0.0.9', 'below minimum'),
-                               (b'enabled=true\nversion=0.4.0', 'newer than Core'),
+                               (b'enabled=true\nversion=0.5.0', 'newer than Core'),
                                (b'enabled=false\nversion=0.0.1', 'enabled=false'),
                                (b'enabled=true', 'config invalid'),
                                (b'x' * 4097, 'config invalid'),
@@ -163,7 +166,7 @@ def check_errors():
             m = Machine(0x7100000000, {slug: data})
             m.boot(); m.activate()
             assert expected in m.text, m.text
-            if b'version=0.4.0' in data:
+            if b'version=0.5.0' in data:
                 assert 'BOOT_OK' in m.text and 'enabled_modules=1' in m.text
             else:
                 assert len(m.hooks) == 2 + (slug in ('shopping-card', 'fitting-room')) and m.read(m.base + 0xbc4140, 4) == 0x52803848

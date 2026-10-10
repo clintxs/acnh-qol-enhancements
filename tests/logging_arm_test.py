@@ -1,6 +1,6 @@
 """Verify shipping log filtering and Core overlays through the compiled loader."""
 from itertools import product
-from core_arm_test import Machine, DEFAULT, SLUGS, expected_hook_count
+from core_arm_test import Machine, DEFAULT, SLUGS, RELEASE_VERSION, expected_hook_count
 
 
 def machine(base, files):
@@ -28,7 +28,7 @@ def check():
             files = dict(modules, core=b'log_versions=false\nlog_settings=false\nlog_debug=false', **{'core.custom': config})
             m = machine(base, files)
             assert ('Core:' in m.text) == versions, m.text
-            assert ('Catalog: 0.3.75' in m.text) == versions, m.text
+            assert (f'Catalog: {RELEASE_VERSION}' in m.text) == versions, m.text
             assert ('settings:' in m.text) == settings, m.text
             assert ('BOOT_OK' in m.text) == debug, m.text
             assert ('STACKS_READY' in m.text) == debug, m.text
