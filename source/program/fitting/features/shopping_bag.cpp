@@ -29,6 +29,7 @@ constexpr unsigned Player = 0x1f8, Page = 0x210, State = 0x1b0;
 constexpr unsigned Command = 0x1c318, Stock = 0x1c340, StockCount = 0x1c338;
 constexpr unsigned IndexCapacity = 0x1c358, Indices = 0x1c360, IndexCount = 0x1c368;
 constexpr unsigned Outfit = 0x1c36c, PriceState = 0x1c330;
+constexpr unsigned FooterMode = 0x1c4f4;
 constexpr unsigned HasStorage = 0x1c4c0, NativeTotal = 0x1c4c8;
 constexpr unsigned List = 0x590, Rows = 0x210, RowCount = 0x208;
 }
@@ -43,6 +44,7 @@ struct Session {
     PressEdge edge{};
     int focus = -1, inputRow = -1;
     bool dirty = true;
+    bool footerRemoving = false;
     const char *notice = "Y: Add/remove bag (test)";
 };
 Session session;
@@ -457,6 +459,10 @@ void HandleInput(std::uintptr_t page, std::uintptr_t snapshot, unsigned blocked)
     if (result == ToggleResult::Added || result == ToggleResult::Removed) {
         StartBadgeMotion(item, result == ToggleResult::Added);
         PlayCursorTap(owner);
+        // The native footer caches its A/ticket mode, which does not change
+        // when Y toggles bag membership. Invalidate it and rebuild immediately.
+        At<int>(owner, field::FooterMode) = 0;
+        Fn<void (*)(std::uintptr_t, int)>(address::Focus)(owner, session.focus);
     }
     At<unsigned>(record, 0x3c) |= 0x80;
     session.notice = result == ToggleResult::Full ? "No room in storage/pockets" :
@@ -485,7 +491,14 @@ HOOK_DEFINE_TRAMPOLINE(Destroy) {
 };
 HOOK_DEFINE_TRAMPOLINE(Focus) {
     static void Callback(std::uintptr_t owner, int index) {
-        if (IsOwner(owner)) session.focus = index;
+        if (IsOwner(owner)) {
+            session.focus = index;
+            const bool removing = FocusedItemIsBagged(owner);
+            // Remember the rendered action, not the old index: category changes
+            // can replace the filtered item at that same index before this call.
+            if (session.footerRemoving != removing) At<int>(owner, field::FooterMode) = 0;
+            session.footerRemoving = removing;
+        }
         Orig(owner, index);
     }
 };
@@ -617,6 +630,11 @@ HOOK_DEFINE_TRAMPOLINE(Checkout) {
     }
 };
 } // namespace
+bool FocusedItemIsBagged(std::uintptr_t owner) {
+    Item item;
+    return IsOwner(owner) && DisplayedItem(owner, session.focus, item) && session.bag.Find(item) >= 0;
+}
+
 bool Install() {
     if (!ValidateFittingHint()) return false;
     struct Fingerprint { std::uintptr_t address; std::array<std::uint32_t, 4> words; };

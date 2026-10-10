@@ -9,6 +9,7 @@ from core_arm_test import Machine, RAW
 from unicorn.arm64_const import *
 
 KEY=b'fitting_room.add_to_bag'
+REMOVE=b'fitting_room.remove_from_bag'
 PATH='content:/qol-enhancements/messages/fitting-room.ini'
 class HintMachine(Machine):
     def __init__(self,base,content=None,locale=1):
@@ -88,7 +89,7 @@ class HintMachine(Machine):
         self.write(binding+0x48,adapter);self.write(adapter+8,binding+0x900);self.write(adapter+0x18,methods)
         self.write(methods+0x5e0,self.base+(0 if bad_adapter else 0x3c47b90 if group else 0x3c1b588))
         self.invoke(self.module.find('InitializeBagCaption','Callback'),msg,binding,bank,token)
-        if key==KEY:
+        if key in (KEY,REMOVE):
             assert self.read(msg+0xc,4)==12
             self.invoke(self.base+0x1aea9c8,msg) # Must not attempt MSBT lookup.
         else: assert self.read(msg+0xc,4)==1
@@ -127,3 +128,33 @@ for base in (0x7100000000,0x7200000000):
             m.caption(key=key);assert m.texts==[expected,expected]
         m.caption(bad_adapter=True);assert m.texts==[expected,expected]
     print(f'PASS: compiled UTF-8 catalog, locale/English fallbacks, malformed/oversize files, once-only I/O, ordinary keys and native message lifecycle at {base:#x}')
+
+# Independent configurable removal label and fallback for older add-only INIs.
+for content,locale,expected in (
+    (None,1,'Remove from bag'),
+    (b'[USen]\nfitting_room.add_to_bag=Bag it\n',1,'Remove from bag'),
+    (b'[USen]\nfitting_room.remove_from_bag=Take out\n',9,'Take out'),
+    ('[USen]\nfitting_room.remove_from_bag=Take out\n[EUfr]\nfitting_room.remove_from_bag=Retirer du panier\n'.encode(),7,'Retirer du panier')):
+    m=HintMachine(0x7100000000,content,locale)
+    m.caption(key=REMOVE);m.caption(key=REMOVE,group=True)
+    assert m.texts==[expected,expected] and m.opened==[PATH]
+print('PASS: removal caption locale/fallback and old add-only INIs')
+
+for base in (0x7100000000,0x7200000000):
+    m=HintMachine(base)
+    session=m.module.find('L7sessionE');bag=session+8
+    stock=m.ram+0x48000;indices=stock+0x100;item=stock+0x200
+    m.write(session,m.owner)
+    # Session.focus follows Bag (256 twelve-byte entries + count), then PressEdge.
+    # Set it through the real Focus callback instead of depending on its offset.
+    m.write(m.module.find('5FocusEE7OrigRef'),base+0x3114c3c)
+    m.write(m.owner+0x1c338,1,2);m.write(m.owner+0x1c340,stock);m.write(stock,item)
+    m.write(m.owner+0x1c358,1,4);m.write(m.owner+0x1c368,1,4);m.write(m.owner+0x1c360,indices)
+    m.write(indices,0,2);m.write(item,117,8);m.write(bag,117,8);m.write(bag+256*12,1,4)
+    for is_bagged in (True,False,True):
+        m.reset();m.write(item,117 if is_bagged else 118,8)
+        m.invoke(m.module.find('5Focus8Callback'),m.owner,0)
+        labels=[m.label(r) for r in m.rows()]
+        expected=REMOVE if is_bagged else KEY
+        assert expected.decode() in labels and (KEY if is_bagged else REMOVE).decode() not in labels,labels
+print('PASS: compiled bag membership and Focus callback select matching native Add/Remove descriptors')

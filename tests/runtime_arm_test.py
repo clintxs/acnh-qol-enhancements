@@ -65,6 +65,8 @@ class Machine:
                 elif name=='memcmp':result=int(bytes(u.mem_read(self.reg(0),self.reg(2)))!=bytes(u.mem_read(self.reg(1),self.reg(2))))
                 else:raise AssertionError(('unexpected import',name))
             elif kind!='log':raise AssertionError(service)
+        elif off==0x3114c3c:
+            u.reg_write(UC_ARM64_REG_PC,self.mod.find('5Focus8Callback'));return
         elif off==0x311ca40:
             p=self.reg(1);assert self.read(p)==10<<32
             assert self.read(p+8)==p+0x70 and self.read(p+0x10)==p+0x20
@@ -143,6 +145,22 @@ def main():
         m.call(m.mod.find('7Destroy8Callback'),m.owner);assert m.size()==0 and m.read(m.session)==0
         m.calls.clear();m.call(m.mod.find('8Checkout8Callback'),m.owner,0);assert m.calls==['Checkout']
         checks+=20
+    for base in (0,0x7100000000):
+        m=Machine(base)
+        def bagged():return bool(m.call(m.mod.find('FocusedItemIsBagged'),m.owner))
+        m.write(m.owner+0x1c4f4,1,4)
+        m.toggle();assert bagged() and m.read(m.owner+0x1c4f4,4)==0
+        m.write(m.owner+0x1c4f4,1,4);m.focus(0)
+        assert m.read(m.owner+0x1c4f4,4)==1 # Same action does not invalidate.
+        m.focus(1);assert not bagged() and m.read(m.owner+0x1c4f4,4)==0
+        m.focus(0);assert bagged()
+        # Same filtered index now names a different item after a category swap.
+        m.write(m.owner+0x1c4f4,1,4);m.write(m.indices,1,2);m.focus(0)
+        assert not bagged() and m.read(m.owner+0x1c4f4,4)==0
+        m.write(m.indices,0,2);m.focus(0);m.toggle();assert not bagged()
+        m.write(m.owner+0x1c4f4,1,4);m.storage=0;m.pockets=0;m.toggle()
+        assert not bagged() and m.read(m.owner+0x1c4f4,4)==1 # Rejection doesn't switch action.
+    print('PASS: exact-item action, immediate successful-toggle refresh, cursor/category changes, unchanged action and capacity rejection')
     # Execute native total-price iteration on the synthetic one-item layout at base 0.
     m=Machine(0);m.native_price=True
     m.write(m.mod.find('5PriceEE7OrigRef'),0x311e180)

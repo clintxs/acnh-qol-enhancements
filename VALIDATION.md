@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.69 rounded trapezoid basket
+# Unified QoL validation — 0.3.70 contextual fitting-room hint
 
 Validated locally on October 10, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,25 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.70 Contextual Add/Remove caption
+
+Choose the native footer's private token from the hovered exact item/variant's
+bag membership. Both tokens use the same once-loaded locale catalog and separate
+English fallbacks. The session remembers the last action rather than re-reading
+the previous filtered index, because category changes can replace that index.
+Invalidate the native footer-mode cache (+1c4f4) when the action changes. On a
+successful Y toggle, invalidate and invoke the existing native focus/footer
+routine immediately; rejected toggles do not change the action. Begin/Destroy
+clear the session cache. No extra hooks or layout edits are introduced.
+
+Validation: native footer and caption tests at two bases, including descriptor
+selection from the real session bag; Add/Remove locale fallback, old add-only
+INIs; compiled input/focus tests for cursor changes, same-index filter changes,
+successful toggles, unchanged action, and capacity rejection; badge feedback
+through 33 entries. Live footer transitions still need an Eden check.
+The packaged icon was verified byte-identical to the 0.3.69 trapezoid resource;
+the user's earlier icon mismatch was selecting the wrong mod folder.
 
 ## 0.3.69 Basket appearance experiment
 

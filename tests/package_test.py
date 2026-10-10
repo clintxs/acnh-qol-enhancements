@@ -68,3 +68,5 @@ caption_path = 'QoL Enhancements - Fitting Room/romfs/qol-enhancements/messages/
 assert b'[USen]\nfitting_room.add_to_bag=Add to bag\n' in files[caption_path]
 assert files[caption_path] == (package.ROOT/'modules/Fitting Room/romfs/qol-enhancements/messages/fitting-room.ini').read_bytes()
 print('PASS: editable fitting-room caption ships with Fitting Room independently of Pockets')
+
+assert b'fitting_room.remove_from_bag=Remove from bag\n' in files[caption_path]
