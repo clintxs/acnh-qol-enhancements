@@ -24,13 +24,12 @@ bag's light coral-red for the card, a deeper warm-red counter and border,
 cream details/outlines and a gold chip. Colors are based on the supplied
 screenshots. These options still display combined Bells and use the same payment priority.
 Balances at or above 999,999,999 display that cap; full funds remain spendable.
-Island takes its colors from the ACNH edition Switch, with a pale mint stripe
-(#DBF3DE, halfway from light mint toward pockets cream). The card face is a lighter turquoise-blue (#9BD4D9),
+Island takes its colors from the ACNH edition Switch. The card face is a lighter turquoise-blue (#9BD4D9),
 standing apart from the original blue (#6ABDC4) used by the oval outline,
 card backing, balance and Bells bubble.
-Revision 5 matches both the oval background and Bells caption to the pockets
-UI's cream (#FFF9E3), sampled from the supplied screenshot.
-The card has a darker blue-teal edge and white details. Its number material is
+The oval background, Bells caption, card square, both detail lines and stripe
+share the pockets UI's cream (#FFF9E3), sampled from the supplied screenshot.
+The card has a darker blue-teal edge. Its number material is
 separate from ordinary cash, so the native cash counter keeps its original cream digits.
 ADB Teal reproduces the working 0.3.16 layout exactly. All retain the same card
 shape, detail positions, native 16:9 canvas and balance animations/sounds.
