@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.73 bag-only checkout shortcut** for ACNH **3.0.3 on Eden**. One Core
+**0.3.74 fitting-room B diagnostic** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -508,3 +508,7 @@ the wear question and sends the purchase through the normal delivery path.
 Trying on any item keeps the wear question and its two-step B shortcut.
 The purchase confirmation, funds checks and capacity checks remain in place.
 Update Core and Fitting Room, then restart. Eden verification is pending.
+
+0.3.74 adds up to 48 WEAR_BACK log records to investigate the B shortcut not
+activating in Eden. It is a diagnostic build, not a confirmed fix. The user
+confirmed native Mabel dialogue already skips outfit praise for bag-only buys.

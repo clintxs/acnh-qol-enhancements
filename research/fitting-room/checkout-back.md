@@ -55,3 +55,14 @@ Funds/capacity/stale-stock failures follow the existing preflight error or close
 paths. purchase_arm_test.py exercises this transition and exact bag delivery at
 two bases, failures/cancellation, plus all ten categories (valid and unresolved
 indices). Native save services are modeled; live Eden confirmation is pending.
+
+## Live failure / diagnostic (0.3.74)
+
+User reports two-step B does not work in Eden; modeled tests are not proof of
+live binding/readiness. No behavioral guard is relaxed speculatively. This build
+logs at most 48 state/button changes while a fitting session exists, including
+page/delegate identity, FSM state, input row/key, masks and focus targets. Absence
+of WEAR_BACK with successful module installation also identifies a page-hook
+coverage problem. Capture Eden logs before choosing a corrective change.
+User also confirmed the native exit dialogue skips outfit praise on bag-only
+purchases; no Mabel dialogue modification is needed.
