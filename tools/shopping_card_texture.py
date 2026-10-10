@@ -34,10 +34,10 @@ def linear_rgba(red, green, blue):
     return tuple(channel(value) for value in (red, green, blue)) + (255,)
 
 
-# Reference photo's right Joy-Con midtone and left Joy-Con mint face, in sRGB.
+# Switch Joy-Con reference colors and their lighter card tints, in sRGB.
 ISLAND_BLUE = linear_rgba(106, 189, 196)  # #6ABDC4
 ISLAND_CARD_BLUE = linear_rgba(155, 212, 217)  # #9BD4D9, visibly lighter than the outline.
-ISLAND_MINT = linear_rgba(149, 226, 197)  # #95E2C5
+ISLAND_MINT = linear_rgba(182, 237, 216)  # #B6EDD8, lightened from the #95E2C5 mint reference.
 ISLAND_CREAM = linear_rgba(255, 249, 227)  # #FFF9E3, sampled from the pockets UI screenshot.
 
 
