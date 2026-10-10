@@ -36,6 +36,7 @@ def linear_rgba(red, green, blue):
 
 # Reference photo's right Joy-Con midtone and left Joy-Con mint face, in sRGB.
 ISLAND_BLUE = linear_rgba(106, 189, 196)  # #6ABDC4
+ISLAND_CARD_BLUE = linear_rgba(121, 196, 202)  # #79C4CA, slightly lighter than the outline.
 ISLAND_MINT = linear_rgba(149, 226, 197)  # #95E2C5
 ISLAND_CREAM = linear_rgba(255, 249, 227)  # #FFF9E3, sampled from the pockets UI screenshot.
 
@@ -57,7 +58,7 @@ PALETTES = {
     'poki-red': Palette((177,32,25,255), (255,241,195,255), (58,13,9,255),
                         (239,95,61,255), (255,241,195,255), (240,204,101,255)),
     'island': Palette(ISLAND_BLUE, ISLAND_BLUE, linear_rgba(63,142,150),
-                      ISLAND_BLUE, (255,255,255,255), (255,255,255,255),
+                      ISLAND_CARD_BLUE, (255,255,255,255), (255,255,255,255),
                       stripe=ISLAND_MINT, background=ISLAND_CREAM, balance=ISLAND_BLUE,
                       caption=ISLAND_CREAM),
 }

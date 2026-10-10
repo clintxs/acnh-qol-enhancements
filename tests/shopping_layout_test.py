@@ -111,10 +111,10 @@ if palette.balance is not None:
     assert struct.unpack_from('<H', number, 88)[0] != struct.unpack_from('<H', old_panes['T_Num_00'], 88)[0]
     assert args.palette == 'island' and palette.background == palette.caption
     assert palette.background != (255,255,255,255)
-    assert palette.counter == palette.face
-    assert palette.balance == palette.rim == palette.face
+    assert palette.balance == palette.rim == palette.counter
+    assert all(face > rim for face, rim in zip(palette.face[:3], palette.rim[:3]))
     assert palette.stripe != palette.rim
-    print('PASS: Island matching pockets-cream oval/caption, matching blue card/balance/outline/badge, mint stripe, independent number material and unchanged native cash text')
+    print('PASS: Island pockets-cream oval/caption, lighter blue card against blue balance/outline/badge, mint stripe, independent number material and unchanged native cash text')
 else:
     assert number_material == native_number_material
 

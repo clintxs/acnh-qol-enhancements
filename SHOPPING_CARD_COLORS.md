@@ -1,6 +1,6 @@
-# Shopping Card themes — QoL Enhancements 0.3.23 / ACNH 3.0.3
+# Shopping Card themes — QoL Enhancements 0.3.60 / ACNH 3.0.3
 
-Install the normal QoL Enhancements 0.3.23 Core and Shopping Card first.
+Install the normal QoL Enhancements 0.3.23 or newer Core and Shopping Card first.
 This download contains optional appearance replacements, not a standalone mod.
 
 1. Fully close the game.
@@ -24,9 +24,10 @@ bag's light coral-red for the card, a deeper warm-red counter and border,
 cream details/outlines and a gold chip. Colors are based on the supplied
 screenshots. These options still display combined Bells and use the same payment priority.
 Balances at or above 999,999,999 display that cap; full funds remain spendable.
-Island takes its colors from the ACNH edition Switch: a turquoise-blue card
-(#6ABDC4) and mint-green strip (#95E2C5). The oval outline, card backing,
-balance and Bells bubble use the same blue as the card in revision 3.
+Island takes its colors from the ACNH edition Switch, with a mint-green stripe
+(#95E2C5). The card face is now a slightly lighter turquoise-blue (#79C4CA),
+standing apart from the original blue (#6ABDC4) used by the oval outline,
+card backing, balance and Bells bubble.
 Revision 5 matches both the oval background and Bells caption to the pockets
 UI's cream (#FFF9E3), sampled from the supplied screenshot.
 The card has a darker blue-teal edge and white details. Its number material is
