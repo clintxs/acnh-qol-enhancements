@@ -19,6 +19,9 @@ constexpr std::uintptr_t DialogTable = 0x05621af8;
 constexpr std::uintptr_t StorageFree = 0x0257c230, PocketsFree = 0x025731d0;
 constexpr std::uintptr_t PageVtable = 0x04a10348, InputSlot = PageVtable + 0x50;
 constexpr std::uintptr_t OriginalInput = 0x03c58d24, ControllerVtable = 0x04a10620;
+constexpr std::uintptr_t DialogInputSlot = 0x049cd3f8;
+constexpr std::uintptr_t DialogInstance = 0x05590d38, DialogVtable = 0x049cd650;
+constexpr std::uintptr_t FocusButton = 0x031017e0;
 constexpr std::uintptr_t Application = 0x059f83f0;
 constexpr std::uintptr_t FindPane = 0x0027d1d0, SetText = 0x03c1b588;
 constexpr std::uintptr_t SetGroupText = 0x03c47b90, FindParameter = 0x02b12c24;
@@ -44,6 +47,9 @@ struct Session {
     int focus = -1, inputRow = -1;
     bool dirty = true;
     const char *notice = "Y: Add/remove bag (test)";
+    PressEdge backEdge{};
+    std::uintptr_t backDialog{};
+    int backRow = -1;
 };
 Session session;
 // Freeze both native delivery alternatives before any payment or clothing swap.
@@ -469,6 +475,80 @@ void Input(std::uintptr_t page, std::uintptr_t snapshot, unsigned blocked) {
     HandleInput(page, snapshot, blocked);
     originalInput(page, snapshot, blocked);
 }
+// The shared dialog's two-choice buttons are No (+578) and Yes (+588),
+// with alternate-style copies eight bytes later. Native answer mapping sends
+// button indices 0/1 as answer 0 (send), and 2/3 as answer 1 (wear).
+// Only the fitting room's live wear-choice delegate may use this shortcut.
+std::uintptr_t HandleWearChoiceBack(std::uintptr_t page, std::uintptr_t snapshot, unsigned blocked) {
+    constexpr unsigned Back = 1u << 5, Accept = 1u << 4;
+    const auto owner = session.owner;
+    const auto dialog = At<std::uintptr_t>(Main(address::DialogInstance));
+    if (!snapshot || !IsOwner(owner) || !dialog ||
+        At<std::uintptr_t>(dialog) != Main(address::DialogVtable) ||
+        At<std::uintptr_t>(dialog, field::Page) != page ||
+        At<std::uintptr_t>(dialog, 0x2388) != owner + 0x1c4d0 ||
+        At<unsigned>(owner, 0x1c4f0) != 5 ||
+        At<int>(dialog, field::State) != 3 ||
+        At<int>(dialog, 0x1f0) != -1 || At<int>(dialog, 0x1f4) != -1 ||
+        At<int>(dialog, 0x220) != -1) {
+        session.backEdge.Reset(); session.backDialog = 0; session.backRow = -1;
+        return 0;
+    }
+    const auto hint = At<std::uintptr_t>(page, 0x570);
+    const auto input = hint ? At<std::uintptr_t>(hint, 0xa0) : 0;
+    if (!input || At<int>(input, 0x14) != 5) return 0;
+    const int row = At<int>(input, 0x10), count = At<int>(snapshot, 8);
+    const auto rows = At<std::uintptr_t>(snapshot, 0x10);
+    if (!rows || count < 1 || count > 8 || row < 0 || row >= count) return 0;
+    if (session.backDialog != dialog || session.backRow != row) {
+        session.backEdge.Reset(); session.backDialog = dialog; session.backRow = row;
+    }
+    const auto record = rows + row * 0x48;
+    const unsigned buttons = At<unsigned>(record);
+    const bool pressed = session.backEdge.Update(buttons & Back);
+    const auto context = At<std::uintptr_t>(page, 0x210);
+    const auto app = At<std::uintptr_t>(Main(address::Application));
+    const auto masks = app ? At<std::uintptr_t>(app, 0x418) : 0;
+    if (!pressed || (blocked & 1) || !context || !masks ||
+        At<std::uint8_t>(context, 0x54) ||
+        (At<unsigned>(context, 0x58) & At<unsigned>(masks, 0x10)) ||
+        (At<unsigned>(record, 0x3c) & (Back | Accept)) || buttons != Back) return 0;
+    const unsigned style = At<unsigned>(dialog, 0x22c);
+    if (style > 2 || !At<std::uintptr_t>(dialog, 0x248) ||
+        !At<std::uintptr_t>(dialog, 0x250) || At<std::uintptr_t>(dialog, 0x258)) return 0;
+    const auto no = At<std::uintptr_t>(page, 0x578 + (style == 2 ? 8 : 0));
+    const auto yes = At<std::uintptr_t>(page, 0x588 + (style == 2 ? 8 : 0));
+    const auto noCursor = no ? At<std::uintptr_t>(no, 0x218) : 0;
+    const auto yesCursor = yes ? At<std::uintptr_t>(yes, 0x218) : 0;
+    const auto manager = At<std::uintptr_t>(context, 0x48);
+    if (!noCursor || !yesCursor || !manager ||
+        At<unsigned>(manager, 0x18) <= unsigned(row) ||
+        !(At<unsigned>(noCursor, 0x14b0) & (1u << row))) return 0;
+    const auto cursors = At<std::uintptr_t>(manager, 0x20);
+    const auto cursor = cursors ? At<std::uintptr_t>(cursors, row * 8) : 0;
+    const auto focused = cursor ? At<std::uintptr_t>(cursor, 0x10) : 0;
+    if (focused != noCursor && focused != yesCursor) return 0;
+    At<unsigned>(record, 0x3c) |= Back;
+    if (focused == noCursor) return record;
+    struct FocusRequest { std::uintptr_t page, button; int row, padding; };
+    const FocusRequest request{page, no, row, 0};
+    Fn<void (*)(const FocusRequest *)>(address::FocusButton)(&request);
+    return 0;
+}
+void WearChoiceInput(std::uintptr_t page, std::uintptr_t snapshot, unsigned blocked) {
+    const auto record = HandleWearChoiceBack(page, snapshot, blocked);
+    if (!record) { originalInput(page, snapshot, blocked); return; }
+    // Forward one native A press only when No is already focused. Restore the
+    // shared snapshot immediately; other pages must never see a fabricated A.
+    // Held B cannot generate another press: backEdge requires a release.
+    constexpr unsigned Back = 1u << 5, Accept = 1u << 4;
+    const auto buttons = At<unsigned>(record);
+    const auto consumed = At<unsigned>(record, 0x3c);
+    At<unsigned>(record) = (buttons & ~Back) | Accept;
+    originalInput(page, snapshot, blocked);
+    At<unsigned>(record) = buttons;
+    At<unsigned>(record, 0x3c) = (At<unsigned>(record, 0x3c) & ~Accept) | (consumed & Accept);
+}
 HOOK_DEFINE_TRAMPOLINE(Begin) {
     static void Callback(std::uintptr_t owner) {
         session = {}; purchase = {}; motions = {}; nextMotion = 0; session.owner = owner;
@@ -636,6 +716,10 @@ bool Install() {
     if (!module.m_Data.InRange(slot) ||
         !module.m_Data.InRange(slot + sizeof(std::uintptr_t) - 1) ||
         At<std::uintptr_t>(slot) != Main(address::OriginalInput)) return false;
+    const auto dialogSlot = Main(address::DialogInputSlot);
+    if (!module.m_Data.InRange(dialogSlot) ||
+        !module.m_Data.InRange(dialogSlot + sizeof(std::uintptr_t) - 1) ||
+        At<std::uintptr_t>(dialogSlot) != Main(address::OriginalInput)) return false;
     auto *inputSlot = reinterpret_cast<volatile std::uintptr_t *>(slot);
     const auto replacement = reinterpret_cast<std::uintptr_t>(&Input);
     *inputSlot = replacement;
@@ -645,6 +729,7 @@ bool Install() {
     }
     Logging.Log("[QoL Enhancements/Fitting Room] INPUT_HOOK_OK writable-data readback\n");
     originalInput = Fn<InputFn>(address::OriginalInput);
+    At<std::uintptr_t>(dialogSlot) = reinterpret_cast<std::uintptr_t>(&WearChoiceInput);
     InstallFittingHint();
     Begin::InstallAtOffset(address::Begin);
     Destroy::InstallAtOffset(address::Destroy);

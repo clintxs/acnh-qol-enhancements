@@ -10,7 +10,7 @@ from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
 SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'shopping-card', 'crafting')
 COUNTS = (16, 15, 7, 13, 11, 17)  # Pockets/Crafting share one additional Core input hook.
-DEFAULT = b'enabled=true\nversion=0.3.71\n'
+DEFAULT = b'enabled=true\nversion=0.3.72\n'
 
 def expected_hook_count(machine, enabled):
     # The existing verbose-dialogue build adds a Catalog message trace hook.
@@ -39,6 +39,7 @@ class Machine:
         self.write(base + 0x49e8378, base + 0x2ea0754)
         self.write(base + 0x4a06740, base + 0x30742d0)
         self.write(base + 0x4a10398, base + 0x3c58d24)
+        self.write(base + 0x49cd3f8, base + 0x3c58d24)
         self.module = Module(self, 'qol-enhancements', base + 0x7000000)
         self.alias = base + 0x20000000
         self.u.mem_map(self.alias, 0x4725000)
@@ -130,6 +131,7 @@ def check_all_subsets():
             assert base + 0xbc4144 in m.hooks
             assert m.read(base + 0x1af9ff0, 4) == 0x528c0049
             assert (m.read(base + 0x4a10398) != base + 0x3c58d24) == flags[3]
+            assert (m.read(base + 0x49cd3f8) != base + 0x3c58d24) == flags[3]
             if flags[2]:
                 for offset in (0x1afa00c, 0x1afdec0, 0x1afded4, 0x1afdefc, 0x1a969e0):
                     assert base + offset in m.hooks
@@ -166,6 +168,13 @@ def check_errors():
     m.write(m.base + 0x37b5460, 0, 4)
     m.boot()
     assert not m.hooks and not m.opened and 'PROFILE_MISMATCH' in m.text
+    for offset in (0x49cd3f8, 0x31017e0, 0x2cfb318, 0x2cfcd34, 0x2cfcfec):
+        m = Machine(0x7100000000, {'fitting-room': DEFAULT})
+        m.write(m.base + offset, 0xdeadbeef, 4)
+        m.boot(); m.activate()
+        assert 'Fitting Room: ERROR installation failed' in m.text, m.text
+        assert m.read(m.base + 0x4a10398) == m.base + 0x3c58d24
+        assert m.base + 0x31141cc not in m.hooks
     # Dialogue hook sites and legacy paths must remain pristine; validate before installing.
     for offset in (0x1af9ff0, 0x1afdd20, 0x1afdebc, 0x1afded4,
                    0x1d9dc3c, 0x1d9e11c, 0x1d9e224, 0x1d9e244,

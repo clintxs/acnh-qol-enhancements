@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.71 localized fixed Bag hint** for ACNH **3.0.3 on Eden**. One Core
+**0.3.72 fitting-room checkout B shortcut** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -492,3 +492,11 @@ Edit `fitting_room.add_to_bag` in fitting-room.ini; the old removal key is unuse
 The built-in English fallback is also Bag. The trapezoid icon is unchanged.
 Translations are initial UI wording; live readability and native-speaker review
 remain useful, particularly for languages that require a longer phrase.
+
+## Fitting Room checkout B shortcut (0.3.72)
+
+At “Do you want to wear what you picked out?”, B moves the cursor to
+“No thanks.”. Press B again to choose it; if No is already focused, one B
+chooses it. A and directional selection retain their normal behavior.
+This applies with or without bag items. Update Core and Fitting Room, then
+restart. Local ARM input/focus/answer tests pass; Eden verification is pending.
