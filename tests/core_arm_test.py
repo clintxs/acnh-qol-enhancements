@@ -10,7 +10,7 @@ from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
 SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'shopping-card', 'crafting')
 COUNTS = (16, 15, 7, 11, 11, 13)  # Pockets/Crafting share one additional Core input hook.
-DEFAULT = b'enabled=true\nversion=0.3.61\n'
+DEFAULT = b'enabled=true\nversion=0.3.62\n'
 
 def expected_hook_count(machine, enabled):
     # The existing verbose-dialogue build adds a Catalog message trace hook.
@@ -263,6 +263,10 @@ def check_custom_preferences():
     for custom, summary in ((b'', 'base=2 boost=4 faster_ui=false faster_unnamed=false npc_count=0'),
                             (b'base_speed=4\nboost_speed=2', 'base=4 boost=4'),
                             (b'base_speed=2\nboost_speed=2', 'base=2 boost=2'),
+                            (b'base_speed=4\nboost_speed=8', 'base=4 boost=8'),
+                            (b'base_speed=1\nboost_speed=10', 'base=1 boost=10'),
+                            (b'base_speed=10\nboost_speed=3', 'base=10 boost=10'),
+                            (b'base_speed=11\nboost_speed=4294967296', 'base=2 boost=4'),
                             (b'base_speed=0\nfaster_ui=yes', 'base=2 boost=4 faster_ui=false'),
                             (b'x' * 4097, 'base=2 boost=4 faster_ui=false')):
         m = Machine(0x7100000000, {'faster-dialogue': DEFAULT, 'faster-dialogue.custom': custom})

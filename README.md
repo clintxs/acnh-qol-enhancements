@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.61 crafting quantity wrap timing update** for ACNH **3.0.3 on Eden**. One Core
+**0.3.62 extended dialogue speed settings** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -63,14 +63,14 @@ fingerprints only, checked before each feature's first hook.
 Install **QoL Enhancements - Crafting** with Core. This replaces the former
 Faster Crafting package; remove the old folder and rename personal
 `faster-crafting.custom.ini` preferences to `crafting.custom.ini`. Remove any old
-`version` override from that personal file (or update it to 0.3.61). The retired
+`version` override from that personal file (or update it to 0.3.62). The retired
 regular/custom paths are no longer read. Core alone no longer enables DIY previews.
 
 `romfs/qol-enhancements/config/crafting.ini` supplies these defaults:
 
 ```ini
 enabled = true
-version = 0.3.61
+version = 0.3.62
 diy_app_preview = true
 workbench_preview_tilt = true
 crafting_quantity_wrap = true
@@ -258,7 +258,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.61
+version = 0.3.62
 base_speed = 2
 boost_speed = 4
 faster_ui = false
@@ -307,10 +307,17 @@ cannot activate an absent Faster Dialogue module.
 
 Preferences absent from both files retain base 2 / held B/R 4, with UI/unnamed/list boost off. A listed
 NPC, confirmed unnamed message or UI uses `boost_speed` automatically; holding B/R selects that
-same tier and never stacks to 8. This prototype supports **2 and 4** for both
-speed keys; a boost below the base is raised to the base. These are nominal tiers relative to the live native fast rate,
+same tier without stacking. Both speed keys accept **whole numbers 1 through 10**;
+a boost below the base is raised to the base. The defaults remain 2/4. The
+original fast rate represents nominal 2x; both
+main and renderer rate hooks multiply it by the selected speed divided by two.
+These are nominal tiers relative to the live native fast rate,
 including language/FPS adjustments, not fixed wall-clock multipliers. Native
 scripted waits, protected messages and nonnegative overrides retain priority.
+Earlier versions rejected 8 and retained the earlier boost (normally 4), so
+4/8 loaded as 4/4. On 0.3.62, try `base_speed = 4` and `boost_speed = 8` in your
+existing personal file, fully restart, and compare an unlisted named NPC with
+and without B/R. Automatically boosted categories already use the boost speed.
 
 The list now accepts **the localized name shown above the dialogue bubble**, or
 an internal resource ID, for special NPCs and villagers. For example, in English:

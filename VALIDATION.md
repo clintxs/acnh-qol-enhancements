@@ -1697,3 +1697,22 @@ preservation, unknown-binding handling, opening/model/navigation/B/reopening
 regressions and all Core checks at two ASLR bases. Archive integrity and source/
 deploy parity are checked before delivery. Live Eden rendering, 16:10, rotation
 and B behavior remain unverified. No game install, save or synced log is changed.
+
+
+## 0.3.62 extended dialogue speed settings
+
+- Both INI layers accept canonical whole numbers 1..10 for base_speed and
+  boost_speed. Defaults remain 2/4. Host coverage checks all 100 combinations,
+  lower-boost normalization after layering, duplicate restoration, and rejected
+  zero/out-of-range/overflow/signed/fractional/NaN/infinite values.
+- Keep the existing seven C++ hooks and flags 1/3. These identify base/boost;
+  both main and renderer callbacks scale the live fast rate by the selected
+  configured multiplier / 2. No numeric multiplier becomes an engine flag.
+- ARM coverage exercises all 100 pairs loaded from each INI form at two ASLR
+  bases, five live fast rates, press/release, both original renderer forwarding
+  stores, renderer completion and scripted overrides. It also checks 4/8
+  automatic NPC/UI/unnamed selection without stacking, and maximum-speed
+  forced/protected/parser-mode/message-state behavior against native code.
+- The original 2/4 regressions and localized-name checks remain required.
+  These are local emulation checks; perceived speed, Animalese and emote timing
+  at the extended rates still need an Eden test. Fixed waits remain native.

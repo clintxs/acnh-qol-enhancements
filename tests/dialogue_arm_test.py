@@ -209,7 +209,7 @@ class DialogueMachine(Machine):
         assert self.read(self.obj + 0x21b4, 1) == (bool(buttons & 0x4002) and not (getter_null and fallback_null))
         assert bytes(self.u.mem_read(self.controller, 0x100)) == before
 
-    def renderer(self, flags, override, fast, scale, complete):
+    def renderer(self, flags, override, fast, scale, complete, speeds=(2, 4)):
         obj = self.obj + 0x3000
         memory = bytearray(0x680)
         memory[0x204], memory[0x205] = complete, flags
@@ -221,7 +221,7 @@ class DialogueMachine(Machine):
         self.u.reg_write(UC_ARM64_REG_SP, self.stack + 0x3000)
         self.u.reg_write(UC_ARM64_REG_LR, self.base + 0x1234)
         self.execute(0x1a969c0, (0x1234,))
-        selected = override if override >= 0 else fast * (2 if flags == 3 else 1) if flags else 1.2
+        selected = override if override >= 0 else fast * (speeds[flags == 3] / 2) if flags else 1.2
         expected = 1. if complete else -2. + selected * scale
         assert abs(struct.unpack('<f', self.u.mem_read(obj + 0x20c, 4))[0] - expected) < 1e-5
         assert self.read(obj + 0x205, 1) == flags
@@ -234,9 +234,62 @@ def normalized(memory):
     return result
 
 
+def check_extended_speeds(base):
+    count = 0
+    for base_speed, boost_speed in itertools.product(range(1, 11), repeat=2):
+        prefs = f'base_speed={base_speed}\nboost_speed={boost_speed}'.encode()
+        m = DialogueMachine(base, prefs) if base == 0x7100000000 else DialogueMachine(base, regular=DEFAULT + prefs)
+        boost_speed = max(base_speed, boost_speed)
+        assert f'base={base_speed} boost={boost_speed}' in m.text
+        for fast, held in itertools.product((0., .6, 1.2, 2.4, 3.6), (0, 1, 0)):
+            m.fast = fast
+            result, calls = m.run((1, 0, 0, 0, 0, 1, 1, -1.), held)
+            speed = boost_speed if held else base_speed
+            flag = 3 if speed > base_speed else 1
+            assert result[0x21b7] == flag
+            assert abs(struct.unpack_from('<f', result, 0x2194)[0] - (-2 + fast * speed / 2)) < 1e-5
+            assert not calls # No extra parser iterations or forced page advance.
+            for override, complete in itertools.product((-1., 0., .75), (False, True)):
+                m.renderer(flag, override, fast, .5, complete, (base_speed, boost_speed))
+                count += 1
+        # Both renderers inherit the tier through the original forwarding stores.
+        for held in (0, 1):
+            result, calls = m.run((1, 0, 0, 0, 0, 0, 0, -1.), held)
+            flag = 3 if held and boost_speed > base_speed else 1
+            assert result[0x168d] == result[0x1cfd] == result[0x21b7] == flag
+            # The parser service completes both renderers on its first call.
+            assert calls == [0x1488]
+            count += 1
+    # Automatic NPC/UI/unnamed boosts use the configured tier, without stacking.
+    automatic = DialogueMachine(base, b'base_speed=4\nboost_speed=8\nfaster_ui=true\nfaster_unnamed=true\nfaster_npc_list=owl')
+    for name, kind, window in (('owl', 10, 0), ('', 0x4f, 0), ('', 10, 1), ('rcm', 10, 0)):
+        automatic.speaker(name, kind=kind, window=window)
+        for held in (0, 1, 0):
+            result, _ = automatic.run((1, 0, 0, 0, 0, 1, 1, -1.), held)
+            speed = 8 if name != 'rcm' or held else 4
+            assert abs(struct.unpack_from('<f', result, 0x2194)[0] - (-2 + 2.4 * speed / 2)) < 1e-5
+            count += 1
+    # At the maximum, native forced/protected/mode/state and scripted-rate gates
+    # retain exactly the same behavior as the unmodified game.
+    maximum, native = DialogueMachine(base, b'base_speed=10\nboost_speed=10'), DialogueMachine(base, enabled=False)
+    for state, mode, forced, disabled, timer, override, held in itertools.product(
+            (0, 1, 3), (0, 1, 2), (0, 1), (0, 1), (0, 9), (-1., 0., .75), (0, 1)):
+        eligible = state == 1 and mode == 0 and not forced and not disabled
+        if eligible: continue # Normal fast mode is deliberately changed.
+        case = (state, mode, forced, disabled, timer, 1, 1, override)
+        assert maximum.run(case, held) == native.run(case, held), case
+        count += 1
+    for held, override in itertools.product((0, 1), (0., .75)):
+        result, calls = maximum.run((1, 0, 0, 0, 0, 1, 1, override), held)
+        assert abs(struct.unpack_from('<f', result, 0x2194)[0] - (-2 + override)) < 1e-5 and not calls
+        count += 1
+    print(f'PASS {base:#x}: {count:,} extended-speed ARM checks; all 1..10 pairs, both rate paths, held/release, forwarding, automatic categories and native gates')
+
+
 def main():
     total = 0
     for base in (0x7100000000, 0x7200000000):
+        check_extended_speeds(base)
         m, native = DialogueMachine(base), DialogueMachine(base, enabled=False)
         for case in itertools.product(range(6), range(3), range(2), range(2), (0, 2, 9),
                                       range(2), range(2), (-1., 0., .75)):

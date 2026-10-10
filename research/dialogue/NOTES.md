@@ -291,3 +291,33 @@ bases, native empty-name branches, named/malformed names, missing sources,
 message/source/generation changes, independent UI and legacy alias behavior.
 The existing reveal gates, seven hooks and localized-NPC matching remain tested.
 This classifier still needs an Eden test with those real interactions.
+
+
+## 0.3.62 extended speed settings
+
+The old speed parser accepted exactly 2 and 4. With defaults, configuring
+base=4 / boost=8 rejected 8 and inherited boost=4, producing 4/4. Automatic
+categories already used nominal 4x, which helps explain an unchanged impression.
+
+Both settings now accept canonical whole numbers 1..10. Defaults remain 2/4;
+invalid values preserve the earlier layer, and boost below base is normalized
+only after both files load. No clipping, floating-point settings or unchecked
+numeric conversion is added.
+
+The seven hook sites remain unchanged. EligibleFast stores flag 1 for base and
+3 for a higher selected boost; ForwardFast copies that flag after native w20=1.
+Both remain native fast mode, retaining the existing voice parameter. Bit 1
+selects the configured tier in MainRate and RendererRate; each multiplies the
+live fast rate by that tier / 2. The default 2/4 rate calculation is unchanged.
+Equal speeds use base flag 1. Numeric speeds are never written as engine flags,
+and no global last-message scalar is needed by renderer callbacks.
+
+The two rate hooks remain downstream of native scripted override checks;
+forced/protected text, parser modes, message state and page/animation waits
+retain their original paths. Whole-number speed 1 is nominal fast-rate / 2,
+not restoration of all native unmodified input/timer/voice semantics. Higher
+values affect eligible reveal rates, not fixed waits or overall conversations.
+Local ARM checks exercise all 100 speed pairs in each INI form at two bases,
+live-rate changes, both render paths, original tier forwarding, release,
+automatic categories without stacking, maximum-speed gate/override cases and
+the original 2/4 regressions. Eden confirmation of perceived speed is pending.

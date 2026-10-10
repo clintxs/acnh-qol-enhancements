@@ -5,6 +5,7 @@
 
 namespace qol::dialogue {
 inline constexpr unsigned MaxNpcs = 64, NpcIdBytes = 16;
+inline constexpr unsigned MinSpeed = 1, MaxSpeed = 10;
 struct Settings {
     unsigned baseSpeed = 2, boostSpeed = 4;
     bool fasterUi = false, fasterUnnamed = false;
@@ -65,11 +66,12 @@ inline unsigned SelectSpeed(const Settings &settings, MessageKind kind,
                          (!localizedName.empty() && Equal(localizedName, settings.npcs[i].data()));
     return held || automatic ? settings.boostSpeed : settings.baseSpeed;
 }
-// These are the two existing, nominal tiers, relative to the game's live fast
-// rate. Keeping flags 1/3 also preserves the native fast-mode voice parameter.
+// Nominal whole-number multipliers. The game's live fast rate represents 2x;
+// rate hooks scale it by the selected multiplier / 2, preserving locale/FPS.
 inline bool ParseSpeed(std::string_view value, unsigned &speed) {
-    if (value != "2" && value != "4") return false;
-    speed = value == "2" ? 2 : 4;
+    if (value == "10") { speed = MaxSpeed; return true; }
+    if (value.size() != 1 || value.front() < '1' || value.front() > '9') return false;
+    speed = unsigned(value.front() - '0');
     return true;
 }
 // Both files use this parser. Missing/invalid values inherit the earlier layer;

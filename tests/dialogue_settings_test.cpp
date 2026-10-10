@@ -5,6 +5,24 @@
 using namespace qol::dialogue;
 int main() {
     Settings settings{};
+    for (unsigned base = MinSpeed; base <= MaxSpeed; ++base) {
+        for (unsigned boost = MinSpeed; boost <= MaxSpeed; ++boost) {
+            const auto config = "base_speed=" + std::to_string(base) + "\nboost_speed=" + std::to_string(boost);
+            assert(ParseSettings(config, settings) == unsigned(boost < base));
+            assert(settings.baseSpeed == base && settings.boostSpeed == (boost < base ? base : boost));
+            assert(SelectSpeed(settings, MessageKind::Unknown, "", false) == base);
+            assert(SelectSpeed(settings, MessageKind::Unknown, "", true) == settings.boostSpeed);
+        }
+    }
+    assert(!ParseSettings("base_speed=4\nboost_speed=8", settings));
+    for (auto invalid : {"", "0", "11", "100", "4294967296", "-1", "+2", "02", "2.5", "nan", "inf"}) {
+        assert(ApplySettings(std::string("base_speed=") + invalid + "\nboost_speed=" + invalid, settings) == 2);
+        assert(settings.baseSpeed == 4 && settings.boostSpeed == 8);
+    }
+    assert(!ApplySettings("base_speed=9\nboost_speed=3", settings));
+    assert(!ApplySettings("base_speed=1", settings));
+    assert(!NormalizeSettings(settings) && settings.baseSpeed == 1 && settings.boostSpeed == 3);
+    assert(ApplySettings("boost_speed=10\nboost_speed=7", settings) == 1 && settings.boostSpeed == 3);
     assert(!ParseSettings("", settings));
     for (auto kind : {MessageKind::Npc, MessageKind::Ui, MessageKind::Unnamed, MessageKind::Unknown}) {
         assert(SelectSpeed(settings, kind, "rcm", false) == 2);

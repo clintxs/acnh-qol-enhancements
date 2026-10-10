@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.61 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.62 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -141,7 +141,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.61
+  version = 0.3.62
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.
@@ -162,11 +162,11 @@ remain a separate translation resource, outside module configuration layering.
 Whole-line #/; comments, a UTF-8 BOM, CRLF and valid UTF-8 text up to 4 KiB per file
 are supported. Versions use numeric major.minor.patch.
 
-CRAFTING MODULE / SETTINGS (0.3.61)
+CRAFTING MODULE / SETTINGS (0.3.62)
 Install Core plus “QoL Enhancements - Crafting”. This replaces the former
 “QoL Enhancements - Faster Crafting” folder; remove that old folder when updating.
 Move any personal faster-crafting.custom.ini preferences to crafting.custom.ini.
-Remove old version overrides in that custom file, or update them to 0.3.61.
+Remove old version overrides in that custom file, or update them to 0.3.62.
 Old faster-crafting.ini/custom paths are no longer read.
 DIY app previews are now optional Crafting behavior, not always-on Core behavior.
 
@@ -174,7 +174,7 @@ Regular settings: romfs/qol-enhancements/config/crafting.ini
 Personal overlay: romfs/qol-enhancements/config/crafting.custom.ini
 Defaults in the regular file:
   enabled = true
-  version = 0.3.61
+  version = 0.3.62
   diy_app_preview = true
   workbench_preview_tilt = true
   crafting_quantity_wrap = true
@@ -242,7 +242,10 @@ non-ASCII case folding and Unicode normalization are not performed.
 Timmy/Tommy/Orville/Wilbur/Kapp'n aliases still work across languages, mapping
 to rcm/rct/dod/doc/kpp; Kapp'n also includes kppB. Name capture is new in 0.3.17
 and needs a live test. Missing/invalid name labels leave ID matching usable.
-This prototype accepts speed tiers 2/4.
+Both speed keys accept whole numbers 1 through 10; defaults remain 2/4.
+The old parser accepted only 2/4: 8 was rejected and inherited the earlier
+boost (normally 4). Version 0.3.62 applies each selected speed to both native
+text-rate paths. For a stronger comparison, try base_speed=4, boost_speed=8.
 Holding B/R selects boost_speed without stacking it on an automatic boost.
 0.2.2 fixes an early window check that rejected recognized DIY/catch messages.
 0.2.3 fixes NPC identity lookup by reading the speaker's owned entity handle.

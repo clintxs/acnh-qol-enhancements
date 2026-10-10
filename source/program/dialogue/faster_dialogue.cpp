@@ -29,6 +29,12 @@ constexpr unsigned NpcEntity = 10, PlayerEntity = 0x4f, DialogWindow = 1, Balloo
 constexpr std::uint16_t BoostButtons = 0x4002; // B/R; L is deliberately excluded.
 } // namespace layout
 Settings Preferences{};
+// Flags remain 1 (base) / 3 (boost), so the native fast-mode voice parameter
+// and renderer forwarding stay unchanged. Bit 1 now selects the configured
+// tier instead of hardcoding a second doubling. Native fast rate is nominal 2x.
+float RateScale(unsigned flag) {
+    return float(flag & 2 ? Preferences.boostSpeed : Preferences.baseSpeed) * 0.5f;
+}
 enum class NameTag { Unknown, Named, Unnamed };
 struct ResolvedName {
     std::uintptr_t manager{}, source{};
@@ -311,8 +317,9 @@ HOOK_DEFINE_INLINE(DialogueSelectSpeed) {
                                       Read<std::uint8_t>(text, layout::HeldFast) != 0, speaker.localizedName);
         // Reached only AFTER native forced/protected/acceleration-disabled
         // checks. Native stores this flag and forwards it to both renderers.
-        // 1 = native fast, 3 = native fast plus extra multiplier (old 0.3 tier).
-        registers->W[9] = speed == 4 ? 3 : 1;
+        // Store the selected tier, not the numeric multiplier. Both flags
+        // retain native fast mode; the two rate hooks apply its actual speed.
+        registers->W[9] = speed > Preferences.baseSpeed ? 3 : 1;
 #if CAS_VERBOSE_DIALOGUE_TRACE
         // Log transitions, not the first frames: title/save dialogs must not
         // consume the entire trace before the user reaches an NPC.
@@ -343,7 +350,7 @@ HOOK_DEFINE_INLINE(DialogueSelectSpeed) {
 };
 HOOK_DEFINE_INLINE(DialogueMainRate) {
     static void Callback(exl::hook::InlineFloatCtx *registers) {
-        if (registers->W[20] & 2) registers->S[0] *= 2.0f;
+        if (registers->W[20]) registers->S[0] *= RateScale(registers->W[20]);
     }
 };
 HOOK_DEFINE_INLINE(DialogueForwardSpeed) {
@@ -355,8 +362,8 @@ HOOK_DEFINE_INLINE(DialogueForwardSpeed) {
 };
 HOOK_DEFINE_INLINE(DialogueRendererRate) {
     static void Callback(exl::hook::InlineFloatCtx *registers) {
-        if (Read<std::uint8_t>(registers->X[0], layout::RendererFast) & 2)
-            registers->S[0] *= 2.0f;
+        const auto flag = Read<std::uint8_t>(registers->X[0], layout::RendererFast);
+        if (flag) registers->S[0] *= RateScale(flag);
     }
 };
 } // namespace
