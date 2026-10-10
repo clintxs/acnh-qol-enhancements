@@ -1,4 +1,4 @@
-"""Workbench X shortcut: compiled input/hooks and native open/cancel/footer paths.
+"""Workbench Y shortcut: compiled input/hooks and native open/cancel/footer paths.
 
 Layout allocation, engine type checks, recipe data and child readiness are
 modeled. Native Play entry/exit, MultiCreation entry/update and footer record
@@ -16,7 +16,7 @@ class ShortcutMachine(Machine):
         super().__init__(base, {'crafting': DEFAULT, 'pockets': DEFAULT})
         self.boot(); self.activate()
         assert 'quantity shortcut: READY' in self.text
-        self.native_inputs = self.attached = self.detached = 0
+        self.native_inputs = self.attached = self.detached = self.favorites = 0
         self.valid = self.materials = self.multiple = self.ready = True
         self.closed = self.confirmed = False
         self.seq, self.page, self.child = self.alloc(0x1c300), self.alloc(0x700), self.alloc(0x400)
@@ -29,7 +29,7 @@ class ShortcutMachine(Machine):
         self.write(self.seq+0x1c1c8,0xffffffff,4); self.write(self.seq+0x1c1cc,0xffffffff,4)
         for method, action in ((0x218,lambda:self.page),(0x220,lambda:0),
                                (0x288,lambda:int(self.valid)),(0x290,lambda:int(self.materials)),
-                               (0x2a8,lambda:int(self.multiple)),(0x2a0,self.recipe_data)):
+                               (0x2a8,lambda:int(self.multiple)),(0x298,self.favorite),(0x2a0,self.recipe_data)):
             self.write(self.methods+method,self.stub(action))
         for method, action in ((0xf0,lambda:int(self.ready)),(0x208,self.set_recipe),
                                (0x210,lambda:int(self.confirmed)),(0xe8,lambda:int(self.closed))):
@@ -84,6 +84,9 @@ class ShortcutMachine(Machine):
         self.call(address)
     def hook(self,offset,*args):self.invoke(self.hooks[self.base+offset],*args)
     def native_input(self):self.native_inputs+=1
+    def favorite(self):
+        assert (self.reg(0),self.reg(1))==(self.seq,17)
+        self.favorites+=1
     def attach(self):
         assert (self.reg(0),self.reg(1))==(self.seq,self.child)
         self.attached+=1
@@ -112,7 +115,7 @@ class ShortcutMachine(Machine):
         self.write(self.seq+0x1f0,0xffffffff,4);self.write(self.seq+0x1f4,0xffffffff,4)
         self.write(self.seq+0x200,0,1)
         self.hook(0x3494b2c,self.seq)
-    def input_x(self,buttons=0,consumed=0,blocked=0):
+    def input_y(self,buttons=0,consumed=0,blocked=0):
         self.write(self.row,buttons,4);self.write(self.row+0x3c,consumed,4)
         self.hook(0x3c58d24,self.page,self.snapshot,blocked)
     def hints(self):
@@ -128,8 +131,8 @@ for base in (0x7100000000,0x7200000000):
         m.enter();m.reset_footer();m.hook(0x346ec1c,m.seq)
         labels=m.hints()
         allowed=valid and materials and multiple and supports
-        assert labels==[(7,'2004'),(5,'2003'),(0xffffffff,'2005')]+([(6,'qol_crafting.set_quantity')] if allowed else []),labels
-        m.input_x();before=m.native_inputs;m.input_x(0x40)
+        assert labels==[(6,'2004'),(5,'2003'),(0xffffffff,'2005')]+([(7,'qol_crafting.set_quantity')] if allowed else []),labels
+        m.input_y();before=m.native_inputs;m.input_y(0x80)
         assert m.read(m.seq+0x1f0,4)==(9 if allowed else 0xffffffff)
         assert m.native_inputs==before+int(not allowed)
         cases+=1
@@ -138,18 +141,18 @@ for base in (0x7100000000,0x7200000000):
         m.reset_footer(capacity);m.hook(0x346ec1c,m.seq)
         assert len(m.hints())==min(capacity,4)
         cases+=1
-    # Held X cannot open on entry. Blocked/consumed/competing/pending input
+    # Held Y cannot open on entry. Blocked/consumed/competing/pending input
     # cannot queue a selector; the next accepted gesture requires release.
-    for consumed,blocked,buttons,pending,ready in ((0,0,0x40,-1,True),(0x40,0,0x40,-1,True),
-            (0,1,0x40,-1,True),(0,0,0x50,-1,True),(0,0,0x60,-1,True),
-            (0,0,0x40,4,True),(0,0,0x40,-1,False)):
+    for consumed,blocked,buttons,pending,ready in ((0,0,0x80,-1,True),(0x80,0,0x80,-1,True),
+            (0,1,0x80,-1,True),(0,0,0x90,-1,True),(0,0,0xa0,-1,True),
+            (0,0,0x80,4,True),(0,0,0x80,-1,False)):
         m.enter();m.ready=ready
-        if (consumed,blocked,buttons,pending,ready)!=(0,0,0x40,-1,True):m.input_x()
+        if (consumed,blocked,buttons,pending,ready)!=(0,0,0x80,-1,True):m.input_y()
         m.write(m.seq+0x1f0,pending&0xffffffff,4)
-        m.input_x(buttons,consumed,blocked)
+        m.input_y(buttons,consumed,blocked)
         assert m.read(m.seq+0x1f0,4)==pending&0xffffffff
         cases+=1
-    m.ready=True;m.enter();m.input_x();m.input_x(0x40)
+    m.ready=True;m.enter();m.input_y();m.input_y(0x80)
     assert m.read(m.seq+0x1f0,4)==9 and m.read(m.seq+0x239,1)&4
     m.hook(0x3494e7c,m.seq) # Native Play exit disables the preview keys.
     assert m.read(m.input+0x54,1)==1
@@ -164,11 +167,27 @@ for base in (0x7100000000,0x7200000000):
     m.closed=True;m.invoke(base+0x349634c,m.seq) # B/cancel returns to preview.
     assert m.detached==1 and m.read(m.seq+0x1f0,4)==3
     m.reset_footer();m.enter(prior=9)
-    assert m.read(m.input+0x54,1)==0 and (6,'qol_crafting.set_quantity') in m.hints()
-    # Leaving clears ownership: same page receiving later X stays native.
+    assert m.read(m.input+0x54,1)==0 and (7,'qol_crafting.set_quantity') in m.hints()
+    # Leaving clears ownership: same page receiving later Y stays native.
     m.hook(0x3494e7c,m.seq);m.write(m.input+0x54,0,1)
-    m.input_x();m.input_x(0x40)
+    m.input_y();m.input_y(0x80)
     assert m.read(m.seq+0x1f0,4)==0xffffffff
+    # X now favorites through the native Play action, once per press. Y must
+    # be consumed even for a recipe that cannot open quantity.
+    m.enter();m.write(m.seq+0x1c1cc,0xffffffff,4);m.input_y()
+    m.input_y(0x40)
+    assert m.read(m.seq+0x1c1cc,4)==3 and m.read(m.row+0x3c,4)&0x40
+    m.invoke(base+0x3494d00,m.seq) # Native Play dispatches the favorite toggle.
+    assert m.favorites==1
+    m.write(m.seq+0x1c1cc,0xffffffff,4);m.input_y(0x40)
+    assert m.read(m.seq+0x1c1cc,4)==0xffffffff
+    m.materials=False;m.input_y();m.input_y(0x80)
+    assert m.read(m.row+0x3c,4)&0x80 and m.read(m.seq+0x1c1cc,4)==0xffffffff
+    m.materials=True
+    # Footer building restores the key binding after copying the X icon.
+    wrapper=m.read(m.page+0x570);key_pointer=m.read(wrapper+0xa0)
+    assert m.read(key_pointer+0x14,4)==7
+    cases+=4
     # Existing localized caption routing, including with Pockets installed.
     regs,key,source=m.alloc(0x200),m.alloc(),m.alloc()
     m.write(key+8,source)
@@ -189,4 +208,4 @@ for base in (0x7100000000,0x7200000000):
         assert not any(base+off in q.hooks for off in (0x3494b2c,0x3494e7c,0x346ec1c,0x2de4940))
         assert base+0x22fc6bc in q.hooks and base+0x2279a14 in q.hooks
         cases+=1
-print(f'PASS: {cases} quantity-shortcut cases at two bases; native preview/footer, quantity open/cancel, material gates, fresh X, caption routing and isolated conflicts. Live Eden test pending.')
+print(f'PASS: {cases} quantity-shortcut cases at two bases; native preview/footer, quantity open/cancel, material gates, fresh Y, caption routing and isolated conflicts. Live Eden test pending.')

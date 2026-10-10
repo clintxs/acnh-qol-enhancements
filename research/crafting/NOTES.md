@@ -399,3 +399,16 @@ and descriptor copying. Engine readiness/type/recipe boundaries are modeled.
 The fixture covers both bases, eligibility, release/held/blocked/consumed X,
 A/B priority, footer capacity, localization routing and fingerprint conflicts.
 Live visual/input behavior remains to be checked in Eden.
+
+## Corrected quantity button and Favorite remapping — 0.3.67
+
+User confirmed 0.3.66 works and corrected the input to Switch Y (Deck X).
+Y was native Favorite in WorkCraftInfo. The preview subscriber now consumes
+Y (snapshot mask 80) and uses it for quantity; X (40) queues native Play
+action 3, matching the 03493018 Favorite delegate. Independent fresh-press
+latches prevent either held input retriggering. Recipe-grid input is untouched.
+The footer temporarily exposes button ID 6 for Favorite's synchronous native
+descriptor copy and restores the key ID afterwards. Quantity uses ID 7 (Y).
+Native Play update/virtual +298 still owns the actual Favorite toggle. The
+ARM fixture additionally executes that dispatch and checks held-X suppression,
+ineligible-Y consumption, both hint icons and native binding restoration.

@@ -24,7 +24,7 @@ constexpr std::size_t QuantityChild = 0x1c1e8, SupportsMultiple = 0x1c1f0;
 constexpr std::size_t PageGetter = 0x218, ValidRecipe = 0x288, CanCraft = 0x290, MultipleRecipe = 0x2a8;
 constexpr std::size_t PageInput = 0x210, Shortcut = 0x570, ShortcutKey = 0xa0;
 }
-constexpr unsigned PreviewState = 3, QuantityState = 9, XMask = 0x40;
+constexpr unsigned PreviewState = 3, QuantityState = 9, XMask = 0x40, YMask = 0x80;
 constexpr char QuantityHintKey[] = "qol_crafting.set_quantity";
 std::uintptr_t Main{};
 std::uintptr_t MainAddress(std::uintptr_t offset) { return Main + offset; }
@@ -57,7 +57,7 @@ static_assert(offsetof(HintDescription, player) == 0x68);
 static_assert(offsetof(HintDescription, alternateButton) == 0x74);
 static_assert(sizeof(HintDescription) == 0x80);
 SafeString QuantityBank, QuantityCaption;
-struct PreviewBinding { void *sequence{}, *page{}; bool armed{}; };
+struct PreviewBinding { void *sequence{}, *page{}; bool armed{}, favoriteArmed{}; };
 std::array<PreviewBinding, 8> Bindings{};
 void *PreviewPage(void *sequence) {
     auto page = Virtual<void *(*)(void *)>(sequence, layout::PageGetter)(sequence);
@@ -103,7 +103,7 @@ void AppendQuantityHint(void *sequence) {
         if (entries[i] && entries[i]->caption.text &&
             std::strcmp(entries[i]->caption.text, QuantityHintKey) == 0) return;
     HintDescription hint;
-    hint.button = 6; // Native KeyGuide X icon (input snapshot mask is 0x40).
+    hint.button = 7; // Native KeyGuide Y icon (input snapshot mask is 0x80).
     hint.player = Field<unsigned char>(sequence, layout::Resident);
     if (hint.player > 7) hint.player = 0xff;
     hint.caption.vtable = *reinterpret_cast<const std::uintptr_t *>(Main + address::BufferedStringVtableGot) + 16;
@@ -112,7 +112,19 @@ void AppendQuantityHint(void *sequence) {
     reinterpret_cast<void (*)(void *, const HintDescription *, unsigned)>(Main + address::AppendHint)(footer, &hint, 1);
 }
 HOOK_DEFINE_TRAMPOLINE(BuildQuantityShortcutHint) {
-    static void Callback(void *sequence) { Orig(sequence); AppendQuantityHint(sequence); }
+    static void Callback(void *sequence) {
+        auto page = PreviewPage(sequence);
+        auto hint = page ? Field<void *>(page, layout::Shortcut) : nullptr;
+        auto key = hint ? Field<void *>(hint, layout::ShortcutKey) : nullptr;
+        // 0346EC1C reads this key's button ID solely to build Favorite's
+        // descriptor. Use the X icon during that synchronous copy; retain the
+        // native key binding afterwards. Our subscriber handles X explicitly.
+        const unsigned button = key ? Field<unsigned>(key, 0x14) : 0;
+        if (key) Field<unsigned>(key, 0x14) = 6;
+        Orig(sequence);
+        if (key) Field<unsigned>(key, 0x14) = button;
+        AppendQuantityHint(sequence);
+    }
 };
 HOOK_DEFINE_INLINE(ResolveQuantityShortcutCaption) {
     static void Callback(exl::hook::InlineCtx *registers) {
@@ -157,14 +169,27 @@ bool QuantityShortcutInput(void *page, void *snapshot, unsigned blocked) {
         }
         if (unavailable || !rows || resident >= 8 || Field<unsigned>(snapshot, 8) > 8 ||
             resident >= Field<unsigned>(snapshot, 8) || Field<unsigned>(sequence, layout::State) != PreviewState) {
-            binding.armed = false; return false;
+            binding.armed = binding.favoriteArmed = false; return false;
         }
         auto row = rows + resident * 0x48;
         const unsigned buttons = Field<unsigned>(row);
-        const bool fresh = binding.armed;
-        binding.armed = !(buttons & XMask);
-        if (!fresh || !(buttons & XMask) || (buttons & 0x30) ||
-            (Field<unsigned>(row, 0x3c) & XMask) || Field<int>(sequence, layout::Result) != -1 ||
+        const unsigned consumed = Field<unsigned>(row, 0x3c);
+        const bool fresh = binding.armed, freshFavorite = binding.favoriteArmed;
+        binding.armed = !(buttons & YMask);
+        binding.favoriteArmed = !(buttons & XMask);
+        // Y used to be Favorite here. Consume every Y sample, including held
+        // or ineligible presses, so it can never favorite instead of opening
+        // quantity. Other pages keep the native controls.
+        Field<unsigned>(row, 0x3c) |= buttons & YMask;
+        if ((buttons & 0x30) || Field<int>(sequence, layout::Result) != -1) return false;
+        if (freshFavorite && (buttons & XMask) && !(buttons & YMask) && !(consumed & XMask) &&
+            Field<int>(sequence, layout::Action) == -1) {
+            // The native Favorite delegate (03493018) queues action 3 in
+            // +1C1CC. Play update runs the existing favorite toggle normally.
+            Field<int>(sequence, layout::Action) = 3;
+            Field<unsigned>(row, 0x3c) |= XMask;
+        }
+        if (!fresh || !(buttons & YMask) || (consumed & YMask) ||
             !SupportsQuantity(sequence)) return false;
         const unsigned slot = Field<unsigned char>(sequence, layout::PendingSlot);
         if (slot > 1 || Field<int>(sequence, layout::Pending + slot * 4) != -1) return false;
@@ -178,7 +203,7 @@ bool QuantityShortcutInput(void *page, void *snapshot, unsigned blocked) {
         Field<int>(sequence, layout::Action) = -1;
         Field<unsigned char>(sequence, layout::FooterFlags) |= 4;
         Field<int>(sequence, layout::Pending + slot * 4) = QuantityState;
-        Field<unsigned>(row, 0x3c) |= XMask;
+        Field<unsigned>(row, 0x3c) |= YMask;
         Logging.Log("[QoL Enhancements/Crafting] quantity shortcut: open; recipe=%d resident=%u\n",
                     Field<int>(sequence, layout::Recipe), resident);
         return true;
@@ -208,7 +233,7 @@ bool InstallCraftingQuantityShortcut() {
     LeaveQuantityShortcutPreview::InstallAtOffset(address::LeavePreview);
     BuildQuantityShortcutHint::InstallAtOffset(address::BuildFooter);
     ResolveQuantityShortcutCaption::InstallAtOffset(address::ResolveCaption);
-    Logging.Log("[QoL Enhancements/Crafting] quantity shortcut: READY; workbench preview X / Set quantity\n");
+    Logging.Log("[QoL Enhancements/Crafting] quantity shortcut: READY; workbench preview Y / Set quantity; X / Favorite\n");
     return true;
 }
 } // namespace qol::crafting

@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.66 direct crafting quantity shortcut
+# Unified QoL validation — 0.3.67 corrected crafting shortcut buttons
 
 Validated locally on October 10, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,25 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.67 Corrected Y quantity shortcut and X Favorite
+
+The user confirmed 0.3.66 opens and cancels correctly in Eden, then corrected
+the requested Switch input to Y (their Steam Deck X button sends Y). The
+workbench item preview now uses Y / Set quantity and X / Favorite, with both
+controller hints updated. Other pages retain their native bindings.
+
+Y samples are consumed even when quantity is unavailable, preventing the
+native Favorite delegate from also running. A fresh X queues the existing
+Favorite action (3); native Play update still performs the toggle. Held or
+blocked input cannot retrigger either action. The footer copies Favorite's
+X icon while temporarily overriding its descriptor source, then restores
+the native key. The new quantity hint uses Y and the existing translated text.
+
+The updated ARM fixture covers 84 cases at two bases, including native
+Favorite dispatch, held X, ineligible Y consumption, restored footer key
+binding and the existing opening/cancellation/gating cases. Core, Crafting
+and Pockets checks pass. Live button/hint confirmation is pending.
 
 ## 0.3.66 Direct workbench preview quantity shortcut
 

@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.66 direct crafting quantity shortcut** for ACNH **3.0.3 on Eden**. One Core
+**0.3.67 corrected crafting shortcut buttons** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -112,10 +112,11 @@ from before that file. Crafting's regular marker must be installed and compatibl
 `enabled=false` disables its previews, tilt, quantity wrap, direct quantity
 shortcut and speed hooks together. Core remains required. Fully restart after changing module installation or settings.
 
-From the workbench’s large 3D item preview, press **X / Set quantity** to
+From the workbench’s large 3D item preview, press **Y / Set quantity** to
 open Craft Multiple directly. The hint uses the existing localized label and
 appears for recipes that support multiple crafting and have enough materials.
-B returns to the item preview. This shortcut is included whenever Crafting is
+**X / Favorite** toggles the recipe favorite in this preview; grid controls
+keep their original bindings. B returns to the item preview. This shortcut is included whenever Crafting is
 enabled, independently of `crafting_quantity_wrap`.
 
 ## DIY Recipes app previews (Crafting)
