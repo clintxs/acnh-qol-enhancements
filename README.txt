@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.63 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.64 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -18,6 +18,10 @@ Core uses subsdk6, leaving subsdk9 available for Jubbsticks Additions.
 This avoids that executable-slot collision; compatibility with its eventual
 ACNH v3 release still needs testing. Other mods must also avoid subsdk6 and
 our hook/layout files. Core supplies the suite's only main.npdm.
+
+0.3.64: With Catalog enabled, a crafting/cooking villager's current item name
+gets a star only when you have not learned their recipe. Other item dialogue
+keeps catalog ownership checks. This needs an in-game test.
 
 MODULES
 Crafting: DIY app 3D previews and configurable crafting/cooking speed ramp.

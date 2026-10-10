@@ -6,6 +6,8 @@
 namespace catalog_aware_shops::game {
 namespace {
 namespace address {
+constexpr std::uintptr_t NpcTypeToken = 0x04ab37d0, NpcTypeGuard = 0x04ab37d8;
+constexpr std::uintptr_t GetNpcSaveView = 0x0255c2a0;
 constexpr std::uintptr_t RecipeManagerSlot = 0x04ab46f0;
 constexpr std::uintptr_t PlayerReadinessSlot = 0x04ab4fb8;
 constexpr std::uintptr_t SaveManager = 0x054021a0, FallbackSave = 0x05474040;
@@ -14,6 +16,9 @@ constexpr std::uintptr_t HasLearnedDiyRecipe = 0x0251e658;
 constexpr std::uintptr_t HasLearnedCookingRecipe = 0x0251288c;
 } // namespace address
 namespace layout {
+constexpr std::size_t EventNpc = 0x48, NpcSaveIndex = 0x508, IsNpcType = 0x20;
+constexpr std::size_t ViewBase = 8, ViewOffset = 0x10, ViewLock = 0x28;
+constexpr std::size_t CurrentNpcRecipe = 0x13154;
 constexpr std::size_t ValidDiyRecipeBits = 0xe98e0, ValidCookingRecipeBits = 0xe99e0;
 constexpr std::size_t PlayerRecordSize = 0x13f0, ReadyA = 0x13d4, ReadyB = 0x13d6;
 constexpr std::size_t SaveView = 0x194b0, ViewReady = 8, FallbackView = 0x20;
@@ -92,6 +97,52 @@ RecipeStatus QueryRecipeCard(std::uint8_t player, const CatalogItem &item) {
                              : FunctionAt<bool (*)(std::uintptr_t, unsigned, const std::uint8_t *)>(
                                    address::HasLearnedDiyRecipe)(manager, recipe, &player);
     return learned ? RecipeStatus::Learned : RecipeStatus::Unlearned;
+}
+
+RecipeStatus QueryVillagerCraftRecipe(std::uint8_t player, std::uintptr_t event,
+                                     std::uint16_t &recipe) {
+    recipe = 0xffff;
+    if (!event || player >= PlayerCount) {
+        return RecipeStatus::Unavailable;
+    }
+    // Follow EventFlowQueryIsNpcDIYRecipeCollected (00a53e40): the event owns
+    // the speaker. The item-name setter has already initialized its type token.
+    const auto guard = Read<std::uintptr_t>(MainAddress(address::NpcTypeGuard));
+    const auto npc = Read<std::uintptr_t>(event, layout::EventNpc);
+    if (!guard || !Read<std::uint8_t>(guard) || !npc) {
+        return RecipeStatus::Unavailable;
+    }
+    const auto vtable = Read<std::uintptr_t>(npc);
+    const auto token = Read<std::uintptr_t>(MainAddress(address::NpcTypeToken));
+    const auto isNpc = vtable ? Read<std::uintptr_t>(vtable, layout::IsNpcType) : 0;
+    if (!token || !isNpc ||
+        !reinterpret_cast<bool (*)(std::uintptr_t, std::uintptr_t)>(isNpc)(npc, token)) {
+        return RecipeStatus::Unavailable;
+    }
+    const auto view = FunctionAt<std::uintptr_t (*)(unsigned)>(address::GetNpcSaveView)(
+        Read<unsigned>(npc, layout::NpcSaveIndex));
+    if (!view) {
+        return RecipeStatus::Unavailable;
+    }
+    const auto lock = Read<std::uintptr_t>(view, layout::ViewLock);
+    const auto acquire = lock ? Read<std::uintptr_t>(lock) : 0;
+    // Native save views expose acquire/release objects whose first virtual
+    // methods implement the read lock. Release only when acquire returns true.
+    const bool acquired = acquire && reinterpret_cast<bool (*)(std::uintptr_t)>(
+        Read<std::uintptr_t>(Read<std::uintptr_t>(acquire)))(acquire);
+    const auto base = Read<std::uintptr_t>(view, layout::ViewBase);
+    const auto offset = Read<std::uintptr_t>(view, layout::ViewOffset);
+    if (base) {
+        recipe = Read<std::uint16_t>(base + offset, layout::CurrentNpcRecipe);
+    }
+    const auto release = acquired && lock ? Read<std::uintptr_t>(lock, 8) : 0;
+    if (release) {
+        reinterpret_cast<void (*)(std::uintptr_t)>(
+            Read<std::uintptr_t>(Read<std::uintptr_t>(release)))(release);
+    }
+    // A local card reuses the validated DIY/cooking knowledge query. No save
+    // or game item is changed. Missing recipe data must not fall back to catalog.
+    return QueryRecipeCard(player, CatalogItem{RecipeCardId, {0, 0}, recipe});
 }
 
 bool ValidateRecipeBindings() {

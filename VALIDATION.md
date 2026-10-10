@@ -1734,3 +1734,21 @@ and B behavior remain unverified. No game install, save or synced log is changed
 - The original 2/4 regressions and localized-name checks remain required.
   These are local emulation checks; perceived speed, Animalese and emote timing
   at the extended rates still need an Eden test. Fixed waits remain native.
+
+## 0.3.64 villager crafting recipe dialogue
+
+- `NNPC_Reaction_DIY` Event54 and `NNPC_Reaction_Cooking` Event6 set
+  `cItemName` with `ItemTarget=16` (the villager's current craft). The existing
+  script-item hook now interprets only this target as a recipe offer. Gifts,
+  sales, other script targets and the player's own crafting keep catalog checks.
+- Read the event-owned NPC's save view using the type check, save-index getter,
+  read-lock contract and current-recipe field from native
+  `EventFlowQueryIsNpcDIYRecipeCollected` at `00a53e40`. Query the actual recipe
+  through the existing validated DIY/cooking knowledge functions; do not infer
+  a recipe from its output item. Unknown data suppresses the marker.
+- Added compiled ARM coverage for learned/unlearned recipes crossed with
+  cataloged/uncataloged results, DIY/cooking/Spooky fence, all eight remapped
+  players, three noun forms, missing NPC/save/type/history and invalid recipes,
+  lock acquisition/release and ordinary dialogue scope at two ASLR bases.
+- No new hooks or layout changes. Catalog remains an independent module;
+  Crafting is not required. Live villager DIY/cooking dialogue needs Eden testing.

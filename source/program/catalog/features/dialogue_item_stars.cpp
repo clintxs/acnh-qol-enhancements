@@ -9,7 +9,8 @@
 namespace catalog_aware_shops::features {
 namespace {
 namespace layout {
-constexpr std::size_t ActionEvent = 8, EventPlayer = 0x2a8;
+constexpr std::size_t ActionEvent = 8, EventPlayer = 0x2a8, ActionItemTarget = 0xd8;
+constexpr unsigned VillagerCurrentCraftTarget = 16;
 constexpr std::size_t NameType = 8, Text = 0x18, Capacity = 0x20;
 constexpr std::size_t StorageStart = 0x28, StorageEnd = 0x1f0, PluralForm = 0x1e0;
 constexpr unsigned CapacityUnits = 128;
@@ -40,7 +41,7 @@ bool MarkForm(std::uintptr_t name, std::size_t offset, char16_t marker) {
 }
 
 void MarkDialogueItem(exl::hook::InlineCtx *registers, std::uintptr_t name,
-                      std::uintptr_t itemAddress, const char *source) {
+                      std::uintptr_t itemAddress, const char *source, bool villagerCraft = false) {
     const auto action = registers->X[20];
     if (!action || !name || !itemAddress) {
         return;
@@ -54,9 +55,11 @@ void MarkDialogueItem(exl::hook::InlineCtx *registers, std::uintptr_t name,
         return;
     }
     const auto item = Read<game::CatalogItem>(itemAddress);
-    const bool recipe = item.id == game::RecipeCardId;
-    const auto recipeStatus =
-        recipe ? game::QueryRecipeCard(player, item) : game::RecipeStatus::Unavailable;
+    const bool recipe = villagerCraft || item.id == game::RecipeCardId;
+    std::uint16_t recipeId = item.id == game::RecipeCardId ? item.extra : 0xffff;
+    const auto recipeStatus = villagerCraft
+        ? game::QueryVillagerCraftRecipe(player, event, recipeId)
+        : recipe ? game::QueryRecipeCard(player, item) : game::RecipeStatus::Unavailable;
     const auto status =
         recipe ? game::CatalogStatus::Unavailable : game::QueryCabinetCatalog(player, item);
     const auto marker = recipe ? (recipeStatus == game::RecipeStatus::Unlearned ? u'★' : 0)
@@ -71,9 +74,9 @@ void MarkDialogueItem(exl::hook::InlineCtx *registers, std::uintptr_t name,
     static unsigned reports = 0;
     if (reports++ < 96) {
         Logging.Log("[QoL Enhancements/Catalog] DIALOGUE_ITEM_STAR source=%s item=%u player=%u "
-                    "status=%u recipe_status=%u marker=0x%x marked=%d type=%u\n",
+                    "status=%u recipe_status=%u recipe=%u villager_craft=%d marker=0x%x marked=%d type=%u\n",
                     source, item.id, player, static_cast<unsigned>(status),
-                    static_cast<unsigned>(recipeStatus), static_cast<unsigned>(marker), marked,
+                    static_cast<unsigned>(recipeStatus), recipeId, villagerCraft, static_cast<unsigned>(marker), marked,
                     type);
     }
 }
@@ -153,8 +156,13 @@ HOOK_DEFINE_INLINE(DialogueScriptItemStar) {
         }
         // This switch arm is specifically cItemName, immediately before
         // RegisterItemName. The other arms register unrelated tag types.
+        // Both NNPC_Reaction_DIY and NNPC_Reaction_Cooking request target 16
+        // for the villager's current craft. Other targets (gifts/sales), and
+        // the player's own crafting UI-result setter retain catalog semantics.
         MarkDialogueItem(registers, frame - layout::ScriptFrameBytes + 0x17f8,
-                         frame - layout::ScriptFrameBytes + 0x17ec, "script-item");
+                         frame - layout::ScriptFrameBytes + 0x17ec, "script-item",
+                         registers->X[20] && Read<unsigned>(registers->X[20], layout::ActionItemTarget)
+                             == layout::VillagerCurrentCraftTarget);
     }
 };
 } // namespace
@@ -165,6 +173,13 @@ bool InstallDialogueItemStars() {
         std::array<std::uint32_t, 5> words;
     };
     constexpr Check checks[]{
+        {0x00a46318, {0xb940da81, 0x914007e0, 0x914007e2, 0x911fb000, 0x911fd042}},
+        {0x00a53e54, {0xf9400408, 0xaa0003f3, 0xb4000068, 0xf9402515, 0x14000002}},
+        {0x00a53e80, {0xf94002a8, 0x90020301, 0xaa1503e0, 0xf9401108, 0xf943e821}},
+        {0x00a53ea4, {0xb9450aa0, 0xf9400114, 0x946c20fd, 0xb4000814, 0xaa0003f6}},
+        {0x00a53ed8, {0xa940a6c8, 0x8b080128, 0x52862a89, 0x72a00029, 0x78696915}},
+        {0x00a53ef0, {0xf94016c8, 0xb4000188, 0xf9400500, 0xb4000140, 0xf9400008}},
+
         {0x00c5c0ec, {0xb81fc3b5, 0xb9410a93, 0xb85fc3a8, 0x7100f91f, 0x54011dc8}},
         {0x00c5e0cc, {0x7942b3e8, 0x9001f2a2, 0x910563e0, 0x39456be9, 0xd101a3a1}},
         {0x00c5e0ec, {0x39000ac9, 0x39000eca, 0xb819c3ab, 0xf946f842, 0x1400000e}},

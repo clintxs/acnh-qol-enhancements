@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.63 crafting quantity wrap timing update** for ACNH **3.0.3 on Eden**. One Core
+**0.3.64 villager recipe dialogue update** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
