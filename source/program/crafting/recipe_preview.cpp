@@ -32,6 +32,7 @@ constexpr std::uintptr_t ItemParamGlobalSlot = 0x04ac0428;
 constexpr std::uintptr_t UpdateItemActor = 0x0192a590;
 constexpr std::uintptr_t UpdateModelTransform = 0x032b9fcc, EntityManager = 0x04ab27c0;
 constexpr std::uintptr_t CapturePicture = 0x03a17390, AlternateCapturePicture = 0x03a174f0;
+constexpr std::uintptr_t WorkbenchPageVtable = 0x04a3b3e0;
 }
 namespace field {
 constexpr std::size_t Resident = 0x1f8, PhoneLayout = 0x210, Selection = 0x218;
@@ -55,14 +56,15 @@ constexpr std::size_t DrawLayer = 0x3d0, RendererState = 0x248, DrawInfo = 0x18,
 constexpr std::size_t ComponentOwner = 0x48, ComponentAngles = 0x2bc, ComponentPoseSize = 0x2c8;
 constexpr std::size_t SetComponentAngles = 0x150;
 constexpr std::size_t ComponentScale = 0x2a0, PrimaryAngles = 0x2b0;
-constexpr std::size_t LayoutCount = 0x3f0, CompletedItem = 0x94;
+constexpr std::size_t CompletedItem = 0x94;
 constexpr std::size_t EntityHandle = 0x230, ParentHandle = 0x234, EntityComponent = 0x68;
 constexpr std::size_t EntityRegistry = 0x1c0, RegistryEntries = 8, EntityFlags = 0x248;
 constexpr std::size_t EntityKind = 0x15c, ItemChildren = 0x274, ItemChildCount = 0x394;
 constexpr std::size_t EntityPhase = 0x288, EntityStage = 0x5e8;
 constexpr std::size_t ItemPoseState = 0x39c, ItemData = 0x360;
 }
-constexpr unsigned WorkbenchModelMode = 2, ConfirmMask = 0x10, BackMask = 0x20, PhoneShortcutKind = 5;
+constexpr unsigned DiyModelMode = 2, WorkbenchModelMode = 3;
+constexpr unsigned ConfirmMask = 0x10, BackMask = 0x20, PhoneShortcutKind = 5;
 // Native 03C49700/03C49710 route kinds 2/3 to X, kinds 0/1 to Y.
 // These are logical UI button bits, including synthesized stick directions.
 constexpr unsigned LeftMask = 4, RightMask = 8, LeftStickMask = 1, RightStickMask = 2;
@@ -120,6 +122,7 @@ struct WorkbenchInputState {
     unsigned handle{};
     std::uint64_t item{};
     float tilt{};
+    unsigned rotationReports{};
 } WorkbenchInputState;
 struct WorkbenchCarrierPose {
     void *component{};
@@ -520,7 +523,7 @@ HOOK_DEFINE_TRAMPOLINE(SetPreviewRotation) {
         // that final boundary too; other controllers retain the supplied pose.
         if (controller && !PreviewFixedPose.load(std::memory_order_acquire) &&
             controller == PreviewController.load(std::memory_order_acquire) &&
-            At<unsigned>(controller, field::ModelMode) == WorkbenchModelMode &&
+            At<unsigned>(controller, field::ModelMode) == DiyModelMode &&
             At<int>(controller, field::ModelState) == 1 &&
             At<unsigned>(controller, field::ModelHandle))
             angles = static_cast<std::byte *>(controller) + field::ModelAngles;
@@ -634,7 +637,7 @@ int PhoneRendererMode(void *phone) {
     // Replace only MenuRecipe's writable vtable slot, not the shared tiny
     // constant-return function (a trampoline would overlap its next function).
     auto s = ForPhone(phone);
-    return s && s->ownsRenderer ? WorkbenchModelMode : PhoneModelMode;
+    return s && s->ownsRenderer ? DiyModelMode : PhoneModelMode;
 }
 bool PhoneReady(void *phone) {
     return At<int>(phone, field::State) == 3 && At<int>(phone, field::Requests) == -1 &&
@@ -697,9 +700,9 @@ void Close(Session &s) {
         // state-1 exit balances camera/layers before state 0 resets ownership.
         auto context = UiContext();
         const bool stillOwned = context && At<void *>(context, field::Controller) == s.controller &&
-            At<unsigned>(s.controller, field::ModelMode) == WorkbenchModelMode;
+            At<unsigned>(s.controller, field::ModelMode) == DiyModelMode;
         if (stillOwned)
-            Native<void (*)(void *, unsigned)>(address::ReleaseModel)(s.controller, WorkbenchModelMode);
+            Native<void (*)(void *, unsigned)>(address::ReleaseModel)(s.controller, DiyModelMode);
         if (stillOwned && At<void *>(context, field::Parameters) == s.parameters) {
             std::memcpy(static_cast<std::byte *>(s.parameters) + 0x2c, s.savedParameters.data(), s.savedParameters.size());
             At<unsigned char>(s.parameters, 0x12) = s.savedHidden;
@@ -800,22 +803,17 @@ bool WorkbenchTiltInput(void *page, void *snapshot, unsigned blocked) {
     if (!page || !controller || controller == PreviewController.load(std::memory_order_acquire) ||
         At<unsigned>(controller, field::ModelMode) != WorkbenchModelMode ||
         At<int>(controller, field::ModelState) != 1) return false;
-    // CreateItemModel +10 stores a layout-instance wrapper at controller +60.
-    // Match the dispatching layout's own wrappers, not a similarly named pane
-    // or the first resident's input row. Other item-viewer modes are excluded.
-    auto instances = At<void **>(page, field::LayoutInstances);
-    auto visible = At<void *>(controller, field::VisibilityPage);
-    const auto layouts = At<unsigned>(page, field::LayoutCount);
-    bool owns = false;
-    if (instances && visible && layouts <= 16)
-        for (unsigned i = 0; i < layouts; ++i) owns |= instances[i] == visible;
-    if (!owns) return false;
+    // WorkCraftInfoSeq selects mode 3 in 034951BC. Its page is constructed
+    // with this vtable by 0346E7E8 and dispatches through SharedPageInput.
+    // Controller +60 is the nested /L_LoadingIcon_00 (0346E9C0), NOT one of
+    // page +3F8's top-level wrappers. The former array check rejected it.
+    if (At<std::uintptr_t>(page) != Main + address::WorkbenchPageVtable) return false;
     const auto handle = At<unsigned>(controller, field::ModelHandle);
     const auto item = At<std::uint64_t>(controller, field::CompletedItem); // Native completed item request.
     auto &state = WorkbenchInputState;
     if (state.controller != controller || state.page != page || state.handle != handle ||
         state.item != item || !handle || (At<unsigned char>(controller, field::ModelFlags) & MaterialPending))
-        state = {controller, page, handle, item, 0};
+        state = {controller, page, handle, item, 0, 0};
     WorkbenchTiltAngle.store(static_cast<unsigned>(static_cast<std::int32_t>(state.tilt * AngleUnitsPerDegree)), std::memory_order_relaxed);
     WorkbenchHandle.store(handle, std::memory_order_relaxed);
     WorkbenchController.store(controller, std::memory_order_release);
@@ -833,6 +831,9 @@ bool WorkbenchTiltInput(void *page, void *snapshot, unsigned blocked) {
     const float y = StickAxis(At<float>(row, field::RightStick + 4));
     state.tilt = std::clamp(state.tilt - y * DegreesPerUpdate, -MaximumTilt, MaximumTilt);
     WorkbenchTiltAngle.store(static_cast<unsigned>(static_cast<std::int32_t>(state.tilt * AngleUnitsPerDegree)), std::memory_order_release);
+    if (y && state.rotationReports++ < 4)
+        Logging.Log("[QoL Enhancements/Crafting] workbench tilt: input; row=%u pitch=%08x handle=%u\n",
+                    rowIndex, WorkbenchTiltAngle.load(std::memory_order_relaxed), handle);
     // Leave native dispatch and X intact: horizontal rotation, scroll, A/B,
     // recipe switching and crafting remain owned by the workbench.
     return false;
@@ -843,7 +844,7 @@ void RotatePreview(Session &s) {
     if (s.fixedPose || (x == 0 && y == 0)) return;
     auto context = UiContext();
     if (!s.ownsRenderer || !context || At<void *>(context, field::Controller) != s.controller ||
-        At<unsigned>(s.controller, field::ModelMode) != WorkbenchModelMode ||
+        At<unsigned>(s.controller, field::ModelMode) != DiyModelMode ||
         At<int>(s.controller, field::ModelState) != 1 || !At<unsigned>(s.controller, field::ModelHandle) ||
         (At<unsigned char>(s.controller, field::ModelFlags) & MaterialPending)) return;
     std::array<std::uint32_t, 3> angles{};
@@ -926,7 +927,7 @@ void NavigatePreview(Session &s) {
     auto context = UiContext();
     if (!PhoneReady(s.phone) || !context || At<void *>(context, field::Controller) != s.controller ||
         At<void *>(context, field::Parameters) != s.parameters || !s.ownsRenderer ||
-        At<unsigned>(s.controller, field::ModelMode) != WorkbenchModelMode ||
+        At<unsigned>(s.controller, field::ModelMode) != DiyModelMode ||
         At<int>(s.controller, field::ModelState) != 1 || !At<unsigned>(s.controller, field::ModelHandle) ||
         (At<unsigned char>(s.controller, field::ModelFlags) & MaterialPending)) return;
     const auto count = At<unsigned>(s.phone, field::Recipes);
@@ -1068,7 +1069,7 @@ bool Begin(Session &s) {
     At<unsigned char>(parameters, 0x44) = 0;
     At<unsigned>(parameters, 0x48) = 1;
     At<unsigned>(parameters, 0x2140) = 1;
-    At<unsigned>(controller, field::ModelMode) = WorkbenchModelMode;
+    At<unsigned>(controller, field::ModelMode) = DiyModelMode;
     At<void *>(controller, field::BackgroundPage) = nullptr; // No background page owner.
     At<unsigned char>(controller, 0x68) = 0;
     s.ownsRenderer = true; s.frames = 0;
@@ -1253,7 +1254,8 @@ bool InstallWorkbenchPreviewTilt() {
         {address::Atan2, {0xb0005ef0, 0xf940ba11, 0x9105c210, 0xd61f0220, 0xb0005ef0}},
         {0x005f7b4c, {0xb9400028, 0xb902b008, 0xb9400428, 0xb902b408, 0xb9400828}},
         {0x019282fc, {0xd10103ff, 0xa9017bfd, 0xf90013f5, 0xa9034ff4, 0x910043fd}},
-        {0x032bde00, {0xb911c67f, 0xf8286a7f, 0xf9400a88, 0xb4000068, 0xf9003268}},
+        {0x034951b8, {0xb000b0f5, 0x52800069, 0xf9411ab5, 0xb9000be9, 0xf94002a8}},
+        {0x0346e7d8, {0xf902ce9f, 0x9100414a, 0xf902d29f, 0xb9004a88, 0xf900028a}},
     };
     const auto &main = exl::util::GetMainModuleInfo();
     for (const auto &f : fingerprints) {
@@ -1270,7 +1272,7 @@ bool InstallWorkbenchPreviewTilt() {
     if (!core::RegisterPageInput(WorkbenchTiltInput)) return false;
     if (!ActorHookInstalled) UpdatePreviewActor::InstallAtOffset(address::UpdateItemActor);
     ActorHookInstalled = true;
-    Logging.Log("[QoL Enhancements/Crafting] workbench tilt: READY; right-stick up/down; native horizontal controls; fixed surfaces/fences\n");
+    Logging.Log("[QoL Enhancements/Crafting] workbench tilt: READY; WorkCraftInfo mode 3; right-stick up/down; native horizontal controls; fixed surfaces/fences\n");
     return true;
 }
 

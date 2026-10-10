@@ -233,6 +233,10 @@ class PreviewMachine(Machine):
             self.write(key+0x14,self.reg(2),4); self.write(key+0x10,self.reg(3),4)
             result=hint
         elif action == 'source': result = 7
+        elif action == 'loading_icon':
+            assert self.reg(0) == self.workbench_instance + 0x38
+            assert self.string(self.read(self.reg(1)+8)) == '/L_LoadingIcon_00'
+            result = self.workbench_loading_icon
         elif action == 'child_find':
             u.reg_write(UC_ARM64_REG_X2, 1); u.reg_write(UC_ARM64_REG_PC, self.base+0x27d1d0); return
         elif action == 'entity_create':
@@ -1522,13 +1526,30 @@ def workbench_tilt_fixture(base):
     m=PreviewMachine(base)
     root=m.model_entity
     page=m.alloc(0x800); instance=m.alloc(); wrappers=m.alloc()
+    # Native WorkCraftInfo construction selects this concrete page class.
+    # Its virtual input callback is the shared dispatcher we hook.
+    page_vtable=struct.unpack_from('<Q',RAW,0x4aca340)[0]+16
+    assert page_vtable==0x4a3b3e0
+    assert struct.unpack_from('<Q',RAW,page_vtable+0x50)[0]==0x3c58d24
+    m.write(page,base+page_vtable)
     m.write(page+0x3f0,1,4); m.write(page+0x3f8,wrappers); m.write(wrappers,instance)
+    sequence=m.alloc(0x1c210); m.write(sequence+0x1c1f8,page)
+    assert m.invoke(base+0x346e990,sequence)==page
+    # Run the actual visibility getter. +60 holds a nested loading icon,
+    # not the top-level wrapper; the old ownership test always rejected it.
+    m.workbench_instance=instance; m.workbench_loading_icon=m.alloc()
+    m.services[base+0x2acb9a0]=('preview','loading_icon')
+    loading=m.invoke(base+0x346e9c0,sequence)
+    assert loading==m.workbench_loading_icon and loading!=instance
     input_context=m.alloc(); m.write(page+0x210,input_context)
     hint=m.alloc(); key=m.alloc(); m.write(page+0x570,hint); m.write(hint+0xa0,key)
     m.write(key+0x10,4,4)  # Test a nonzero resident row.
-    m.write(m.controller+0x60,instance); m.write(m.controller+0x50,2,4)
+    # 034951BC selects profile 3; profile 2 belongs to our DIY renderer.
+    assert struct.unpack_from('<I',RAW,0x34951bc)[0]==0x52800069
+    m.write(m.controller+0x60,loading); m.write(m.controller+0x50,3,4)
     m.write(m.controller+0x10,1,4); m.write(m.controller+0x6c,0x12345,4)
     item=7498; m.write(m.controller+0x94,item); m.write(root+0x360,item)
+    m.write(root+0x174,2,4)  # Profile 3's native item-root mode (0408E920).
     m.write(root+0x39c,0,4); m.write(root+0x3a0,0xfffe,2)
     default=m.alloc(); m.write(default,0xfffe); m.write(base+0x4ab37e0,default)
     sentinel=m.alloc(); m.write(sentinel,0xfffe,2); m.write(base+0x4ab3170,sentinel)
@@ -1569,7 +1590,7 @@ def workbench_tilt_fixture(base):
     m.write(m.controller+0x74,4,1); input(1); tick(); assert m.read(angle,4)==0
     m.write(m.controller+0x74,0,1); m.write(m.controller+0x94,item+1)
     input(); tick(); assert m.read(angle,4)==0
-    for location,value,size in ((m.controller+0x50,3,4),(wrappers,0,8),(m.controller+0x6c,0,4)):
+    for location,value,size in ((m.controller+0x50,2,4),(page,base+0x4a3b778,8),(m.controller+0x6c,0,4)):
         old=m.read(location,size); m.write(location,value,size)
         before=m.read(angle,4); input(1); tick(); assert m.read(angle,4)==before, (hex(location),value,before,m.read(angle,4))
         m.write(location,old,size)
@@ -1586,7 +1607,7 @@ def workbench_tilt_fixture(base):
         m.write(row+4,zlib.crc32(kind.encode()),4)
         input(1); tick(); saved=bytes(m.u.mem_read(component+0x2b0,24))
         input(1); tick(); assert bytes(m.u.mem_read(component+0x2b0,24))==saved
-    print(f'PASS: workbench owner/resident input, native dispatch retained, tilt limits/dead zone/blocking, stable primary pose/effect angles, native yaw changes, pending-item reset and fixed-category guards; UI ownership and yaw dispatch modeled; ASLR {base:#x}')
+    print(f'PASS: native workbench page/visibility getters and profile-3 binding, resident input/native dispatch retained, tilt limits/dead zone/blocking, stable primary pose/effect angles, native yaw changes, pending-item reset and fixed categories; layout allocation and yaw dispatch modeled; ASLR {base:#x}')
 
 for base in (0x7100000000,0x7200000000): workbench_tilt_fixture(base)
 

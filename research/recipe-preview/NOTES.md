@@ -719,3 +719,42 @@ tilting limits/dead zone/blocked input, pending/new item reset, and fixed types 
 two ASLR bases. Existing native matrix/actor/effect/bone composition fixtures also
 run. GPU frame timing, native input binding and live workbench visuals remain
 untested locally.
+
+## Correct native workbench binding — 0.3.55
+
+0.3.54 fixes the DIY transition flash, confirmed by the user. Its workbench
+input guard was based on an incorrect profile/layout assumption, and never
+accepted actual workbench input. The synced 0.3.54 log confirms READY and
+workbench_preview_tilt=true, so this is a binding failure rather than settings.
+
+Actual WorkCraftInfoSeq is constructed by 03479AB8: base 03492B50 plus vtable
+04A3B778 (pointer slot 04ACA368 +10). Virtual +218 -> 0346E990 returns the
+page at sequence +1C1F8. 0346E62C constructs that page using vtable 04A3B3E0
+(pointer slot 04ACA340 +10, assigned at 0346E7E8). Its +50 input method is
+03C58D24, the shared dispatcher. The footer shortcut remains +570 -> +A0;
+its +10 identifies the resident's snapshot row.
+
+ChangePlay entry 03494FF0 explicitly selects renderer profile 3 at 034951BC;
+CreateItemModel maps this to item-root mode 2 via table entry 0408E920. Profile
+2 maps to root mode 1 and is what our DIY renderer selects (the fixture formerly
+used root mode 4). Keep these controller profiles separately named. The previous
+research's 0348D8BC/0348DE80 paths are remake/customization, and 032BF898 has a
+direct caller in another item viewer (02C066B0); neither establishes the
+workbench's input binding.
+
+Virtual +228 -> 0346E9C0 finds /L_LoadingIcon_00 underneath the first top-level
+layout wrapper via 02ACB9A0. CreateItemModel request +10 stores that nested
+wrapper at controller +60. It cannot match any top-level page +3F8 entry.
+Replace that ownership assumption with the concrete native WorkCraftInfo page
+vtable, plus profile/state/full handle and existing input blocking. Two native
+instruction fingerprints now validate the profile selection and page class
+assignment. No native A/B/X/crafting dispatch is suppressed. First four vertical
+input movements per item are logged for live follow-up.
+
+The ARM fixture executes native 0346E990 and 0346E9C0 with modeled child lookup,
+validates the native page vtable's shared input method, uses controller profile
+3 and root mode 2, and explicitly gives controller +60 a distinct nested wrapper.
+It exercises resident 4, wrong profile/page, blocked/consumed/dead-zone input,
+tilting limits, stable native matrices/effects, native horizontal writes and
+fixed category bypass at both ASLR bases. GPU visuals and native horizontal
+input dispatch remain live validation boundaries.

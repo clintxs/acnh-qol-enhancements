@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.54 preview transitions and workbench tilt
+# Unified QoL validation — 0.3.55 workbench tilt binding
 
 Validated locally on October 10, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,31 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.55 Workbench tilt binding fix
+
+The user confirms 0.3.54 fixes the outgoing DIY pose flicker, but workbench tilt
+has no effect. The synced log confirms the setting and installer are enabled.
+Native WorkCraftInfoSeq uses controller profile 3 (034951BC), not profile 2
+used by the DIY renderer. Its visibility wrapper is the nested loading icon
+returned by 0346E9C0, not an entry in the page's top-level wrapper array.
+Both former guards prevented input from reaching workbench tilt.
+
+Recognize the concrete WorkCraftInfo page vtable (04A3B3E0, constructor
+0346E7E8) and profile 3; preserve DIY profile 2. Fingerprint the actual native
+profile selection and page constructor. Continue honoring resident row,
+blocked/consumed input, fixed categories and pending items. Native horizontal
+rotation/crafting dispatch remains untouched. Add bounded input diagnostics
+for the first four vertical movements per item. No setting defaults change.
+
+The workbench fixture now uses the native page vtable/input method, executes
+both actual page and nested-loading-icon getters, and uses profile 3's root
+mode 2. It verifies that the nested visibility wrapper is distinct from the
+top-level wrapper, and checks that profile 2 and another page type cannot tilt.
+Scene matrices, effects, native-yaw preservation, limits, blocking and item
+reset pass at two ASLR bases. Layout allocation, SDK math and native horizontal
+input dispatch remain modeled; actual workbench visuals need a live check.
+The confirmed DIY transition retention is unchanged.
 
 ## 0.3.54 Preview transitions and workbench tilt
 

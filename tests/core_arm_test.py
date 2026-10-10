@@ -10,7 +10,7 @@ from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
 SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'shopping-card', 'crafting')
 COUNTS = (16, 15, 7, 11, 11, 12)  # Pockets/Crafting share one additional Core input hook.
-DEFAULT = b'enabled=true\nversion=0.3.54\n'
+DEFAULT = b'enabled=true\nversion=0.3.55\n'
 
 def expected_hook_count(machine, enabled):
     # The existing verbose-dialogue build adds a Catalog message trace hook.
@@ -388,7 +388,7 @@ def check_crafting_settings():
         assert 'BOOT_OK' in m.text and len(m.hooks)==4
         assert base+0x192a590 not in m.hooks and base+0x3c58d24 not in m.hooks
         # A workbench-only compatibility failure leaves DIY/speed available.
-        m=Machine(base,{'crafting':DEFAULT}); m.write(base+0x32bde00,0xdeadbeef,4)
+        m=Machine(base,{'crafting':DEFAULT}); m.write(base+0x34951b8,0xdeadbeef,4)
         m.boot(); m.activate()
         assert 'BOOT_PARTIAL' in m.text and 'workbench tilt: DISABLED' in m.text
         assert 'DIY preview: READY' in m.text and all(base+a in m.hooks for a in preview_sites)
