@@ -137,6 +137,44 @@ for base in (0,0x7100000000):
             assert m.read(output+0x28)==m.owner+0x1c4d0
         else:assert result==0 and m.read(m.owner+0x1c318,4)==0xffffffff
         assert not m.paid and not m.delivered
+    # Confirming bag-only checkout skips the wear question but still runs the
+    # final preflight. It queues native send; payment waits for native dispatch.
+    for scenario in ('bag-only','money','space','stock','cancel','empty-bag'):
+        m=PurchaseMachine(base)
+        if scenario!='empty-bag':m.toggle();m.focus(1);m.toggle()
+        m.write(m.mod.find('6DialogEE7OrigRef'),base+0x31141cc)
+        m.write(m.owner+0x1c4f0,4,4)
+        output=m.ram+0xb0000
+        if scenario=='money':m.money=1
+        if scenario=='space':m.storage=m.pockets=0
+        if scenario=='stock':m.write(m.item,555,2)
+        result=m.call(m.mod.find('6Dialog8Callback'),m.owner,output,0 if scenario=='cancel' else 1)
+        assert not m.paid and not m.delivered
+        if scenario=='bag-only':
+            assert result==0 and m.read(m.owner+0x1c318,4)==4
+            m.commit(0)
+            assert m.paid==[435]
+            assert [item for _,item in m.delivered]==[bytes(m.u.mem_read(m.item+i*8,8)) for i in range(2)]
+        elif scenario in ('space','money'):
+            assert result==1 and m.read(m.owner+0x1c4f0,4)==(3 if scenario=='space' else 1)
+            assert m.read(m.owner+0x1c318,4)==0xffffffff
+        elif scenario=='empty-bag':
+            assert result==1 and m.read(m.owner+0x1c4f0,4)==5
+            assert m.read(m.owner+0x1c318,4)==0xffffffff
+        else:
+            assert result==0 and m.read(m.owner+0x1c318,4)==0xffffffff
+    # Every outfit category keeps the normal wear question, even if the tried-on
+    # item is also bagged. Unresolved indices are not treated as empty slots.
+    for slot in range(10):
+        for index in (0,999):
+            m=PurchaseMachine(base);m.toggle()
+            m.write(m.owner+0x1c370+slot*12,index,4)
+            m.write(m.mod.find('6DialogEE7OrigRef'),base+0x31141cc)
+            m.write(m.owner+0x1c4f0,4,4)
+            result=m.call(m.mod.find('6Dialog8Callback'),m.owner,m.ram+0xb0000,1)
+            assert result==1 and m.read(m.owner+0x1c4f0,4)==5
+            assert m.read(m.owner+0x1c318,4)==0xffffffff
+            assert not m.paid and not m.delivered
     # Cross both native boundaries, then exercise the bag's full 256 selections.
     for count in (11,16,17,40,100,256):
         for wear in (0,1):

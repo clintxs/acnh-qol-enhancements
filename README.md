@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.72 fitting-room checkout B shortcut** for ACNH **3.0.3 on Eden**. One Core
+**0.3.73 bag-only checkout shortcut** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -500,3 +500,11 @@ At “Do you want to wear what you picked out?”, B moves the cursor to
 chooses it. A and directional selection retain their normal behavior.
 This applies with or without bag items. Update Core and Fitting Room, then
 restart. Local ARM input/focus/answer tests pass; Eden verification is pending.
+
+## Bag-only checkout (0.3.73)
+
+Confirming a purchase with bag items and no clothes currently tried on skips
+the wear question and sends the purchase through the normal delivery path.
+Trying on any item keeps the wear question and its two-step B shortcut.
+The purchase confirmation, funds checks and capacity checks remain in place.
+Update Core and Fitting Room, then restart. Eden verification is pending.

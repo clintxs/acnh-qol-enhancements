@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.72 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.73 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -18,6 +18,10 @@ Core uses subsdk6, leaving subsdk9 available for Jubbsticks Additions.
 This avoids that executable-slot collision; compatibility with its eventual
 ACNH v3 release still needs testing. Other mods must also avoid subsdk6 and
 our hook/layout files. Core supplies the suite's only main.npdm.
+
+0.3.73: Bag-only purchases skip the wear question after confirming payment.
+Trying on any clothes keeps that question. Update Core and Fitting Room,
+then restart; verify this shortcut in Eden.
 
 0.3.72: At the fitting-room wear question, B moves to “No thanks.”; press B
 again to select it. Holding B does not confirm. Update Core and Fitting Room,

@@ -1,6 +1,6 @@
 #pragma once
 #include "config.hpp"
 namespace qol::core {
-inline constexpr char ReleaseVersion[] = "0.3.72";
-inline constexpr Version CoreVersion{0, 3, 72};
+inline constexpr char ReleaseVersion[] = "0.3.73";
+inline constexpr Version CoreVersion{0, 3, 73};
 } // namespace qol::core

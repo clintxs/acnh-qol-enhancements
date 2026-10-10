@@ -634,6 +634,21 @@ HOOK_DEFINE_TRAMPOLINE(GrossPrice) {
 };
 HOOK_DEFINE_TRAMPOLINE(Dialog) {
     static unsigned Callback(std::uintptr_t owner, std::uintptr_t output, unsigned answer) {
+        // A confirmed bag-only purchase has no new outfit to wear. Advance to
+        // the existing send-choice path, including its final preflight, without
+        // returning another dialog descriptor to the shared popup controller.
+        // Require every persistent outfit index to be the native empty sentinel;
+        // unresolved/invalid stock entries must not be mistaken for no outfit.
+        if (IsOwner(owner) && session.bag.count && answer == 1 &&
+            At<unsigned>(owner, 0x1c4f0) == 4 && At<int>(owner, field::Command) == -1) {
+            bool emptyOutfit = true;
+            for (unsigned i = 0; i < 10; ++i)
+                emptyOutfit &= At<int>(owner, field::Outfit + i * 12 + 4) == -1;
+            if (emptyOutfit) {
+                At<unsigned>(owner, 0x1c4f0) = 5;
+                answer = 0; // Native No thanks / send purchase, never wear.
+            }
+        }
         // State 5 is the native wear/send choice, after payment confirmation.
         if (IsOwner(owner) && session.bag.count && At<unsigned>(owner, 0x1c4f0) == 5) {
             const auto result = PreparePurchase(owner);

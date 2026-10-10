@@ -39,3 +39,19 @@ cover first/second B, held B, already-No, A/Yes, alternate button copies,
 blocked/consumed/mixed input, dialog ownership and transitions. Core tests
 cover all 64 module subsets and validation conflicts. Live Eden animation,
 audio and full checkout remain user verification.
+
+## Bag-only shortcut (0.3.73)
+
+At the existing fitting Dialog trampoline, kind 4 / answer 1 is positive
+purchase confirmation. If a nonempty bag has all ten persistent outfit indices
+(owner+1C370 + category*12) equal to -1 and command is idle, switch kind to 5
+and answer to 0 before the existing preflight. Native 031141CC then queues
+command 4 and returns false (no next popup). Native Play dispatch still performs
+checkout later. No direct payment or delivery occurs inside the dialog callback.
+
+Any nonempty or unresolved outfit index preserves the original wear question.
+No-bag, negative confirmation and unrelated dialog states remain unchanged.
+Funds/capacity/stale-stock failures follow the existing preflight error or close
+paths. purchase_arm_test.py exercises this transition and exact bag delivery at
+two bases, failures/cancellation, plus all ten categories (valid and unresolved
+indices). Native save services are modeled; live Eden confirmation is pending.
