@@ -34,7 +34,7 @@ separate from ordinary cash, so the native cash counter keeps its original cream
 Island Inverted uses the pockets item-name balloon's teal (#51BCAB) for the
 oval background and Bells text, and cream
 for the balance, oval outline, card's outer backing and Bells bubble. The
-foreground card image remains identical to Island, including its cream accents.
+card face uses a lighter shade of that teal (#97D7CD), with cream accents.
 ADB Teal reproduces the working 0.3.16 layout exactly. All retain the same card
 shape, detail positions, native 16:9 canvas and balance animations/sounds.
 

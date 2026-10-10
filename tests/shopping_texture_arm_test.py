@@ -89,10 +89,6 @@ else:
     original = resources(zstd.decompress((card.ROOT.parent / f'vanilla-3.0.3/Layout/{card.ASSET}.Nin_NX_NVN.zs').read_bytes()))
     modified = resources(zstd.decompress(next(iter(card.build(args.palette).values()))))
 key = next(k for k in original if k.endswith('.bntx'))
-if args.palette == 'island-inverted' and not args.fitting:
-    island = resources(zstd.decompress(next(iter(card.build('island').values()))))
-    assert textures(modified[key])[-1].data == textures(island[key])[-1].data
-    print('PASS: Island Inverted foreground card picture is byte-identical to Island')
 before,after = textures(original[key]),textures(modified[key])
 # Walk the resource block chain independently of texture-table pointers.
 container = modified[key]
