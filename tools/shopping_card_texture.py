@@ -37,7 +37,7 @@ def linear_rgba(red, green, blue):
 # Switch Joy-Con reference colors and their lighter card tints, in sRGB.
 ISLAND_BLUE = linear_rgba(106, 189, 196)  # #6ABDC4
 ISLAND_CARD_BLUE = linear_rgba(155, 212, 217)  # #9BD4D9, visibly lighter than the outline.
-ISLAND_MINT = linear_rgba(182, 237, 216)  # #B6EDD8, lightened from the #95E2C5 mint reference.
+ISLAND_MINT = linear_rgba(219, 243, 222)  # #DBF3DE, halfway from light mint toward pockets cream.
 ISLAND_CREAM = linear_rgba(255, 249, 227)  # #FFF9E3, sampled from the pockets UI screenshot.
 
 
