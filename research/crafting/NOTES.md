@@ -6,8 +6,8 @@ The marker is `crafting.ini`, followed by optional `crafting.custom.ini`; the
 retired `faster-crafting` paths are ignored. Core alone installs no DIY hooks.
 
 Defaults: `diy_app_preview=true`, `workbench_preview_tilt=true`,
-`crafting_quantity_wrap=true`, `crafting_speed=3`. Preview and speed are active;
-workbench tilt and quantity wrap are parsed/reserved only and still deferred.
+`crafting_quantity_wrap=true`, `crafting_speed=3`. Preview, workbench tilt and speed are active as of 0.3.54; quantity wrap is
+parsed/reserved only and still deferred.
 Hotel banner layering/placement is implemented in 0.3.48. Recipe navigation is
 implemented in 0.3.50; native starting orientations are restored in 0.3.53.
 
@@ -18,7 +18,10 @@ without overflow, including decimal values too large for an unsigned integer.
 Peak 1 holds at 1x. Native actor/readiness/input/exit gates are unchanged. Both action
 hooks and all preview hooks live in the same Crafting marker, with independent
 installation attempts so one feature's incompatibility does not suppress the
-other. Disabling `diy_app_preview` bypasses preview fingerprints and hooks.
+other. Disabling `diy_app_preview` bypasses DIY-specific fingerprints and hooks.
+Workbench tilt shares the item actor trampoline and Core input dispatcher, and
+can install independently with DIY disabled. Both preview settings false leave
+those shared hooks uninstalled unless another enabled feature needs them.
 
 Settings use the shared regular/custom layering policy: omitted/invalid keys
 inherit, duplicates restore the earlier layer, and malformed metadata or
@@ -223,3 +226,15 @@ right-stick input adds movement relative to this cached origin. Cache/reset
 follows recipe changes, native framing and full carrier ownership. Fixed types
 and workbench behavior remain unchanged. See [pose conversion and coverage](../recipe-preview/NOTES.md#native-starting-orientations--0353).
 Live Log pack appearance remains to be confirmed.
+
+## Workbench tilt and preview handoff — 0.3.54
+
+The user confirmed native starting poses in 0.3.53, then reported a brief reset
+of the outgoing item during navigation. Keep scene ownership/carrier identities
+while the next item loads, defer fixed-pose policy until it is framed, and retain
+the last displayed primary angles if native replacement resets a surviving old
+carrier. New full-generation handles/components cannot inherit that pose.
+
+`workbench_preview_tilt` now installs behavior, default true. See the detailed
+[preview notes](../recipe-preview/NOTES.md#workbench-tilt-and-transition-retention--0354).
+Quantity wrapping remains deferred. No speed behavior changes.

@@ -10,7 +10,7 @@ from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
 SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'shopping-card', 'crafting')
 COUNTS = (16, 15, 7, 11, 11, 12)  # Pockets/Crafting share one additional Core input hook.
-DEFAULT = b'enabled=true\nversion=0.3.53\n'
+DEFAULT = b'enabled=true\nversion=0.3.54\n'
 
 def expected_hook_count(machine, enabled):
     # The existing verbose-dialogue build adds a Catalog message trace hook.
@@ -339,7 +339,7 @@ def check_config_layers():
     print('PASS: shared regular/custom order, enabled/version overrides for all six modules, atomic metadata, failure fallback, inheritance and settings parity at two bases')
 
 def check_crafting_settings():
-    preview_sites=(0x267d64,0x2e9cde0,0x2e9fbb0,0x2e9d538,0x39392b0,0x32b9fcc,0x32b9e08,0x6021a4,0x39f63f0,0x192a590)
+    preview_sites=(0x267d64,0x2e9cde0,0x2e9fbb0,0x2e9d538,0x39392b0,0x32b9fcc,0x32b9e08,0x6021a4,0x39f63f0)
     speed_sites=(0x22fc6bc,0x2279a14)
     configs=(
         ({},False,False),
@@ -364,13 +364,34 @@ def check_crafting_settings():
             m=Machine(base,files); m.boot(); m.activate()
             assert all((base+a in m.hooks)==speed for a in speed_sites),m.text
             assert all((base+a in m.hooks)==preview for a in preview_sites),m.text
-            assert (base+0x3c58d24 in m.hooks)==preview
-            assert len(m.hooks)==2+2*speed+11*preview,m.text
+            tilt=speed and not any(b'workbench_preview_tilt=false' in data for data in files.values())
+            assert (base+0x192a590 in m.hooks)==(preview or tilt)
+            assert (base+0x3c58d24 in m.hooks)==(preview or tilt)
+            assert len(m.hooks)==2+2*speed+9*preview+2*(preview or tilt),m.text
+            assert ('workbench tilt: READY' in m.text)==tilt
             assert (m.read(base+0x49e8378)!=base+0x2ea0754)==preview
             assert base+0xbc4144 in m.hooks
             if speed:
                 assert 'workbench_preview_tilt=' in m.text and '(deferred)' in m.text
             assert not any('/faster-crafting' in name for name in m.opened)
+        # Tilt has independent regular/custom control, including without DIY.
+        m=Machine(base,{'crafting':DEFAULT+b'diy_app_preview=false\nworkbench_preview_tilt=false',
+                        'crafting.custom':b'workbench_preview_tilt=true'})
+        m.boot(); m.activate()
+        assert 'BOOT_OK' in m.text and 'workbench tilt: READY' in m.text
+        assert base+0x192a590 in m.hooks and base+0x3c58d24 in m.hooks
+        assert all(base+a not in m.hooks for a in preview_sites)
+        assert m.read(base+0x49e8378)==base+0x2ea0754
+        m=Machine(base,{'crafting':DEFAULT+b'diy_app_preview=false\nworkbench_preview_tilt=false'})
+        m.write(base+0x192a590,0xdeadbeef,4); m.write(base+0x3c58d24,0xdeadbeef,4)
+        m.boot(); m.activate()
+        assert 'BOOT_OK' in m.text and len(m.hooks)==4
+        assert base+0x192a590 not in m.hooks and base+0x3c58d24 not in m.hooks
+        # A workbench-only compatibility failure leaves DIY/speed available.
+        m=Machine(base,{'crafting':DEFAULT}); m.write(base+0x32bde00,0xdeadbeef,4)
+        m.boot(); m.activate()
+        assert 'BOOT_PARTIAL' in m.text and 'workbench tilt: DISABLED' in m.text
+        assert 'DIY preview: READY' in m.text and all(base+a in m.hooks for a in preview_sites)
         # A disabled preview skips all its fingerprints and writable UI slots.
         m=Machine(base,{'crafting':DEFAULT+b'diy_app_preview=false'})
         m.write(base+0x32bd990,0xdeadbeef,4); m.write(base+0x49e8378,base+0x2ea075c)
@@ -390,7 +411,7 @@ def check_crafting_settings():
         m.boot(); m.activate()
         assert 'BOOT_OK' in m.text and 'QUICK_STORE_READY' in m.text
         assert base+0x3c58d24 in m.hooks and base+0x2e9cde0 not in m.hooks
-    print('PASS: Crafting marker/rename, independent DIY toggle, reserved preferences, layered defaults and failures, untouched disabled preview, isolated hook conflicts and shared Pockets input at two bases')
+    print('PASS: Crafting marker/rename, independent DIY toggle, workbench toggle, layered defaults and failures, untouched disabled preview, isolated hook conflicts and shared Pockets input at two bases')
 
 if __name__ == '__main__':
     check_all_subsets()

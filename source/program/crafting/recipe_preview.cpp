@@ -54,7 +54,8 @@ constexpr std::size_t LayerCount = 0x20, Layers = 0x28, LayerClearColor = 0x9c;
 constexpr std::size_t DrawLayer = 0x3d0, RendererState = 0x248, DrawInfo = 0x18, DrawView = 8;
 constexpr std::size_t ComponentOwner = 0x48, ComponentAngles = 0x2bc, ComponentPoseSize = 0x2c8;
 constexpr std::size_t SetComponentAngles = 0x150;
-constexpr std::size_t ComponentScale = 0x2a0;
+constexpr std::size_t ComponentScale = 0x2a0, PrimaryAngles = 0x2b0;
+constexpr std::size_t LayoutCount = 0x3f0, CompletedItem = 0x94;
 constexpr std::size_t EntityHandle = 0x230, ParentHandle = 0x234, EntityComponent = 0x68;
 constexpr std::size_t EntityRegistry = 0x1c0, RegistryEntries = 8, EntityFlags = 0x248;
 constexpr std::size_t EntityKind = 0x15c, ItemChildren = 0x274, ItemChildCount = 0x394;
@@ -83,7 +84,7 @@ constexpr std::array<float, 4> PreviewBackground{1.5950871f, 1.3879482f, 0.87512
 // that worker must not inspect the UI thread's mutable Session objects.
 std::atomic<const void *> PreviewClearColor{};
 std::atomic<void *> PreviewController{};
-std::atomic<bool> PreviewFixedPose{}, PreviewScenePose{};
+std::atomic<bool> PreviewFixedPose{}, PreviewRequestedFixedPose{}, PreviewScenePose{};
 std::atomic<unsigned> PreviewHandle{}, PreviewAngleZ{}, MatrixCalls{}, MatrixMatches{}, BackgroundApplied{};
 std::atomic<std::uint64_t> PreviewAngleXY{};
 std::atomic<std::uint64_t> PreviewOriginXY{}, PreviewItem{};
@@ -94,7 +95,7 @@ struct ModelMatrix { float values[12]; }; // ARM64 returns this 48-byte object t
 struct CarrierPose {
     unsigned epoch{}, handle{};
     void *component{};
-    std::array<unsigned, 3> angles{};
+    std::array<unsigned, 3> angles{}, displayed{};
 };
 std::array<CarrierPose, 4> CarrierPoses{};
 // Type 42 creates up to four type-6 item carriers; each carrier creates the
@@ -110,6 +111,22 @@ struct LayerDrawScope {
 std::array<LayerDrawScope, 8> LayerDrawScopes{};
 std::atomic<unsigned> TransformCalls{}, TransformAttempts{}, TransformApplied{}, ClearCalls{}, ClearMatches{};
 
+bool ActorHookInstalled{}, DiyHooksInstalled{};
+std::atomic<void *> WorkbenchController{};
+std::atomic<unsigned> WorkbenchHandle{}, WorkbenchTiltAngle{};
+// Input state belongs to the UI dispatcher; carrier state belongs to the scene.
+struct WorkbenchInputState {
+    void *controller{}, *page{};
+    unsigned handle{};
+    std::uint64_t item{};
+    float tilt{};
+} WorkbenchInputState;
+struct WorkbenchCarrierPose {
+    void *component{};
+    unsigned handle{};
+    std::array<unsigned, 3> primary{}, secondary{}, applied{};
+};
+std::array<WorkbenchCarrierPose, 4> WorkbenchPoses{};
 std::uintptr_t Main{};
 template<class T> T &At(void *object, std::size_t offset = 0) {
     return *reinterpret_cast<T *>(static_cast<std::byte *>(object) + offset);
@@ -308,15 +325,85 @@ void PublishCarriers(void *controller) {
             Logging.Log("[QoL Enhancements/Crafting] DIY preview: mesh carrier published; slot=%u handle=%u\n", i, child);
     }
 }
-// Use primary scene rotation, as workbench yaw does (032BF898 -> 0358DCB8).
+void *WorkbenchActor(void *actor) {
+    auto controller = WorkbenchController.load(std::memory_order_acquire);
+    const auto handle = WorkbenchHandle.load(std::memory_order_acquire);
+    if (!actor || !controller || !handle || At<unsigned>(actor, field::EntityHandle) != handle ||
+        At<unsigned>(actor, field::EntityKind) != PreviewActorKind ||
+        (At<unsigned>(actor, field::EntityFlags) & 2) ||
+        At<unsigned>(controller, field::ModelHandle) != handle ||
+        At<unsigned>(controller, field::ModelMode) != WorkbenchModelMode ||
+        At<int>(controller, field::ModelState) != 1 ||
+        controller == PreviewController.load(std::memory_order_acquire)) return nullptr;
+    return controller;
+}
+void *PreviewCarrier(void *actor, unsigned index) {
+    const auto count = At<unsigned>(actor, field::ItemChildCount);
+    if (count > WorkbenchPoses.size() || index >= count) return nullptr;
+    const auto handle = At<unsigned>(actor, field::ItemChildren + index * sizeof(unsigned));
+    auto storage = *Native<void **>(address::EntityManager);
+    auto manager = storage ? At<void *>(storage) : nullptr;
+    auto registry = manager ? At<void *>(manager, field::EntityRegistry) : nullptr;
+    auto entries = registry ? At<void *>(registry, field::RegistryEntries) : nullptr;
+    auto child = entries && handle ? At<void *>(entries, (handle >> 17) & 0x7ff8u) : nullptr;
+    if (!child || At<unsigned>(child, field::EntityHandle) != handle ||
+        At<unsigned>(child, field::ParentHandle) != At<unsigned>(actor, field::EntityHandle) ||
+        At<unsigned>(child, field::EntityKind) != 6 || (At<unsigned>(child, field::EntityFlags) & 2)) return nullptr;
+    auto component = At<void *>(child, field::EntityComponent);
+    return component && At<void *>(component, field::ComponentOwner) == child ? component : nullptr;
+}
+void RestoreWorkbenchPose(void *actor) {
+    if (!WorkbenchActor(actor)) return;
+    for (unsigned i = 0; i < WorkbenchPoses.size(); ++i) {
+        auto &pose = WorkbenchPoses[i];
+        auto component = PreviewCarrier(actor, i);
+        if (!pose.component || component != pose.component ||
+            At<unsigned>(At<void *>(component, field::ComponentOwner), field::EntityHandle) != pose.handle) continue;
+        // Undo only our last contribution before native yaw/framing runs.
+        // Preserve any native primary rotation written since the scene tick.
+        for (unsigned axis = 0; axis < 3; ++axis)
+            At<unsigned>(component, field::PrimaryAngles + axis*4) += pose.primary[axis] - pose.applied[axis];
+        if (!At<std::uint64_t>(component, field::ComponentAngles) &&
+            !At<unsigned>(component, field::ComponentAngles + 8))
+            std::memcpy(static_cast<std::byte *>(component) + field::ComponentAngles,
+                        pose.secondary.data(), sizeof(pose.secondary));
+        pose.component = nullptr;
+    }
+}
+void ApplyWorkbenchTilt(void *actor) {
+    auto controller = WorkbenchActor(actor);
+    if (!controller || At<unsigned>(actor, field::ItemPoseState) != 0 ||
+        (At<unsigned char>(controller, field::ModelFlags) & MaterialPending)) return;
+    const auto tilt = WorkbenchTiltAngle.load(std::memory_order_acquire);
+    if (!tilt || UsesFixedPreviewPose(At<std::uint16_t>(actor, field::ItemData))) return;
+    for (unsigned i = 0; i < WorkbenchPoses.size(); ++i) {
+        auto component = PreviewCarrier(actor, i);
+        auto methods = component ? At<void *>(component) : nullptr;
+        auto setAngles = methods ? At<void (*)(void *, const void *)>(methods, field::SetComponentAngles) : nullptr;
+        if (!setAngles) continue;
+        auto &pose = WorkbenchPoses[i];
+        pose.component = component;
+        pose.handle = At<unsigned>(At<void *>(component, field::ComponentOwner), field::EntityHandle);
+        std::memcpy(pose.primary.data(), static_cast<std::byte *>(component) + field::PrimaryAngles, sizeof(pose.primary));
+        std::memcpy(pose.secondary.data(), static_cast<std::byte *>(component) + field::ComponentAngles, sizeof(pose.secondary));
+        pose.applied = NativePoseAngles(component);
+        pose.applied[0] += tilt;
+        setAngles(component, pose.applied.data());
+        At<std::uint64_t>(component, field::ComponentAngles) = 0;
+        At<unsigned>(component, field::ComponentAngles + 8) = 0;
+    }
+}
+// Use primary scene rotation, as native item-viewer yaw does (032BF898 -> 0358DCB8).
 // Item effects read primary Euler +2B0/+2B4/+2B8 directly in 006904C0;
 // secondary viewing angles +2BC rotate drawing but never reach that effect state.
 HOOK_DEFINE_TRAMPOLINE(UpdatePreviewActor) {
     static void Callback(void *actor) {
         const bool framing = actor && At<unsigned>(actor, field::ItemPoseState) == 2;
+        RestoreWorkbenchPose(actor);
         Orig(actor); // Finish native item/category framing and child creation first.
+        ApplyWorkbenchTilt(actor);
         const auto handle = PreviewHandle.load(std::memory_order_acquire);
-        if (!handle || !actor || PreviewFixedPose.load(std::memory_order_acquire) ||
+        if (!handle || !actor ||
             At<unsigned>(actor, field::EntityHandle) != handle ||
             At<unsigned>(actor, field::EntityKind) != PreviewActorKind ||
             (At<unsigned>(actor, field::EntityFlags) & 2)) return;
@@ -326,7 +413,30 @@ HOOK_DEFINE_TRAMPOLINE(UpdatePreviewActor) {
         // State 1 loads children; state 2 applies category poses/bounds, then
         // becomes 0. Never capture an unframed child or the previous recipe.
         if (At<unsigned>(actor, field::ItemPoseState) != 0 ||
-            At<std::uint64_t>(actor, field::ItemData) != PreviewItem.load(std::memory_order_relaxed)) return;
+            At<std::uint64_t>(actor, field::ItemData) != PreviewItem.load(std::memory_order_relaxed)) {
+            // Native replacement may reset a still-visible carrier before its
+            // old capture disappears. Keep that carrier's last displayed pose;
+            // generation/parent/component checks exclude newly allocated items.
+            if (!PreviewFixedPose.load(std::memory_order_acquire))
+                for (unsigned i = 0; i < count; ++i) {
+                    auto component = PreviewCarrier(actor, i);
+                    auto &pose = CarrierPoses[i];
+                    if (!component || pose.component != component ||
+                        At<unsigned>(At<void *>(component, field::ComponentOwner), field::EntityHandle) != pose.handle) continue;
+                    auto methods = At<void *>(component);
+                    auto setAngles = methods ? At<void (*)(void *, const void *)>(methods, field::SetComponentAngles) : nullptr;
+                    if (!setAngles) continue;
+                    setAngles(component, pose.displayed.data());
+                    At<std::uint64_t>(component, field::ComponentAngles) = 0;
+                    At<unsigned>(component, field::ComponentAngles + 8) = 0;
+                }
+            return;
+        }
+        // Navigation publishes a request while the previous mesh can still be
+        // drawn. Switch its pose policy only after native framing catches up.
+        const bool fixed = PreviewRequestedFixedPose.load(std::memory_order_acquire);
+        PreviewFixedPose.store(fixed, std::memory_order_release);
+        if (fixed) return;
         auto storage = *Native<void **>(address::EntityManager);
         auto manager = storage ? At<void *>(storage) : nullptr;
         auto registry = manager ? At<void *>(manager, field::EntityRegistry) : nullptr;
@@ -356,6 +466,7 @@ HOOK_DEFINE_TRAMPOLINE(UpdatePreviewActor) {
             auto angles = pose.angles;
             for (unsigned axis = 0; axis < angles.size(); ++axis) angles[axis] += delta[axis];
             setAngles(component, angles.data()); // Native primary XYZ setter.
+            pose.displayed = angles;
             // Apply the viewing pose exactly once. Leaving it in both fields
             // would rotate drawing twice while effects used only the primary.
             At<std::uint64_t>(component, field::ComponentAngles) = 0;
@@ -683,6 +794,49 @@ float StickAxis(float value) {
     if (value < -StickDeadZone) return (value + StickDeadZone) / (1.0f - StickDeadZone);
     return 0;
 }
+bool WorkbenchTiltInput(void *page, void *snapshot, unsigned blocked) {
+    auto context = UiContext();
+    auto controller = context ? At<void *>(context, field::Controller) : nullptr;
+    if (!page || !controller || controller == PreviewController.load(std::memory_order_acquire) ||
+        At<unsigned>(controller, field::ModelMode) != WorkbenchModelMode ||
+        At<int>(controller, field::ModelState) != 1) return false;
+    // CreateItemModel +10 stores a layout-instance wrapper at controller +60.
+    // Match the dispatching layout's own wrappers, not a similarly named pane
+    // or the first resident's input row. Other item-viewer modes are excluded.
+    auto instances = At<void **>(page, field::LayoutInstances);
+    auto visible = At<void *>(controller, field::VisibilityPage);
+    const auto layouts = At<unsigned>(page, field::LayoutCount);
+    bool owns = false;
+    if (instances && visible && layouts <= 16)
+        for (unsigned i = 0; i < layouts; ++i) owns |= instances[i] == visible;
+    if (!owns) return false;
+    const auto handle = At<unsigned>(controller, field::ModelHandle);
+    const auto item = At<std::uint64_t>(controller, field::CompletedItem); // Native completed item request.
+    auto &state = WorkbenchInputState;
+    if (state.controller != controller || state.page != page || state.handle != handle ||
+        state.item != item || !handle || (At<unsigned char>(controller, field::ModelFlags) & MaterialPending))
+        state = {controller, page, handle, item, 0};
+    WorkbenchTiltAngle.store(static_cast<unsigned>(static_cast<std::int32_t>(state.tilt * AngleUnitsPerDegree)), std::memory_order_relaxed);
+    WorkbenchHandle.store(handle, std::memory_order_relaxed);
+    WorkbenchController.store(controller, std::memory_order_release);
+    auto hint = At<void *>(page, field::ShortcutHint);
+    auto key = hint ? At<void *>(hint, field::HintInput) : nullptr;
+    const auto rowIndex = key ? At<unsigned>(key, field::InputRow) : 8;
+    Session inputScope{}; inputScope.layout = page;
+    if (!handle || !snapshot || rowIndex >= 8 || InputBlocked(inputScope, blocked) ||
+        (At<unsigned char>(controller, field::ModelFlags) & MaterialPending)) return false;
+    const auto count = At<unsigned>(snapshot, 8);
+    auto rows = At<std::byte *>(snapshot, 0x10);
+    if (!rows || count > 8 || rowIndex >= count) return false;
+    auto row = rows + rowIndex * 0x48;
+    if (At<unsigned>(row, field::ConsumedAxes) & RightStickMask) return false;
+    const float y = StickAxis(At<float>(row, field::RightStick + 4));
+    state.tilt = std::clamp(state.tilt - y * DegreesPerUpdate, -MaximumTilt, MaximumTilt);
+    WorkbenchTiltAngle.store(static_cast<unsigned>(static_cast<std::int32_t>(state.tilt * AngleUnitsPerDegree)), std::memory_order_release);
+    // Leave native dispatch and X intact: horizontal rotation, scroll, A/B,
+    // recipe switching and crafting remain owned by the workbench.
+    return false;
+}
 void RotatePreview(Session &s) {
     const auto x = s.stickX, y = s.stickY;
     s.stickX = s.stickY = 0; // A missing/blocked snapshot must never keep spinning.
@@ -788,9 +942,10 @@ void NavigatePreview(Session &s) {
     s.pendingNavigation = 0;
     s.item = item;
     s.fixedPose = UsesFixedPreviewPose(static_cast<std::uint16_t>(item));
-    PreviewScenePose.store(false, std::memory_order_release);
-    PreviewFixedPose.store(s.fixedPose, std::memory_order_release);
-    for (auto &carrier : PreviewCarriers) carrier.store(0, std::memory_order_release);
+    // Keep the displayed scene pose and carrier identities until native item
+    // replacement completes. Dropping scene ownership here renders the old
+    // mesh with the reset controller pose for one capture (a visible snap).
+    PreviewRequestedFixedPose.store(s.fixedPose, std::memory_order_release);
     s.tilt = s.stickX = s.stickY = 0;
     std::memcpy(static_cast<std::byte *>(s.controller) + field::ModelAngles,
                 s.initialAngles.data(), sizeof(s.initialAngles));
@@ -928,6 +1083,7 @@ bool Begin(Session &s) {
     s.fixedPose = UsesFixedPreviewPose(static_cast<std::uint16_t>(s.item));
     PreviewScenePose.store(false, std::memory_order_release);
     PreviewFixedPose.store(s.fixedPose, std::memory_order_release);
+    PreviewRequestedFixedPose.store(s.fixedPose, std::memory_order_release);
     PreviewController.store(controller, std::memory_order_release);
     Logging.Log("[QoL Enhancements/Crafting] DIY preview: native fixed pose=%u item=%u\n",
                 unsigned(s.fixedPose), unsigned(s.item & 0xffff));
@@ -1081,10 +1237,41 @@ bool InstallRecipePreview() {
     DrawPreviewLayer::InstallAtOffset(address::DrawModelLayer);
     SetPreviewRotation::InstallAtOffset(address::SetModelRotation);
     TraceModelTransform::InstallAtOffset(address::UpdateModelTransform);
-    UpdatePreviewActor::InstallAtOffset(address::UpdateItemActor);
+    if (!ActorHookInstalled) UpdatePreviewActor::InstallAtOffset(address::UpdateItemActor);
+    ActorHookInstalled = true;
     BuildPreviewMatrix::InstallAtOffset(address::BuildModelMatrix);
     DrawPreviewContents::InstallAtOffset(address::DrawLayerContents);
+    DiyHooksInstalled = true;
     Logging.Log("[QoL Enhancements/Crafting] DIY preview: READY; native starting poses; primary scene rotation; horizontal recipe navigation; A opens, B returns\n");
     return true;
 }
+bool InstallWorkbenchPreviewTilt() {
+    struct Fingerprint { std::uintptr_t offset; std::uint32_t words[5]; };
+    constexpr Fingerprint fingerprints[]{
+        {address::UpdateItemActor, {0xd104c3ff, 0x6d093bef, 0x6d0a33ed, 0x6d0b2beb, 0x6d0c23e9}},
+        {address::BuildModelMatrix, {0xb942b00c, 0x12005d8f, 0xb942bc09, 0xb942c00b, 0xb942c40a}},
+        {address::Atan2, {0xb0005ef0, 0xf940ba11, 0x9105c210, 0xd61f0220, 0xb0005ef0}},
+        {0x005f7b4c, {0xb9400028, 0xb902b008, 0xb9400428, 0xb902b408, 0xb9400828}},
+        {0x019282fc, {0xd10103ff, 0xa9017bfd, 0xf90013f5, 0xa9034ff4, 0x910043fd}},
+        {0x032bde00, {0xb911c67f, 0xf8286a7f, 0xf9400a88, 0xb4000068, 0xf9003268}},
+    };
+    const auto &main = exl::util::GetMainModuleInfo();
+    for (const auto &f : fingerprints) {
+        // These trampolines may already belong to our DIY installer.
+        if ((f.offset == address::UpdateItemActor && ActorHookInstalled) ||
+            (f.offset == address::BuildModelMatrix && DiyHooksInstalled)) continue;
+        if (f.offset + sizeof(f.words) > main.m_Text.m_Size ||
+            std::memcmp(reinterpret_cast<const void *>(main.m_Text.m_Start + f.offset), f.words, sizeof(f.words))) {
+            Logging.Log("[QoL Enhancements/Crafting] workbench tilt: DISABLED; instruction mismatch at main+0x%lx\n", f.offset);
+            return false;
+        }
+    }
+    Main = main.m_Text.m_Start;
+    if (!core::RegisterPageInput(WorkbenchTiltInput)) return false;
+    if (!ActorHookInstalled) UpdatePreviewActor::InstallAtOffset(address::UpdateItemActor);
+    ActorHookInstalled = true;
+    Logging.Log("[QoL Enhancements/Crafting] workbench tilt: READY; right-stick up/down; native horizontal controls; fixed surfaces/fences\n");
+    return true;
+}
+
 } // namespace qol::crafting

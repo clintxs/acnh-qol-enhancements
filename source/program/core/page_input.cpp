@@ -6,7 +6,7 @@
 namespace qol::core {
 namespace {
 constexpr std::uintptr_t InputAddress = 0x03c58d24;
-std::array<PageInputHandler, 2> InputHandlers{};
+std::array<PageInputHandler, 3> InputHandlers{};
 bool Installed{};
 HOOK_DEFINE_TRAMPOLINE(SharedPageInput) {
     static void Callback(void *page, void *snapshot, unsigned blocked) {

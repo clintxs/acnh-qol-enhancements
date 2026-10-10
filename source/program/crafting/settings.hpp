@@ -20,8 +20,9 @@ inline bool ParseCraftingSpeed(std::string_view value, unsigned &output) {
 
 struct Settings {
     bool diyAppPreview = true;
-    // Reserved preferences: parse and preserve them, but install no behavior yet.
-    bool workbenchPreviewTilt = true, craftingQuantityWrap = true;
+    bool workbenchPreviewTilt = true;
+    // Reserved preference: parse and preserve it, but install no behavior yet.
+    bool craftingQuantityWrap = true;
     unsigned craftingSpeed = 3;
 };
 

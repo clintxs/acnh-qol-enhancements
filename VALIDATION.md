@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.53 native preview starting poses
+# Unified QoL validation — 0.3.54 preview transitions and workbench tilt
 
 Validated locally on October 10, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,36 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.54 Preview transitions and workbench tilt
+
+The user confirms native starting poses in 0.3.53; an outgoing-item pose flash
+remains during navigation. Keep displayed scene ownership/carrier identities and
+restore the last displayed pose on a surviving carrier reset during loading.
+Switch fixed policy only when native framing completes for the requested item.
+
+`workbench_preview_tilt=true` now enables right-stick vertical tilt (default on),
+independently of DIY previews. Workbench native dispatch remains in control of
+horizontal rotation and crafting. Scope by profile/state/full handle and the
+exact visibility layout wrapper; use the footer's resident row and existing input
+blocking. Share the actor trampoline and Core input dispatcher. Tilt is +/-60
+at 6 degrees/update with a 0.15 dead zone, applied to scene primary angles so
+particles and drawing agree. Fixed wallpapers/floors/rugs/fences stay native.
+Quantity wrapping remains deferred; crafting speed is unchanged.
+
+Compiled regression coverage at two ASLR bases checks modeled old-carrier reset
+retention and fixed-policy handoff, native starting matrices, effects, navigation,
+workbench input ownership/resident/blocked/consumed guards, tilt limits, no pose
+accumulation, native yaw writes, item reset and fixed categories. Core checks the
+independent default/custom toggles, both preview settings false, shared-hook
+ownership and feature conflict isolation. Workbench wrapper/row binding and native
+horizontal input dispatch are modeled; actual GPU transitions/workbench controls
+require the user's next live test. No game/save files were accessed.
+
+Local build and focused Core/Crafting/Pockets checks pass: nine host suites,
+all 64 module subsets at two bases, DIY/workbench ARM regressions, 30,700 crafting
+cases, 630 pocket cases and 190 storage-hint cases. Additional workbench setting
+overlay/disabled/conflict checks pass at both bases.
 
 ## 0.3.53 Native initial item orientation
 

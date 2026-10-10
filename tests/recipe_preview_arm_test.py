@@ -197,6 +197,9 @@ class PreviewMachine(Machine):
             y=struct.unpack('<f',struct.pack('<I',u.reg_read(UC_ARM64_REG_S0)))[0]
             x=struct.unpack('<f',struct.pack('<I',u.reg_read(UC_ARM64_REG_S1)))[0]
             u.reg_write(UC_ARM64_REG_S0,struct.unpack('<I',struct.pack('<f',math.atan2(y,x)))[0])
+        elif action == 'reset_previous_pose':
+            u.mem_write(self.reset_component+0x2b0,bytes(12))
+            u.mem_write(self.reset_component+0x2bc,struct.pack('<3I',0,0x20000000,0))
         elif action == 'state':
             self.events.append(('state', self.reg(1)))
             self.write(self.reg(0) + 8, self.reg(1), 4)
@@ -1208,10 +1211,26 @@ def navigation_fixture(base):
         assert struct.unpack_from('<H',change,0x24)[0]==0xfffe  # Actor recipe field.
         assert [e for e in m.events if e[0]=='details'][-1][1]==expected
         fixed=(items[expected]&0xffff) in fixed_ids
-        assert m.read(m.module.find('PreviewFixedPose'),1)==int(fixed)
+        assert m.read(m.module.find('PreviewRequestedFixedPose'),1)==int(fixed)
         assert all(m.read(panes[n]+0x58,1)&1==0 for n in ('L_BtnList_00','L_Cursor_00','L_ScrollBar_00'))
+    # A real displayed carrier keeps its converted/rotated pose between the
+    # UI request and asynchronous scene replacement, including fixed targets.
+    root=m.model_entity
+    component=m.alloc(0x300); carrier=m.alloc(0x400)
+    m.u.mem_write(component,bytes(m.u.mem_read(m.component,0x2c8)))
+    m.write(component+0x48,carrier); m.write(carrier+0x230,0x112345,4)
+    m.write(carrier+0x234,0x12345,4); m.write(carrier+0x15c,6,4)
+    m.u.mem_write(component+0x2a0,struct.pack('<3f',1,1,1))
+    m.u.mem_write(component+0x2b0,struct.pack('<3I',0x10000000,0x80000000,0))
+    m.u.mem_write(component+0x2bc,bytes(12))
+    scene_owned=m.module.find('PreviewScenePose'); m.write(scene_owned,1,1)
+    m.write(m.module.find('PreviewCarriers'),0x112345,4)
+    displayed=m.drawable_matrix(component,protected=True)
     for i in range(1,count):
         press(1,stick=bool(i%2)); selected(i)
+        assert m.read(scene_owned,1)==1
+        assert m.read(m.module.find('PreviewCarriers'),4)==0x112345
+        assert m.drawable_matrix(component,protected=True)==displayed
         if 5<=i<=8:
             pose=bytes(m.u.mem_read(m.controller+0x80,12))
             m.input(page,0,right=(1,1)); m.frame(phone)
@@ -1354,7 +1373,7 @@ def scene_pose_fixture(base):
                                (root+0x394,5,4),(carrier+0x230,0x112344,4),
                                (carrier+0x234,0x12344,4),(carrier+0x15c,0x6f,4),
                                (carrier+0x248,2,4),(component+0x48,0,8),
-                               (m.module.find('PreviewFixedPose'),1,1),(component_methods+0x150,0,8)):
+                               (m.module.find('PreviewRequestedFixedPose'),1,1),(component_methods+0x150,0,8)):
         old=m.read(location,size); m.write(location,value,size)
         m.u.mem_write(component+0x2b0,bytes(24)); before=bytes(m.u.mem_read(component,0x2c8))
         m.hook(0x192a590,root); assert bytes(m.u.mem_read(component,0x2c8))==before
@@ -1466,6 +1485,27 @@ def initial_pose_fixture(base):
         before=bytes(m.u.mem_read(component,0x2c8)); m.hook(0x192a590,root)
         assert bytes(m.u.mem_read(component,0x2c8))==before
         m.write(location,old,size)
+    # Reproduce a loading-phase reset of the still-visible previous carrier.
+    # The displayed mesh/effects retain their last pose until native framing
+    # has completed for the requested item, including a free -> fixed change.
+    m.input(page,0,right=(1,1)); m.frame(phone); m.hook(0x192a590,root)
+    displayed=matrix(); primary=bytes(m.u.mem_read(component+0x2b0,12))
+    m.write(m.module.find('PreviewItem'),log_pack+1)
+    m.write(epoch,m.read(epoch,4)+1,4)
+    m.write(m.module.find('PreviewRequestedFixedPose'),1,1)
+    m.write(root+0x39c,1,4); m.reset_component=component
+    m.write(m.module.find('UpdatePreviewActor','OrigRef'),m.stub('reset_previous_pose'))
+    m.hook(0x192a590,root)
+    assert matrix()==displayed and bytes(m.u.mem_read(component+0x2b0,12))==primary
+    assert m.read(m.module.find('PreviewFixedPose'),1)==0
+    # Once framed, fixed targets keep the new native matrix, with no old tilt.
+    m.write(root+0x39c,0,4); m.write(root+0x360,log_pack+1)
+    m.u.mem_write(component+0x2b0,bytes(12)); m.u.mem_write(component+0x2bc,struct.pack('<3I',0,0x60000000,0))
+    m.write(m.module.find('UpdatePreviewActor','OrigRef'),m.stub('noop'))
+    next_pose=matrix(); m.hook(0x192a590,root)
+    assert matrix()==next_pose and matrix()!=displayed
+    assert m.read(m.module.find('PreviewFixedPose'),1)==1
+    m.write(root+0x360,log_pack)
     # Reopening resets the epoch even if a modeled allocator reuses the handle.
     old_epoch=m.read(epoch,4); m.hook(0x2e9d538,phone)
     m.confirm(page); m.frame(phone); m.frame(phone); assert m.read(epoch,4)!=old_epoch
@@ -1478,12 +1518,84 @@ for base in (0x7100000000,0x7200000000): initial_pose_fixture(base)
 
 for base in (0x7100000000,0x7200000000): navigation_fixture(base)
 
+def workbench_tilt_fixture(base):
+    m=PreviewMachine(base)
+    root=m.model_entity
+    page=m.alloc(0x800); instance=m.alloc(); wrappers=m.alloc()
+    m.write(page+0x3f0,1,4); m.write(page+0x3f8,wrappers); m.write(wrappers,instance)
+    input_context=m.alloc(); m.write(page+0x210,input_context)
+    hint=m.alloc(); key=m.alloc(); m.write(page+0x570,hint); m.write(hint+0xa0,key)
+    m.write(key+0x10,4,4)  # Test a nonzero resident row.
+    m.write(m.controller+0x60,instance); m.write(m.controller+0x50,2,4)
+    m.write(m.controller+0x10,1,4); m.write(m.controller+0x6c,0x12345,4)
+    item=7498; m.write(m.controller+0x94,item); m.write(root+0x360,item)
+    m.write(root+0x39c,0,4); m.write(root+0x3a0,0xfffe,2)
+    default=m.alloc(); m.write(default,0xfffe); m.write(base+0x4ab37e0,default)
+    sentinel=m.alloc(); m.write(sentinel,0xfffe,2); m.write(base+0x4ab3170,sentinel)
+    m.write(base+0x59e7790,m.alloc())
+    entries=m.read(m.read(m.entity_manager+0x1c0)+8)
+    child=m.alloc(0x450); component=m.alloc(0x300); methods=m.alloc(0x180)
+    m.write(entries+8,child); m.write(child+0x68,component)
+    for off,value in ((0x230,0x112345),(0x234,0x12345),(0x15c,6)): m.write(child+off,value,4)
+    m.write(component,methods); m.write(component+0x48,child)
+    m.write(methods+0x150,base+0x5f7b4c); m.write(methods+0xf8,base+0x5f7b18)
+    m.u.mem_write(component+0x2a0,struct.pack('<3f',1,1,1))
+    m.u.mem_write(component+0x2bc,struct.pack('<3I',0,0x80000000,0))
+    original=m.drawable_matrix(component)
+    def input(y=0,**kwargs): m.input(page,0x30,resident=4,right=(0.8,y),**kwargs)
+    def tick(): m.hook(0x192a590,root)
+    angle=m.module.find('WorkbenchTiltAngle')
+    input(); tick(); assert m.drawable_matrix(component)==original
+    input(1); tick(); assert m.drawable_matrix(component)!=original
+    assert any(e==('native_input',page) for e in m.events)
+    assert m.read(m.last_input_row+0x3c,4)==0  # A/B and X remain native.
+    assert m.read(m.last_input_row+0x40,4)==0
+    tilted=bytes(m.u.mem_read(component+0x2b0,24))
+    for _ in range(12): tick(); assert bytes(m.u.mem_read(component+0x2b0,24))==tilted
+    # Native horizontal primary rotation between ticks survives undo/reapply.
+    m.write(component+0x2b4,(m.read(component+0x2b4,4)+0x08000000)&0xffffffff,4)
+    tick(); assert bytes(m.u.mem_read(component+0x2b0,24))!=tilted
+    effect=m.alloc(0x340); m.write(effect+0x48,child)
+    m.services[base+0x3738950]=('preview','noop'); m.invoke(base+0x6904c0,effect)
+    wanted=struct.unpack('<3I',m.u.mem_read(component+0x2b0,12))
+    assert all(abs(a-b/2**32*2*math.pi)<1e-5 for a,b in zip(struct.unpack('<3f',m.u.mem_read(effect+0x310,12)),wanted))
+    for y,kwargs in ((1,{'blocked':1}),(1,{'consumed_axes':2}),(float('nan'),{}),(0.1,{})):
+        before=m.read(angle,4); input(y,**kwargs); tick(); assert m.read(angle,4)==before
+    for _ in range(30): input(1); tick()
+    assert abs((m.read(angle,4)-(1<<32))/2**32*360+60)<0.001
+    for _ in range(60): input(-1); tick()
+    assert abs(m.read(angle,4)/2**32*360-60)<0.001
+    # Pending/new items reset tilt; another viewer mode/instance has no effect.
+    m.write(m.controller+0x74,4,1); input(1); tick(); assert m.read(angle,4)==0
+    m.write(m.controller+0x74,0,1); m.write(m.controller+0x94,item+1)
+    input(); tick(); assert m.read(angle,4)==0
+    for location,value,size in ((m.controller+0x50,3,4),(wrappers,0,8),(m.controller+0x6c,0,4)):
+        old=m.read(location,size); m.write(location,value,size)
+        before=m.read(angle,4); input(1); tick(); assert m.read(angle,4)==before, (hex(location),value,before,m.read(angle,4))
+        m.write(location,old,size)
+    # Read real runtime BCSV kinds; all four fixed categories stay untouched.
+    rows=m.alloc(); table=m.alloc(0x220); slot=m.alloc(); m.write(slot,table); m.write(base+0x4ac0428,slot)
+    m.write(table+0x1f8,item,2); m.write(table+0x1d8,1,4); m.write(table+0x1e0,rows)
+    header=m.alloc(64); row=header+28
+    m.write(header,1,4); m.write(header+4,12,4); m.write(header+8,2,2)
+    m.write(header+12,0x5270eb75,4); m.write(header+16,4,4)
+    m.write(header+20,0x54706054,4); m.write(header+24,8,4)
+    m.write(row,28,4); m.write(row+8,item,2); m.write(rows,row)
+    m.write(root+0x360,item); m.write(m.controller+0x94,item)
+    for kind in ('RoomWall','RoomFloor','Rug','Fence'):
+        m.write(row+4,zlib.crc32(kind.encode()),4)
+        input(1); tick(); saved=bytes(m.u.mem_read(component+0x2b0,24))
+        input(1); tick(); assert bytes(m.u.mem_read(component+0x2b0,24))==saved
+    print(f'PASS: workbench owner/resident input, native dispatch retained, tilt limits/dead zone/blocking, stable primary pose/effect angles, native yaw changes, pending-item reset and fixed-category guards; UI ownership and yaw dispatch modeled; ASLR {base:#x}')
+
+for base in (0x7100000000,0x7200000000): workbench_tilt_fixture(base)
+
 for guard in GUARDS:
     m=Machine(0x7100000000,{'crafting':DEFAULT})
     m.write(m.base+guard,0xdeadbeef,4); m.boot(); m.activate()
-    assert all(m.base+a not in m.hooks for a in HOOKS)
+    assert all(m.base+a not in m.hooks for a in HOOKS if a not in (0x3c58d24,0x192a590))
     assert 'DIY preview: DISABLED' in m.text
-print('PASS: all renderer/layout/input fingerprints reject the entire integration atomically')
+print('PASS: all DIY fingerprints reject DIY-specific hooks; independent workbench hook may remain')
 m=Machine(0x7100000000,{'pockets':DEFAULT,'crafting':DEFAULT})
 m.write(m.base+0x32bd990,0xdeadbeef,4); m.boot(); m.activate()
 assert m.base+0x3c58d24 in m.hooks and m.base+0x2e9cde0 not in m.hooks
@@ -1493,6 +1605,6 @@ print('PASS: Pockets owns shared page input when the DIY integration declines in
 # A changed mode slot must decline atomically before any DIY hook is installed.
 m=Machine(0x7100000000,{'crafting':DEFAULT})
 m.write(m.base+0x49e8378,m.base+0x2ea075c); m.boot(); m.activate()
-assert all(m.base+a not in m.hooks for a in HOOKS)
+assert all(m.base+a not in m.hooks for a in HOOKS if a not in (0x3c58d24,0x192a590))
 assert 'renderer mode slot mismatch' in m.text
 print('PASS: renderer mode vtable conflict leaves the DIY integration disabled')

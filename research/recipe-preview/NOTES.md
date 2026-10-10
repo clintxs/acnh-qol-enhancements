@@ -51,19 +51,19 @@ these items for later. This is a backlog, not authorization to implement them no
    order, updating the 3D item and existing crafting/material information while
    keeping the preview open. The right stick remains the model rotation/tilt
    control. B should return to the DIY app grid at the current recipe.
-4. **Vertical tilt in workbench previews.** Extend the DIY preview's right-stick
+4. **Vertical tilt in workbench previews — implemented in 0.3.54.** Extend the DIY preview's right-stick
    up/down tilt to native workbench 3D previews as well. The user suggests a
    separate setting, enabled by default and optionally disabled. Keep this
    independently configurable from the DIY app preview feature. In 0.3.46,
    `workbench_preview_tilt=true` is accepted as a reserved preference; its
-   implementation remains deferred.
+   implementation is active in 0.3.54.
 
 The user approved grouping the existing DIY app previews and Faster Crafting
 into one optional **Crafting** submodule in 0.3.46; see the
 [Crafting grouping note](../crafting/NOTES.md#possible-crafting-submodule-grouping--october-9-2026).
 DIY previews move from Core to Crafting and use `diy_app_preview=true`.
 The implementation now lives under `source/program/crafting/`. The follow-up UI
-changes are tracked below; workbench tilt remains deferred.
+changes are tracked below; workbench tilt is active in 0.3.54.
 
 The attached reference images are retained here so later work does not depend
 on the original files remaining in Downloads. The original backlog update made
@@ -671,3 +671,51 @@ navigation origin/epoch reset, and reopening with a modeled reused handle. Nativ
 category selection is modeled by supplying resource poses; native matrix/setter,
 steady-state root/drawable and effect update execute. SDK atan2f is a modeled
 import boundary. GPU appearance and live Log pack framing need Deck validation.
+
+## Workbench tilt and transition retention — 0.3.54
+
+The user confirms 0.3.53 preserves the native Log pack orientation, but observes
+an outgoing-item pose flash before switching. Navigation no longer drops scene
+ownership or clears carrier identities. Requested fixed-pose policy is separate
+from displayed policy until state 0 matches the requested full item. Cache the
+last displayed primary angles too: if a loading update resets a still-live old
+carrier, restore its displayed pose through the native XYZ setter. Validate its
+full child handle, parent, kind and component before touching it. Newly allocated
+children cannot inherit old rotation. Native framing captures the new pose as
+before, and flat surfaces/fences retain their bypass.
+
+Workbench tilt shares UpdateItemActor (0192A590) with DIY, installed once, and
+registers a third Core page-input subscriber alongside Pockets and DIY. It also
+works with DIY disabled. The installer separately fingerprints the scene/matrix,
+atan2f, XYZ setter, drawable transform, and native visibility-wrapper assignment
+032BDE00. Existing owned DIY trampolines are recognized instead of being rejected
+as third-party conflicts. Setting false skips workbench registration/validation.
+
+Ownership follows CreateItemModel request +10 -> controller +60: native
+032BDE08 stores a layout-instance wrapper, which belongs to the dispatching
+layout's +3F8 array (+3F0 count). Require profile 2/state 1, a full model handle,
+and that exact wrapper. Exclude the owned phone preview controller. Read the
+footer shortcut's resident row (+570 -> +A0 -> +10), honor page/global blocking,
+right-stick consumption and material loading, then integrate only right Y with
+the existing 0.15 dead zone, 6 degrees/update and +/-60 degree limit. Return false
+to the shared dispatcher, preserving native input, X rotation and A/B/crafting.
+Controller/page/handle/completed-item changes and pending material requests reset
+the tilt accumulator. Profile/wrapper/row mapping is modeled in local tests and
+still requires confirmation in the actual workbench UI.
+
+Before native scene update, undo the previous tilt conversion on validated owned
+carriers, retaining native primary-angle changes made since that tick. Restore
+secondary native viewing angles when still zeroed by us. After native framing,
+convert the current native rotation matrix to primary XYZ and add only pitch;
+clear secondary angles so effects and drawables use the same primary rotation.
+Retain raw native poses for the next undo, avoiding accumulating Euler conversion
+error. No render-only tilt overrides. Native full-item changes, generation/dead/
+parent/kind checks and fixed RoomWall/RoomFloor/Rug/Fence types remain guarded.
+
+Compiled tests cover a modeled loading reset retaining the previous matrix,
+fixed-policy handoff, linear navigation, workbench ownership/resident input,
+neutral/stable matrices, native yaw writes between ticks, effect Euler output,
+tilting limits/dead zone/blocked input, pending/new item reset, and fixed types at
+two ASLR bases. Existing native matrix/actor/effect/bone composition fixtures also
+run. GPU frame timing, native input binding and live workbench visuals remain
+untested locally.

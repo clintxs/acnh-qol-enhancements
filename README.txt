@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.53 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.54 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -141,7 +141,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.3.53
+  version = 0.3.54
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.
@@ -162,11 +162,11 @@ remain a separate translation resource, outside module configuration layering.
 Whole-line #/; comments, a UTF-8 BOM, CRLF and valid UTF-8 text up to 4 KiB per file
 are supported. Versions use numeric major.minor.patch.
 
-CRAFTING MODULE / SETTINGS (0.3.53)
+CRAFTING MODULE / SETTINGS (0.3.54)
 Install Core plus “QoL Enhancements - Crafting”. This replaces the former
 “QoL Enhancements - Faster Crafting” folder; remove that old folder when updating.
 Move any personal faster-crafting.custom.ini preferences to crafting.custom.ini.
-Remove old version overrides in that custom file, or update them to 0.3.53.
+Remove old version overrides in that custom file, or update them to 0.3.54.
 Old faster-crafting.ini/custom paths are no longer read.
 DIY app previews are now optional Crafting behavior, not always-on Core behavior.
 
@@ -174,13 +174,17 @@ Regular settings: romfs/qol-enhancements/config/crafting.ini
 Personal overlay: romfs/qol-enhancements/config/crafting.custom.ini
 Defaults in the regular file:
   enabled = true
-  version = 0.3.53
+  version = 0.3.54
   diy_app_preview = true
   workbench_preview_tilt = true
   crafting_quantity_wrap = true
   crafting_speed = 3
 
 Active settings:
+- workbench_preview_tilt: right-stick up/down tilt in workbench previews, up to
+  60 degrees each way at the DIY preview movement speed. Defaults to true.
+  Set false for vanilla controls; works independently of diy_app_preview.
+  Wallpapers, floors, rugs and fences keep their native fixed poses.
 - diy_app_preview: enable/disable the existing DIY app 3D preview independently.
 - crafting_speed: whole-number 1 through 30; the peak of the existing logarithmic
   ramp over 60 state updates. Starts at 1x and restarts for each crafting,
@@ -191,15 +195,14 @@ Active settings:
   Short actions may finish before the ramp reaches its peak.
 
 Deferred settings (accepted, but currently have NO EFFECT):
-- workbench_preview_tilt = true
 - crafting_quantity_wrap = true
 Hotel request banners draw over the DIY preview’s bottom-right corner,
-returning to their native placement in the grid. Native workbench controls are
-unchanged.
+returning to their native placement in the grid. During recipe switches, the
+outgoing DIY item retains its displayed pose until the replacement is framed.
 
 The regular marker must exist; a custom file alone cannot enable Crafting.
 Omitted custom values inherit the regular settings. Setting enabled=false
-turns off both preview and speed behavior; removing Crafting restores the
+turns off previews, workbench tilt and speed behavior; removing Crafting restores the
 ordinary DIY app. Core's amiibo setting is independent and remains in Core.
 
 The ramp counts game updates, not wall-clock time. Suspended/busy updates pause

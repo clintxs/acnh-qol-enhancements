@@ -10,7 +10,7 @@ unsigned Configure(std::string_view input) { return ApplySettings(input, Prefere
 
 bool Install() {
     Logging.Log("[QoL Enhancements/Crafting] settings: diy_app_preview=%s crafting_speed=%u; "
-                "workbench_preview_tilt=%s (deferred), crafting_quantity_wrap=%s (deferred)\n",
+                "workbench_preview_tilt=%s, crafting_quantity_wrap=%s (deferred)\n",
                 Preferences.diyAppPreview ? "true" : "false", Preferences.craftingSpeed,
                 Preferences.workbenchPreviewTilt ? "true" : "false",
                 Preferences.craftingQuantityWrap ? "true" : "false");
@@ -18,6 +18,7 @@ bool Install() {
     // or a speed-hook conflict suppress the already-working preview feature.
     const bool speed = InstallFasterCrafting(Preferences.craftingSpeed);
     const bool preview = !Preferences.diyAppPreview || InstallRecipePreview();
-    return speed && preview;
+    const bool tilt = !Preferences.workbenchPreviewTilt || InstallWorkbenchPreviewTilt();
+    return speed && preview && tilt;
 }
 } // namespace qol::crafting

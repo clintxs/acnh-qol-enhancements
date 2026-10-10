@@ -2,4 +2,5 @@
 
 namespace qol::crafting {
 bool InstallRecipePreview();
+bool InstallWorkbenchPreviewTilt();
 }
