@@ -19,6 +19,10 @@ constexpr std::uintptr_t RecipeFocus = 0x02e96a80, RecipeLeave = 0x02e99d90;
 constexpr std::uintptr_t PageInput = 0x03c58d24, UiContext = 0x04ab2230;
 constexpr std::uintptr_t Application = 0x059f83f0;
 constexpr std::uintptr_t CreateItemModel = 0x032bd990, ReleaseModel = 0x032ba5e4;
+constexpr std::uintptr_t ChangeItemModel = 0x032ba168;
+constexpr std::uintptr_t ResetRecipeGrid = 0x03764290, ActivateRecipeGrid = 0x0335b4a0;
+constexpr std::uintptr_t FocusRecipeGrid = 0x03763e14, GridRowForIndex = 0x03765104;
+constexpr std::uintptr_t GridRequestVtable = 0x04a2b020;
 constexpr std::uintptr_t ChangeState = 0x03dbb160;
 constexpr std::uintptr_t DrawModelLayer = 0x039392b0, RenderLayers = 0x04abdb78;
 constexpr std::uintptr_t SetModelRotation = 0x032b9e08;
@@ -41,6 +45,8 @@ constexpr std::size_t Controller = 0x30, Parameters = 0x28;
 constexpr std::size_t ModelMode = 0x50, ModelHandle = 0x6c;
 constexpr std::size_t ModelState = 0x10, BackgroundPage = 0x58, VisibilityPage = 0x60;
 constexpr std::size_t ModelReady = 0x69, ModelFlags = 0x74, ModelAngles = 0x80;
+constexpr std::size_t GridColumns = 0x2e8, GridVisibleItems = 0x2f4, GridTopRow = 0x430;
+constexpr std::size_t GridItems = 0x3cc, GridState = 0x298, LeftStick = 4;
 constexpr std::size_t RightStick = 0x0c, ConsumedAxes = 0x40;
 constexpr std::size_t LayerCount = 0x20, Layers = 0x28, LayerClearColor = 0x9c;
 constexpr std::size_t DrawLayer = 0x3d0, RendererState = 0x248, DrawInfo = 0x18, DrawView = 8;
@@ -51,7 +57,10 @@ constexpr std::size_t EntityKind = 0x15c, ItemChildren = 0x274, ItemChildCount =
 constexpr std::size_t EntityPhase = 0x288, EntityStage = 0x5e8;
 }
 constexpr unsigned WorkbenchModelMode = 2, ConfirmMask = 0x10, BackMask = 0x20, PhoneShortcutKind = 5;
-constexpr unsigned RightStickMask = 2;
+// Native grid shortcuts 0375F240/0375F29C use kinds 1/0 for right/left.
+constexpr unsigned LeftMask = 1, RightMask = 2, LeftStickMask = 1, RightStickMask = 2;
+constexpr unsigned NavigationDelay = 12, NavigationRepeat = 4; // UI updates, normally 30 Hz.
+constexpr float NavigationThreshold = 0.5f;
 constexpr unsigned TransformPending = 1, MaterialPending = 6;
 constexpr float StickDeadZone = 0.15f, DegreesPerUpdate = 6.0f, MaximumTilt = 60.0f;
 // Native 032B74F0 converts radians to Angle32 (one turn = 2^32).
@@ -383,6 +392,8 @@ struct Session {
     float stickX{}, stickY{}, tilt{};
     int inputRow{-1};
     int savedModelMode{-1};
+    int navigation{}, heldNavigation{}, pendingNavigation{};
+    unsigned navigationWait{};
     bool backHeld{}, confirmHeld{true}, ownsRenderer{}, fixedPose{};
 };
 std::array<Session, 8> Sessions{};
@@ -449,6 +460,7 @@ bool InputBlocked(Session &s, unsigned blocked) {
 void Close(Session &s) {
     recipe_banner::Restore(s.hotelBanner);
     s.stickX = s.stickY = 0;
+    s.navigation = s.heldNavigation = s.pendingNavigation = 0; s.navigationWait = 0;
     if (s.ownsRenderer) {
         ReportRendererTrace();
         PreviewHandle.store(0, std::memory_order_release);
@@ -583,15 +595,110 @@ void RotatePreview(Session &s) {
                     angles[1], angles[0], At<unsigned char>(s.controller, field::ModelReady),
                     At<unsigned char>(s.controller, field::ModelFlags));
 }
+// Same request ABI as MenuRecipe's selection restoration at 02E9C0D0 and
+// filter changes at 02E968A0. The native grid repopulates its pooled rows,
+// scroll bar, button focus and cursor; a recipe index is not a pooled-row index.
+struct GridRequest {
+    std::uintptr_t vtable{};
+    int count{}, first{}, selected{};
+    unsigned char padMinimum{}, padRow{}, enabled{1}, loop{}, reverse{}, alternateAxis{1};
+    unsigned char cursor{}, animate{}, flags{}, callback{};
+    unsigned short padding{};
+    int pageRows{}, exitFrames{12}, entryFrames{4};
+    unsigned resident{};
+};
+static_assert(sizeof(GridRequest) == 0x30 && offsetof(GridRequest, resident) == 0x2c);
+bool SelectRecipe(Session &s, unsigned selected, unsigned count) {
+    auto grid = At<void *>(s.layout, field::Grid);
+    if (!grid || At<unsigned>(grid, field::GridItems) != count ||
+        At<unsigned>(grid, field::GridState) != 2) return false;
+    const auto columns = At<int>(grid, field::GridColumns);
+    const auto visible = At<int>(grid, field::GridVisibleItems);
+    if (columns < 1 || columns > 64 || visible < columns || visible > 512) return false;
+    // Retain the viewport until the selection leaves it. The native reset
+    // clamps the top row at the final partial page.
+    const int selectedRow = selected / columns;
+    const int visibleRows = std::max(1, visible / columns);
+    const int firstRow = std::clamp(At<int>(grid, field::GridTopRow),
+                                  std::max(0, selectedRow - visibleRows + 1), selectedRow);
+    GridRequest request;
+    request.vtable = Main + address::GridRequestVtable;
+    request.count = count; request.first = firstRow * columns; request.selected = selected;
+    request.resident = At<unsigned char>(s.phone, field::Resident);
+    Native<void (*)(void *, const GridRequest *)>(address::ResetRecipeGrid)(grid, &request);
+    Native<void (*)(void *, void *)>(address::ActivateRecipeGrid)(grid, nullptr);
+    // State-2 focus uses the native input context and cursor path. Its normal
+    // enter delegate updates phone +218 and materials through FocusRecipe.
+    Native<void (*)(void *, bool)>(address::FocusRecipeGrid)(grid, false);
+    auto row = Native<void *(*)(void *, unsigned)>(address::GridRowForIndex)(grid, selected);
+    if (!RecipeRow(s, row)) return false;
+    // Focus can already belong to this pooled row after a viewport rebuild.
+    // Refresh the app details explicitly through the same native callback.
+    struct { unsigned input{}, padding{}; void *source{}; bool instant{}; } event;
+    event.input = s.inputRow; event.source = row;
+    FocusRecipe(s.phone, &event);
+    return At<unsigned>(s.phone, field::Selection) == selected;
+}
+void NavigatePreview(Session &s) {
+    const int input = s.navigation; s.navigation = 0;
+    if (!input) { s.heldNavigation = 0; s.navigationWait = 0; }
+    else {
+        const bool fresh = input != s.heldNavigation;
+        s.heldNavigation = input;
+        if (!fresh && s.navigationWait) --s.navigationWait;
+        else {
+            // Keep one requested step while the model finishes loading. Fast
+            // taps must not disappear, and held input must not build a backlog.
+            s.pendingNavigation = input;
+            s.navigationWait = fresh ? NavigationDelay : NavigationRepeat;
+        }
+    }
+    const int direction = s.pendingNavigation;
+    if (!direction) return;
+    auto context = UiContext();
+    if (!PhoneReady(s.phone) || !context || At<void *>(context, field::Controller) != s.controller ||
+        At<void *>(context, field::Parameters) != s.parameters || !s.ownsRenderer ||
+        At<unsigned>(s.controller, field::ModelMode) != WorkbenchModelMode ||
+        At<int>(s.controller, field::ModelState) != 1 || !At<unsigned>(s.controller, field::ModelHandle) ||
+        (At<unsigned char>(s.controller, field::ModelFlags) & MaterialPending)) return;
+    const auto count = At<unsigned>(s.phone, field::Recipes);
+    const auto current = At<unsigned>(s.phone, field::Selection);
+    auto recipes = At<void **>(s.phone, field::Recipes + 8);
+    if (!count || count > 4096 || current >= count || !recipes ||
+        (direction < 0 ? current == 0 : current + 1 == count)) { s.pendingNavigation = 0; return; }
+    const unsigned selected = direction < 0 ? current - 1 : current + 1;
+    if (!recipes[selected] || At<std::uint16_t>(recipes[selected], 8) >= 0xfffe) { s.pendingNavigation = 0; return; }
+    const auto item = At<std::uint64_t>(recipes[selected], 8);
+    recipe_banner::Restore(s.hotelBanner); // Native details update owns its original hierarchy.
+    if (!SelectRecipe(s, selected, count)) return;
+    s.pendingNavigation = 0;
+    s.item = item;
+    s.fixedPose = UsesFixedPreviewPose(static_cast<std::uint16_t>(item));
+    PreviewFixedPose.store(s.fixedPose, std::memory_order_release);
+    for (auto &carrier : PreviewCarriers) carrier.store(0, std::memory_order_release);
+    s.tilt = s.stickX = s.stickY = 0;
+    std::memcpy(static_cast<std::byte *>(s.controller) + field::ModelAngles,
+                s.initialAngles.data(), sizeof(s.initialAngles));
+    PublishPose(s.controller);
+    At<std::uint64_t>(s.parameters, 0x2c) = item;
+    At<unsigned>(s.parameters, 0x2140) = 1;
+    // Workbench 0348DE80 changes the existing actor with this item/recipe
+    // request. CreateItemModel silently refuses an existing model handle.
+    struct { std::uint64_t item; std::uint16_t recipe{0xfffe}, padding{}; } request{item};
+    Native<void (*)(void *, const void *)>(address::ChangeItemModel)(s.controller, &request);
+    Visible(s.gridPane, false); Visible(s.scrollPane, false); Visible(s.cursorPane, false);
+    Logging.Log("[QoL Enhancements/Crafting] DIY preview: navigated; recipe_index=%u count=%u item=%u fixed=%u\n",
+                selected, count, unsigned(item & 0xffff), unsigned(s.fixedPose));
+}
 bool PreviewInput(void *layout, void *snapshot, unsigned blocked) {
     for (auto &s : Sessions) if (s.layout == layout) {
-        if (s.phase != Phase::Showing) s.stickX = s.stickY = 0;
+        if (s.phase != Phase::Showing) { s.stickX = s.stickY = 0; s.navigation = 0; }
         if (s.phase == Phase::Idle) s.inputRow = ShortcutInputRow(s.layout);
-        if (!snapshot || s.inputRow < 0) { s.stickX = s.stickY = 0; return s.phase != Phase::Idle; }
+        if (!snapshot || s.inputRow < 0) { s.stickX = s.stickY = 0; s.navigation = s.pendingNavigation = 0; return s.phase != Phase::Idle; }
         const auto count = At<unsigned>(snapshot, 8);
         auto rows = At<std::byte *>(snapshot, 0x10);
         if (!rows || count > 8 || unsigned(s.inputRow) >= count) {
-            s.stickX = s.stickY = 0; return s.phase != Phase::Idle;
+            s.stickX = s.stickY = 0; s.navigation = s.pendingNavigation = 0; return s.phase != Phase::Idle;
         }
         auto row = rows + s.inputRow * 0x48;
         const auto buttons = At<unsigned>(row);
@@ -619,6 +726,23 @@ bool PreviewInput(void *layout, void *snapshot, unsigned blocked) {
         // Kind 1 is the right stick; +40 bit 1 records its consumption.
         if (s.phase == Phase::Showing) {
             const bool inputBlocked = InputBlocked(s, blocked);
+            if (inputBlocked) s.navigation = s.pendingNavigation = 0;
+            else {
+                const auto unconsumed = buttons & ~At<unsigned>(row, 0x3c);
+                const auto axes = At<unsigned>(row, field::ConsumedAxes);
+                const bool left = (unconsumed & LeftMask) != 0, right = (unconsumed & RightMask) != 0;
+                // D-pad takes precedence; opposite directions cancel. Ignore
+                // vertical stick movement and diagonals dominated by Y.
+                if ((unconsumed & (LeftMask | RightMask)) || !(axes & LeftStickMask)) {
+                    const float x = At<float>(row, field::LeftStick), y = At<float>(row, field::LeftStick + 4);
+                    const bool horizontal = x >= -1 && x <= 1 && y >= -1 && y <= 1 &&
+                        (x > NavigationThreshold || x < -NavigationThreshold) && x*x > y*y;
+                    s.navigation = left || right ? int(right) - int(left) :
+                        horizontal && !(axes & LeftStickMask) ? (x > 0 ? 1 : -1) : 0;
+                }
+                At<unsigned>(row, 0x3c) |= buttons & (LeftMask | RightMask);
+                At<unsigned>(row, field::ConsumedAxes) |= LeftStickMask;
+            }
             const auto x = StickAxis(At<float>(row, field::RightStick));
             const auto y = StickAxis(At<float>(row, field::RightStick + 4));
             if ((x != 0 || y != 0) && s.stickReports++ < 4)
@@ -711,6 +835,7 @@ HOOK_DEFINE_TRAMPOLINE(UpdatePhoneRecipes) {
             return;
         }
         if (s->phase == Phase::Showing) {
+            NavigatePreview(*s);
             recipe_banner::Place(s->hotelBanner, s->surface);
             RotatePreview(*s);
         }
@@ -791,6 +916,14 @@ bool InstallRecipePreview() {
         {0x032ba034, {0xaa1303e0, 0x9400109e, 0x36000080, 0x3941d268, 0x121f1908}},
         {0x0192a1f0, {0xa9bb7bfd, 0xf9000bf9, 0xa9025ff8, 0xa90357f6, 0xa9044ff4}},
         {0x019362f4, {0xd101c3ff, 0xa9027bfd, 0xf9001bf9, 0xa9045ff8, 0xa90557f6}},
+        // Native grid restoration, focus mapping and existing-actor item changes.
+        {0x032ba168, {0xb9406c08, 0x34000d68, 0xd101c3ff, 0xa9037bfd, 0xf90023f7}},
+        {0x03764290, {0xd10203ff, 0xfd001be8, 0xf90027f9, 0xa903fbfd, 0xa9055ff8}},
+        {0x0335b4a0, {0xb40003a0, 0xb9429808, 0x7100091f, 0x54000063, 0xb4000341}},
+        {0x03763e14, {0xf9416c08, 0xf100011f, 0xb9429809, 0x7a421920, 0x54000d61}},
+        {0x03765104, {0xb943d408, 0x6b01011f, 0x5400038d, 0xb942e808, 0x1ac80c29}},
+        {0x0375f29c, {0xb900695f, 0xa9002d09, 0x9100c3ff, 0xd65f03c0, 0xd10143ff}},
+        {0x0375f240, {0xb9006d14, 0xf0011428, 0xd000426b, 0x911f2d6b, 0xf9401129}},
     };
     const auto &main = exl::util::GetMainModuleInfo();
     for (const auto &f : fingerprints) if (f.offset + sizeof(f.words) > main.m_Text.m_Size ||

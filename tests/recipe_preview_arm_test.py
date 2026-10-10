@@ -24,6 +24,7 @@ MENU = layout_asset('MenuRecipe')
 HOOKS = (0x267d64, 0x2e9cde0, 0x2e9fbb0, 0x2e9d538, 0x3c58d24, 0x39392b0, 0x32b9fcc, 0x32b9e08, 0x6021a4, 0x39f63f0)
 GUARDS = HOOKS + (0x32bd990, 0x32ba5e4, 0x3dbb160, 0x27d1d0, 0x3a17390, 0x3a174f0, 0x3c66298, 0x2e93798, 0x2e96a80, 0x3c4b880, 0x2ea0754, 0x2b0c810, 0x32ba000, 0x3c4bac4, 0x2b0e20c, 0x32b9750, 0x1513a48, 0x32be2b0, 0x32ba034, 0x192a1f0, 0x19362f4)
 GUARDS += (0x27bfb4, 0x27bfe4, 0x27d550, 0x27e208)
+GUARDS += (0x32ba168, 0x3764290, 0x335b4a0, 0x3763e14, 0x3765104, 0x375f29c, 0x375f240)
 
 class PreviewMachine(Machine):
     def __init__(self, base):
@@ -195,6 +196,7 @@ class PreviewMachine(Machine):
             if not self.fail_spawn:
                 self.write(self.reg(0) + 0x6c, 0x12345, 4)
                 self.write(self.reg(0) + 0x70, 4, 4)
+                self.write(self.reg(0) + 0x9c, 0xfffe, 2)
                 u.mem_write(self.reg(0)+0x80,struct.pack('<3I',0x01000000,0x20000000,0x03000000))
         elif action == 'release':
             self.events.append(('release', self.reg(1)))
@@ -237,6 +239,11 @@ class PreviewMachine(Machine):
             u.reg_write(UC_ARM64_REG_PC,self.base+0x3939528); return
         elif action == 'animation_pose':
             u.mem_write(self.reg(0),struct.pack('<2fI3If',0,0,0x3f800000,0x01000000,0x20000000,0x03000000,5))
+        elif action == 'grid_enter': self.events.append(('grid_enter', self.reg(2)))
+        elif action == 'grid_leave': self.events.append(('grid_leave', self.reg(2)))
+        elif action == 'change_item':
+            self.events.append(('change_item', bytes(u.mem_read(self.reg(1),0x30))))
+        elif action == 'details': self.events.append(('details', self.reg(1)))
         elif action == 'zero': result = 0
         elif action == 'copy':
             u.mem_write(self.reg(0),bytes(u.mem_read(self.reg(1),self.reg(2)))); result=self.reg(0)
@@ -663,7 +670,7 @@ for base in (0x7100000000, 0x7200000000):
     m.write(input_context+0x54,1,1)
     m.input(page,0,right=(1,1)); m.frame(phone); assert angles()==pose
     m.write(input_context+0x54,0,1)
-    m.input(page,0,right=(1,0)); assert m.read(m.last_input_row+0x40,4)==2
+    m.input(page,0,right=(1,0)); assert m.read(m.last_input_row+0x40,4)==3
     assert angles()==pose  # Applied outside the input callback.
     # Re-dispatch the same consumed snapshot before the frame; it must not
     # erase the first callback's queued movement.
@@ -1079,6 +1086,159 @@ for base in (0x7100000000, 0x7200000000):
         m.u.mem_write(background+0x44,struct.pack('<f',0))
         m.u.mem_write(background+0x50,struct.pack('<f',600))
     print(f'PASS: Hotel banner drawn after capture at bottom-right; dynamic widths/aspect dimensions, native count/visibility/updates, B/reopen/deactivation restoration and failure guards; ASLR {base:#x}')
+
+def navigation_fixture(base):
+    m=PreviewMachine(base)
+    phone,page,row,panes=m.phone(hotel=True)
+    grid=m.read(page+0x580)
+    count=35; columns=4; visible=12; pool=32
+    # Nonmonotonic IDs stand in for the app's already sorted/filtered list.
+    items=[0x1000000000000000 | ((i*17+0x88)&0xffff) for i in range(count)]
+    # Load real category rows so navigation itself covers rotating -> fixed
+    # -> rotating transitions without closing/reacquiring the renderer.
+    resource=bytearray((ASSETS.parent/'Bcsv/ItemParam.bcsv').read_bytes())
+    total,stride,fields,version=struct.unpack_from('<IIHB',resource)
+    header=28 if version else 12
+    offsets=dict(struct.unpack_from('<II',resource,header+8*i) for i in range(fields))
+    fixed_kinds={zlib.crc32(n.encode()) for n in ('RoomWall','RoomFloor','Rug','Fence',
+                                               '内装：壁紙','内装：床板','ラグ','柵')}
+    native_rows={}; kind_items={}
+    for i in range(total):
+        offset=header+8*fields+i*stride; struct.pack_into('<I',resource,offset,offset)
+        item_id=struct.unpack_from('<H',resource,offset+offsets[0x54706054])[0]
+        kind=struct.unpack_from('<I',resource,offset+offsets[0x5270eb75])[0]
+        native_rows[item_id]=(offset,kind); kind_items.setdefault(kind,item_id)
+    fixed_ids={i for i,(_,kind) in native_rows.items() if kind in fixed_kinds}
+    for index,names in enumerate((('RoomWall','内装：壁紙'),('RoomFloor','内装：床板'),
+                                  ('Rug','ラグ'),('Fence','柵')),5):
+        items[index]=next(kind_items[zlib.crc32(n.encode())] for n in names if zlib.crc32(n.encode()) in kind_items)
+    data=base+0x30000000
+    m.u.mem_map(data,(len(resource)+4095)&~4095); m.u.mem_write(data,bytes(resource))
+    table=m.alloc(0x200); pointers=m.alloc((max(native_rows)+1)*8); slot=m.alloc()
+    m.write(slot,table); m.write(base+0x4ac0428,slot)
+    m.write(table+0x1d8,max(native_rows)+1,4); m.write(table+0x1e0,pointers)
+    for item_id,(offset,_) in native_rows.items(): m.write(pointers+item_id*8,data+offset)
+    recipes=m.alloc(count*8)
+    for i,item in enumerate(items):
+        recipe=m.alloc(0xd0); m.write(recipe+8,item); m.write(recipes+8*i,recipe)
+    m.write(phone+0x8a350,count,4); m.write(phone+0x8a358,recipes)
+    m.services[base+0x2e96b80]=('preview','details')
+    # Execute the real native item-change body and verify the root request;
+    # scene rebuilding itself is a boundary, like scene allocation on open.
+    m.services[base+0x192d634]=('preview','change_item')
+    m.services[base+0x267d4ac]=('preview','noop')
+    m.services[base+0x192da60]=('preview','zero')
+    default_item=m.alloc(); m.write(default_item,0xfffe); m.write(base+0x4ab37e0,default_item)
+    # Native reset, viewport clamp, focus and input-list membership execute.
+    # Only graphical row visibility and layout position writes are modeled.
+    m.services[base+0x37654a0]=('preview','noop')
+    grid_methods=m.alloc(0x150); m.write(grid,grid_methods)
+    for off,target in ((0x100,m.stub('noop')),(0x110,base+0x3765b70)):
+        m.write(grid_methods+off,target)
+    layout=m.alloc(); layout_methods=m.alloc(); layout_ops=m.alloc(0xa0)
+    m.write(grid+0x270,layout); m.write(layout,layout_methods)
+    m.write(layout+8,m.alloc()); m.write(layout+0x18,layout_ops)
+    m.write(layout_methods+0x18,m.stub('noop')); m.write(layout_ops+0x98,m.stub('noop'))
+    context=m.alloc(0x100); states=m.alloc(8*8)
+    m.write(context+0x18,8,4); m.write(context+0x20,states)
+    m.write(context+0x14,0x1400,4)
+    for i in range(8): m.write(states+8*i,m.alloc(0x130))
+    m.write(grid+0x2d8,context)
+    row_methods=m.alloc(0x148)
+    m.write(row_methods+0x140,m.stub('noop')); m.write(row_methods+0xf0,m.stub('zero'))
+    input_methods=m.alloc(); m.write(input_methods+0x18,m.stub('noop'))
+    enter_methods=m.alloc(); m.write(enter_methods,m.stub('grid_enter'))
+    leave_methods=m.alloc(); m.write(leave_methods,m.stub('grid_leave'))
+    rows=m.alloc(pool*8)
+    for i in range(pool):
+        button=m.alloc(0x300); key=m.alloc(0x1500)
+        m.write(button,row_methods); m.write(button+0x218,key)
+        m.write(key,input_methods); m.write(key+0x18,context)
+        m.write(key+0x20,enter_methods); m.write(key+0x40,leave_methods)
+        m.write(key+0x14b0,0xff,4)
+        m.write(rows+8*i,button)
+    m.write(grid+0x208,pool,4); m.write(grid+0x210,rows)
+    for off,value in ((0x298,2),(0x2e8,columns),(0x2ec,3),(0x2f0,visible),
+                      (0x2f4,visible),(0x2f8,pool),(0x3cc,count),(0x3d4,count),(0x3d8,2)):
+        m.write(grid+off,value,4)
+    delegate=m.alloc(); m.write(delegate+0x10,m.stub('zero'))
+    m.write(grid+0x330,delegate)
+    key=m.alloc(); m.write(key+0x14,0xffffffff,4); m.write(grid+0x4c0,key)
+    m.button(page,m.read(rows),0)
+    m.confirm(page); m.frame(phone); m.frame(phone)
+    assert m.read(phone+0x218,4)==0
+    original_handle=m.read(m.controller+0x6c,4)
+    def step(held=0,left=(0,0),**kwargs):
+        m.input(page,held,left=left,**kwargs); m.frame(phone)
+    def press(direction,stick=False):
+        step(); step(0 if stick else (2 if direction>0 else 1),left=(direction,0) if stick else (0,0))
+    def selected(expected):
+        assert m.read(phone+0x218,4)==expected, (expected,m.read(phone+0x218,4),m.read(grid+0x298,4),m.read(m.controller+0x74,1),m.events[-8:],m.text[-1000:])
+        row=m.invoke(base+0x3765104,grid,expected)
+        assert row and row==m.read(rows+8*((expected//columns-m.read(grid+0x430,4)+m.read(grid+0x438,4))*columns+expected%columns))
+        focused=m.read(m.read(states)+0x10)
+        assert focused==m.read(row+0x218), (hex(focused),hex(row))
+        assert m.read(grid+0x440,4)*columns+m.read(grid+0x444,4)==expected
+        assert m.read(m.controller+0x6c,4)==original_handle
+        assert m.read(m.parameters+0x2c)==items[expected]
+        assert m.read(panes['N_TradeBox_00']+0x18)==panes['N_QolPreview_00']
+        assert m.string(panes['T_TradeBoxNum_00']+0x100)=='12'
+        change=[e for e in m.events if e[0]=='change_item'][-1][1]
+        assert struct.unpack_from('<Q',change)[0]==items[expected]
+        assert struct.unpack_from('<H',change,0x24)[0]==0xfffe  # Actor recipe field.
+        assert [e for e in m.events if e[0]=='details'][-1][1]==expected
+        fixed=(items[expected]&0xffff) in fixed_ids
+        assert m.read(m.module.find('PreviewFixedPose'),1)==int(fixed)
+        assert all(m.read(panes[n]+0x58,1)&1==0 for n in ('L_BtnList_00','L_Cursor_00','L_ScrollBar_00'))
+    for i in range(1,count):
+        press(1,stick=bool(i%2)); selected(i)
+        if 5<=i<=8:
+            pose=bytes(m.u.mem_read(m.controller+0x80,12))
+            m.input(page,0,right=(1,1)); m.frame(phone)
+            assert bytes(m.u.mem_read(m.controller+0x80,12))==pose
+    press(1); selected(count-1)
+    for i in range(count-2,-1,-1): press(-1,stick=bool(i%2)); selected(i)
+    press(-1); selected(0)
+    # One input dispatch queues one UI update; duplicate consumed snapshots
+    # cannot double-step. Held repeat has delay and cadence, release/reverse immediate.
+    step(); m.input(page,2); snapshot=m.last_input_row
+    snap=m.alloc(); m.write(snap+8,8,4); m.write(snap+0x10,snapshot)
+    m.hook(0x3c58d24,page,snap,0); m.frame(phone); selected(1)
+    for _ in range(12): step(2); selected(1)
+    step(2); selected(2)
+    for _ in range(4): step(2); selected(2)
+    step(2); selected(3)
+    step(1); step(1); selected(2)
+    press(1); selected(3)
+    for held,left,kwargs in ((3,(0,0),{}),(0,(0,1),{}),(0,(0.4,0),{}),(0,(1,1),{}),
+                             (0,(float('nan'),0),{}),(2,(0,0),{'blocked':1}),
+                             (2,(0,0),{'consumed':2}),(0,(1,0),{'consumed_axes':1})):
+        step(); step(held,left,**kwargs); selected(3)
+    # Inconsistent/busy lists never index an invalid row or change the model.
+    next_recipe=m.read(recipes+4*8)
+    for location,value,size in ((phone+0x1f0,0,4),(grid+0x3cc,count-1,4),
+                                (grid+0x298,1,4),(grid+0x2e8,0,4),
+                                (grid+0x2f4,0,4),(recipes+4*8,0,8),
+                                (next_recipe+8,0xfffe,2)):
+        old=m.read(location,size); m.write(location,value,size)
+        press(1); assert m.read(phone+0x218,4)==3
+        m.write(location,old,size)
+        step(blocked=1); step(); selected(3)
+    # Missing snapshots clear queued navigation. B wins over same-frame next.
+    step(); m.input(page,2); m.hook(0x3c58d24,page,0,0); m.frame(phone); selected(3)
+    press(1); selected(4)
+    step(); m.input(page,0x22); m.frame(phone)
+    assert m.read(phone+0x218,4)==4
+    assert m.read(panes['L_BtnList_00']+0x58,1)&1
+    row=m.invoke(base+0x3765104,grid,4)
+    assert m.read(m.read(states)+0x10)==m.read(row+0x218)
+    step(); m.confirm(page); m.frame(phone); m.frame(phone)
+    assert m.read(m.parameters+0x2c)==items[4]
+    assert len([e for e in m.events if e[0]=='spawn'])==2
+    m.hook(0x2e9d538,phone)
+    print(f'PASS: linear d-pad/left-stick navigation across rows and pooled viewports; native index/focus/material/model updates, held repeat, input gates, invalid/busy lists, fixed poses, endpoints and B cursor/reopen; ASLR {base:#x}')
+
+for base in (0x7100000000,0x7200000000): navigation_fixture(base)
 
 for guard in GUARDS:
     m=Machine(0x7100000000,{'crafting':DEFAULT})

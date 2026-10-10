@@ -17,7 +17,8 @@ copy. The user accepts the 0.3.43 cream background. 0.3.44 corrects a missing
 carrier level in drawable ownership; the user confirms turning and tilt work.
 0.3.45 preserves native poses for walls, floors, rugs and fences and doubles
 movement speed for other items. The user reports that 0.3.45 looks good.
-Left/right recipe navigation remains unfinished; see the deferred follow-ups below.
+Left/right recipe navigation is implemented in 0.3.50; initial orientation and
+workbench tilt remain deferred.
 
 This implementation retains MenuRecipe's material panel. It adds a hidden
 capture surface to the loaded layout and temporarily hides the grid, scrollbar
@@ -45,7 +46,7 @@ these items for later. This is a backlog, not authorization to implement them no
    angle overrides. Opening an ordinary item should start at its sensible native
    orientation, then allow the existing right-stick rotation and tilt. Retain the
    accepted fixed poses for wallpapers, floors, rugs and fences.
-3. **Recipe navigation inside preview mode.** Left/right on both the left stick
+3. **Recipe navigation inside preview mode — implemented in 0.3.50.** Left/right on both the left stick
    and the D-pad should move through recipes in the app's current list/category
    order, updating the 3D item and existing crafting/material information while
    keeping the preview open. The right stick remains the model rotation/tilt
@@ -62,7 +63,7 @@ into one optional **Crafting** submodule in 0.3.46; see the
 [Crafting grouping note](../crafting/NOTES.md#possible-crafting-submodule-grouping--october-9-2026).
 DIY previews move from Core to Crafting and use `diy_app_preview=true`.
 The implementation now lives under `source/program/crafting/`. The follow-up UI
-changes above remain deferred; no workbench tilt or recipe navigation is added.
+changes are tracked below; workbench tilt and improved initial orientation remain deferred.
 
 The attached reference images are retained here so later work does not depend
 on the original files remaining in Downloads. The original backlog update made
@@ -520,3 +521,51 @@ native text/visibility, repeated native updates, B/reopen/deactivation restorati
 and no mutation on failed spawn or malformed geometry/links. Existing original
 and aspect-modified layout resources remain byte-preserved. Live placement still
 needs a Steam Deck check.
+
+
+## Recipe navigation — 0.3.50
+
+The user authorizes D-pad/left-stick previous/next in preview mode, crossing grid
+rows and preserving the selected card on B. Phone +8A350/+8A358 is the current
+recipe count/pointer array (already filtered/sorted); +218 is the recipe index.
+Do not use the pooled button index as the recipe index. Clamp at list ends.
+
+Input row +0 masks 1/2 are left/right (native grid setup 0375F29C/0375F240
+initializes shortcut kinds 0/1). Left stick is +4/+8, consumed-axis bit 0; right
+stick remains +C/+10, bit 1. D-pad takes precedence; opposing directions cancel.
+Require horizontal stick magnitude >0.5 and greater than its vertical component.
+Observe blocking/consumption, preserve queued input on duplicate dispatch, and
+perform navigation from PhoneFrame outside the input dispatch stack. Repeat
+after 12 UI updates, then every 5 updates (four waiting updates between steps).
+Keep one pending step while material/model loading is active; never accumulate
+a held-input backlog. B/deactivation/blocked or missing input clears queued work.
+
+The native GridRequest ABI is 0x30 bytes, matching MenuRecipe restoration
+02E9C0D0 and filter changes 02E968A0. ResetRecipeGrid 03764290 owns viewport
+clamping, pooled-row visibility/repopulation and native cursor state. Preserve
+the current top row unless the selected row leaves the visible area, using live
+grid column count +2E8 and visible item count +2F4. Pass the full list count,
+selected index, first visible index and native app options; never overwrite
+grid +430/+440/+444 directly. ActivateRecipeGrid 0335B4A0 requests state 2;
+FocusRecipeGrid 03763E14 runs its native input-context/cursor path. The pooled
+row lookup 03765104 and native RecipeFocus 02E96A80 refresh phone selection and
+materials even when the same pooled row is reused after scrolling.
+
+Workbench 0348DE80 uses ChangeItemModel 032BA168 to update the existing preview
+actor. CreateItemModel 032BD990 refuses an existing handle. The item-change
+request holds the 64-bit item and FFFE recipe sentinel; native flags +74:2/4
+queue changes outside the entity phase and wait for model readiness. Reuse the
+owned actor/camera, restore the initial controller angles and clear tilt, update
+the parameter store and publish the new fixed-type flag before the native change.
+This retains category-specific native poses and avoids renderer teardown between
+recipes. Restore the Hotel banner before native details update, then place it
+over the capture again. No new hooks or settings.
+
+Compiled checks execute native grid reset, viewport clamping, recipe mapping,
+input-list focus and item-change/deferred readiness at two bases. Graphics row
+visibility/position writes, scene item rebuilding and material text rendering
+remain modeled boundaries. Nonmonotonic item IDs verify list order; 35 recipes
+with 32 pooled buttons cover both directions, page crossings and a partial last
+row. Checks include tap/hold/reverse, duplicate/blocked/consumed/missing input,
+list endpoints, B priority, cursor restoration and reopening. GPU appearance and
+actual Deck scrolling/loading timing still need live confirmation.

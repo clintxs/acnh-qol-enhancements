@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.49 Crafting speed up to 30×** for ACNH **3.0.3 on Eden**. One Core
+**0.3.50 DIY preview recipe navigation** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -63,14 +63,14 @@ fingerprints only, checked before each feature's first hook.
 Install **QoL Enhancements - Crafting** with Core. This replaces the former
 Faster Crafting package; remove the old folder and rename personal
 `faster-crafting.custom.ini` preferences to `crafting.custom.ini`. Remove any old
-`version` override from that personal file (or update it to 0.3.49). The retired
+`version` override from that personal file (or update it to 0.3.50). The retired
 regular/custom paths are no longer read. Core alone no longer enables DIY previews.
 
 `romfs/qol-enhancements/config/crafting.ini` supplies these defaults:
 
 ```ini
 enabled = true
-version = 0.3.49
+version = 0.3.50
 diy_app_preview = true
 workbench_preview_tilt = true
 crafting_quantity_wrap = true
@@ -91,7 +91,7 @@ suspension and exit/reset behavior remains intact.
 accepted and default to true, but have no effect until those features are built.
 Hotel request banners now draw over the bottom-right corner of the DIY preview,
 returning to their native placement in the grid. Initial orientation improvements
-and recipe navigation remain on the documented backlog. No unimplemented UI
+remain on the documented backlog. No unimplemented UI
 behavior is enabled.
 
 A personal `crafting.custom.ini` may override only the desired keys; omitted or
@@ -115,8 +115,12 @@ settings need a Deck test.
 
 The existing DIY app keeps its materials panel, category, selection and scroll
 position. A opens the 3D preview in place of the grid; B releases the model and
-restores the grid. There is no crafting button or crafting action. Left/right
-recipe navigation within the preview is not implemented yet.
+restores the grid. There is no crafting button or crafting action. Left/right on
+the D-pad or left stick moves to the previous/next recipe in the current sorted
+or filtered list, crossing row and page boundaries. Holding repeats after a short
+delay; movement stops at either end of the list. The material panel updates with
+the model, and B returns to the grid with that recipe selected and visible.
+Changing recipes resets rotation/tilt and preserves fixed poses for locked types.
 
 Crafting adds a small capture surface to the **loaded MenuRecipe layout in memory**.
 Existing panes, animations and material/texture indices are preserved, including
@@ -243,7 +247,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.49
+version = 0.3.50
 base_speed = 2
 boost_speed = 4
 faster_ui = false

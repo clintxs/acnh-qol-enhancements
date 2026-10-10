@@ -8,8 +8,7 @@ retired `faster-crafting` paths are ignored. Core alone installs no DIY hooks.
 Defaults: `diy_app_preview=true`, `workbench_preview_tilt=true`,
 `crafting_quantity_wrap=true`, `crafting_speed=3`. Preview and speed are active;
 workbench tilt and quantity wrap are parsed/reserved only and still deferred.
-Hotel banner layering/placement is implemented in 0.3.48. Initial orientation
-and recipe navigation follow-ups remain open.
+Hotel banner layering/placement is implemented in 0.3.48. Recipe navigation is implemented in 0.3.50; initial orientation remains open.
 
 Speed is the peak of the existing 60-update logarithmic ramp, accepting integer
 1..30 as of 0.3.49. Peak 3 retains the original table exactly; other peaks scale
@@ -184,3 +183,12 @@ This establishes track-rate storage, not live animation completion timing.
 Synced logs inspected for this request contained one 0.3.47 run with speed 6
 and a newer 0.3.47 run with speed 3. They do not establish which run the user's
 perceived speed comparison came from. Live 30x behavior needs a Steam Deck test.
+
+
+## DIY preview navigation — 0.3.50
+
+D-pad/left-stick previous/next now uses the app's live filtered/sorted recipe
+array. The native grid restoration/focus routines maintain selection and scroll
+position; the native workbench item-change routine updates the existing actor.
+See [navigation implementation](../recipe-preview/NOTES.md#recipe-navigation--0350).
+The user also confirms a noticeable speed difference with the 0.3.49 expansion.

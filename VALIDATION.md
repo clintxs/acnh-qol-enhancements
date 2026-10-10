@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.49 Crafting speed up to 30x
+# Unified QoL validation — 0.3.50 DIY preview navigation
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,28 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.50 DIY preview recipe navigation
+
+D-pad/left-stick left/right moves linearly through the app's current sorted or
+filtered recipe array, crossing rows and scrolling pages. Native grid reset,
+focus and viewport clamping maintain the selected/visible card, materials and
+Hotel banner. Native item-change updates the owned preview actor, preserving
+camera ownership; recipe changes reset rotation/tilt and reclassify fixed types.
+Holding repeats after a delay and stops at list ends. One pending step survives
+model loading; B, blocking and missing input clear queued movement.
+
+At two ASLR bases, compiled integration tests execute native grid reset and
+clamping, pooled-row mapping, input-list focus, item-change and deferred readiness.
+A 35-item nonmonotonic list with 32 pooled buttons covers both directions, partial
+last rows, scrolling, input repeat/reversal, duplicate/consumed/blocked/missing
+snapshots, B priority and cursor/reopen behavior. GPU row visibility/position,
+scene rebuilding and material text rendering are modeled boundaries. Existing
+Core/preview, Crafting speed and Pockets shared-input regressions run before
+delivery, followed by package hash/source/binary parity checks. Live Deck
+rendering and scrolling/loading timing still require confirmation.
+
+The user confirms a noticeable speed difference with 0.3.49's higher maximum.
 
 ## 0.3.49 Crafting speed up to 30x
 
