@@ -1752,3 +1752,22 @@ and B behavior remain unverified. No game install, save or synced log is changed
   lock acquisition/release and ordinary dialogue scope at two ASLR bases.
 - No new hooks or layout changes. Catalog remains an independent module;
   Crafting is not required. Live villager DIY/cooking dialogue needs Eden testing.
+
+### HHP restaurant chef coverage (no runtime change)
+
+`NNPC_RestaurantCook` Event180 runs `NpcSetRewardRecipe(DIYNpcItem=true)`
+before Event179 runs `SetItemName(TagType=0, ItemTarget=1, ID=0)`. The native
+reward action's restaurant-chef override at `00ac8e18..00ac8e94` reads the
+restaurant cooking recipe and constructs a recipe card via `02512588`.
+`00ac8ee4` publishes that card at `05305f5c`; target 1 copies it unchanged via
+`00a47078` / `00a47b14`. It therefore reaches the existing recipe-card branch
+in DialogueScriptItemStar, not the target-16 crafted-result exception.
+
+The focused restaurant regression executes native cooking-card validity/ID
+initialization and payload encoding, reward publication and target-1 copying,
+then checks the compiled star callback and native learned-recipe getter. General
+ItemAccessor setup and its runtime metadata caches are excluded. Three cooking
+recipes, eight remapped players and both learned states run at two ASLR bases
+with no event-owned NPC required. Existing dialogue/ground checks run as well.
+No added hook, message whitelist, version bump or new binary is needed. This
+establishes code-path coverage; a live chef conversation is still unverified.

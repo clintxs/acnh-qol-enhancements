@@ -13,7 +13,7 @@ GROUPS = {
     'crafting': ['crafting_arm_test.py'],
     'pockets': ['storage_hint_arm_test.py'],  # Includes full arm_stack_test.
     'fitting': ['purchase_arm_test.py', 'feedback_arm_test.py'],  # Each includes runtime coverage.
-    'catalog': ['villager_recipe_dialogue_arm_test.py', 'dialogue_ui_sources_arm_test.py', 'catalog_variation_labels_arm_test.py',
+    'catalog': ['restaurant_recipe_dialogue_arm_test.py', 'villager_recipe_dialogue_arm_test.py', 'dialogue_ui_sources_arm_test.py', 'catalog_variation_labels_arm_test.py',
                 'miles_name_binding_arm_test.py', 'miles_and_counted_names_arm_test.py',
                 'counted_names_native_test.py', 'fitting_catalog_stars_arm_test.py'],
 }
