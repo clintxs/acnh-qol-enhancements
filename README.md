@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.58 crafting quantity wrap and preview controls** for ACNH **3.0.3 on Eden**. One Core
+**0.3.59 crafting quantity wrap pause** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -63,14 +63,14 @@ fingerprints only, checked before each feature's first hook.
 Install **QoL Enhancements - Crafting** with Core. This replaces the former
 Faster Crafting package; remove the old folder and rename personal
 `faster-crafting.custom.ini` preferences to `crafting.custom.ini`. Remove any old
-`version` override from that personal file (or update it to 0.3.58). The retired
+`version` override from that personal file (or update it to 0.3.59). The retired
 regular/custom paths are no longer read. Core alone no longer enables DIY previews.
 
 `romfs/qol-enhancements/config/crafting.ini` supplies these defaults:
 
 ```ini
 enabled = true
-version = 0.3.58
+version = 0.3.59
 diy_app_preview = true
 workbench_preview_tilt = true
 crafting_quantity_wrap = true
@@ -94,9 +94,10 @@ their native fixed poses. This setting works independently of `diy_app_preview`.
 `crafting_quantity_wrap=true` lets a fresh down press at quantity 1 jump to 10,
 and a fresh up press at 10 jump to 1 (or the native maximum when lower). Hold
 either direction to reach an endpoint and stop; release before pressing again
-to wrap. After wrapping, release again before scrolling away from the new
-endpoint. Return the stick to center; easing its pressure does not count as a
-release. Applies to the left stick and d-pad in crafting and cooking selectors.
+to wrap. A fresh endpoint wrap pauses scrolling for 500 ms, then resumes if
+you keep holding that direction. Releasing during the pause allows another
+press normally. Return the stick to center; easing its pressure does not count
+as a release. Applies to the left stick and d-pad in crafting and cooking selectors.
 Set it to `false` for vanilla quantity controls.
 Hotel request banners now draw over the bottom-right corner of the DIY preview,
 returning to their native placement in the grid. DIY previews start from the
@@ -257,7 +258,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.3.58
+version = 0.3.59
 base_speed = 2
 boost_speed = 4
 faster_ui = false

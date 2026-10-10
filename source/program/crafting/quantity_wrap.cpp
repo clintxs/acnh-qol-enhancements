@@ -26,8 +26,14 @@ template<class T> T &At(void *p, std::size_t offset = 0) {
     return *reinterpret_cast<T *>(static_cast<std::byte *>(p) + offset);
 }
 template<class F> F Native(std::uintptr_t offset) { return reinterpret_cast<F>(Main + offset); }
-struct InputState { void *page{}, *grid{}; bool armed{}, waitingForRelease{}; };
+struct InputState {
+    void *page{}, *grid{};
+    bool armed{}, wrapPaused{};
+    std::uint64_t pauseStarted{};
+};
 constexpr float StickPressThreshold = 0.5f, StickReleaseThreshold = 0.15f;
+// Horizon's system timer runs at 19.2 MHz (nn::os::detail::TickManagerImpl).
+constexpr std::uint64_t WrapPauseTicks = 19'200'000 / 2; // 500 ms, independent of UI frame rate.
 std::array<InputState, 4> Inputs{};
 unsigned NextSlot{};
 unsigned WrapReports{};
@@ -42,7 +48,8 @@ HOOK_DEFINE_TRAMPOLINE(ResetQuantityGrid) {
         // Native cAppear (0346AEC8 / 02DE8A98) resets the list on each open.
         // Disarm a reused page/grid as well as freshly allocated instances.
         for (auto &state : Inputs) if (state.grid == grid) {
-            state.armed = state.waitingForRelease = false;
+            state.armed = state.wrapPaused = false;
+            state.pauseStarted = 0;
         }
         Orig(grid, request);
     }
@@ -59,12 +66,13 @@ struct GridRequest {
     unsigned resident{};
 };
 static_assert(sizeof(GridRequest) == 0x30 && offsetof(GridRequest, resident) == 0x2c);
-void ConsumeVerticalInput(void *row) {
-    // 03C4B20C/03C48C70 dispatch logical direction buttons separately from
-    // the axis handlers in 03C4B880. Consume both paths, even when the stick's
-    // synthesized button arrives later than its raw axis threshold crossing.
-    At<unsigned>(row, 0x3c) |= 3;
-    At<unsigned>(row, 0x40) |= 1;
+void PauseVerticalInput(void *row) {
+    // Present neutral input during the pause. Merely consuming these paths
+    // puts 03C4B20C / 03C48C70's repeat timers into a release-required state,
+    // preventing a still-held control from restarting when the pause expires.
+    // A/B and other buttons remain native. Each update gets a fresh snapshot.
+    At<unsigned>(row) &= ~3u;
+    At<float>(row, 4) = At<float>(row, 8) = 0;
 }
 bool QuantityInput(void *page, void *snapshot, unsigned blocked) {
     if (!page || (At<std::uintptr_t>(page) != Main + address::WorkbenchQuantityPage &&
@@ -77,7 +85,10 @@ bool QuantityInput(void *page, void *snapshot, unsigned blocked) {
     if (!snapshot || resident >= 8 || At<unsigned>(snapshot, 8) > 8 ||
         resident >= At<unsigned>(snapshot, 8) || !At<void *>(snapshot, 0x10) ||
         At<unsigned>(grid, field::GridState) != 2 || At<int>(grid, field::Columns) != 1 ||
-        count < 2 || count > 10) { state.armed = false; return false; }
+        count < 2 || count > 10) {
+        state.armed = state.wrapPaused = false;
+        return false;
+    }
     auto row = At<std::byte *>(snapshot, 0x10) + resident * 0x48;
     const auto buttons = At<unsigned>(row), consumed = At<unsigned>(row, 0x3c);
     const float x = At<float>(row, 4), y = At<float>(row, 8);
@@ -100,18 +111,20 @@ bool QuantityInput(void *page, void *snapshot, unsigned blocked) {
                           x*x + y*y <= StickReleaseThreshold*StickReleaseThreshold;
     if (released) {
         state.armed = true;
-        state.waitingForRelease = false;
+        state.wrapPaused = false;
     } else if (unavailable || !validStick || up || down ||
                x > StickPressThreshold || x < -StickPressThreshold || (buttons & 0x30)) {
         state.armed = false;
     }
     // Preserve an armed latch while traveling from center to the press
     // threshold. Once pressed, only the smaller release zone can rearm it.
-    if (state.waitingForRelease) {
-        // Resetting/focusing the grid restarts native repeat bookkeeping.
-        // Suppressing only the wrap frame lets the held stick step again at
-        // the destination (1 -> 10 -> 9). Keep it consumed until release.
-        ConsumeVerticalInput(row);
+    if (state.wrapPaused) {
+        if (svcGetSystemTick() - state.pauseStarted < WrapPauseTicks)
+            PauseVerticalInput(row);
+        else
+            state.wrapPaused = false;
+        // After 500 ms, hand the still-held direction back to native repeat.
+        // Keep the wrap latch disarmed so the next boundary still stops.
         return false;
     }
     if (!fresh || unavailable || up == down || (buttons & 0x30) ||
@@ -134,8 +147,9 @@ bool QuantityInput(void *page, void *snapshot, unsigned blocked) {
     Native<void (*)(void *, unsigned)>(address::SelectGridRow)(grid, target);
     Native<void (*)(void *, bool)>(address::FocusGrid)(grid, false);
     state.armed = false;
-    state.waitingForRelease = true;
-    ConsumeVerticalInput(row);
+    state.wrapPaused = true;
+    state.pauseStarted = svcGetSystemTick();
+    PauseVerticalInput(row);
     if (WrapReports++ < 4)
         Logging.Log("[QoL Enhancements/Crafting] quantity wrap: selected=%u maximum=%u resident=%u\n",
                     count-target, count, resident);

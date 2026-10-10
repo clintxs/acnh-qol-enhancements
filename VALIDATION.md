@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.58 joystick quantity wrapping
+# Unified QoL validation — 0.3.59 timed quantity wrap pause
 
 Validated locally on October 10, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,39 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.59 Half-second pause after a fresh endpoint wrap
+
+The user confirms 0.3.58 fixes joystick wrapping. They now request a fresh
+outward press at quantity 1 / maximum to wrap immediately, pause scrolling for
+500 ms, then resume if the control remains held. Reaching a boundary by holding
+from inside the range still stops there; release and press again to wrap.
+
+Replace the post-wrap release-only lock with a timed pause using Horizon's
+19.2 MHz system tick (svcGetSystemTick), independent of UI frame rate. During
+the pause, present neutral vertical direction buttons and a neutral left stick
+to native dispatch. Consuming the inputs instead leaves native repeat timers
+in a release-required state and would prevent held-input resume. At expiration,
+pass the fresh snapshot through to native repeat, keeping the wrap latch
+disarmed. A real release cancels the pause and allows a new deliberate press.
+A new wrap gets its own timer. A/B remain available throughout the pause.
+Native list reset/reopen and invalid/inactive list samples cancel pending pause.
+
+The ARM quantity fixture executes native button repeat timers, grid movement,
+reset/activation/focus and selected quantity/material callbacks with a modeled
+system clock. Both page classes, directions and control sources are covered at
+two ASLR bases. Timed tests simulate 30/60/120 Hz input updates, remain paused
+through tick 9,599,999 and resume at tick 9,600,000 (500 ms). Holds continue to
+the next boundary and stop without wrapping again. Other cases cover early
+release and a new pause, immediate in-range movement, consumption at expiry,
+delayed logical directions, pressure jitter, native lower ranges and reopening.
+Controller sample generation, scene/layout services and the clock remain test
+boundaries; live Steam Deck timing and feel still require confirmation.
+
+Validation: pinned offline build; nine host suites; Core/configuration checks;
+preview/quantity ARM fixtures; crafting/cooking and shared Pockets regressions.
+Package manifest hashes, extracted/deployed binary parity, source archive parity
+and ZIP integrity are verified. Older releases are preserved.
 
 ## 0.3.58 Joystick quantity wrap release and repeat handling
 

@@ -178,6 +178,8 @@ class PreviewMachine(Machine):
         self.write(self.clear_buffer+0x60,texture)
         self.clear_command=self.alloc(); self.write(self.clear_command+0xb8,0x12345678)
         self.gpu_colors=[]; self.gpu_depths=[]
+        self.quantity_tick=0
+        self.services[self.module.find('svcGetSystemTick')]=('preview','quantity_tick')
 
     def alloc(self, n=0x100):
         p = self.next; self.next += (n + 15) & ~15; return p
@@ -195,7 +197,9 @@ class PreviewMachine(Machine):
         if pc not in self.services or self.services[pc][0] != 'preview':
             return super().service(u, pc, size, data)
         action = self.services[pc][1]; result = 0
-        if action == 'atan2':
+        if action == 'quantity_tick':
+            result = self.quantity_tick
+        elif action == 'atan2':
             y=struct.unpack('<f',struct.pack('<I',u.reg_read(UC_ARM64_REG_S0)))[0]
             x=struct.unpack('<f',struct.pack('<I',u.reg_read(UC_ARM64_REG_S1)))[0]
             u.reg_write(UC_ARM64_REG_S0,struct.unpack('<I',struct.pack('<f',math.atan2(y,x)))[0])
@@ -1597,6 +1601,7 @@ def quantity_wrap_fixture(base):
     m.write(grid+0x30c,1,4) # Vertical list; up/down callbacks queue row steps.
     def selected(): return m.read(grid+0x440,4)
     def step(direction=0,stick=False,repeat=False,**kwargs):
+        m.quantity_tick += kwargs.pop('ticks',0)
         held=kwargs.pop('held',1 if direction>0 else 2 if direction<0 else 0)
         left=kwargs.pop('left',(0,direction) if stick else (0,0))
         m.write(grid+0x3ec,0,4)
@@ -1655,6 +1660,49 @@ def quantity_wrap_fixture(base):
     for y in (-0.1,-0.2,-0.4,-0.49):
         step(-1,True,repeat=True,held=0,left=(0,y)); assert selected()==9
     step(-1,True,repeat=True); assert selected()==0
+    # Only a fresh endpoint wrap gets the half-second pause. Execute real
+    # native button timers at its exact boundary, then repeat to the far end.
+    pause_ticks=9_600_000
+    for page_class in (0x4a3a7d8,0x49de8f0):
+        m.write(page,base+page_class)
+        for stick in (False,True):
+            for direction in (-1,1):
+                for rate in (30,60,120):
+                    at(9 if direction<0 else 0); step(repeat=True)
+                    step(direction,stick,repeat=True)
+                    destination=0 if direction<0 else 9
+                    assert selected()==destination
+                    assert m.read(m.last_input_row,4)&3==0
+                    assert bytes(m.u.mem_read(m.last_input_row+4,8))==bytes(8)
+                    frame_ticks=19_200_000//rate
+                    for _ in range(rate//2-1):
+                        step(direction,stick,repeat=True,ticks=frame_ticks)
+                        assert selected()==destination
+                    step(direction,stick,repeat=True,ticks=frame_ticks-1)
+                    assert selected()==destination
+                    step(direction,stick,repeat=True,ticks=1)
+                    assert selected()==destination-direction # Native resumes immediately at 500 ms.
+                    for _ in range(100):
+                        step(direction,stick,repeat=True,ticks=19_200_000//rate)
+                    endpoint=9 if direction<0 else 0
+                    assert selected()==endpoint
+                    step(direction,stick,repeat=True,ticks=19_200_000)
+                    assert selected()==endpoint # Reaching the boundary while holding cannot wrap.
+                    step(repeat=True); step(direction,stick,repeat=True)
+                    assert selected()==destination # Release + fresh press wraps again.
+    # Releasing cancels a pause; another deliberate wrap gets its own timer.
+    at(9); step(repeat=True); step(-1,True,repeat=True); assert selected()==0
+    step(repeat=True,ticks=3_840_000) # 200 ms, neutral.
+    step(1,True,repeat=True); assert selected()==9
+    step(1,True,repeat=True,ticks=5_760_000); assert selected()==9 # First wrap's deadline.
+    step(1,True,repeat=True,ticks=3_840_000-1); assert selected()==9
+    step(1,True,repeat=True,ticks=1); assert selected()==8
+    # In-range scrolling has no extra delay, even after the previous pause.
+    at(5); step(repeat=True); step(-1,True,repeat=True); assert selected()==6
+    # No resume may bypass another consumer's button/axis ownership.
+    at(9); step(repeat=True); step(-1,True,repeat=True)
+    step(-1,True,repeat=True,ticks=pause_ticks,consumed=2,consumed_axes=1)
+    assert selected()==0
     # A blocked/consumed press cannot be queued until a later unblocked update.
     for kwargs in ({'blocked':1},{'consumed':2},{'consumed_axes':1}):
         at(9); step(); step(-1,True if 'consumed_axes' in kwargs else False,**kwargs)
@@ -1680,7 +1728,7 @@ def quantity_wrap_fixture(base):
     for held,left in ((0,(1,0)),(0x32,(0,0)),(3,(0,0)),(0,(0,float('nan')))):
         step(); m.input(page,held,resident=3,left=left); assert selected()==3
     assert any(e==('native_input',page) for e in m.events)
-    print(f'PASS: quantity endpoint wrap, native button dispatch/repeat timers and selection/material callback, long holds stop after scrolling and wrapping, delayed stick buttons, pressure jitter and neutral rearm, d-pad/stick, crafting/cooking pages, native limits, blocking and reused-page reset; raw-to-logical input/layout services modeled; ASLR {base:#x}')
+    print(f'PASS: quantity endpoint wrap, 500 ms pause/resume boundary at 30/60/120 Hz, release cancels/restarts pause, no delay in range or repeat wrap at reached boundary, native button repeat and quantity/material callback, delayed stick buttons, pressure jitter and neutral rearm, d-pad/stick, crafting/cooking pages, native limits, blocking and reused-page reset; system clock/raw-to-logical input/layout services modeled; ASLR {base:#x}')
 
 for base in (0x7100000000,0x7200000000): quantity_wrap_fixture(base)
 

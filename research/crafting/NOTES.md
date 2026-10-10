@@ -280,3 +280,26 @@ intervals 12/4, before the existing real native list movement and callback.
 Tests include holds after wrap (remain at the destination), interior-to-boundary
 holds, sub-threshold pressure jitter, delayed logical bits and slow presses.
 Controller-to-logical translation and rendering/text boundaries remain modeled.
+
+
+## Fresh-wrap hold pause — 0.3.59
+
+The user confirms 0.3.58, then requests immediate endpoint wrap followed by a
+500 ms pause and resumed scrolling for a held direction. A hold that reaches
+the boundary from the interior still cannot wrap without release. Preserve the
+0.15 release / 0.5 press hysteresis and one-wrap-per-gesture latch.
+
+Track pauseStarted with svcGetSystemTick; Horizon ticks are 19.2 MHz, as defined
+in nn/os/impl/os_tick_manager_impl.os.horizon.hpp, so 500 ms = 9,600,000 ticks.
+During the pause, mask logical vertical bits from the snapshot's held buttons
+and neutralize the left-stick pair. This lets native dispatch observe release;
+consumed masks alone strand native repeat in its release-required state. Fresh
+snapshots restore physical input each update. At expiry, native dispatch resumes
+its own repeat immediately; our wrap latch remains disarmed. Early neutral
+cancels the pause. A fresh wrap, reopen/reset or invalid list cannot inherit an
+old timer. A/B stay native and are never delayed by this pause.
+
+Tests run real 03C4B20C timers and 03762978 / 0375FD8C movement at modeled
+30/60/120 Hz with exact 500 ms boundary assertions, both directions and controls,
+both exact crafting/cooking pages, hold-to-next-boundary stopping, early release
+and timer restart, unchanged in-range input and consumed input at expiry.
