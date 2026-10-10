@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.51 preview controls and scene pose
+# Unified QoL validation — 0.3.52 preview particle rotation
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,30 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.52 Primary rotation for item effects
+
+The user confirms 0.3.51 navigation works, but faucet particles still separate
+when rotating. Native item-effect update 006904C0 reads primary Euler angles
+at component +2B0/+2B4/+2B8 directly and ignores secondary viewing angles.
+0.3.51 updated only the secondary angles. Its modeled bone attachment check
+missed this independent native particle-state path.
+
+The owned carrier now receives the preview angles through its native primary
+XYZ setter (virtual +150, 005F7B4C); secondary angles are cleared so drawing
+applies the rotation once. Native drawable propagation carries the same primary
+pose to drawable-owned effects. Combined yaw/tilt now uses the native primary
+Euler convention. Fixed wallpapers/floors/rugs/fences retain native framing;
+ownership guards, input, speed and tilt limits are unchanged.
+
+At two ASLR bases, the compiled fixture first reproduces the old secondary-only
+failure, then executes actual native item-effect update through its publication
+boundary. It checks primary angle-to-radian output for both carrier and drawable
+owners under yaw/tilt, actual drawable propagation, and existing attachment and
+invalid/fixed/closed-owner checks. Full skeleton evaluation, GPU particles and
+live scheduling remain outside the fixture. Core, Crafting and shared Pockets
+regressions and package hash/source/binary parity are checked before delivery.
+Live Steam Deck confirmation of attached particles is still required.
 
 ## 0.3.51 Horizontal controls and effect attachment pose
 

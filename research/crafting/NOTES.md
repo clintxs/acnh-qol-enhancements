@@ -201,3 +201,14 @@ Publish the rotating pose into native scene carriers before drawable/bone
 transforms so effect attachments share the displayed model's pose. See
 [implementation evidence](../recipe-preview/NOTES.md#horizontal-input-and-scene-pose--0351).
 Live particle behavior remains to be confirmed.
+
+## DIY preview primary particle rotation — 0.3.52
+
+The user confirms navigation is fixed, but particles still separate in 0.3.51.
+The native item-effect update reads primary Euler angles directly; secondary
+viewing angles used by the earlier patch affect drawing only. Write the owned
+carrier's primary XYZ through its native setter and clear secondary XYZ. Native
+drawable propagation supplies the same pose to drawable-owned effects. Fixed
+types retain native framing. See [native evidence and regression coverage](../recipe-preview/NOTES.md#primary-euler-rotation-for-item-particles--0352).
+Local checks now execute the actual particle orientation publication path;
+live Steam Deck appearance remains to be confirmed.

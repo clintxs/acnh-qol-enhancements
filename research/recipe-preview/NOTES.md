@@ -605,3 +605,31 @@ Yaw/tilt changes produce matching native (unoverridden) and displayed matrices,
 and the effect-local source point stays attached. Full skeleton/particle simulation,
 GPU appearance and runtime update ordering remain for live validation. All new
 native instruction dependencies participate in atomic installation fingerprints.
+
+## Primary Euler rotation for item particles — 0.3.52
+
+Live 0.3.51 navigation works, but particles remain detached. Its log reports the
+scene pose active, ruling out fallback matrix-only rotation. Native item-effect
+update 006904C0 gets the owner transform from +68 and directly reads primary
+Angle32 XYZ at +2B0/+2B4/+2B8 (00690504 onward). It converts unsigned angles to
+radians using 2*pi/2^32 and publishes them at effect component +310/+314/+318.
+Secondary angles +2BC/+2C0/+2C4 never enter this path. The 0.3.51 fixture modeled
+bone output from the complete drawable matrix and missed this separate state.
+
+Use component virtual +150 (005F7B4C) to set primary XYZ and clear secondary XYZ.
+Workbench yaw already writes primary Y via virtual +160 (005F7B74). For clarity,
+virtual +140 used by 0358D994 is a position setter, not an XYZ angle setter.
+Native drawable transform 019282FC copies primary and secondary rotation, so
+both carrier-owned and drawable-owned effects now receive the viewing pose.
+Primary and secondary use different combined Euler conventions; this change
+uses the primary convention for combined yaw/tilt, rather than claiming matrix
+equivalence to 0.3.51. Fixed item types still skip the entire override. No new
+hook, input, speed or tilt-limit changes.
+
+The fixture reproduces secondary-only drawing with zero native effect rotation,
+then executes 006904C0 with only its final publication service modeled. Both
+owner types publish the requested primary radians under yaw/tilt. Actual native
+005F7B4C and 019282FC are executed, and existing bone composition/ownership tests
+remain. Add compatibility fingerprints for the primary setter and effect read.
+GPU particle appearance, full skeleton evaluation and scheduling need live
+Steam Deck validation.

@@ -9,6 +9,7 @@ from pathlib import Path
 from compression import zstd
 import sys
 import struct
+import math
 from core_arm_test import Machine, RAW, DEFAULT
 from unicorn.arm64_const import *
 from unicorn import UC_PROT_READ
@@ -24,7 +25,7 @@ MENU = layout_asset('MenuRecipe')
 HOOKS = (0x267d64, 0x2e9cde0, 0x2e9fbb0, 0x2e9d538, 0x3c58d24, 0x39392b0, 0x32b9fcc, 0x32b9e08, 0x6021a4, 0x39f63f0, 0x192a590)
 GUARDS = HOOKS + (0x32bd990, 0x32ba5e4, 0x3dbb160, 0x27d1d0, 0x3a17390, 0x3a174f0, 0x3c66298, 0x2e93798, 0x2e96a80, 0x3c4b880, 0x2ea0754, 0x2b0c810, 0x32ba000, 0x3c4bac4, 0x2b0e20c, 0x32b9750, 0x1513a48, 0x32be2b0, 0x32ba034, 0x192a1f0, 0x19362f4)
 GUARDS += (0x27bfb4, 0x27bfe4, 0x27d550, 0x27e208)
-GUARDS += (0x32ba168, 0x3764290, 0x335b4a0, 0x3763e14, 0x3765104, 0x3c49700, 0x3c49710, 0x19282fc)
+GUARDS += (0x32ba168, 0x3764290, 0x335b4a0, 0x3763e14, 0x3765104, 0x3c49700, 0x3c49710, 0x19282fc, 0x5f7b4c, 0x690504)
 
 class PreviewMachine(Machine):
     def __init__(self, base):
@@ -1260,10 +1261,25 @@ def scene_pose_fixture(base):
     m.write(carrier+0x68,component); m.write(entries+8,carrier)
     m.u.mem_write(component,bytes(m.u.mem_read(m.component,0x2c8)))
     m.write(component+0x48,carrier)
+    component_methods=m.alloc(0x180); m.write(component,component_methods)
+    m.write(component_methods+0x150,base+0x5f7b4c)
+    m.write(component_methods+0xf8,base+0x5f7b18)
+    # The actual item-effect update reads primary Euler directly, not the
+    # extra view angles. Execute it through its effect-publication boundary.
+    effect_state=m.alloc(0x340); m.write(effect_state+0x48,carrier)
+    m.services[base+0x3738950]=('preview','noop')
+    # Reproduce 0.3.51: secondary angles rotate drawing, while native
+    # effect orientation remains zero because primary XYZ was unchanged.
+    m.u.mem_write(component+0x2b0,bytes(12))
+    m.u.mem_write(component+0x2bc,struct.pack('<3I',0,0x40000000,0))
+    m.invoke(base+0x6904c0,effect_state)
+    assert bytes(m.u.mem_read(effect_state+0x310,12))==bytes(12)
     drawable=m.alloc(0x400); mesh=m.alloc(0x300); mesh_methods=m.alloc(0x180)
     m.write(drawable+0x230,0x212345,4); m.write(drawable+0x234,0x112345,4)
     m.write(drawable+0x15c,0x6f,4); m.write(entries+16,drawable)
+    m.write(drawable+0x68,mesh)
     m.write(mesh,mesh_methods); m.write(mesh+0x48,drawable)
+    m.write(mesh_methods+0xf8,base+0x5f7b18)
     for off in (0x108,0x110,0x118): m.write(mesh_methods+off,m.stub('noop'))
     m.u.mem_write(component+0x2a0,struct.pack('<3f',1,1,1))
     # Execute native effect attachment composition; skeleton evaluation supplies
@@ -1282,9 +1298,17 @@ def scene_pose_fixture(base):
         m.input(page,0,right=right); m.frame(phone)
         m.hook(0x192a590,root)
         expected=bytes(m.u.mem_read(m.controller+0x80,12))
-        assert bytes(m.u.mem_read(component+0x2bc,12))==expected
+        assert bytes(m.u.mem_read(component+0x2b0,12))==expected
+        assert bytes(m.u.mem_read(component+0x2bc,12))==bytes(12)
+        m.invoke(base+0x6904c0,effect_state)
+        radians=struct.unpack('<3f',m.u.mem_read(effect_state+0x310,12))
+        assert all(abs(a-b/2**32*2*math.pi)<1e-5 for a,b in zip(radians,struct.unpack('<3I',expected)))
         m.invoke(base+0x19282fc,mesh)  # Actual carrier -> drawable pose copy.
-        assert bytes(m.u.mem_read(mesh+0x2bc,12))==expected
+        assert bytes(m.u.mem_read(mesh+0x2b0,12))==expected
+        assert bytes(m.u.mem_read(mesh+0x2bc,12))==bytes(12)
+        m.write(effect_state+0x48,drawable); m.invoke(base+0x6904c0,effect_state)
+        assert struct.unpack('<3f',m.u.mem_read(effect_state+0x310,12))==radians
+        m.write(effect_state+0x48,carrier)
         m.bone_world=m.drawable_matrix(mesh)
         assert m.bone_world==m.drawable_matrix(mesh,protected=True)
         matrix=struct.unpack('<12f',m.bone_world)
@@ -1306,15 +1330,15 @@ def scene_pose_fixture(base):
                                (root+0x394,5,4),(carrier+0x230,0x112344,4),
                                (carrier+0x234,0x12344,4),(carrier+0x15c,0x6f,4),
                                (carrier+0x248,2,4),(component+0x48,0,8),
-                               (m.module.find('PreviewFixedPose'),1,1)):
+                               (m.module.find('PreviewFixedPose'),1,1),(component_methods+0x150,0,8)):
         old=m.read(location,size); m.write(location,value,size)
-        m.u.mem_write(component+0x2bc,bytes(12)); before=bytes(m.u.mem_read(component,0x2c8))
+        m.u.mem_write(component+0x2b0,bytes(24)); before=bytes(m.u.mem_read(component,0x2c8))
         m.hook(0x192a590,root); assert bytes(m.u.mem_read(component,0x2c8))==before
         m.write(location,old,size); m.u.mem_write(component,saved)
     m.hook(0x2e9d538,phone)
-    m.u.mem_write(component+0x2bc,bytes(12)); m.hook(0x192a590,root)
-    assert bytes(m.u.mem_read(component+0x2bc,12))==bytes(12)
-    print(f'PASS: actual carrier/drawable scene pose, native bone attachment composition under yaw/tilt, generation/parent/type/dead/fixed/close guards; skeleton evaluation modeled; ASLR {base:#x}')
+    m.u.mem_write(component+0x2b0,bytes(24)); m.hook(0x192a590,root)
+    assert bytes(m.u.mem_read(component+0x2b0,24))==bytes(24)
+    print(f'PASS: primary carrier/drawable pose and native item-effect Euler publication, native bone attachment composition under yaw/tilt, generation/parent/type/dead/fixed/close guards; skeleton evaluation modeled; ASLR {base:#x}')
 
 for base in (0x7100000000,0x7200000000): scene_pose_fixture(base)
 

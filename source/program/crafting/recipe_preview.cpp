@@ -52,6 +52,7 @@ constexpr std::size_t RightStick = 0x0c, ConsumedAxes = 0x40;
 constexpr std::size_t LayerCount = 0x20, Layers = 0x28, LayerClearColor = 0x9c;
 constexpr std::size_t DrawLayer = 0x3d0, RendererState = 0x248, DrawInfo = 0x18, DrawView = 8;
 constexpr std::size_t ComponentOwner = 0x48, ComponentAngles = 0x2bc, ComponentPoseSize = 0x2c8;
+constexpr std::size_t SetComponentAngles = 0x150;
 constexpr std::size_t EntityHandle = 0x230, ParentHandle = 0x234, EntityComponent = 0x68;
 constexpr std::size_t EntityRegistry = 0x1c0, RegistryEntries = 8, EntityFlags = 0x248;
 constexpr std::size_t EntityKind = 0x15c, ItemChildren = 0x274, ItemChildCount = 0x394;
@@ -260,10 +261,9 @@ void PublishCarriers(void *controller) {
             Logging.Log("[QoL Enhancements/Crafting] DIY preview: mesh carrier published; slot=%u handle=%u\n", i, child);
     }
 }
-// Update actual scene poses before child transforms/bone evaluation. The final
-// render-matrix override alone leaves bone-attached effects at the old angle.
-// Native workbench rotation likewise changes the carrier component itself
-// (032BF898 -> 0358DCB8), rather than rotating an already evaluated mesh.
+// Use primary scene rotation, as workbench yaw does (032BF898 -> 0358DCB8).
+// Item effects read primary Euler +2B0/+2B4/+2B8 directly in 006904C0;
+// secondary viewing angles +2BC rotate drawing but never reach that effect state.
 HOOK_DEFINE_TRAMPOLINE(UpdatePreviewActor) {
     static void Callback(void *actor) {
         Orig(actor); // Finish native item/category framing and child creation first.
@@ -281,6 +281,7 @@ HOOK_DEFINE_TRAMPOLINE(UpdatePreviewActor) {
         if (!entries) return;
         const auto xy = PreviewAngleXY.load(std::memory_order_acquire);
         const auto z = PreviewAngleZ.load(std::memory_order_relaxed);
+        const std::array<unsigned, 3> angles{unsigned(xy), unsigned(xy >> 32), z};
         bool applied = false;
         for (unsigned i = 0; i < count; ++i) {
             const auto childHandle = At<unsigned>(actor, field::ItemChildren + i * sizeof(unsigned));
@@ -291,14 +292,18 @@ HOOK_DEFINE_TRAMPOLINE(UpdatePreviewActor) {
                 (At<unsigned>(child, field::EntityFlags) & 2)) continue;
             auto component = At<void *>(child, field::EntityComponent);
             if (!component || At<void *>(component, field::ComponentOwner) != child) continue;
-            // Same secondary Angle32 fields written by native 032B9E08.
-            // Native 019282FC then copies them into each drawable, so its
-            // bone matrices and attached effects inherit the displayed pose.
-            At<std::uint64_t>(component, field::ComponentAngles) = xy;
-            At<unsigned>(component, field::ComponentAngles + 8) = z;
+            auto methods = At<void *>(component);
+            auto setAngles = methods ? At<void (*)(void *, const void *)>(methods, field::SetComponentAngles) : nullptr;
+            if (!setAngles) continue;
+            setAngles(component, angles.data()); // Native primary XYZ setter.
+            // Apply the viewing pose exactly once. Leaving it in both fields
+            // would rotate drawing twice while effects used only the primary.
+            At<std::uint64_t>(component, field::ComponentAngles) = 0;
+            At<unsigned>(component, field::ComponentAngles + 8) = 0;
             applied = true;
         }
-        if (applied) PreviewScenePose.store(true, std::memory_order_release);
+        if (applied && !PreviewScenePose.exchange(true, std::memory_order_acq_rel))
+            Logging.Log("[QoL Enhancements/Crafting] DIY preview: primary scene rotation active; handle=%u\n", handle);
     }
 };
 struct ModelMatrix { float values[12]; }; // ARM64 returns this 48-byte object through x8.
@@ -975,6 +980,8 @@ bool InstallRecipePreview() {
         {0x03c49710, {0xbd54a660, 0xb901233c, 0x5280002e, 0x14000005, 0xbd54a260}},
         {0x0192a590, {0xd104c3ff, 0x6d093bef, 0x6d0a33ed, 0x6d0b2beb, 0x6d0c23e9}},
         {0x019282fc, {0xd10103ff, 0xa9017bfd, 0xf90013f5, 0xa9034ff4, 0x910043fd}},
+        {0x005f7b4c, {0xb9400028, 0xb902b008, 0xb9400428, 0xb902b408, 0xb9400828}},
+        {0x00690504, {0xbd42b120, 0xbd42b521, 0xbd42b922, 0x7e21d800, 0x7e21d821}},
     };
     const auto &main = exl::util::GetMainModuleInfo();
     for (const auto &f : fingerprints) if (f.offset + sizeof(f.words) > main.m_Text.m_Size ||
@@ -1012,7 +1019,7 @@ bool InstallRecipePreview() {
     UpdatePreviewActor::InstallAtOffset(address::UpdateItemActor);
     BuildPreviewMatrix::InstallAtOffset(address::BuildModelMatrix);
     DrawPreviewContents::InstallAtOffset(address::DrawLayerContents);
-    Logging.Log("[QoL Enhancements/Crafting] DIY preview: READY; scene carrier pose; horizontal recipe navigation; A opens, B returns\n");
+    Logging.Log("[QoL Enhancements/Crafting] DIY preview: READY; primary scene rotation; horizontal recipe navigation; A opens, B returns\n");
     return true;
 }
 } // namespace qol::crafting
