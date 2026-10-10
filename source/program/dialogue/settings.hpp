@@ -5,10 +5,10 @@
 
 namespace qol::dialogue {
 inline constexpr unsigned MaxNpcs = 64, NpcIdBytes = 16;
-inline constexpr unsigned MinSpeed = 1, MaxSpeed = 10;
+inline constexpr unsigned MinSpeed = 1, MaxSpeed = 30;
 struct Settings {
     unsigned baseSpeed = 2, boostSpeed = 4;
-    bool fasterUi = false, fasterUnnamed = false;
+    bool fasterUi = true, fasterUnnamed = true;
     unsigned npcCount = 0;
     std::array<std::array<char, NpcNameBytes>, MaxNpcs> npcs{};
 };
@@ -69,9 +69,14 @@ inline unsigned SelectSpeed(const Settings &settings, MessageKind kind,
 // Nominal whole-number multipliers. The game's live fast rate represents 2x;
 // rate hooks scale it by the selected multiplier / 2, preserving locale/FPS.
 inline bool ParseSpeed(std::string_view value, unsigned &speed) {
-    if (value == "10") { speed = MaxSpeed; return true; }
-    if (value.size() != 1 || value.front() < '1' || value.front() > '9') return false;
-    speed = unsigned(value.front() - '0');
+    if (value.empty() || value.front() == '0') return false;
+    unsigned parsed = 0;
+    for (char digit : value) {
+        if (digit < '0' || digit > '9') return false;
+        parsed = parsed * 10 + unsigned(digit - '0');
+        if (parsed > MaxSpeed) return false;
+    }
+    speed = parsed;
     return true;
 }
 // Both files use this parser. Missing/invalid values inherit the earlier layer;
@@ -92,10 +97,8 @@ inline unsigned ApplySettings(std::string_view input, Settings &output) {
         const auto key = core::Trim(line.substr(0, equals));
         const auto value = core::Trim(line.substr(equals + 1));
         if (key == "enabled" || key == "version") continue; // Validated by Core.
-        // Old/new spellings address one preference, including duplicate-key
-        // handling. Either spelling may override the earlier file's value.
         const unsigned bit = key == "base_speed" ? 1 : key == "boost_speed" ? 2 :
-                             key == "faster_ui" ? 4 : key == "faster_npc_list" ? 8 : (key == "faster_unnamed" || key == "faster_player") ? 16 : 0;
+                             key == "faster_ui" ? 4 : key == "faster_npc_list" ? 8 : key == "faster_unnamed" ? 16 : 0;
         if (!bit) { ++warnings; continue; }
         if (seen & bit) { duplicate |= bit; ++warnings; continue; }
         seen |= bit;

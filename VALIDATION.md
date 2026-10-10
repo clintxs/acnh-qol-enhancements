@@ -1908,3 +1908,25 @@ recipes, eight remapped players and both learned states run at two ASLR bases
 with no event-owned NPC required. Existing dialogue/ground checks run as well.
 No added hook, message whitelist, version bump or new binary is needed. This
 establishes code-path coverage; a live chef conversation is still unverified.
+
+## Unreleased configuration defaults and dialogue range (2026-10-10)
+
+Removed the unreleased `faster_player` alias; it now follows unknown-key handling
+and cannot change `faster_unnamed`. Automatic UI and unnamed dialogue boosting
+now default to true in code and the shipped Faster Dialogue INI. Dialogue base
+and boost defaults remain 2/4, with both accepting whole numbers 1..30. Values
+outside that range inherit the prior setting; boost is still raised to base
+when necessary. Crafting now defaults to a peak of 6, retaining its 60-update
+ramp and existing 1..30 range. Personal custom files retain precedence.
+
+Validation: pinned Docker build succeeded. All host regression checks passed,
+including every dialogue speed pair and removed-alias rejection. Core startup,
+module layering and preview ARM checks passed. Dialogue ARM checks passed all
+900 speed pairs at each of two ASLR bases (166,472 extended-speed checks), plus
+6,672 existing dialogue cases and 6,916 localized-name cases. Crafting passed
+30,700 native cases and 84 quantity-shortcut cases. Name-classification tests
+explicitly disable automatic categories where they need to isolate NPC matching.
+The emulator needs execution outside the macOS sandbox for JIT access.
+
+No release archive or version bump is included. The new default feel and higher
+dialogue speeds still need live Eden testing.

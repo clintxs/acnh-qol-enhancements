@@ -269,15 +269,16 @@ def check_amiibo_hook():
     print('PASS: Core-only default amiibo hook; regular/custom precedence, absent Core config, 0 untouched native behavior, 1/450/9000/65535 native stores/countdown/expiry, invalid-file fallback, ignored legacy Amiibo files and once-only activation at two bases')
 
 def check_custom_preferences():
-    for custom, summary in ((b'', 'base=2 boost=4 faster_ui=false faster_unnamed=false npc_count=0'),
+    for custom, summary in ((b'', 'base=2 boost=4 faster_ui=true faster_unnamed=true npc_count=0'),
                             (b'base_speed=4\nboost_speed=2', 'base=4 boost=4'),
                             (b'base_speed=2\nboost_speed=2', 'base=2 boost=2'),
                             (b'base_speed=4\nboost_speed=8', 'base=4 boost=8'),
+                            (b'base_speed=1\nboost_speed=30', 'base=1 boost=30'),
                             (b'base_speed=1\nboost_speed=10', 'base=1 boost=10'),
                             (b'base_speed=10\nboost_speed=3', 'base=10 boost=10'),
-                            (b'base_speed=11\nboost_speed=4294967296', 'base=2 boost=4'),
-                            (b'base_speed=0\nfaster_ui=yes', 'base=2 boost=4 faster_ui=false'),
-                            (b'x' * 4097, 'base=2 boost=4 faster_ui=false')):
+                            (b'base_speed=31\nboost_speed=4294967296', 'base=2 boost=4'),
+                            (b'base_speed=0\nfaster_ui=yes', 'base=2 boost=4 faster_ui=true'),
+                            (b'x' * 4097, 'base=2 boost=4 faster_ui=true')):
         m = Machine(0x7100000000, {'faster-dialogue': DEFAULT, 'faster-dialogue.custom': custom})
         m.boot(); m.activate()
         assert summary in m.text and 'BOOT_OK' in m.text, m.text
@@ -287,7 +288,7 @@ def check_custom_preferences():
         m.custom_fault = fault
         m.boot(); m.activate()
         assert 'WARNING:' in m.text and 'custom config' in m.text and 'BOOT_OK' in m.text
-        assert 'base=2 boost=4 faster_ui=false' in m.text
+        assert 'base=2 boost=4 faster_ui=true' in m.text
         assert len(m.closed) == (1 if fault == 'open' else 2)
     for marker in (None, b'enabled=false\nversion=0.2.0'):
         files = {'faster-dialogue.custom': b'base_speed=4'}

@@ -236,7 +236,7 @@ def normalized(memory):
 
 def check_extended_speeds(base):
     count = 0
-    for base_speed, boost_speed in itertools.product(range(1, 11), repeat=2):
+    for base_speed, boost_speed in itertools.product(range(1, 31), repeat=2):
         prefs = f'base_speed={base_speed}\nboost_speed={boost_speed}'.encode()
         m = DialogueMachine(base, prefs) if base == 0x7100000000 else DialogueMachine(base, regular=DEFAULT + prefs)
         boost_speed = max(base_speed, boost_speed)
@@ -271,7 +271,7 @@ def check_extended_speeds(base):
             count += 1
     # At the maximum, native forced/protected/mode/state and scripted-rate gates
     # retain exactly the same behavior as the unmodified game.
-    maximum, native = DialogueMachine(base, b'base_speed=10\nboost_speed=10'), DialogueMachine(base, enabled=False)
+    maximum, native = DialogueMachine(base, b'base_speed=30\nboost_speed=30'), DialogueMachine(base, enabled=False)
     for state, mode, forced, disabled, timer, override, held in itertools.product(
             (0, 1, 3), (0, 1, 2), (0, 1), (0, 1), (0, 9), (-1., 0., .75), (0, 1)):
         eligible = state == 1 and mode == 0 and not forced and not disabled
@@ -283,7 +283,7 @@ def check_extended_speeds(base):
         result, calls = maximum.run((1, 0, 0, 0, 0, 1, 1, override), held)
         assert abs(struct.unpack_from('<f', result, 0x2194)[0] - (-2 + override)) < 1e-5 and not calls
         count += 1
-    print(f'PASS {base:#x}: {count:,} extended-speed ARM checks; all 1..10 pairs, both rate paths, held/release, forwarding, automatic categories and native gates')
+    print(f'PASS {base:#x}: {count:,} extended-speed ARM checks; all 1..30 pairs, both rate paths, held/release, forwarding, automatic categories and native gates')
 
 
 def main():
@@ -367,9 +367,10 @@ def main():
                 total += 1
         # The self category must work with no entity, and be independent of UI
         # and NPC settings. Pending next-message IDs must not change this one.
-        for prefs, player_boost, ui_boost in ((b'faster_unnamed=true', True, False),
-                (b'faster_unnamed=false', False, False), (b'faster_player=true', True, False),
-                (b'faster_ui=true', False, True), (b'faster_player=false', False, False)):
+        for prefs, player_boost, ui_boost in ((b'', True, True),
+                (b'faster_unnamed=true\nfaster_ui=false', True, False),
+                (b'faster_unnamed=false\nfaster_ui=false', False, False),
+                (b'faster_unnamed=false\nfaster_ui=true', False, True)):
             player = DialogueMachine(base, prefs)
             for window, bank in itertools.product((0, 1, 2), ('FTR_WorkingTable', 'SYS_Get_Fish', 'SYS_Get_Insect', 'SYS_Get_DiveFish',
                          'SYS_Player', 'TalkSys/SYS_Player.msbt', 'SP_rcm_00_common',

@@ -74,14 +74,14 @@ version = 0.3.63
 diy_app_preview = true
 workbench_preview_tilt = true
 crafting_quantity_wrap = true
-crafting_speed = 3
+crafting_speed = 6
 ```
 
 `diy_app_preview` controls the existing DIY app preview independently of speed.
 `crafting_speed` accepts whole-number peaks **1 through 30** for the existing
 60-update logarithmic ramp, restarting at 1x each action. Values above 30 clamp
-to 30. The default 3 preserves the previous curve exactly; 30 gives a peak ten
-times vanilla’s 3x peak, and 1 keeps it at 1x. This scales the working animation;
+to 30. The default is 6; a setting of 3 preserves the previous curve exactly.
+A setting of 30 gives a peak ten times vanilla’s 3x peak, and 1 keeps it at 1x. This scales the working animation;
 fixed dialogue and transition time remain. A short action may end before the ramp
 reaches its peak. Zero and malformed values retain the prior setting.
 Crafting, customization and cooking share this setting. Native readiness,
@@ -269,7 +269,7 @@ enabled = true
 version = 0.3.63
 base_speed = 2
 boost_speed = 4
-faster_ui = false
+faster_ui = true
 faster_unnamed = true
 ```
 
@@ -313,9 +313,9 @@ example preset over edited preferences. Only one mod should supply the custom
 path; normal RomFS precedence applies if there are duplicates. The custom file
 cannot activate an absent Faster Dialogue module.
 
-Preferences absent from both files retain base 2 / held B/R 4, with UI/unnamed/list boost off. A listed
-NPC, confirmed unnamed message or UI uses `boost_speed` automatically; holding B/R selects that
-same tier without stacking. Both speed keys accept **whole numbers 1 through 10**;
+Preferences absent from both files retain base 2 / held B/R 4, with UI/unnamed
+boost on and an empty NPC list. A listed NPC, confirmed unnamed message or UI uses `boost_speed` automatically; holding B/R selects that
+same tier without stacking. Both speed keys accept **whole numbers 1 through 30**;
 a boost below the base is raised to the base. The defaults remain 2/4. The
 original fast rate represents nominal 2x; both
 main and renderer rate hooks multiply it by the selected speed divided by two.
@@ -366,12 +366,9 @@ player-speaker and five reviewed bank fallbacks remain: `FTR_WorkingTable`,
 `SYS_Player`, `SYS_Get_Fish`, `SYS_Get_Insect`, and `SYS_Get_DiveFish`. Confirmed
 names override those guesses. Unknown names alone never trigger a boost.
 
-Add `faster_unnamed = true` to your **existing personal INI** and restart. The
-old `faster_player` key remains a compatibility alias. Use one spelling per
-file: supplying both counts as a duplicate and restores the earlier layer's
-value. Either spelling can override the other in a later file. The default is
-false unless inherited. Automatic categories select the same `boost_speed`;
-holding B/R never stacks another boost. The broader classifier is new in
+`faster_ui` and `faster_unnamed` default to true. Set either to false in your
+personal INI to disable that automatic category. Automatic categories select
+the same `boost_speed`; holding B/R never stacks another boost. The broader classifier is new in
 0.3.22 and needs live confirmation with the reported interactions. See
 [research notes](research/dialogue/NOTES.md).
 There is no song/travel skipping, forced reveal, voice cleanup or emote filtering.

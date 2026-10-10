@@ -7,7 +7,7 @@ using namespace qol::crafting;
 int main() {
     Settings settings{};
     assert(settings.diyAppPreview && settings.workbenchPreviewTilt && settings.craftingQuantityWrap);
-    assert(settings.craftingSpeed == 3);
+    assert(settings.craftingSpeed == 6);
     assert(ApplySettings("enabled=true\nversion=0.3.49\ndiy_app_preview=false\n"
                          "workbench_preview_tilt=false\ncrafting_quantity_wrap=false\ncrafting_speed=2", settings) == 0);
     assert(!settings.diyAppPreview && !settings.workbenchPreviewTilt && !settings.craftingQuantityWrap);

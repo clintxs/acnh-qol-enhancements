@@ -5,6 +5,7 @@
 using namespace qol::dialogue;
 int main() {
     Settings settings{};
+    assert(settings.fasterUi && settings.fasterUnnamed);
     for (unsigned base = MinSpeed; base <= MaxSpeed; ++base) {
         for (unsigned boost = MinSpeed; boost <= MaxSpeed; ++boost) {
             const auto config = "base_speed=" + std::to_string(base) + "\nboost_speed=" + std::to_string(boost);
@@ -15,7 +16,7 @@ int main() {
         }
     }
     assert(!ParseSettings("base_speed=4\nboost_speed=8", settings));
-    for (auto invalid : {"", "0", "11", "100", "4294967296", "-1", "+2", "02", "2.5", "nan", "inf"}) {
+    for (auto invalid : {"", "0", "31", "100", "4294967296", "-1", "+2", "02", "2.5", "nan", "inf"}) {
         assert(ApplySettings(std::string("base_speed=") + invalid + "\nboost_speed=" + invalid, settings) == 2);
         assert(settings.baseSpeed == 4 && settings.boostSpeed == 8);
     }
@@ -25,11 +26,12 @@ int main() {
     assert(ApplySettings("boost_speed=10\nboost_speed=7", settings) == 1 && settings.boostSpeed == 3);
     assert(!ParseSettings("", settings));
     for (auto kind : {MessageKind::Npc, MessageKind::Ui, MessageKind::Unnamed, MessageKind::Unknown}) {
-        assert(SelectSpeed(settings, kind, "rcm", false) == 2);
+        assert(SelectSpeed(settings, kind, "rcm", false) ==
+               (kind == MessageKind::Ui || kind == MessageKind::Unnamed ? 4 : 2));
         assert(SelectSpeed(settings, kind, "rcm", true) == 4);
     }
     assert(!ParseSettings("\xef\xbb\xbf# Personal settings\r\nbase_speed = 2\r\n"
-                          "boost_speed = 4\nfaster_ui = true\nfaster_player = true\nfaster_npc_list = Timmy, Tommy, Orville, Wilbur, Kapp'n, rcm, cat00\n", settings));
+                          "boost_speed = 4\nfaster_ui = true\nfaster_unnamed = true\nfaster_npc_list = Timmy, Tommy, Orville, Wilbur, Kapp'n, rcm, cat00\n", settings));
     assert(settings.npcCount == 7);
     for (auto id : {"rcm", "rct", "dod", "doc", "kpp", "kppB", "cat00", "RCM"}) {
         assert(SelectSpeed(settings, MessageKind::Npc, id, false) == 4);
@@ -40,10 +42,10 @@ int main() {
     assert(SelectSpeed(settings, MessageKind::Unknown, "rcm", false) == 2);
     assert(ParseSettings("base_speed=0\nboost_speed=nan\nfaster_ui=yes\n"
                          "faster_npc_list=Timmy,Not An NPC,,Orville,\nunknown=true\nmalformed\n", settings) == 7);
-    assert(settings.baseSpeed == 2 && settings.boostSpeed == 4 && !settings.fasterUi && settings.npcCount == 3);
+    assert(settings.baseSpeed == 2 && settings.boostSpeed == 4 && settings.fasterUi && settings.npcCount == 3);
     assert(ParseSettings("base_speed=4\nbase_speed=4\nboost_speed=2\nboost_speed=2\n"
                          "faster_ui=true\nfaster_ui=true\nfaster_npc_list=doc\nfaster_npc_list=rcm", settings) == 4);
-    assert(settings.baseSpeed == 2 && settings.boostSpeed == 4 && !settings.fasterUi && !settings.npcCount);
+    assert(settings.baseSpeed == 2 && settings.boostSpeed == 4 && settings.fasterUi && !settings.npcCount);
     assert(ParseSettings("base_speed=4\nboost_speed=2", settings) == 1);
     assert(settings.baseSpeed == 4 && settings.boostSpeed == 4);
     assert(!ParseSettings("faster_npc_list=", settings) && !settings.npcCount);
@@ -51,32 +53,31 @@ int main() {
     std::string list = "faster_npc_list=";
     for (unsigned i = 0; i < 65; ++i) list += (i ? ",npc" : "npc") + std::to_string(i);
     assert(ParseSettings(list, settings) == 1 && settings.npcCount == MaxNpcs);
-    assert(!ParseSettings("faster_ui=true", settings));
+    assert(!ParseSettings("faster_ui=true\nfaster_unnamed=false", settings));
     assert(SelectSpeed(settings, MessageKind::Ui, "", false) == 4);
     assert(SelectSpeed(settings, MessageKind::Unnamed, "", false) == 2);
-    assert(!ParseSettings("faster_player=true", settings));
+    assert(!ParseSettings("faster_ui=false\nfaster_unnamed=true", settings));
     assert(SelectSpeed(settings, MessageKind::Unnamed, "", false) == 4);
     assert(SelectSpeed(settings, MessageKind::Ui, "", false) == 2);
     assert(SelectSpeed(settings, MessageKind::Npc, "rcm", false) == 2);
     assert(SelectSpeed(settings, MessageKind::Unknown, "", false) == 2);
-    assert(ParseSettings("faster_player=yes", settings) == 1 && !settings.fasterUnnamed);
-    assert(ParseSettings("faster_player=true\nfaster_player=false", settings) == 1 && !settings.fasterUnnamed);
-    assert(!ParseSettings("faster_unnamed=true", settings) && settings.fasterUnnamed);
-    assert(!ApplySettings("faster_player=false", settings) && !settings.fasterUnnamed);
-    assert(!ApplySettings("faster_unnamed=true", settings) && settings.fasterUnnamed);
-    assert(ApplySettings("faster_player=false\nfaster_unnamed=false", settings) == 1 && settings.fasterUnnamed);
-    assert(ParseSettings("faster_unnamed=true\nfaster_player=false", settings) == 1 && !settings.fasterUnnamed);
-    assert(ParseSettings("faster_unnamed=yes", settings) == 1 && !settings.fasterUnnamed);
+    assert(ParseSettings("faster_unnamed=yes", settings) == 1 && settings.fasterUnnamed);
+    assert(ParseSettings("faster_unnamed=false\nfaster_unnamed=true", settings) == 1 && settings.fasterUnnamed);
+    assert(!ApplySettings("faster_unnamed=false", settings) && !settings.fasterUnnamed);
+    assert(ApplySettings("faster_unnamed=true\nfaster_unnamed=false", settings) == 1 && !settings.fasterUnnamed);
+    // Removed legacy key is unknown and cannot change the supported preference.
+    assert(ApplySettings("faster_player=true", settings) == 1 && !settings.fasterUnnamed);
+    assert(ParseSettings("faster_player=false", settings) == 1 && settings.fasterUnnamed);
     // Layer inheritance, valid false overrides, list replacement/clearing, and
     // invalid/duplicate custom values preserving their regular-file values.
     settings = {};
     assert(!ApplySettings("enabled=true\nversion=0.2.4\nbase_speed=4\nboost_speed=2\n"
-                          "faster_ui=true\nfaster_player=true\nfaster_npc_list=Timmy,Tommy", settings));
+                          "faster_ui=true\nfaster_unnamed=true\nfaster_npc_list=Timmy,Tommy", settings));
     assert(!ApplySettings("base_speed=2\nfaster_ui=false\nfaster_npc_list=Wilbur", settings));
     assert(!NormalizeSettings(settings));
     assert(settings.baseSpeed == 2 && settings.boostSpeed == 2 && !settings.fasterUi && settings.fasterUnnamed);
     assert(settings.npcCount == 1 && Equal(settings.npcs[0].data(), "doc"));
-    assert(ApplySettings("boost_speed=bad\nfaster_player=bad\nfaster_npc_list=Timmy\nfaster_npc_list=Tommy", settings) == 3);
+    assert(ApplySettings("boost_speed=bad\nfaster_unnamed=bad\nfaster_npc_list=Timmy\nfaster_npc_list=Tommy", settings) == 3);
     assert(settings.boostSpeed == 2 && settings.fasterUnnamed && settings.npcCount == 1);
     assert(Equal(settings.npcs[0].data(), "doc"));
     assert(!ApplySettings("faster_npc_list=", settings) && settings.npcCount == 0);

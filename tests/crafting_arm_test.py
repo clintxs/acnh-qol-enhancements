@@ -25,7 +25,7 @@ def rate_tolerance(maximum):
     return 2e-7 if maximum <= 3 else maximum * 2e-7
 
 class CraftingMachine(Machine):
-    def __init__(self, base, files, maximum=3):
+    def __init__(self, base, files, maximum=6):
         self.maximum = maximum
         self.native = False
         super().__init__(base, files)
@@ -194,7 +194,7 @@ def check():
                         if previous is not None:
                             gain = m.rate - previous
                             assert gain >= 0
-                            if previous_gain is not None: assert gain <= previous_gain + 3e-7
+                            if previous_gain is not None: assert gain <= previous_gain + rate_tolerance(m.maximum)
                             previous_gain = gain
                         previous = m.rate
                     offset = 0x22b1830 if cooking else 0x22a6bec

@@ -216,7 +216,7 @@ Defaults in the regular file:
   diy_app_preview = true
   workbench_preview_tilt = true
   crafting_quantity_wrap = true
-  crafting_speed = 3
+  crafting_speed = 6
 
 Active settings:
 - workbench_preview_tilt: right-stick up/down tilt in workbench previews, up to
@@ -226,8 +226,8 @@ Active settings:
 - diy_app_preview: enable/disable the existing DIY app 3D preview independently.
 - crafting_speed: whole-number 1 through 30; the peak of the existing logarithmic
   ramp over 60 state updates. Starts at 1x and restarts for each crafting,
-  customization or cooking action. Default 3 preserves the confirmed curve;
-  30 is ten times vanilla’s 3x peak, and 1 holds at 1x. Values above 30 clamp to 30.
+  customization or cooking action. Default is 6; a setting of 3 preserves the
+  confirmed curve. A setting of 30 is ten times vanilla’s 3x peak, and 1 holds at 1x. Values above 30 clamp to 30.
   Zero and malformed values retain the prior setting and report a warning.
   This scales the working animation; dialogue/transitions retain native timing.
   Short actions may finish before the ramp reaches its peak.
@@ -281,7 +281,7 @@ non-ASCII case folding and Unicode normalization are not performed.
 Timmy/Tommy/Orville/Wilbur/Kapp'n aliases still work across languages, mapping
 to rcm/rct/dod/doc/kpp; Kapp'n also includes kppB. Name capture is new in 0.3.17
 and needs a live test. Missing/invalid name labels leave ID matching usable.
-Both speed keys accept whole numbers 1 through 10; defaults remain 2/4.
+Both speed keys accept whole numbers 1 through 30; defaults remain 2/4.
 The old parser accepted only 2/4: 8 was rejected and inherited the earlier
 boost (normally 4). Version 0.3.62 applies each selected speed to both native
 text-rate paths. For a stronger comparison, try base_speed=4, boost_speed=8.
@@ -292,7 +292,8 @@ The previous lookup incorrectly treated voice-position coordinates as a handle.
 The user confirmed the corrected diagnostic build works in game.
 Speeds preserve the game's language/FPS-adjusted fast rate; animations and
 scripted waits can limit conversation speed. Native overrides take priority.
-No preferences in either file: base 2, held 4, automatic UI/unnamed/NPC boost off.
+No preferences in either file: base 2, held 4, automatic UI/unnamed boost on,
+and an empty NPC list.
 
 Keep the personal mod folder when replacing the seven suite folders. Do not
 reinstall the example preset over your edited preferences. Enable only one
@@ -316,12 +317,9 @@ legacy fallback applies: valid player speakers or the reviewed FTR_WorkingTable,
 SYS_Player, SYS_Get_Fish, SYS_Get_Insect and SYS_Get_DiveFish banks.
 A confirmed name overrides those fallbacks. With unknown name metadata,
 reviewed self banks retain their previous priority over window color.
-Add faster_unnamed = true to your personal INI and restart. It defaults to false
-unless inherited. faster_player remains an alias for old personal files.
-Use one spelling per file; both in the same file count as a duplicate and retain
-that setting's earlier-layer value. Either spelling can override the other in
-a later file. The broader unnamed classifier is new in 0.3.22 and needs a live
-test with the reported storage/mirror/Niko/amiibo/stretching/drop-off messages.
+faster_ui and faster_unnamed default to true. Set either to false in your
+personal INI to disable that automatic category. The broader unnamed classifier
+needs a live test with the reported storage/mirror/Niko/amiibo/stretching/drop-off messages.
 Kapp'n songs/travel retain native scripting; no skip is added.
 
 LOGS

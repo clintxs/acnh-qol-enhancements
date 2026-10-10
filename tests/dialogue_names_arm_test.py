@@ -97,9 +97,9 @@ def check_unnamed(base):
     banks = ('FTR_Storeroom', 'FTR_DressingTable', 'FTR_Chest', 'OBJ_WherearenMncBox',
              'OBJ_WherearenAmiiboDevice', 'OBJ_HotelAmiiboDevice',
              'OBJ_Radio_RadioGymnastics', 'OBJ_PurchaseBox', 'UnlistedFutureMessage')
-    for preferences, enabled in ((b'faster_unnamed=true', True), (b'faster_player=true', True),
+    for preferences, enabled in ((b'', True), (b'faster_unnamed=true', True),
                                  (b'faster_unnamed=false', False)):
-        m = NameMachine(base, preferences)
+        m = NameMachine(base, preferences + b'\nfaster_ui=false')
         for window in (0, 2):
             m.speaker('owl', window=window)
             for bank in banks:
@@ -144,14 +144,14 @@ def check_unnamed(base):
     ui.message('OBJ_PurchaseBox')
     ui.label('')
     assert ui.tier() == 3
-    print(f'PASS {base:#x}: unnamed native branch, all eight reported message groups plus unlisted/variable labels, alias, unknown/named/malformed names, source-less/null/zero-capacity names, message/generation isolation and independent UI')
+    print(f'PASS {base:#x}: unnamed native branch, all eight reported message groups plus unlisted/variable labels, default boost, unknown/named/malformed names, source-less/null/zero-capacity names, message/generation isolation and independent UI')
 
 
 def main():
     count = 0
     for base in (0x7100000000, 0x7200000000):
         check_unnamed(base)
-        m = NameMachine(base, 'faster_npc_list=Blathers,Sócrates,フータ,Блезерс,傅达,🦉'.encode(), regular=base == 0x7200000000)
+        m = NameMachine(base, 'faster_ui=false\nfaster_unnamed=false\nfaster_npc_list=Blathers,Sócrates,フータ,Блезерс,傅达,🦉'.encode(), regular=base == 0x7200000000)
         m.speaker('owl')
         for name in ('Blathers', 'blathers', 'Sócrates', 'フータ', 'Блезерс', '傅达', '🦉'):
             assert m.label(name) == name

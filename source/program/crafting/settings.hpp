@@ -22,7 +22,7 @@ struct Settings {
     bool diyAppPreview = true;
     bool workbenchPreviewTilt = true;
     bool craftingQuantityWrap = true;
-    unsigned craftingSpeed = 3;
+    unsigned craftingSpeed = 6;
 };
 
 // Same layering rules as other modules: omitted/invalid values inherit, and
