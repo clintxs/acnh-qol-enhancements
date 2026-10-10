@@ -1,4 +1,4 @@
-# Shopping Card themes — QoL Enhancements 0.3.60 / ACNH 3.0.3
+# Shopping Card themes — QoL Enhancements 0.3.75 / ACNH 3.0.3
 
 Install the normal QoL Enhancements 0.3.23 or newer Core and Shopping Card first.
 This download contains optional appearance replacements, not a standalone mod.
@@ -31,7 +31,8 @@ The oval background, Bells caption, card square, both detail lines and stripe
 share the pockets UI's cream (#FFF9E3), sampled from the supplied screenshot.
 The card has a darker blue-teal edge. Its number material is
 separate from ordinary cash, so the native cash counter keeps its original cream digits.
-Island Inverted uses blue for the oval background and Bells text, and cream
+Island Inverted uses the pockets item-name balloon's teal (#51BCAB) for the
+oval background and Bells text, and cream
 for the balance, oval outline, card's outer backing and Bells bubble. The
 foreground card image remains identical to Island, including its cream accents.
 ADB Teal reproduces the working 0.3.16 layout exactly. All retain the same card
