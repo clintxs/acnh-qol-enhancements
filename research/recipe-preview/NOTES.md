@@ -17,8 +17,8 @@ copy. The user accepts the 0.3.43 cream background. 0.3.44 corrects a missing
 carrier level in drawable ownership; the user confirms turning and tilt work.
 0.3.45 preserves native poses for walls, floors, rugs and fences and doubles
 movement speed for other items. The user reports that 0.3.45 looks good.
-Left/right recipe navigation is implemented in 0.3.50; initial orientation and
-workbench tilt remain deferred.
+Left/right recipe navigation is implemented in 0.3.50; native initial orientation
+is restored in 0.3.53. Workbench tilt remains deferred.
 
 This implementation retains MenuRecipe's material panel. It adds a hidden
 capture surface to the loaded layout and temporarily hides the grid, scrollbar
@@ -39,7 +39,7 @@ these items for later. This is a backlog, not authorization to implement them no
    [workbench placement](references/hotel-request-workbench.jpeg),
    [ordinary app grid](references/hotel-request-app-grid.jpeg), and
    [app preview overlap](references/hotel-request-app-preview-overlap.jpeg).
-2. **Sensible initial item orientation.** Use the game's native initial preview
+2. **Sensible initial item orientation — implemented in 0.3.53, live test pending.** Use the game's native initial preview
    positioning/orientation data when available. Backpacks are a reported example:
    the workbench initially presents their front toward the camera. Investigate
    the per-item/carrier poses described above before choosing category-specific
@@ -63,7 +63,7 @@ into one optional **Crafting** submodule in 0.3.46; see the
 [Crafting grouping note](../crafting/NOTES.md#possible-crafting-submodule-grouping--october-9-2026).
 DIY previews move from Core to Crafting and use `diy_app_preview=true`.
 The implementation now lives under `source/program/crafting/`. The follow-up UI
-changes are tracked below; workbench tilt and improved initial orientation remain deferred.
+changes are tracked below; workbench tilt remains deferred.
 
 The attached reference images are retained here so later work does not depend
 on the original files remaining in Downloads. The original backlog update made
@@ -633,3 +633,41 @@ owner types publish the requested primary radians under yaw/tilt. Actual native
 remain. Add compatibility fingerprints for the primary setter and effect read.
 GPU particle appearance, full skeleton evaluation and scheduling need live
 Steam Deck validation.
+
+## Native starting orientations — 0.3.53
+
+The user confirms attached particles in 0.3.52, but Log pack (ItemParam ID 7498,
+BagBackpackWood0, ItemKind Bag) opens backward. CreateItemModel's controller +80
+angles come from shared UI3D parameters; native root 0192A590 separately selects
+workbench per-item poses and writes the carrier's secondary angles. 0.3.52
+replaced these with the controller pose. No category yaw special case is needed.
+
+Wait for root +39C state 0 after native framing (state 1 loads, state 2 applies
+poses and returns to 0) and match full item data +360 to the requested item.
+Copy the owned component, clear its owner to bypass our matrix fallback, set
+scale XYZ to 1, and execute native 006021A4. Its primary rotation is Y-X-Z;
+secondary rotation is X-Z-Y. Convert the complete rotation matrix into primary
+angles with pitch=atan2(-m12,sqrt(m10^2+m11^2)), yaw=atan2(m02,m22),
+roll=atan2(m10,m11). At a pitch pole, choose zero roll and yaw=atan2(-m20,m00).
+Use main's atan2f PLT 03F03370, guarded by an instruction fingerprint. Convert
+signed radians to wrapping Angle32. Native sine interpolation introduces small
+matrix differences; all tested presets remain within 0.001 per matrix entry.
+
+Scene-thread caches retain the converted origin per carrier, recipe epoch, full
+generation-bearing handle and component. Recapture when native framing executes
+again. UI publishes epoch/item/controller origin; it never resets mutable scene
+cache storage. Subtract the controller origin from published input angles and
+add that movement to the native carrier origin. Keep secondary angles zero to
+retain the particle fix. Before scene propagation, leave the root matrix native
+and add only user movement to a copy of carrier/drawable secondary angles. Thus
+the fallback also retains the selected pose at zero movement. Navigation and
+reopening publish a new origin/epoch. Fixed types still bypass all overrides.
+
+At two bases, compiled integration checks all 53 unique rotations read from the
+supplied StaticParam.pack ItemPreviewSwapActor.byml plus five pitch/roll poles.
+Tests verify actual native matrix equivalence after conversion, cached stability,
+nonzero-preset yaw/tilt and native item-effect radians, loading/item guards,
+navigation origin/epoch reset, and reopening with a modeled reused handle. Native
+category selection is modeled by supplying resource poses; native matrix/setter,
+steady-state root/drawable and effect update execute. SDK atan2f is a modeled
+import boundary. GPU appearance and live Log pack framing need Deck validation.

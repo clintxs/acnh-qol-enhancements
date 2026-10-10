@@ -1,6 +1,6 @@
-# Unified QoL validation — 0.3.52 preview particle rotation
+# Unified QoL validation — 0.3.53 native preview starting poses
 
-Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
+Validated locally on October 10, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
 dialogue fix and subsequently the corrected 0.2.3 NPC diagnostic build work in Eden. The user also confirmed Nook’s Cranny transactions in Shopping Card 0.3.1.
 The user confirmed the corrected savings HUD in 0.3.4 and balance animation
@@ -8,6 +8,35 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.53 Native initial item orientation
+
+The user confirms 0.3.52 fixes particles, and reports that the Log pack starts
+backward in the DIY app while the workbench shows its front. The shared
+controller's initial angles are not the item's starting pose. Native item-root
+framing selects per-item/carrier angles; our override previously discarded them.
+
+After native framing reaches state 0 for the requested item, capture each owned
+carrier's complete rotation matrix without scale. Convert secondary X-Z-Y/native
+primary Y-X-Z composition into primary Y-X-Z angles using main's atan2f import.
+This preserves the actual native orientation while keeping particle state and
+drawing on the same primary rotation path. Cache by recipe epoch, full carrier
+handle and component; recapture after native reframing. Stick input adds only
+movement relative to the controller's opening angles. Loading/previous-item
+states cannot seed the cache. Before scene propagation, the render fallback
+also preserves the native carrier pose and adds only movement. Fixed types keep
+their existing bypass. No new hooks, settings or workbench behavior changes.
+
+Compiled checks at two ASLR bases compare matrices for all 53 rotation presets
+in ItemPreviewSwapActor.byml and five additional pole cases. The Log pack's ID
+and Bag kind are verified against ItemParam.bcsv. Checks cover unchanged cached
+poses across frames, stick yaw/tilt and particle radians relative to a nonzero
+native pose, loading/previous-item guards, navigation epoch/origin reset, and
+reopening even with a reused modeled handle. Native matrix creation, primary
+setter, steady-state root/drawable and item-effect update run; parameter selection,
+scene allocation, SDK atan2f, GPU rendering and skeleton evaluation remain
+modeled boundaries. Full Core/Crafting/Pockets and package parity checks run
+before delivery. Live Log pack appearance still needs Steam Deck confirmation.
 
 ## 0.3.52 Primary rotation for item effects
 

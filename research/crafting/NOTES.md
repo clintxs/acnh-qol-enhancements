@@ -8,7 +8,8 @@ retired `faster-crafting` paths are ignored. Core alone installs no DIY hooks.
 Defaults: `diy_app_preview=true`, `workbench_preview_tilt=true`,
 `crafting_quantity_wrap=true`, `crafting_speed=3`. Preview and speed are active;
 workbench tilt and quantity wrap are parsed/reserved only and still deferred.
-Hotel banner layering/placement is implemented in 0.3.48. Recipe navigation is implemented in 0.3.50; initial orientation remains open.
+Hotel banner layering/placement is implemented in 0.3.48. Recipe navigation is
+implemented in 0.3.50; native starting orientations are restored in 0.3.53.
 
 Speed is the peak of the existing 60-update logarithmic ramp, accepting integer
 1..30 as of 0.3.49. Peak 3 retains the original table exactly; other peaks scale
@@ -212,3 +213,13 @@ drawable propagation supplies the same pose to drawable-owned effects. Fixed
 types retain native framing. See [native evidence and regression coverage](../recipe-preview/NOTES.md#primary-euler-rotation-for-item-particles--0352).
 Local checks now execute the actual particle orientation publication path;
 live Steam Deck appearance remains to be confirmed.
+
+## Native DIY starting poses — 0.3.53
+
+The user confirms 0.3.52 fixes particles. Restore each carrier's item-specific
+workbench orientation instead of using the controller's shared initial angles.
+Convert the native matrix into primary Euler angles so effects retain the fix;
+right-stick input adds movement relative to this cached origin. Cache/reset
+follows recipe changes, native framing and full carrier ownership. Fixed types
+and workbench behavior remain unchanged. See [pose conversion and coverage](../recipe-preview/NOTES.md#native-starting-orientations--0353).
+Live Log pack appearance remains to be confirmed.

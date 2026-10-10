@@ -25,7 +25,7 @@ MENU = layout_asset('MenuRecipe')
 HOOKS = (0x267d64, 0x2e9cde0, 0x2e9fbb0, 0x2e9d538, 0x3c58d24, 0x39392b0, 0x32b9fcc, 0x32b9e08, 0x6021a4, 0x39f63f0, 0x192a590)
 GUARDS = HOOKS + (0x32bd990, 0x32ba5e4, 0x3dbb160, 0x27d1d0, 0x3a17390, 0x3a174f0, 0x3c66298, 0x2e93798, 0x2e96a80, 0x3c4b880, 0x2ea0754, 0x2b0c810, 0x32ba000, 0x3c4bac4, 0x2b0e20c, 0x32b9750, 0x1513a48, 0x32be2b0, 0x32ba034, 0x192a1f0, 0x19362f4)
 GUARDS += (0x27bfb4, 0x27bfe4, 0x27d550, 0x27e208)
-GUARDS += (0x32ba168, 0x3764290, 0x335b4a0, 0x3763e14, 0x3765104, 0x3c49700, 0x3c49710, 0x19282fc, 0x5f7b4c, 0x690504)
+GUARDS += (0x32ba168, 0x3764290, 0x335b4a0, 0x3763e14, 0x3765104, 0x3c49700, 0x3c49710, 0x19282fc, 0x5f7b4c, 0x690504, 0x3f03370)
 
 class PreviewMachine(Machine):
     def __init__(self, base):
@@ -159,6 +159,7 @@ class PreviewMachine(Machine):
         self.matrix=self.alloc(48)
         self.services[base+0x32cf210]=('preview','noop')
         self.services[base+0x32b74f0]=('preview','animation_pose')
+        self.services[base+0x3f03370]=('preview','atan2')  # SDK math import boundary.
         text_methods=self.alloc(); self.write(text_methods+0x18,self.stub('noop'))
         self.write(base+0x5643418,text_methods); self.write(base+0x5643420,self.alloc())
         self.services[base+0x3f04470]=('preview','copy')
@@ -192,7 +193,11 @@ class PreviewMachine(Machine):
         if pc not in self.services or self.services[pc][0] != 'preview':
             return super().service(u, pc, size, data)
         action = self.services[pc][1]; result = 0
-        if action == 'state':
+        if action == 'atan2':
+            y=struct.unpack('<f',struct.pack('<I',u.reg_read(UC_ARM64_REG_S0)))[0]
+            x=struct.unpack('<f',struct.pack('<I',u.reg_read(UC_ARM64_REG_S1)))[0]
+            u.reg_write(UC_ARM64_REG_S0,struct.unpack('<I',struct.pack('<f',math.atan2(y,x)))[0])
+        elif action == 'state':
             self.events.append(('state', self.reg(1)))
             self.write(self.reg(0) + 8, self.reg(1), 4)
         elif action == 'spawn':
@@ -1174,11 +1179,15 @@ def navigation_fixture(base):
     m.confirm(page); m.frame(phone); m.frame(phone)
     assert m.read(phone+0x218,4)==0
     original_handle=m.read(m.controller+0x6c,4)
+    pose_epoch=m.read(m.module.find('PreviewPoseEpoch'),4)
+    pose_origin=bytes(m.u.mem_read(m.controller+0x80,12))
+    last_selection=0
     def step(held=0,left=(0,0),**kwargs):
         m.input(page,held,left=left,**kwargs); m.frame(phone)
     def press(direction,stick=False):
         step(); step(0 if stick else (8 if direction>0 else 4),left=(direction,0) if stick else (0,0))
     def selected(expected):
+        nonlocal pose_epoch,last_selection
         assert m.read(phone+0x218,4)==expected, (expected,m.read(phone+0x218,4),m.read(grid+0x298,4),m.read(m.controller+0x74,1),m.events[-8:],m.text[-1000:])
         row=m.invoke(base+0x3765104,grid,expected)
         assert row and row==m.read(rows+8*((expected//columns-m.read(grid+0x430,4)+m.read(grid+0x438,4))*columns+expected%columns))
@@ -1187,6 +1196,11 @@ def navigation_fixture(base):
         assert m.read(grid+0x440,4)*columns+m.read(grid+0x444,4)==expected
         assert m.read(m.controller+0x6c,4)==original_handle
         assert m.read(m.parameters+0x2c)==items[expected]
+        pose_epoch+=int(expected!=last_selection); last_selection=expected
+        assert m.read(m.module.find('PreviewPoseEpoch'),4)==pose_epoch
+        assert m.read(m.module.find('PreviewItem'))==items[expected]
+        assert m.read(m.module.find('PreviewOriginXY'))==int.from_bytes(pose_origin[:8],'little')
+        assert m.read(m.module.find('PreviewOriginZ'),4)==int.from_bytes(pose_origin[8:],'little')
         assert m.read(panes['N_TradeBox_00']+0x18)==panes['N_QolPreview_00']
         assert m.string(panes['T_TradeBoxNum_00']+0x100)=='12'
         change=[e for e in m.events if e[0]=='change_item'][-1][1]
@@ -1274,6 +1288,15 @@ def scene_pose_fixture(base):
     m.u.mem_write(component+0x2bc,struct.pack('<3I',0,0x40000000,0))
     m.invoke(base+0x6904c0,effect_state)
     assert bytes(m.u.mem_read(effect_state+0x310,12))==bytes(12)
+    # Native steady state after item/category framing, with no new request.
+    default_item=m.alloc(); m.write(default_item,0xfffe); m.write(base+0x4ab37e0,default_item)
+    sentinel=m.alloc(); m.write(sentinel,0xfffe,2); m.write(base+0x4ab3170,sentinel)
+    m.write(root+0x39c,0,4); m.write(root+0x3a0,0xfffe,2)
+    m.write(root+0x360,m.read(m.parameters+0x2c))
+    origin=struct.unpack('<3I',m.u.mem_read(m.controller+0x80,12))
+    m.u.mem_write(component+0x2bc,bytes(12))
+    m.hook(0x192a590,root)
+    assert bytes(m.u.mem_read(component+0x2b0,24))==bytes(24)
     drawable=m.alloc(0x400); mesh=m.alloc(0x300); mesh_methods=m.alloc(0x180)
     m.write(drawable+0x230,0x212345,4); m.write(drawable+0x234,0x112345,4)
     m.write(drawable+0x15c,0x6f,4); m.write(entries+16,drawable)
@@ -1297,7 +1320,8 @@ def scene_pose_fixture(base):
     for right in ((0,0),(1,0),(0,1),(-1,-1)):
         m.input(page,0,right=right); m.frame(phone)
         m.hook(0x192a590,root)
-        expected=bytes(m.u.mem_read(m.controller+0x80,12))
+        expected=struct.pack('<3I',*((angle-initial)&0xffffffff for angle,initial in
+                             zip(struct.unpack('<3I',m.u.mem_read(m.controller+0x80,12)),origin)))
         assert bytes(m.u.mem_read(component+0x2b0,12))==expected
         assert bytes(m.u.mem_read(component+0x2bc,12))==bytes(12)
         m.invoke(base+0x6904c0,effect_state)
@@ -1341,6 +1365,116 @@ def scene_pose_fixture(base):
     print(f'PASS: primary carrier/drawable pose and native item-effect Euler publication, native bone attachment composition under yaw/tilt, generation/parent/type/dead/fixed/close guards; skeleton evaluation modeled; ASLR {base:#x}')
 
 for base in (0x7100000000,0x7200000000): scene_pose_fixture(base)
+
+def native_preview_presets():
+    # Read the supplied native BYML rather than inventing category angles.
+    archive=resources((ASSETS.parent/'Pack/StaticParam.pack').read_bytes())
+    data=archive['Param/Actor/ItemPreviewSwapActor.byml']
+    def u24(p): return int.from_bytes(data[p:p+3],'little')
+    def u32(p): return struct.unpack_from('<I',data,p)[0]
+    def strings(p):
+        return [data[p+u32(p+4+4*i):].split(b'\0')[0].decode() for i in range(u24(p+1))] if p else []
+    keys=strings(u32(4)); texts=strings(u32(8))
+    def value(kind,word):
+        if kind in (0xc0,0xc1): return node(word)
+        if kind==0xd2: return struct.unpack('<f',struct.pack('<I',word))[0]
+        if kind==0xa0: return texts[word]
+        if kind==0xff: return None
+        assert kind in (0xd0,0xd1,0xd3)
+        return word
+    def node(p):
+        count=u24(p+1)
+        if data[p]==0xc0:
+            words=(p+4+count+3)&~3
+            return [value(data[p+4+i],u32(words+4*i)) for i in range(count)]
+        assert data[p]==0xc1
+        return {keys[u24(p+4+8*i)]:value(data[p+7+8*i],u32(p+8+8*i)) for i in range(count)}
+    presets=set()
+    def collect(entry):
+        if isinstance(entry,dict):
+            if '4a42cf70' in entry: presets.add(tuple(entry['4a42cf70']))
+            for child in entry.values(): collect(child)
+        elif isinstance(entry,list):
+            for child in entry: collect(child)
+    collect(node(u32(12)))
+    assert (15.0,-130.0,0.0) in presets and len(presets)>40
+    return presets
+
+def initial_pose_fixture(base):
+    m=PreviewMachine(base); phone,page,_,_=m.phone()
+    # Verify the test item against the real Log pack's resource row.
+    items=(ASSETS.parent/'Bcsv/ItemParam.bcsv').read_bytes()
+    count,stride,fields,version=struct.unpack_from('<IIHB',items)
+    header=28 if version else 12; start=header+8*fields
+    offsets=dict(struct.unpack_from('<II',items,header+8*i) for i in range(fields))
+    row=start+(items.index(b'BagBackpackWood0')-start)//stride*stride
+    log_pack=struct.unpack_from('<H',items,row+offsets[0x54706054])[0]
+    assert log_pack==7498 and struct.unpack_from('<I',items,row+offsets[0x5270eb75])[0]==zlib.crc32(b'Bag')
+    recipe=m.read(m.read(phone+0x8a358)); m.write(recipe+8,log_pack)
+    m.confirm(page); m.frame(phone); m.frame(phone)
+    root=m.model_entity
+    m.write(base+0x59e7790,m.alloc())
+    registry=m.read(m.entity_manager+0x1c0); entries=m.read(registry+8)
+    carrier=m.alloc(0x450); component=m.alloc(0x300); methods=m.alloc(0x180)
+    for off,value in ((0x15c,6),(0x230,0x112345),(0x234,0x12345)):
+        m.write(carrier+off,value,4)
+    m.write(carrier+0x68,component); m.write(entries+8,carrier)
+    m.u.mem_write(component,bytes(m.u.mem_read(m.component,0x2c8)))
+    m.write(component,methods); m.write(component+0x48,carrier)
+    m.write(methods+0x150,base+0x5f7b4c); m.write(methods+0xf8,base+0x5f7b18)
+    default=m.alloc(); m.write(default,0xfffe); m.write(base+0x4ab37e0,default)
+    sentinel=m.alloc(); m.write(sentinel,0xfffe,2); m.write(base+0x4ab3170,sentinel)
+    m.write(root+0x39c,0,4); m.write(root+0x3a0,0xfffe,2); m.write(root+0x360,log_pack)
+    presets=native_preview_presets()|{(90,20,0),(-90,20,0),(0,20,90),(0,20,-90),(90,20,90)}
+    epoch=m.module.find('PreviewPoseEpoch')
+    origin=bytes(m.u.mem_read(m.controller+0x80,12))
+    def setup(degrees):
+        m.u.mem_write(m.controller+0x80,origin)
+        native_angles=struct.pack('<3I',*(int(d/360*2**32)&0xffffffff for d in degrees))
+        m.u.mem_write(component+0x2b0,bytes(12)); m.u.mem_write(component+0x2bc,native_angles)
+        m.u.mem_write(component+0x2a0,struct.pack('<3f',1,1,1))
+        m.write(epoch,m.read(epoch,4)+1,4)
+        m.write(m.module.find('PreviewAngleXY'),int.from_bytes(origin[:8],'little'))
+        m.write(m.module.find('PreviewAngleZ'),int.from_bytes(origin[8:],'little'),4)
+    def matrix(): return struct.unpack('<12f',m.drawable_matrix(component))
+    for preset in sorted(presets):
+        setup(preset)
+        native=matrix(); m.hook(0x192a590,root)
+        assert max(abs(a-b) for a,b in zip(matrix(),native))<0.001,(preset,matrix(),native)
+        assert bytes(m.u.mem_read(component+0x2bc,12))==bytes(12)
+        stable=bytes(m.u.mem_read(component+0x2b0,12))
+        for _ in range(3):
+            m.hook(0x192a590,root)
+            assert bytes(m.u.mem_read(component+0x2b0,12))==stable  # No accumulating preset.
+    setup((15,-130,0)); native=matrix(); m.hook(0x192a590,root)
+    initial=struct.unpack('<3I',m.u.mem_read(component+0x2b0,12))
+    effect=m.alloc(0x340); m.write(effect+0x48,carrier)
+    m.services[base+0x3738950]=('preview','noop')
+    for right in ((1,0),(0,1),(-1,0),(0,-1)):
+        m.input(page,0,right=right); m.frame(phone); m.hook(0x192a590,root)
+        current=struct.unpack('<3I',m.u.mem_read(m.controller+0x80,12))
+        wanted=tuple((a+b-c)&0xffffffff for a,b,c in zip(initial,current,struct.unpack('<3I',origin)))
+        assert struct.unpack('<3I',m.u.mem_read(component+0x2b0,12))==wanted
+        m.invoke(base+0x6904c0,effect)
+        radians=struct.unpack('<3f',m.u.mem_read(effect+0x310,12))
+        assert all(abs(a-b/2**32*2*math.pi)<1e-5 for a,b in zip(radians,wanted))
+    assert max(abs(a-b) for a,b in zip(matrix(),native))<0.001
+    # Loading and a stale previous item must not become the next recipe's base.
+    m.write(m.module.find('UpdatePreviewActor','OrigRef'),m.stub('noop'))
+    for location,value,size in ((root+0x39c,1,4),(root+0x39c,2,4),(root+0x360,log_pack+1,8)):
+        old=m.read(location,size); m.write(location,value,size)
+        before=bytes(m.u.mem_read(component,0x2c8)); m.hook(0x192a590,root)
+        assert bytes(m.u.mem_read(component,0x2c8))==before
+        m.write(location,old,size)
+    # Reopening resets the epoch even if a modeled allocator reuses the handle.
+    old_epoch=m.read(epoch,4); m.hook(0x2e9d538,phone)
+    m.confirm(page); m.frame(phone); m.frame(phone); assert m.read(epoch,4)!=old_epoch
+    m.u.mem_write(component+0x2b0,bytes(12)); m.u.mem_write(component+0x2bc,struct.pack('<3I',0,0x80000000,0))
+    m.hook(0x192a590,root)
+    assert m.read(component+0x2b4,4)==0x80000000
+    print(f'PASS: {len(presets)} native/pole preset matrices retained, Log pack resource identity, cached origin without accumulation, yaw/tilt and particle radians relative to preset, loading/item guards and reopen epoch; parameter selection modeled; ASLR {base:#x}')
+
+for base in (0x7100000000,0x7200000000): initial_pose_fixture(base)
 
 for base in (0x7100000000,0x7200000000): navigation_fixture(base)
 
