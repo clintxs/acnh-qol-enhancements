@@ -25,7 +25,6 @@ class Palette:
     background: tuple | None = None
     balance: tuple | None = None
     caption: tuple | None = None
-    backing: tuple | None = None
 
 
 def linear_rgba(red, green, blue):
@@ -63,10 +62,10 @@ PALETTES = {
                       caption=ISLAND_CREAM),
 }
 
-# Keep both card pictures identical while swapping only the currency UI colors.
+# Keep the card face identical; its outer backing follows the inverted rim.
 PALETTES['island-inverted'] = replace(
     PALETTES['island'], rim=ISLAND_CREAM, background=ISLAND_BLUE,
-    balance=ISLAND_CREAM, caption=ISLAND_BLUE, backing=ISLAND_BLUE)
+    balance=ISLAND_CREAM, caption=ISLAND_BLUE)
 
 
 def inside(x, y, width, height, radius=0):
@@ -79,7 +78,7 @@ def inside(x, y, width, height, radius=0):
 
 def color_at(x, y, backing, palette):
     if backing:
-        return (palette.backing or palette.rim) if inside(x, y, 94, 66, 15) else None
+        return palette.rim if inside(x, y, 94, 66, 15) else None
     if not inside(x, y, 82, 54, 9):
         return None
     color = palette.edge
