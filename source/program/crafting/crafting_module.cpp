@@ -20,6 +20,7 @@ bool Install() {
     const bool preview = !Preferences.diyAppPreview || InstallRecipePreview();
     const bool tilt = !Preferences.workbenchPreviewTilt || InstallWorkbenchPreviewTilt();
     const bool quantity = !Preferences.craftingQuantityWrap || InstallCraftingQuantityWrap();
-    return speed && preview && tilt && quantity;
+    const bool shortcut = InstallCraftingQuantityShortcut();
+    return speed && preview && tilt && quantity && shortcut;
 }
 } // namespace qol::crafting

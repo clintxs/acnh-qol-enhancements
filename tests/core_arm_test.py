@@ -9,8 +9,8 @@ from unicorn.arm64_const import *
 from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
 SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'shopping-card', 'crafting')
-COUNTS = (16, 15, 7, 11, 11, 13)  # Pockets/Crafting share one additional Core input hook.
-DEFAULT = b'enabled=true\nversion=0.3.65\n'
+COUNTS = (16, 15, 7, 11, 11, 17)  # Pockets/Crafting share one additional Core input hook.
+DEFAULT = b'enabled=true\nversion=0.3.66\n'
 
 def expected_hook_count(machine, enabled):
     # The existing verbose-dialogue build adds a Catalog message trace hook.
@@ -375,8 +375,8 @@ def check_crafting_settings():
             assert (base+0x192a590 in m.hooks)==(preview or tilt)
             quantity=speed and not any(b'crafting_quantity_wrap=false' in data for data in files.values())
             assert (base+0x3764290 in m.hooks)==quantity
-            assert (base+0x3c58d24 in m.hooks)==(preview or tilt or quantity)
-            assert len(m.hooks)==2+2*speed+9*preview+int(preview or tilt)+quantity+int(preview or tilt or quantity),m.text
+            assert (base+0x3c58d24 in m.hooks)==speed
+            assert len(m.hooks)==2+6*speed+9*preview+int(preview or tilt)+quantity+int(speed),m.text
             assert ('workbench tilt: READY' in m.text)==tilt
             assert (m.read(base+0x49e8378)!=base+0x2ea0754)==preview
             assert base+0xbc4144 in m.hooks
@@ -393,17 +393,17 @@ def check_crafting_settings():
         assert all(base+a not in m.hooks for a in preview_sites)
         assert m.read(base+0x49e8378)==base+0x2ea0754
         m=Machine(base,{'crafting':DEFAULT+b'diy_app_preview=false\nworkbench_preview_tilt=false\ncrafting_quantity_wrap=false'})
-        m.write(base+0x192a590,0xdeadbeef,4); m.write(base+0x3c58d24,0xdeadbeef,4)
+        m.write(base+0x192a590,0xdeadbeef,4)
         m.boot(); m.activate()
-        assert 'BOOT_OK' in m.text and len(m.hooks)==4
-        assert base+0x192a590 not in m.hooks and base+0x3c58d24 not in m.hooks
+        assert 'BOOT_OK' in m.text and len(m.hooks)==9
+        assert base+0x192a590 not in m.hooks and base+0x3c58d24 in m.hooks
         # Quantity-only installation is independent of preview and actor hooks.
         m=Machine(base,{'crafting':DEFAULT+b'diy_app_preview=false\nworkbench_preview_tilt=false'})
         m.write(base+0x192a590,0xdeadbeef,4)
         m.boot(); m.activate()
         assert 'BOOT_OK' in m.text and 'quantity wrap: READY' in m.text
         assert base+0x3764290 in m.hooks and base+0x3c58d24 in m.hooks
-        assert base+0x192a590 not in m.hooks and len(m.hooks)==6
+        assert base+0x192a590 not in m.hooks and len(m.hooks)==10
         # Caller identity, row binding and native motion are independently guarded.
         for site in (0x375fd8c,0x3469b50,0x2de7730,0x346b024,0x2de8bf4):
             m=Machine(base,{'crafting':DEFAULT}); m.write(base+site,0xdeadbeef,4)

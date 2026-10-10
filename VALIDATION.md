@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.65 crafting quantity wrap polish
+# Unified QoL validation — 0.3.66 direct crafting quantity shortcut
 
 Validated locally on October 10, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,23 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.66 Direct workbench preview quantity shortcut
+
+X / Set quantity now opens the native quantity selector from the large 3D
+workbench item preview. Both input and the localized hint use the native
+recipe/material/multiple-crafting checks. The selector retains native recipe
+data, limits, ownership, crafting result and cancellation behavior.
+
+The new ARM fixture passes 76 cases at two ASLR bases, executing original
+Play entry/exit, MultiCreation open/cancel, footer building and native hint
+record copying. It covers eligibility combinations, fresh/held/blocked/
+consumed X, competing A/B, pending state, child readiness, footer capacity,
+caption routing alongside Pockets and isolated fingerprint conflicts.
+Core, Crafting and Pockets regressions pass, including all 64 module subsets
+at two bases, preview/tilt/navigation/particles, quantity repeat/animation and
+crafting speed. Native rendering, localized text display and the live
+controller flow still need confirmation in Eden.
 
 ## 0.3.65 Native quantity wrap animation and directional sound
 
@@ -26,7 +43,7 @@ animation, direction-specific sound selectors, settling, reset scope and the
 existing exact 300 ms behavior at 30/60/120 Hz. Compatibility conflicts in
 movement, either row binder or either cAppear call disable only quantity wrap.
 Final text/layout/audio playback and controller/clock samples remain modeled;
-live visual/audio confirmation is pending.
+the user confirmed the 0.3.65 visual/audio behavior in Eden.
 
 Validation: pinned offline build, all nine host suites, Core startup/settings
 checks across 64 module subsets and two ASLR bases, full preview/quantity

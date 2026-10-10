@@ -66,4 +66,5 @@ unsigned Configure(std::string_view input);
 bool Install();
 bool InstallFasterCrafting(unsigned maximumSpeed);
 bool InstallCraftingQuantityWrap();
+bool InstallCraftingQuantityShortcut();
 } // namespace qol::crafting

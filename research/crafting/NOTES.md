@@ -364,3 +364,38 @@ Both native page identities, directional sound selectors, one-row distance,
 ownership and reopen guards are covered. Clock/controller samples, layout
 writes, text formatting and final timeline/audio playback are modeled. Actual
 animation appearance and audible sounds still need the Steam Deck test.
+
+## Direct Set quantity from the workbench preview — 0.3.66
+
+The user chose the large WorkCraftInfo 3D preview, rather than the recipe grid.
+WorkCraftInfoSeq's common base registers Play state 3 at 03494B2C/03494D00/
+03494E7C and MultiCreation state 9 at 03496160/0349634C (034942F0).
+03493C20 preallocates its native quantity child at sequence +1C1E8.
+The new input subscriber binds only during Play, clears before native Play
+exit, requires a released/fresh X press and mirrors page/global input gates.
+It queues state 9 through the native pending slot (+1F0, slot byte +200),
+hides the preview footer through +239 bit 4, clears the pending input action
+and sets material status to ready, matching the ordinary ready dialog path.
+Native Play exit disables preview input; MultiCreation supplies recipe data
+through virtual +2A0, configures/attaches the quantity child and handles both
+crafting and B back to Play. Transit state 8 only waits for confirmation
+dialogs to close; direct entry has no confirmation dialog to close.
+
+The same virtual +288/+290/+2A8 checks as the native ready/multi dialog path
+and +1C1F0 capability gate control input and the hint. Opening also requires
+the existing child's virtual +F0 readiness. No material limits are synthesized.
+The shortcut is part of Crafting independently of the optional wrap setting.
+
+0346EC1C builds the workbench footer. AppendHint 02DE2B00 copies a bounded
+X descriptor into the existing five-pane pool. Its private caption token
+resolves to LayoutMsg DIYDialogConfirmNum/0001 (existing Set quantity in all
+languages). The caption hook uses 02DE4940, where x2/x3 already hold bank/key,
+and ends its 20-byte window before Pockets' hook at 02DE4954. Both remain
+independent; no strings/layout replacements are shipped. Core's subscriber
+capacity is five to accommodate Pockets, DIY previews, tilt, wrap and shortcut.
+
+ARM checks execute native Play entry/exit, quantity open/cancel, footer builder
+and descriptor copying. Engine readiness/type/recipe boundaries are modeled.
+The fixture covers both bases, eligibility, release/held/blocked/consumed X,
+A/B priority, footer capacity, localization routing and fingerprint conflicts.
+Live visual/input behavior remains to be checked in Eden.

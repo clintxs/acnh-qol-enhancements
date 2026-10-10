@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.65 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.66 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -18,6 +18,10 @@ Core uses subsdk6, leaving subsdk9 available for Jubbsticks Additions.
 This avoids that executable-slot collision; compatibility with its eventual
 ACNH v3 release still needs testing. Other mods must also avoid subsdk6 and
 our hook/layout files. Core supplies the suite's only main.npdm.
+
+0.3.66: Press X / Set quantity from the workbench 3D item preview to open
+Craft Multiple directly. The existing localized hint appears for supported
+recipes with enough materials. B returns to the item preview.
 
 0.3.65: Craft Multiple wraparound uses the native number transition and the
 up/down sound for the pressed direction. The 300 ms pause and held-input
