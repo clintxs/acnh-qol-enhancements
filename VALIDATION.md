@@ -1930,3 +1930,42 @@ The emulator needs execution outside the macOS sandbox for JIT access.
 
 No release archive or version bump is included. The new default feel and higher
 dialogue speeds still need live Eden testing.
+
+## Unreleased Core logging controls (2026-10-10)
+
+Core now accepts `log_versions=true`, `log_settings=true`, and `log_debug=false`
+in both optional Core INIs. Preferences use the existing regular/custom parser
+rules, including per-key inheritance and duplicate rollback. The runtime logger
+uses explicit categories; warning/error output cannot be disabled. Default
+startup emits only Core/module versions and effective settings. Module settings
+are reported after both files, even when code is disabled, including the NPC
+list and normalized dialogue speeds. Successful installation/resource messages,
+framework startup chatter and gameplay/input/purchase traces are debug-only.
+Caption fallback, compatibility/fingerprint errors and partial-startup reports
+remain visible. Pre-mount debug chatter is suppressed because Core preferences
+are not available yet. Special dialogue tracing still needs a diagnostic build
+and now also requires `log_debug=true`; documentation/package instructions agree.
+
+Validation:
+- Pinned Docker build succeeds; source diff whitespace checks pass.
+- Host tests cover all eight logging switch combinations, required warning/error
+  categories, inheritance, invalid values, duplicate rollback and atomic file
+  rejection alongside all 65,536 amiibo timeout values.
+- New compiled ARM logging tests verify the exact quiet startup surface, all
+  eight switch combinations, regular/custom precedence, mandatory errors and
+  warnings with every switch off, disabled-module settings, actual NPC values,
+  normalized speeds, unchanged installed hooks and once-only reads at two bases.
+- Core, Shopping Card, Faster Dialogue, Crafting, Pockets, Fitting Room and Catalog
+  regression groups all pass across focused invocations. Additional shop catalog
+  and fitting runtime tests pass. Dialogue retains 166,472 extended-speed checks;
+  crafting passes 30,700 cases; final fitting catalog coverage passes 26,077 cases.
+- Standalone Pockets/Catalog fixtures now verify quiet default gameplay output
+  while preserving caption-fallback warnings and their behavior assertions.
+  Existing detailed Core-based fixtures explicitly opt into debug via the real
+  compiled settings parser. Fitting input tests call the actual vtable adapter
+  rather than a private helper that is now inlined. A stale Shopping Card test
+  now counts only its installed module's hooks and shared resource allowance,
+  rather than assuming Core always installs the optional DIY feature.
+
+No version bump or release archive was created. Live Eden log appearance remains
+unverified; the local checks execute compiled ARM with modeled engine services.

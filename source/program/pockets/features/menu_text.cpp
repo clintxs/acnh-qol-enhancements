@@ -30,7 +30,7 @@ void LoadMessages() {
     CatalogAttempted = true;
     nn::fs::FileHandle file{};
     if (nn::fs::OpenFile(&file, CatalogPath, nn::fs::OpenMode_Read) != 0) {
-        Logging.Log("[QoL Enhancements/Pockets] TEXT_FALLBACK catalog unavailable; using English\n");
+        Logging.Warning("[QoL Enhancements/Pockets] TEXT_FALLBACK catalog unavailable; using English\n");
         return;
     }
     long size = 0;
@@ -43,8 +43,8 @@ void LoadMessages() {
     if (valid) {
         valid = Messages.Load({FileBuffer, static_cast<std::size_t>(size)});
     }
-    Logging.Log(valid ? "[QoL Enhancements/Pockets] TEXT_READY mod-owned messages.ini loaded\n"
-                      : "[QoL Enhancements/Pockets] TEXT_FALLBACK invalid catalog; using English\n");
+    if (valid) Logging.Debug("[QoL Enhancements/Pockets] TEXT_READY mod-owned messages.ini loaded\n");
+    else Logging.Warning("[QoL Enhancements/Pockets] TEXT_FALLBACK invalid catalog; using English\n");
 }
 
 HOOK_DEFINE_INLINE(ReplaceMenuCaption) {

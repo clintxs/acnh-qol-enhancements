@@ -80,14 +80,14 @@ extern "C" void exl_init() {
 
     /* Getting the SOC type in an application context is more effort than it's worth. */
     #ifndef EXL_AS_MODULE
-    Logging.Log(EXL_LOG_PREFIX "Inferring SOC type...");
+    Logging.Debug(EXL_LOG_PREFIX "Inferring SOC type...");
     exl::util::impl::InitSocType();
     #endif
 
-    Logging.Log(EXL_LOG_PREFIX "Inspecting memory layout...");
+    Logging.Debug(EXL_LOG_PREFIX "Inspecting memory layout...");
     exl::util::impl::InitMemLayout();
     virtmemSetup();
-    Logging.Log(EXL_LOG_PREFIX "Initializing patcher...");
+    Logging.Debug(EXL_LOG_PREFIX "Initializing patcher...");
     exl::patch::impl::InitPatcherImpl();
     exl::util::impl::InitVersion();
     exl::reloc::impl::Initialize();

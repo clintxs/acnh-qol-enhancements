@@ -249,6 +249,37 @@ combined funds, cancellation, order limits, delivery and screen transitions need
 verification.
 See [research and follow-up scope](research/shopping-card/NOTES.md).
 
+## Core logging
+
+Edit `romfs/qol-enhancements/config/core.ini`, or keep personal preferences in
+`core.custom.ini` alongside it. Both files are optional; restart ACNH after edits.
+Core has no `enabled` or `version` keys.
+
+```ini
+amiibo_timeout_frames = 9000
+log_versions = true
+log_settings = true
+log_debug = false
+```
+
+`log_versions` controls Core and installed module version summaries.
+`log_settings` controls effective settings after regular/custom overlays, including
+settings for disabled modules and the configured Faster Dialogue NPC list.
+`log_debug` enables detailed installation, resource, input, purchase and gameplay
+traces. All three switches accept `true` or `false`. Warnings, compatibility or
+hook errors, caption fallbacks and partial-startup failures are always logged,
+even when all three switches are false. The default output contains only version
+and settings summaries plus warnings/errors. Missing optional modules are quiet.
+
+Core loads logging preferences after RomFS mounts. Early framework startup and
+mount-wait chatter are suppressed before that point; startup failures still log.
+Special dialogue MESSAGE/SELECT traces still require the diagnostic build as
+well as `log_debug = true`. Existing trace limits remain in effect.
+
+Logging preferences use the same defaults → regular INI → custom INI order as
+the amiibo timeout. Invalid values inherit; duplicate keys restore the value
+from before that file. Core files are limited to 4 KiB of valid UTF-8.
+
 ## Shared configuration overlays
 
 Every module loads `content:/qol-enhancements/config/<slug>.ini` first, then an
@@ -273,7 +304,7 @@ faster_ui = true
 faster_unnamed = true
 ```
 
-A `faster-dialogue.custom.ini` containing just `faster_ui = true` keeps all the
+A `faster-dialogue.custom.ini` containing just `faster_ui = false` keeps all the
 other values and overrides that one setting. An NPC list replaces the previous
 list; an empty list clears it. Custom files are read once per restart, even if
 regular `enabled` is false, so a custom `enabled=true` can re-enable installed
@@ -282,10 +313,11 @@ configuration intact. Neither malformed metadata nor duplicate metadata is
 partially applied. Each file is limited to 4 KiB of valid UTF-8 text, with whole-line
 comments, CRLF and an optional UTF-8 BOM.
 
-Other modules currently expose just `enabled` and `version`, with names
-`catalog.custom.ini`, `pockets.custom.ini`, `fitting-room.custom.ini` and
-`amiibo.custom.ini` and `shopping-card.custom.ini`. Pockets' caption file is a separate translation resource,
-not a module settings file.
+Catalog, Pockets, Fitting Room and Shopping Card expose just `enabled` and
+`version`. Their overlays are `catalog.custom.ini`, `pockets.custom.ini`,
+`fitting-room.custom.ini` and `shopping-card.custom.ini`. Crafting preferences
+use `crafting.custom.ini`; Core uses the optional settings files described above.
+Pockets and Fitting Room caption files are separate translation resources.
 
 ## Conditional Faster Dialogue
 
@@ -381,12 +413,13 @@ python3 tools/check.py core dialogue
 python3 tools/package_dialogue_diagnostic.py
 ```
 
+Set `log_debug = true` in `core.custom.ini` to enable diagnostic traces.
 The diagnostic ZIP replaces Core only. Keep the Faster Dialogue module and your
 personal settings, including `faster_unnamed = true`, then fully restart. Test a
 mirror, storage shed, DIY notes, amiibo-device, stretching or drop-off prompt,
 plus a listed NPC, briefly holding B/R for comparison.
 Collect Eden's `QoL Enhancements/Faster Dialogue` lines before another session
-replaces the log. `DIAGNOSTIC: unnamed-v1` identifies this build; `READY`
+replaces the log. `DIAGNOSTIC: unnamed-v1` identifies this build; `settings:`
 shows loaded settings, `MESSAGE` shows active/cached banks, labels and reveal
 gates, and `SELECT` shows the classification, speed and entity handle details. `name_tag` is 0 for unknown, 1 for named, and 2 for
 confirmed unnamed.

@@ -12,6 +12,8 @@ struct ModuleDescription {
     // RomFS overrides still load when behavior is disabled or config is invalid.
     // Prepare their allocation support whenever the package marker is present.
     bool (*prepareResources)() = nullptr;
+    // Report effective settings after both layers, including disabled modules.
+    void (*reportSettings)() = nullptr;
 };
 extern const std::array<ModuleDescription, 6> Modules;
 void ActivateModules();

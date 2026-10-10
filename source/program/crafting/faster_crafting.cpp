@@ -73,14 +73,14 @@ bool InstallFasterCrafting(unsigned maximumSpeed) {
         if (expected.offset + sizeof(expected.words) > main.m_Text.m_Size ||
             std::memcmp(reinterpret_cast<const void *>(main.m_Text.m_Start + expected.offset),
                         expected.words, sizeof(expected.words))) {
-            Logging.Log("[QoL Enhancements/Crafting] DISABLED: instruction mismatch at main+0x%lx\n", expected.offset);
+            Logging.Error("[QoL Enhancements/Crafting] DISABLED: instruction mismatch at main+0x%lx\n", expected.offset);
             return false;
         }
     }
     MaximumSpeed = maximumSpeed;
     AutomaticMashBoost::InstallAtOffset(address::CraftingMashRate);
     AutomaticMashBoost::InstallAtOffset(address::CookingMashRate);
-    Logging.Log("[QoL Enhancements/Crafting] READY: C++ hooks; logarithmic crafting/cooking ramp=1..%ux over %u updates\n", MaximumSpeed, RampFrames);
+    Logging.Debug("[QoL Enhancements/Crafting] READY: C++ hooks; logarithmic crafting/cooking ramp=1..%ux over %u updates\n", MaximumSpeed, RampFrames);
     return true;
 }
 } // namespace qol::crafting

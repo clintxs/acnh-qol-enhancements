@@ -24,7 +24,7 @@ def main():
             # remove the star after the same color enters native history.
             for known,body,marker in ((False,None,'★'),(True,1,'☆'),(True,0,'')):
                 q.check_variant(item,remake,colors,0,known,body,marker);count+=1
-            assert any('shop='+shop in s for s in q.logs)
+            assert not q.logs # Successful per-shop formatting is debug-only.
             for clothing in (117,118):
                 for owned in (False,True):
                     q.check(clothing,owned=owned,marked=not owned);count+=1

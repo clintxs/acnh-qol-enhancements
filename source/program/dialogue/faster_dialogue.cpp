@@ -248,11 +248,11 @@ void TraceMessage(std::uintptr_t manager, std::uintptr_t text) {
     if (!changed || reports >= 256) return;
     previous = current;
     ++reports;
-    Logging.Log("[QoL Enhancements/Faster Dialogue] MESSAGE manager=0x%lx source=0x%lx window=%u state=%u forced=%u disabled=%u context_match=%u bank=%s cached_bank=%s label=%s\n",
+    Logging.Debug("[QoL Enhancements/Faster Dialogue] MESSAGE manager=0x%lx source=0x%lx window=%u state=%u forced=%u disabled=%u context_match=%u bank=%s cached_bank=%s label=%s\n",
                 current.manager, current.source, current.window, current.state, current.forced,
                 current.disabled, unsigned(current.contextMatches), current.bank, current.cachedBank, current.label);
     if (reports == 256)
-        Logging.Log("[QoL Enhancements/Faster Dialogue] MESSAGE trace limit reached; restart for a fresh trace\n");
+        Logging.Debug("[QoL Enhancements/Faster Dialogue] MESSAGE trace limit reached; restart for a fresh trace\n");
 }
 #endif
 
@@ -339,7 +339,7 @@ HOOK_DEFINE_INLINE(DialogueSelectSpeed) {
             std::strcmp(previous.bank, speaker.bank) || std::strcmp(previous.localizedName, speaker.localizedName);
         if (changed && reports < 128) {
             ++reports; previous = speaker; previousSpeed = speed;
-            Logging.Log("[QoL Enhancements/Faster Dialogue] SELECT reason=%s window=%u entity_kind=%u kind=%u npc=%s speed=%u bank=%s handle=%08x entity=0x%lx entity_handle=%08x entity_flags=%08x name=%s name_tag=%u\n",
+            Logging.Debug("[QoL Enhancements/Faster Dialogue] SELECT reason=%s window=%u entity_kind=%u kind=%u npc=%s speed=%u bank=%s handle=%08x entity=0x%lx entity_handle=%08x entity_flags=%08x name=%s name_tag=%u\n",
                         reasons[static_cast<unsigned>(speaker.lookup)], speaker.window, speaker.entityKind,
                         static_cast<unsigned>(speaker.kind), speaker.id, speed, speaker.bank,
                         speaker.handle, speaker.entity, speaker.entityHandle, speaker.entityFlags, speaker.localizedName,
@@ -372,6 +372,16 @@ unsigned Configure(std::string_view input) {
     return ApplySettings(input, Preferences);
 }
 
+void ReportSettings() {
+    if (NormalizeSettings(Preferences))
+        Logging.Warning("[QoL Enhancements/Faster Dialogue] WARNING: boost_speed below base_speed; using base speed for both\n");
+    Logging.Settings("[QoL Enhancements/Faster Dialogue] settings: base=%u boost=%u faster_ui=%s faster_unnamed=%s npc_count=%u\n",
+                Preferences.baseSpeed, Preferences.boostSpeed, Preferences.fasterUi ? "true" : "false",
+                Preferences.fasterUnnamed ? "true" : "false", Preferences.npcCount);
+    for (unsigned i = 0; i < Preferences.npcCount; ++i)
+        Logging.Settings("[QoL Enhancements/Faster Dialogue] faster_npc_list[%u]=%s\n", i, Preferences.npcs[i].data());
+}
+
 bool Install() {
     // Original instructions are fingerprints only, never replacement payloads.
     // Check all sites/dependencies before installing the first C++ hook. Also
@@ -402,14 +412,12 @@ bool Install() {
         if (expected.offset + sizeof(expected.words) > main.m_Text.m_Size ||
             std::memcmp(reinterpret_cast<const void *>(Main(expected.offset)), expected.words,
                         sizeof(expected.words))) {
-            Logging.Log("[QoL Enhancements/Faster Dialogue] DISABLED: instruction mismatch at main+0x%lx\n", expected.offset);
+            Logging.Error("[QoL Enhancements/Faster Dialogue] DISABLED: instruction mismatch at main+0x%lx\n", expected.offset);
             return false;
         }
     }
-    if (NormalizeSettings(Preferences))
-        Logging.Log("[QoL Enhancements/Faster Dialogue] WARNING: boost_speed below base_speed; using base speed for both\n");
 #if CAS_VERBOSE_DIALOGUE_TRACE
-    Logging.Log("[QoL Enhancements/Faster Dialogue] DIAGNOSTIC: unnamed-v1; current-message native name-tag classification\n");
+    Logging.Debug("[QoL Enhancements/Faster Dialogue] DIAGNOSTIC: unnamed-v1; current-message native name-tag classification\n");
 #endif
     DialogueNameBegin::InstallAtOffset(address::NameBegin);
     DialogueNameReady::InstallAtOffset(address::NameReady);
@@ -418,9 +426,7 @@ bool Install() {
     DialogueForwardSpeed::InstallAtOffset(address::ForwardFast);
     DialogueMainRate::InstallAtOffset(address::MainRate);
     DialogueRendererRate::InstallAtOffset(address::RendererRate);
-    Logging.Log("[QoL Enhancements/Faster Dialogue] READY: C++ hooks; base=%u boost=%u faster_ui=%s faster_unnamed=%s npc_count=%u\n",
-                Preferences.baseSpeed, Preferences.boostSpeed, Preferences.fasterUi ? "true" : "false",
-                Preferences.fasterUnnamed ? "true" : "false", Preferences.npcCount);
+    Logging.Debug("[QoL Enhancements/Faster Dialogue] READY: C++ hooks\n");
     return true;
 }
 } // namespace qol::dialogue

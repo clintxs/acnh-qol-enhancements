@@ -73,7 +73,7 @@ namespace exl::reloc {
             if(Logging.IsEnabled()) {
                 char nameBuffer[util::ModuleInfo::s_ModulePathLengthMax+1];
                 util::CopyString(nameBuffer, referredModule.GetModuleName());
-                Logging.Log(EXL_LOG_PREFIX "Symbol %s being relocated to [%s]+%x", symbolName.data(), nameBuffer, entry.m_Offset);
+                Logging.Debug(EXL_LOG_PREFIX "Symbol %s being relocated to [%s]+%x", symbolName.data(), nameBuffer, entry.m_Offset);
             }
 
             /* Target address will be (referred module start + offset) + rel addend. */
@@ -97,7 +97,7 @@ namespace exl::reloc {
 
 
             if(!util::HasModule(search->m_ModuleIndex)) {
-                Logging.Log(EXL_LOG_PREFIX "Symbol %s has invalid module index %d", symbolName.data(), static_cast<int>(search->m_ModuleIndex));
+                Logging.Error(EXL_LOG_PREFIX "Symbol %s has invalid module index %d", symbolName.data(), static_cast<int>(search->m_ModuleIndex));
                 return;
             }
 
@@ -143,7 +143,7 @@ namespace exl::reloc {
     }
 
     void Lookup::Apply() const {
-        Logging.Log(EXL_LOG_PREFIX "Applying relocations...");
+        Logging.Debug(EXL_LOG_PREFIX "Applying relocations...");
         auto info = util::GetSelfModuleInfo();
         rtld::ModuleObject modObj = {};
         modObj.Initialize(

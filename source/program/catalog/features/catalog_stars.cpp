@@ -120,7 +120,7 @@ void MarkInventoryRecipe(exl::hook::InlineCtx *registers, std::uintptr_t nativeF
     auto &reports = reportCounts[isStorage ? 1 : 0];
     if (reports < 64) {
         ++reports;
-        Logging.Log(
+        Logging.Debug(
             "[QoL Enhancements/Catalog] %s_RECIPE_STAR recipe=%u player=%u status=%u marked=%d type=%u\n",
             isStorage ? "STORAGE" : "POCKET",
             static_cast<unsigned>(static_cast<std::uint16_t>(item.extra)), player,
@@ -168,7 +168,7 @@ HOOK_DEFINE_INLINE(CabinetCatalogStar) {
         static unsigned fittingReports = 0;
         if (isFittingRoom && status != game::CatalogStatus::Uncataloged && fittingReports < 64) {
             ++fittingReports;
-            Logging.Log(
+            Logging.Debug(
                 "[QoL Enhancements/Catalog] FITTING_CATALOG_STAR item=%u player=%u status=%u marked=0\n",
                 item.id, player, static_cast<unsigned>(status));
         }
@@ -176,7 +176,7 @@ HOOK_DEFINE_INLINE(CabinetCatalogStar) {
         static unsigned shopReports = 0;
         if (!isFittingRoom && !marker && shopReports < 64) {
             ++shopReports;
-            Logging.Log("[QoL Enhancements/Catalog] CATALOG_STAR item=%u status=%u marker=0 marked=0\n",
+            Logging.Debug("[QoL Enhancements/Catalog] CATALOG_STAR item=%u status=%u marker=0 marked=0\n",
                         item.id, static_cast<unsigned>(status));
         }
         if (!marker) {
@@ -188,14 +188,14 @@ HOOK_DEFINE_INLINE(CabinetCatalogStar) {
         if (isFittingRoom) {
             if (fittingReports < 64) {
                 ++fittingReports;
-                Logging.Log("[QoL Enhancements/Catalog] FITTING_CATALOG_STAR item=%u player=%u status=%u "
+                Logging.Debug("[QoL Enhancements/Catalog] FITTING_CATALOG_STAR item=%u player=%u status=%u "
                             "marked=%d type=%u capacity=%u\n",
                             item.id, player, static_cast<unsigned>(status), marked,
                             Read<std::uint32_t>(nameObject, layout::NameType), capacity);
             }
         } else if (shopReports < 64) {
             ++shopReports;
-            Logging.Log(
+            Logging.Debug(
                 "[QoL Enhancements/Catalog] CATALOG_STAR item=%u status=%u marker=0x%x marked=%d type=%u "
                 "capacity=%u\n",
                 item.id, static_cast<unsigned>(status), static_cast<unsigned>(marker), marked,
@@ -235,7 +235,7 @@ HOOK_DEFINE_INLINE(GroundCatalogStar) {
         static unsigned reports = 0;
         if (reports < 64) {
             ++reports;
-            Logging.Log("[QoL Enhancements/Catalog] GROUND_STAR item=%u player=%u recipe=%d "
+            Logging.Debug("[QoL Enhancements/Catalog] GROUND_STAR item=%u player=%u recipe=%d "
                         "status=%u marker=0x%x marked=%d\n",
                         item.id, player, isRecipe, status, static_cast<unsigned>(marker), marked);
         }
@@ -294,16 +294,16 @@ bool InstallCatalogStars() {
                                       c.words.data(), sizeof(c.words));
     }
     if (!valid) {
-        Logging.Log("[QoL Enhancements/Catalog] CATALOG_STARS_DISABLED fingerprint mismatch\n");
+        Logging.Error("[QoL Enhancements/Catalog] CATALOG_STARS_DISABLED fingerprint mismatch\n");
         return false;
     }
     CabinetCatalogStar::InstallAtOffset(address::NameReadyHook);
     GroundCatalogStar::InstallAtOffset(address::GroundNameReadyHook);
-    Logging.Log("[QoL Enhancements/Catalog] CATALOG_STARS_READY shared shop list: all ordinary items\n");
-    Logging.Log("[QoL Enhancements/Catalog] FITTING_CATALOG_STARS_READY highlighted clothing balloon\n");
-    Logging.Log("[QoL Enhancements/Catalog] POCKET_RECIPE_STARS_READY learned-recipe balloons\n");
-    Logging.Log("[QoL Enhancements/Catalog] STORAGE_RECIPE_STARS_READY learned-recipe balloons\n");
-    Logging.Log("[QoL Enhancements/Catalog] GROUND_STARS_READY recipes and ordinary items\n");
+    Logging.Debug("[QoL Enhancements/Catalog] CATALOG_STARS_READY shared shop list: all ordinary items\n");
+    Logging.Debug("[QoL Enhancements/Catalog] FITTING_CATALOG_STARS_READY highlighted clothing balloon\n");
+    Logging.Debug("[QoL Enhancements/Catalog] POCKET_RECIPE_STARS_READY learned-recipe balloons\n");
+    Logging.Debug("[QoL Enhancements/Catalog] STORAGE_RECIPE_STARS_READY learned-recipe balloons\n");
+    Logging.Debug("[QoL Enhancements/Catalog] GROUND_STARS_READY recipes and ordinary items\n");
     return true;
 }
 } // namespace catalog_aware_shops::features

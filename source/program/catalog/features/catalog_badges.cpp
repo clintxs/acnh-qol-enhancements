@@ -176,19 +176,19 @@ void TracePaneTree(std::uintptr_t pane, unsigned depth, unsigned &remaining, con
     --remaining;
     char name[25]{};
     std::memcpy(name, reinterpret_cast<const void *>(pane + layout::PaneName), 24);
-    Logging.Log("[QoL Enhancements/Catalog] CATALOG_TREE shop=%s depth=%u name=%s flags=%u\n", catalog,
+    Logging.Debug("[QoL Enhancements/Catalog] CATALOG_TREE shop=%s depth=%u name=%s flags=%u\n", catalog,
                 depth, name, Read<std::uint8_t>(pane, layout::PaneFlags));
     const auto sentinel = pane + layout::PaneChildren;
     auto node = Read<std::uintptr_t>(sentinel, layout::ListNext);
     while (remaining && node && node != sentinel) {
         const auto child = node - layout::PaneSiblingNode;
         if (Read<std::uintptr_t>(child, layout::PaneParent) != pane) {
-            Logging.Log("[QoL Enhancements/Catalog] CATALOG_TREE shop=%s stopped=parent-mismatch\n",
+            Logging.Debug("[QoL Enhancements/Catalog] CATALOG_TREE shop=%s stopped=parent-mismatch\n",
                         catalog);
             return;
         }
         if (depth + 1 >= 16) {
-            Logging.Log("[QoL Enhancements/Catalog] CATALOG_TREE shop=%s stopped=depth-limit\n", catalog);
+            Logging.Debug("[QoL Enhancements/Catalog] CATALOG_TREE shop=%s stopped=depth-limit\n", catalog);
             return;
         }
         TracePaneTree(child, depth + 1, remaining, catalog);
@@ -242,12 +242,12 @@ void UpdateRowBadge(std::uintptr_t row, std::uint8_t player, const game::Catalog
         traced[catalogIndex] = true;
         unsigned remaining = 128;
         TracePaneTree(iconContainer, 0, remaining, CatalogNames[catalogIndex]);
-        Logging.Log("[QoL Enhancements/Catalog] CATALOG_TREE_END shop=%s visited=%u limit=%d\n",
+        Logging.Debug("[QoL Enhancements/Catalog] CATALOG_TREE_END shop=%s visited=%u limit=%d\n",
                     CatalogNames[catalogIndex], 128 - remaining, remaining == 0);
     }
     if (reports[catalogIndex] < 48) {
         ++reports[catalogIndex];
-        Logging.Log("[QoL Enhancements/Catalog] CATALOG_BADGE shop=%s item=%u player=%u status=%u "
+        Logging.Debug("[QoL Enhancements/Catalog] CATALOG_BADGE shop=%s item=%u player=%u status=%u "
                     "panes=%u visible=%d lookup=%s recipe_id=%u recipe_status=%u\n",
                     CatalogNames[catalogIndex], item.id, player, static_cast<unsigned>(status),
                     found, visible, lookup,
@@ -350,7 +350,7 @@ bool InstallCatalogBadges() {
     for (const auto &check : checks) {
         if (std::memcmp(reinterpret_cast<const void *>(game::MainAddress(check.offset)),
                         check.words.data(), sizeof(check.words))) {
-            Logging.Log("[QoL Enhancements/Catalog] CATALOG_BADGES_DISABLED fingerprint mismatch\n");
+            Logging.Error("[QoL Enhancements/Catalog] CATALOG_BADGES_DISABLED fingerprint mismatch\n");
             return false;
         }
     }
@@ -361,7 +361,7 @@ bool InstallCatalogBadges() {
     NookCatalogBadge::InstallAtOffset(address::NookItemReady);
     HhpCatalogBadge::InstallAtOffset(address::HhpUpdateRow);
     HotelCatalogBadge::InstallAtOffset(address::HotelUpdateRow);
-    Logging.Log("[QoL Enhancements/Catalog] CATALOG_BADGES_READY Nook/HHP/Hotel/Miles item-family and "
+    Logging.Debug("[QoL Enhancements/Catalog] CATALOG_BADGES_READY Nook/HHP/Hotel/Miles item-family and "
                 "recipe stars\n");
     return true;
 }

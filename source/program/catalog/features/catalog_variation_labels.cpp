@@ -115,7 +115,7 @@ void SetLabelText(Original original, std::uintptr_t setter, std::uintptr_t paylo
     const auto index = static_cast<unsigned>(context->catalog);
     if (reports[index] < 48) {
         ++reports[index];
-        Logging.Log("[QoL Enhancements/Catalog] CATALOG_VARIATION shop=%s item=%u body=%u player=%u status=%u marked=%d\n",
+        Logging.Debug("[QoL Enhancements/Catalog] CATALOG_VARIATION shop=%s item=%u body=%u player=%u status=%u marked=%d\n",
                     CatalogNames[index], context->item.id, context->item.extra & 7u,
                     context->player, static_cast<unsigned>(status), changed);
     }
@@ -164,7 +164,7 @@ bool InstallCatalogVariationLabels() {
     for (const auto &check : checks) {
         if (std::memcmp(reinterpret_cast<const void *>(game::MainAddress(check.offset)),
                         check.words.data(), sizeof(check.words))) {
-            Logging.Log("[QoL Enhancements/Catalog] CATALOG_VARIATIONS_DISABLED fingerprint mismatch\n");
+            Logging.Error("[QoL Enhancements/Catalog] CATALOG_VARIATIONS_DISABLED fingerprint mismatch\n");
             return false;
         }
     }
@@ -175,7 +175,7 @@ bool InstallCatalogVariationLabels() {
     HhpVariationLabel::InstallAtOffset(address::HhpUpdateColorLabel);
     VariationPaneText::InstallAtOffset(address::SetPaneText);
     VariationGroupText::InstallAtOffset(address::SetGroupText);
-    Logging.Log("[QoL Enhancements/Catalog] CATALOG_VARIATIONS_READY Nook/HHP hollow color-label stars\n");
+    Logging.Debug("[QoL Enhancements/Catalog] CATALOG_VARIATIONS_READY Nook/HHP hollow color-label stars\n");
     return true;
 }
 } // namespace catalog_aware_shops::features

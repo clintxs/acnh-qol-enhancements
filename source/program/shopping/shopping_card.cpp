@@ -303,7 +303,7 @@ void UpdateSavingsDisplay(std::uintptr_t counter, const std::uint8_t *player, Di
     const char *source = surface == DisplaySurface::Hud ? "HUD" : "auxiliary";
     if (!card) {
         if (shop && missingReports[index]++ < 4)
-            Logging.Log("[QoL Enhancements/Shopping Card] SAVINGS_DISPLAY_MISSING source=%s counter=%lx root=%lx\n",
+            Logging.Error("[QoL Enhancements/Shopping Card] SAVINGS_DISPLAY_MISSING source=%s counter=%lx root=%lx\n",
                         source, counter, root);
         return;
     }
@@ -320,7 +320,7 @@ void UpdateSavingsDisplay(std::uintptr_t counter, const std::uint8_t *player, Di
         static std::array<bool, 2> reported{};
         if (!reported[index]) {
             reported[index] = true;
-            Logging.Log("[QoL Enhancements/Shopping Card] SAVINGS_DISPLAY_READY source=%s player=%u balance=%u\n",
+            Logging.Debug("[QoL Enhancements/Shopping Card] SAVINGS_DISPLAY_READY source=%s player=%u balance=%u\n",
                         source, *player, balance);
         }
         Fn<void (*)(std::uintptr_t, const char16_t *, unsigned)>(address::SetPaneText)(number, text, length);
@@ -375,7 +375,7 @@ HOOK_DEFINE_TRAMPOLINE(ShopDebit) {
         Balances balance;
         const auto plan = ReadBalances(player, balance) ? PlanPayment(balance, amount) : Payment{};
         if (!plan.affordable) {
-            Logging.Log("[QoL Enhancements/Shopping Card] INSUFFICIENT player=%u bells=%u\n", *player, amount);
+            Logging.Debug("[QoL Enhancements/Shopping Card] INSUFFICIENT player=%u bells=%u\n", *player, amount);
             return;
         }
         if (plan.savings)
@@ -383,7 +383,7 @@ HOOK_DEFINE_TRAMPOLINE(ShopDebit) {
         if (plan.cashDebit) Orig(player, plan.cashDebit);
         if (plan.walletRefund)
             Fn<void (*)(const std::uint8_t *, unsigned)>(address::AddCash)(player, plan.walletRefund);
-        Logging.Log("[QoL Enhancements/Shopping Card] PURCHASE player=%u bells=%u savings=%u pockets=%u wallet=%u\n",
+        Logging.Debug("[QoL Enhancements/Shopping Card] PURCHASE player=%u bells=%u savings=%u pockets=%u wallet=%u\n",
                     *player, amount, plan.savings, plan.pockets, plan.wallet);
     }
 };
@@ -394,7 +394,7 @@ HOOK_DEFINE_TRAMPOLINE(ShopCapacity) {
         if (shop == MarketSmall || shop == MarketLarge) {
             // Native ShopSellDone compares this capacity BEFORE choosing either
             // wallet/Bell bags or its existing savings deposit at 00b1d4e8.
-            Logging.Log("[QoL Enhancements/Shopping Card] SALE_TO_SAVINGS player=%u\n", *player);
+            Logging.Debug("[QoL Enhancements/Shopping Card] SALE_TO_SAVINGS player=%u\n", *player);
             return 0;
         }
         return Orig(player, reservedSlots);
@@ -442,7 +442,7 @@ bool Install() {
     for (const auto &check : checks) {
         if (check.offset + sizeof(check.words) > text.m_Size ||
             std::memcmp(reinterpret_cast<const void *>(Main(check.offset)), check.words.data(), sizeof(check.words))) {
-            Logging.Log("[QoL Enhancements/Shopping Card] DISABLED: instruction mismatch at %lx\n", check.offset);
+            Logging.Error("[QoL Enhancements/Shopping Card] DISABLED: instruction mismatch at %lx\n", check.offset);
             return false;
         }
     }
@@ -459,7 +459,7 @@ bool Install() {
     CatalogDestroyed::InstallAtOffset(catalog::Destroy);
     CashNumberFeedback::InstallAtOffset(address::NumberFeedback);
     installed = true;
-    Logging.Log("[QoL Enhancements/Shopping Card] READY: scoped counter resource budget; combined Bells display; savings -> pocket Bell bags -> wallet in Nook's Cranny/Able Sisters/Nook Shopping\n");
+    Logging.Debug("[QoL Enhancements/Shopping Card] READY: scoped counter resource budget; combined Bells display; savings -> pocket Bell bags -> wallet in Nook's Cranny/Able Sisters/Nook Shopping\n");
     return true;
 }
 } // namespace qol::shopping

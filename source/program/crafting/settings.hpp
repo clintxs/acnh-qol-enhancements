@@ -63,6 +63,7 @@ inline unsigned ApplySettings(std::string_view input, Settings &output) {
 }
 
 unsigned Configure(std::string_view input);
+void ReportSettings();
 bool Install();
 bool InstallFasterCrafting(unsigned maximumSpeed);
 bool InstallCraftingQuantityWrap();

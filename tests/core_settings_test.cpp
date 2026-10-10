@@ -7,6 +7,34 @@ using namespace qol::core;
 int main() {
     Settings settings{};
     assert(settings.amiiboTimeoutFrames == 9000);
+    assert(settings.logging.versions && settings.logging.settings && !settings.logging.debug);
+    for (unsigned flags = 0; flags < 8; ++flags) {
+        Settings parsed{};
+        const bool versions = flags & 1, summaries = flags & 2, debug = flags & 4;
+        const auto config = std::string("log_versions=") + (versions ? "true" : "false") +
+            "\nlog_settings=" + (summaries ? "true" : "false") + "\nlog_debug=" + (debug ? "true" : "false");
+        assert(!ApplyCoreSettings(config, parsed));
+        assert(parsed.logging.versions == versions && parsed.logging.settings == summaries && parsed.logging.debug == debug);
+        assert(qol::logging::Enabled(parsed.logging, qol::logging::Category::Version) == versions);
+        assert(qol::logging::Enabled(parsed.logging, qol::logging::Category::Settings) == summaries);
+        assert(qol::logging::Enabled(parsed.logging, qol::logging::Category::Debug) == debug);
+        assert(qol::logging::Enabled(parsed.logging, qol::logging::Category::Warning));
+        assert(qol::logging::Enabled(parsed.logging, qol::logging::Category::Error));
+        assert(!ApplyCoreSettings("# inherit", parsed));
+        for (const auto *key : {"log_versions", "log_settings", "log_debug"}) {
+            const auto prior = parsed.logging;
+            assert(ApplyCoreSettings(std::string(key) + "=false\n" + key + "=true", parsed) == 1);
+            assert(parsed.logging.versions == prior.versions && parsed.logging.settings == prior.settings && parsed.logging.debug == prior.debug);
+            for (const auto *bad : {"", "TRUE", "0", "yes", "true # comment"}) {
+                assert(ApplyCoreSettings(std::string(key) + "=" + bad, parsed) == 1);
+                assert(parsed.logging.versions == prior.versions && parsed.logging.settings == prior.settings && parsed.logging.debug == prior.debug);
+            }
+        }
+        assert(!ApplyCoreSettings("log_versions=true\nlog_settings=true\nlog_debug=false", parsed));
+        assert(parsed.logging.versions && parsed.logging.settings && !parsed.logging.debug);
+        assert(ApplyCoreSettings("log_debug=true\n\xff", parsed) == 1 && !parsed.logging.debug);
+        assert(ApplyCoreSettings("log_debug=true\n" + std::string(MaxConfigBytes, ' '), parsed) == 1 && !parsed.logging.debug);
+    }
     for (unsigned frames = 0; frames <= MaxAmiiboTimeoutFrames; ++frames) {
         assert(!ApplyCoreSettings("amiibo_timeout_frames=" + std::to_string(frames), settings));
         assert(settings.amiiboTimeoutFrames == frames);

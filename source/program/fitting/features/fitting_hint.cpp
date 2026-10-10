@@ -57,7 +57,8 @@ const char16_t *BagCaption() {
             nn::fs::CloseFile(file);
             if (valid) valid = Messages.Load({MessageFile, static_cast<std::size_t>(size)});
         }
-        Logging.Log("[QoL Enhancements/Fitting Room] HINT_TEXT %s\n", valid ? "loaded" : "English fallback");
+        if (valid) Logging.Debug("[QoL Enhancements/Fitting Room] HINT_TEXT loaded\n");
+        else Logging.Warning("[QoL Enhancements/Fitting Room] HINT_TEXT English fallback; caption file missing or invalid\n");
     }
     const auto locale = Function<unsigned (*)()>(address::GetActiveLocale)();
     const auto *caption = Messages.Text(CaptionKey, locale);
@@ -126,7 +127,7 @@ bool ValidateFittingHint() {
     for (const auto &check : checks) {
         if (check.address + sizeof(check.words) > text.m_Size ||
             std::memcmp(reinterpret_cast<const void *>(Main(check.address)), check.words.data(), sizeof(check.words))) {
-            Logging.Log("[QoL Enhancements/Fitting Room] HINT_DISABLED fingerprint at %lx\n", check.address);
+            Logging.Error("[QoL Enhancements/Fitting Room] HINT_DISABLED fingerprint at %lx\n", check.address);
             return false;
         }
     }
@@ -135,6 +136,6 @@ bool ValidateFittingHint() {
 void InstallFittingHint() {
     AppendBagFooterHint::InstallAtOffset(address::AppendFittingFooter);
     InitializeBagCaption::InstallAtOffset(address::InitializeMessage);
-    Logging.Log("[QoL Enhancements/Fitting Room] HINT_READY Y / Bag\n");
+    Logging.Debug("[QoL Enhancements/Fitting Room] HINT_READY Y / Bag\n");
 }
 } // namespace able_bag

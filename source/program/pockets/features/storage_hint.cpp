@@ -192,7 +192,7 @@ bool InstallStorageHint() {
     for (const auto &check : checks) {
         if (std::memcmp(reinterpret_cast<const void *>(game::MainAddress(check.offset)),
                         check.words.data(), sizeof(check.words)) != 0) {
-            Logging.Log("[QoL Enhancements/Pockets] STORAGE_HINT_DISABLED fingerprint at %lx\n",
+            Logging.Error("[QoL Enhancements/Pockets] STORAGE_HINT_DISABLED fingerprint at %lx\n",
                         check.offset);
             return false;
         }
@@ -204,7 +204,7 @@ bool InstallStorageHint() {
     WithdrawalCaption = {vtable, "0202"};
     ResolveStorageHintCaption::InstallAtOffset(address::ResolveFooterCaptionCall);
     BuildPocketStorageHint::InstallAtOffset(address::BuildPocketFooter);
-    Logging.Log("[QoL Enhancements/Pockets] STORAGE_HINT_READY native Y / Put in Storage\n");
+    Logging.Debug("[QoL Enhancements/Pockets] STORAGE_HINT_READY native Y / Put in Storage\n");
     return true;
 }
 
@@ -213,11 +213,11 @@ bool InstallStorageWithdrawalHint() {
         0x97f1cd9c, 0x360ffe97, 0xf9400ff5, 0x528000a8, 0xb90003e8};
     if (std::memcmp(reinterpret_cast<const void *>(game::MainAddress(address::AppendStorageSelectCall)),
                     expected.data(), sizeof(expected)) != 0) {
-        Logging.Log("[QoL Enhancements/Pockets] WITHDRAWAL_HINT_DISABLED fingerprint mismatch\n");
+        Logging.Error("[QoL Enhancements/Pockets] WITHDRAWAL_HINT_DISABLED fingerprint mismatch\n");
         return false;
     }
     RenameStorageSelectHint::InstallAtOffset(address::AppendStorageSelectCall);
-    Logging.Log("[QoL Enhancements/Pockets] WITHDRAWAL_HINT_READY native A / Move to Pockets\n");
+    Logging.Debug("[QoL Enhancements/Pockets] WITHDRAWAL_HINT_READY native A / Move to Pockets\n");
     return true;
 }
 } // namespace qol_pockets::features

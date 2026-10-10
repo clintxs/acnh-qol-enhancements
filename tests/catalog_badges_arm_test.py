@@ -205,20 +205,16 @@ def main():
             q.u.mem_write(q.badges[0]+0xb0, b'X')
             q.check(shop, ids[0][0], False, False); cases += 1
             q.u.mem_write(q.badges[0]+0xb0, b'T')
-            label = {'Nook': 'Nook', 'Hhp': 'HHP', 'Hotel': 'Hotel'}[shop]
-            assert any(f'CATALOG_TREE_END shop={label}' in log for log in q.logs)
-            assert 'status=2 panes=8 visible=0' in q.logs[-1]
-            traces = sum('CATALOG_TREE_END' in log for log in q.logs)
+            assert not q.logs # Tree and badge diagnostics are quiet by default.
             for pane in q.badges: q.u.mem_write(pane + 0xb0, b'X')
             q.check(shop, ids[0][0], True, False); cases += 1
-            assert 'status=1 panes=0 visible=0' in q.logs[-1]
-            assert sum('CATALOG_TREE_END' in log for log in q.logs) == traces
+            assert not q.logs
             for pane in q.badges: q.u.mem_write(pane + 0xb0, b'T')
             # Missing row structure must not cause a search in the next row.
             icon = int.from_bytes(q.u.mem_read(q.badges[0] + 0x18, 8), 'little')
             q.u.mem_write(icon + 0xb0, b'X')
             q.check(shop, ids[0][0], False, False); cases += 1
-            assert 'lookup=no-row-icon' in q.logs[-1]
+            assert not q.logs
             q.u.mem_write(icon + 0xb0, b'N')
             # Standalone roots and differently named embedded roots use the
             # same structural anchor, without depending on a particular slot.

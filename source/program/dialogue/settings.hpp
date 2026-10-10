@@ -141,5 +141,6 @@ inline unsigned ParseSettings(std::string_view input, Settings &output) {
     return warnings + NormalizeSettings(output);
 }
 unsigned Configure(std::string_view input);
+void ReportSettings();
 bool Install();
 } // namespace qol::dialogue

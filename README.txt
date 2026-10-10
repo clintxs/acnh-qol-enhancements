@@ -358,3 +358,26 @@ Replace Core AND Fitting Room, then fully restart ACNH. The basket now uses
 one picture instead of 70 rectangles. Core supplies the required extra layout
 allocation. Bag capacity, prices, delivery and icon animation are unchanged.
 Please retest adding more than 16 items and scrolling between clothing rows.
+
+CORE LOGGING
+
+Core settings: romfs/qol-enhancements/config/core.ini
+Personal overrides: romfs/qol-enhancements/config/core.custom.ini
+Both files are optional. Core has no enabled/version metadata. Restart after edits.
+
+Defaults:
+  log_versions = true
+  log_settings = true
+  log_debug = false
+
+All three accept true/false. log_versions controls Core and installed module
+version summaries. log_settings controls the final settings after both INI
+layers, including disabled-module preferences and the Faster Dialogue NPC list.
+log_debug enables installation and gameplay diagnostics. Warnings and errors
+are always logged, even with all three switches off. Default output contains
+only versions/settings and warnings/errors; absent optional modules are quiet.
+
+Preferences load after RomFS mounts, so early startup chatter stays suppressed.
+Early startup errors still log. Special dialogue MESSAGE/SELECT tracing needs
+the diagnostic build and log_debug=true in core.custom.ini. Trace limits remain.
+Invalid values inherit; duplicate keys restore the value from before that file.

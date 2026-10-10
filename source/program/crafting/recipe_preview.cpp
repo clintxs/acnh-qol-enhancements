@@ -267,7 +267,7 @@ HOOK_DEFINE_TRAMPOLINE(DrawPreviewContents) {
                 entry.info.load(std::memory_order_relaxed) != info ||
                 entry.view.load(std::memory_order_relaxed) != view) continue;
             if (BackgroundApplied.fetch_add(1, std::memory_order_relaxed) == 0)
-                Logging.Log("[QoL Enhancements/Crafting] DIY preview: HDR background applied for #E5DFC7 target\n");
+                Logging.Debug("[QoL Enhancements/Crafting] DIY preview: HDR background applied for #E5DFC7 target\n");
             color = PreviewBackground.data(); break;
         }
         Orig(renderer, command, view, flags, color, info);
@@ -331,7 +331,7 @@ void PublishCarriers(void *controller) {
             At<unsigned>(actor, field::ItemChildren + i * sizeof(unsigned)) : 0;
         const auto previous = PreviewCarriers[i].exchange(child, std::memory_order_release);
         if (child && child != previous)
-            Logging.Log("[QoL Enhancements/Crafting] DIY preview: mesh carrier published; slot=%u handle=%u\n", i, child);
+            Logging.Debug("[QoL Enhancements/Crafting] DIY preview: mesh carrier published; slot=%u handle=%u\n", i, child);
     }
 }
 void *WorkbenchActor(void *actor) {
@@ -359,7 +359,7 @@ void TraceWorkbenchModel(void *actor) {
     static unsigned count{};
     if (count == seen.size() || std::find(seen.begin(), seen.end(), handle) != seen.end()) return;
     seen[count++] = handle;
-    Logging.Log("[QoL Enhancements/Crafting] workbench tilt: model probe; mode=%u state=%d root=%u pose=%u children=%u\n",
+    Logging.Debug("[QoL Enhancements/Crafting] workbench tilt: model probe; mode=%u state=%d root=%u pose=%u children=%u\n",
                 At<unsigned>(controller, field::ModelMode), At<int>(controller, field::ModelState), handle,
                 At<unsigned>(actor, field::ItemPoseState), At<unsigned>(actor, field::ItemChildCount));
 }
@@ -437,7 +437,7 @@ void ApplyWorkbenchTilt(void *actor) {
         At<std::uint64_t>(component, field::ComponentAngles) = 0;
         At<unsigned>(component, field::ComponentAngles + 8) = 0;
         if (WorkbenchAppliedReports.fetch_add(1, std::memory_order_relaxed) < 4)
-            Logging.Log("[QoL Enhancements/Crafting] workbench tilt: scene applied; root=%u carrier=%u pitch=%08x\n",
+            Logging.Debug("[QoL Enhancements/Crafting] workbench tilt: scene applied; root=%u carrier=%u pitch=%08x\n",
                         At<unsigned>(actor, field::EntityHandle), pose.handle, pose.applied[0]);
     }
 }
@@ -512,7 +512,7 @@ HOOK_DEFINE_TRAMPOLINE(UpdatePreviewActor) {
             auto &pose = CarrierPoses[i];
             if (framing || pose.epoch != epoch || pose.handle != childHandle || pose.component != component) {
                 pose = {epoch, childHandle, component, NativePoseAngles(component)};
-                Logging.Log("[QoL Enhancements/Crafting] DIY preview: native initial pose; item=%u slot=%u xyz=%08x/%08x/%08x\n",
+                Logging.Debug("[QoL Enhancements/Crafting] DIY preview: native initial pose; item=%u slot=%u xyz=%08x/%08x/%08x\n",
                             unsigned(At<std::uint64_t>(actor, field::ItemData) & 0xffff), i,
                             pose.angles[0], pose.angles[1], pose.angles[2]);
             }
@@ -527,7 +527,7 @@ HOOK_DEFINE_TRAMPOLINE(UpdatePreviewActor) {
             applied = true;
         }
         if (applied && !PreviewScenePose.exchange(true, std::memory_order_acq_rel))
-            Logging.Log("[QoL Enhancements/Crafting] DIY preview: primary scene rotation active; handle=%u\n", handle);
+            Logging.Debug("[QoL Enhancements/Crafting] DIY preview: primary scene rotation active; handle=%u\n", handle);
     }
 };
 HOOK_DEFINE_TRAMPOLINE(BuildPreviewMatrix) {
@@ -561,7 +561,7 @@ HOOK_DEFINE_TRAMPOLINE(BuildPreviewMatrix) {
             At<unsigned>(pose.data(), field::ComponentAngles + axis * sizeof(unsigned)) += delta[axis];
         if (PreviewHandle.load(std::memory_order_acquire) != handle) return Orig(component);
         if (MatrixMatches.fetch_add(1, std::memory_order_relaxed) == 0)
-            Logging.Log("[QoL Enhancements/Crafting] DIY preview: drawable matrix matched; entity=%u parent=%u\n",
+            Logging.Debug("[QoL Enhancements/Crafting] DIY preview: drawable matrix matched; entity=%u parent=%u\n",
                         At<unsigned>(owner, field::EntityHandle), At<unsigned>(owner, field::ParentHandle));
         return Orig(pose.data());
     }
@@ -594,14 +594,14 @@ HOOK_DEFINE_TRAMPOLINE(TraceModelTransform) {
         if (TransformAttempts.fetch_add(1, std::memory_order_relaxed) >= 8) return;
         auto storage = *Native<void **>(address::EntityManager);
         auto manager = storage ? At<void *>(storage) : nullptr;
-        Logging.Log("[QoL Enhancements/Crafting] DIY preview: native transform; flags=%u->%u ready=%u entity_phase=%d entity_stage=%u\n",
+        Logging.Debug("[QoL Enhancements/Crafting] DIY preview: native transform; flags=%u->%u ready=%u entity_phase=%d entity_stage=%u\n",
                     unsigned(before), unsigned(after), At<unsigned char>(controller, field::ModelReady),
                     manager ? At<int>(manager, field::EntityPhase) : -99,
                     manager ? At<unsigned>(manager, field::EntityStage) : 0xffffffffu);
     }
 };
 void ReportRendererTrace() {
-    Logging.Log("[QoL Enhancements/Crafting] DIY preview: render trace; native_updates=%u pending_attempts=%u applied=%u layer_draws=%u matched_layers=%u matrices=%u matched_matrices=%u backgrounds=%u\n",
+    Logging.Debug("[QoL Enhancements/Crafting] DIY preview: render trace; native_updates=%u pending_attempts=%u applied=%u layer_draws=%u matched_layers=%u matrices=%u matched_matrices=%u backgrounds=%u\n",
                 TransformCalls.load(std::memory_order_relaxed), TransformAttempts.load(std::memory_order_relaxed),
                 TransformApplied.load(std::memory_order_relaxed), ClearCalls.load(std::memory_order_relaxed),
                 ClearMatches.load(std::memory_order_relaxed), MatrixCalls.load(std::memory_order_relaxed),
@@ -641,7 +641,7 @@ const void *WithSurface(const void *resource) {
     }
     if (result == resource && free && recipe_layout::AddSurface({input, size}, free->bytes)) {
         free->hash = hash; free->inputSize = size; result = free->bytes.data();
-        Logging.Log("[QoL Enhancements/Crafting] DIY preview: capture surface added to loaded MenuRecipe\n");
+        Logging.Debug("[QoL Enhancements/Crafting] DIY preview: capture surface added to loaded MenuRecipe\n");
     }
     ResourceLock.clear(std::memory_order_release);
     return result;
@@ -773,7 +773,7 @@ void Close(Session &s) {
     Visible(s.capture, false);
     s.controller = s.parameters = nullptr; s.ownsRenderer = false;
     s.phase = Phase::DrainBack;
-    Logging.Log("[QoL Enhancements/Crafting] DIY preview: grid restored; renderer released\n");
+    Logging.Debug("[QoL Enhancements/Crafting] DIY preview: grid restored; renderer released\n");
 }
 bool QueuePreview(Session &s) {
     const auto count = At<unsigned>(s.phone, field::Recipes);
@@ -783,13 +783,13 @@ bool QueuePreview(Session &s) {
     if (!PhoneReady(s.phone) || !recipeRow || selected >= count || count > 4096 || !recipes || !recipes[selected] ||
         At<std::uint16_t>(recipes[selected], 8) >= 0xfffe || !s.surface || !s.gridPane) {
         if (s.rejectedPresses++ < 8)
-            Logging.Log("[QoL Enhancements/Crafting] DIY preview: A declined; recipe_row=%u selected=%u count=%u surface=%p grid=%p input_row=%d\n",
+            Logging.Debug("[QoL Enhancements/Crafting] DIY preview: A declined; recipe_row=%u selected=%u count=%u surface=%p grid=%p input_row=%d\n",
                         unsigned(recipeRow), selected, count, s.surface, s.gridPane, s.inputRow);
         return false;
     }
     s.item = At<std::uint64_t>(recipes[selected], 8);
     s.phase = Phase::Queued;
-    Logging.Log("[QoL Enhancements/Crafting] DIY preview: A queued from input; recipe_index=%u item=%u\n", selected, unsigned(s.item & 0xffff));
+    Logging.Debug("[QoL Enhancements/Crafting] DIY preview: A queued from input; recipe_index=%u item=%u\n", selected, unsigned(s.item & 0xffff));
     return true;
 }
 unsigned ObserveFocus(void *layout) {
@@ -836,7 +836,7 @@ HOOK_DEFINE_TRAMPOLINE(BindPhoneRecipes) {
         if (s.cursorPane) s.cursorFlags = At<unsigned char>(s.cursorPane, field::PaneFlags);
         s.inputRow = ShortcutInputRow(s.layout);
         const auto focusBindings = ObserveFocus(s.layout);
-        Logging.Log("[QoL Enhancements/Crafting] DIY preview: app bound; surface=%p grid=%p input_row=%d focus_bindings=%u\n",
+        Logging.Debug("[QoL Enhancements/Crafting] DIY preview: app bound; surface=%p grid=%p input_row=%d focus_bindings=%u\n",
                     s.surface, s.gridPane, s.inputRow, focusBindings);
     }
 };
@@ -867,7 +867,7 @@ bool WorkbenchTiltInput(void *page, void *snapshot, unsigned blocked) {
             auto row = rows + i * 0x48;
             if (!StickAxis(At<float>(row, field::RightStick + 4))) continue;
             probes[probeCount++] = {pageClass, mode};
-            Logging.Log("[QoL Enhancements/Crafting] workbench tilt: input probe; page=main+%lx mode=%u state=%d handle=%u flags=%u row=%u y=%d consumed=%u blocked=%u\n",
+            Logging.Debug("[QoL Enhancements/Crafting] workbench tilt: input probe; page=main+%lx mode=%u state=%d handle=%u flags=%u row=%u y=%d consumed=%u blocked=%u\n",
                         pageClass - Main, mode, At<int>(controller, field::ModelState),
                         At<unsigned>(controller, field::ModelHandle), At<unsigned char>(controller, field::ModelFlags),
                         i, int(At<float>(row, field::RightStick + 4) * 1000), At<unsigned>(row, field::ConsumedAxes), blocked);
@@ -902,7 +902,7 @@ bool WorkbenchTiltInput(void *page, void *snapshot, unsigned blocked) {
     Session inputScope{}; inputScope.layout = page;
     const bool inputBlocked = InputBlocked(inputScope, blocked);
     if (bindingChanged)
-        Logging.Log("[QoL Enhancements/Crafting] workbench tilt: bound; mode=%u handle=%u row=%u flags=%u blocked=%u\n",
+        Logging.Debug("[QoL Enhancements/Crafting] workbench tilt: bound; mode=%u handle=%u row=%u flags=%u blocked=%u\n",
                     mode, handle, rowIndex, At<unsigned char>(controller, field::ModelFlags), unsigned(inputBlocked));
     if (!handle || !snapshot || rowIndex >= 8 || inputBlocked ||
         (At<unsigned char>(controller, field::ModelFlags) & MaterialPending)) return false;
@@ -915,7 +915,7 @@ bool WorkbenchTiltInput(void *page, void *snapshot, unsigned blocked) {
     state.tilt = std::clamp(state.tilt - y * DegreesPerUpdate, -MaximumTilt, MaximumTilt);
     WorkbenchTiltAngle.store(static_cast<unsigned>(static_cast<std::int32_t>(state.tilt * AngleUnitsPerDegree)), std::memory_order_release);
     if (y && state.rotationReports++ < 4)
-        Logging.Log("[QoL Enhancements/Crafting] workbench tilt: input; row=%u pitch=%08x handle=%u\n",
+        Logging.Debug("[QoL Enhancements/Crafting] workbench tilt: input; row=%u pitch=%08x handle=%u\n",
                     rowIndex, WorkbenchTiltAngle.load(std::memory_order_relaxed), handle);
     // Leave native dispatch and X intact: horizontal rotation, scroll, A/B,
     // recipe switching and crafting remain owned by the workbench.
@@ -943,7 +943,7 @@ void RotatePreview(Session &s) {
     s.tilt = tilt;
     PublishPose(s.controller);
     if (s.rotationReports++ < 4)
-        Logging.Log("[QoL Enhancements/Crafting] DIY preview: rotation queued; yaw=%08x pitch=%08x ready=%u flags=%u\n",
+        Logging.Debug("[QoL Enhancements/Crafting] DIY preview: rotation queued; yaw=%08x pitch=%08x ready=%u flags=%u\n",
                     angles[1], angles[0], At<unsigned char>(s.controller, field::ModelReady),
                     At<unsigned char>(s.controller, field::ModelFlags));
 }
@@ -1042,7 +1042,7 @@ void NavigatePreview(Session &s) {
     struct { std::uint64_t item; std::uint16_t recipe{0xfffe}, padding{}; } request{item};
     Native<void (*)(void *, const void *)>(address::ChangeItemModel)(s.controller, &request);
     Visible(s.gridPane, false); Visible(s.scrollPane, false); Visible(s.cursorPane, false);
-    Logging.Log("[QoL Enhancements/Crafting] DIY preview: navigated; recipe_index=%u count=%u item=%u fixed=%u\n",
+    Logging.Debug("[QoL Enhancements/Crafting] DIY preview: navigated; recipe_index=%u count=%u item=%u fixed=%u\n",
                 selected, count, unsigned(item & 0xffff), unsigned(s.fixedPose));
 }
 bool PreviewInput(void *layout, void *snapshot, unsigned blocked) {
@@ -1062,7 +1062,7 @@ bool PreviewInput(void *layout, void *snapshot, unsigned blocked) {
         if (s.phase == Phase::Idle) {
             if (!confirmPress) return false;
             if (s.inputReports++ < 8)
-                Logging.Log("[QoL Enhancements/Crafting] DIY preview: A input; state=%d pending=%d/%d focus=%p blocked=%u consumed=%x\n",
+                Logging.Debug("[QoL Enhancements/Crafting] DIY preview: A input; state=%d pending=%d/%d focus=%p blocked=%u consumed=%x\n",
                             At<int>(s.phone, field::State), At<int>(s.phone, field::Requests), At<int>(s.phone, field::Requests + 4),
                             s.focusedRow, unsigned(InputBlocked(s, blocked)), At<unsigned>(row, 0x3c));
             if (InputBlocked(s, blocked) || (At<unsigned>(row, 0x3c) & ConfirmMask) || !QueuePreview(s)) return false;
@@ -1101,7 +1101,7 @@ bool PreviewInput(void *layout, void *snapshot, unsigned blocked) {
             const auto x = StickAxis(At<float>(row, field::RightStick));
             const auto y = StickAxis(At<float>(row, field::RightStick + 4));
             if ((x != 0 || y != 0) && s.stickReports++ < 4)
-                Logging.Log("[QoL Enhancements/Crafting] DIY preview: right-stick snapshot; row=%d x=%08x y=%08x consumed=%x blocked=%u\n",
+                Logging.Debug("[QoL Enhancements/Crafting] DIY preview: right-stick snapshot; row=%d x=%08x y=%08x consumed=%x blocked=%u\n",
                             s.inputRow, At<unsigned>(row, field::RightStick), At<unsigned>(row, field::RightStick + 4),
                             At<unsigned>(row, field::ConsumedAxes), unsigned(inputBlocked));
             if (inputBlocked) s.stickX = s.stickY = 0;
@@ -1127,7 +1127,7 @@ bool Begin(Session &s) {
     auto controller = context ? At<void *>(context, field::Controller) : nullptr;
     auto parameters = context ? At<void *>(context, field::Parameters) : nullptr;
     if (!controller || !parameters) {
-        Logging.Log("[QoL Enhancements/Crafting] DIY preview: missing renderer; context=%p controller=%p parameters=%p\n",
+        Logging.Debug("[QoL Enhancements/Crafting] DIY preview: missing renderer; context=%p controller=%p parameters=%p\n",
                     context, controller, parameters);
         return false;
     }
@@ -1136,7 +1136,7 @@ bool Begin(Session &s) {
     const bool available = (mode == -1 && state == 0) || (mode == PhoneModelMode && state == PhoneModelState);
     if (!available || At<unsigned>(controller, field::ModelHandle) ||
         At<void *>(controller, field::BackgroundPage) || At<void *>(controller, field::VisibilityPage)) {
-        Logging.Log("[QoL Enhancements/Crafting] DIY preview: renderer refused; mode=%d state=%d handle=%u background=%p visibility=%p\n",
+        Logging.Debug("[QoL Enhancements/Crafting] DIY preview: renderer refused; mode=%d state=%d handle=%u background=%p visibility=%p\n",
                     mode, state, At<unsigned>(controller, field::ModelHandle),
                     At<void *>(controller, field::BackgroundPage), At<void *>(controller, field::VisibilityPage));
         return false;
@@ -1169,14 +1169,14 @@ bool Begin(Session &s) {
     PreviewFixedPose.store(s.fixedPose, std::memory_order_release);
     PreviewRequestedFixedPose.store(s.fixedPose, std::memory_order_release);
     PreviewController.store(controller, std::memory_order_release);
-    Logging.Log("[QoL Enhancements/Crafting] DIY preview: native fixed pose=%u item=%u\n",
+    Logging.Debug("[QoL Enhancements/Crafting] DIY preview: native fixed pose=%u item=%u\n",
                 unsigned(s.fixedPose), unsigned(s.item & 0xffff));
     const auto color = ItemLayerClearColor();
     PreviewClearColor.store(color, std::memory_order_release);
-    Logging.Log("[QoL Enhancements/Crafting] DIY preview: background #E5DFC7; layer_color=%p\n", color);
+    Logging.Debug("[QoL Enhancements/Crafting] DIY preview: background #E5DFC7; layer_color=%p\n", color);
     Native<void (*)(void *, unsigned)>(address::ChangeState)(static_cast<std::byte *>(controller) + 8, 1);
     s.phase = Phase::Starting;
-    Logging.Log("[QoL Enhancements/Crafting] DIY preview: renderer acquired; previous_mode=%d previous_state=%d\n", mode, state);
+    Logging.Debug("[QoL Enhancements/Crafting] DIY preview: renderer acquired; previous_mode=%d previous_state=%d\n", mode, state);
     return true;
 }
 HOOK_DEFINE_TRAMPOLINE(UpdatePhoneRecipes) {
@@ -1188,7 +1188,7 @@ HOOK_DEFINE_TRAMPOLINE(UpdatePhoneRecipes) {
         auto s = ForPhone(phone); if (!s) return;
         if (s->phase == Phase::Closing) { Close(*s); return; }
         if (s->phase == Phase::Queued) {
-            if (!Begin(*s)) { s->phase = Phase::Idle; Logging.Log("[QoL Enhancements/Crafting] DIY preview: renderer busy/unavailable; grid retained\n"); }
+            if (!Begin(*s)) { s->phase = Phase::Idle; Logging.Debug("[QoL Enhancements/Crafting] DIY preview: renderer busy/unavailable; grid retained\n"); }
             return;
         }
         if (s->phase == Phase::Showing) {
@@ -1198,7 +1198,7 @@ HOOK_DEFINE_TRAMPOLINE(UpdatePhoneRecipes) {
         }
         if (s->phase == Phase::Showing && ++s->frames == 30) {
             ReportRendererTrace();
-            Logging.Log("[QoL Enhancements/Crafting] DIY preview: renderer status; handle=%u flags=%u state=%d\n",
+            Logging.Debug("[QoL Enhancements/Crafting] DIY preview: renderer status; handle=%u flags=%u state=%d\n",
                         At<unsigned>(s->controller, field::ModelHandle),
                         At<unsigned char>(s->controller, 0x74), At<int>(s->controller, 0x10));
         }
@@ -1222,8 +1222,8 @@ HOOK_DEFINE_TRAMPOLINE(UpdatePhoneRecipes) {
         Visible(s->gridPane, false); Visible(s->scrollPane, false); Visible(s->cursorPane, false);
         Visible(s->capture, true); Visible(s->surface, true); s->phase = Phase::Showing;
         if (recipe_banner::Place(s->hotelBanner, s->surface))
-            Logging.Log("[QoL Enhancements/Crafting] DIY preview: Hotel banner over preview bottom-right\n");
-        Logging.Log("[QoL Enhancements/Crafting] DIY preview: item model created; handle=%u\n", At<unsigned>(s->controller, field::ModelHandle));
+            Logging.Debug("[QoL Enhancements/Crafting] DIY preview: Hotel banner over preview bottom-right\n");
+        Logging.Debug("[QoL Enhancements/Crafting] DIY preview: item model created; handle=%u\n", At<unsigned>(s->controller, field::ModelHandle));
     }
 };
 HOOK_DEFINE_TRAMPOLINE(DeactivatePhoneRecipes) {
@@ -1291,27 +1291,27 @@ bool InstallRecipePreview() {
     const auto &main = exl::util::GetMainModuleInfo();
     for (const auto &f : fingerprints) if (f.offset + sizeof(f.words) > main.m_Text.m_Size ||
         std::memcmp(reinterpret_cast<const void *>(main.m_Text.m_Start + f.offset), f.words, sizeof(f.words))) {
-        Logging.Log("[QoL Enhancements/Crafting] DIY preview: DISABLED; instruction mismatch at main+0x%lx\n", f.offset); return false;
+        Logging.Error("[QoL Enhancements/Crafting] DIY preview: DISABLED; instruction mismatch at main+0x%lx\n", f.offset); return false;
     }
     Main = main.m_Text.m_Start;
     const auto modeSlot = Main + address::PhoneRendererModeSlot;
     if (!main.m_Data.InRange(modeSlot) || !main.m_Data.InRange(modeSlot + sizeof(std::uintptr_t) - 1) ||
         *reinterpret_cast<const std::uintptr_t *>(modeSlot) != Main + address::PhoneRendererMode) {
-        Logging.Log("[QoL Enhancements/Crafting] DIY preview: DISABLED; renderer mode slot mismatch\n");
+        Logging.Error("[QoL Enhancements/Crafting] DIY preview: DISABLED; renderer mode slot mismatch\n");
         return false;
     }
     // Pockets may already own the shared trampoline. Its manager validates
     // pristine instructions on first registration and reuses that owned hook;
     // checking the original bytes again here would reject our own Pockets patch.
     if (!core::RegisterPageInput(PreviewInput)) {
-        Logging.Log("[QoL Enhancements/Crafting] DIY preview: DISABLED; shared page input unavailable\n");
+        Logging.Error("[QoL Enhancements/Crafting] DIY preview: DISABLED; shared page input unavailable\n");
         return false;
     }
     auto slot = reinterpret_cast<volatile std::uintptr_t *>(modeSlot);
     const auto replacement = reinterpret_cast<std::uintptr_t>(&PhoneRendererMode);
     *slot = replacement;
     if (*slot != replacement) {
-        Logging.Log("[QoL Enhancements/Crafting] DIY preview: DISABLED; renderer mode slot write failed\n");
+        Logging.Error("[QoL Enhancements/Crafting] DIY preview: DISABLED; renderer mode slot write failed\n");
         return false;
     }
     BuildRecipeLayout::InstallAtOffset(address::BuildLayout);
@@ -1326,7 +1326,7 @@ bool InstallRecipePreview() {
     BuildPreviewMatrix::InstallAtOffset(address::BuildModelMatrix);
     DrawPreviewContents::InstallAtOffset(address::DrawLayerContents);
     DiyHooksInstalled = true;
-    Logging.Log("[QoL Enhancements/Crafting] DIY preview: READY; native starting poses; primary scene rotation; horizontal recipe navigation; A opens, B returns\n");
+    Logging.Debug("[QoL Enhancements/Crafting] DIY preview: READY; native starting poses; primary scene rotation; horizontal recipe navigation; A opens, B returns\n");
     return true;
 }
 bool InstallWorkbenchPreviewTilt() {
@@ -1347,7 +1347,7 @@ bool InstallWorkbenchPreviewTilt() {
             (f.offset == address::BuildModelMatrix && DiyHooksInstalled)) continue;
         if (f.offset + sizeof(f.words) > main.m_Text.m_Size ||
             std::memcmp(reinterpret_cast<const void *>(main.m_Text.m_Start + f.offset), f.words, sizeof(f.words))) {
-            Logging.Log("[QoL Enhancements/Crafting] workbench tilt: DISABLED; instruction mismatch at main+0x%lx\n", f.offset);
+            Logging.Error("[QoL Enhancements/Crafting] workbench tilt: DISABLED; instruction mismatch at main+0x%lx\n", f.offset);
             return false;
         }
     }
@@ -1356,7 +1356,7 @@ bool InstallWorkbenchPreviewTilt() {
     WorkbenchTiltEnabled.store(true, std::memory_order_release);
     if (!ActorHookInstalled) UpdatePreviewActor::InstallAtOffset(address::UpdateItemActor);
     ActorHookInstalled = true;
-    Logging.Log("[QoL Enhancements/Crafting] workbench tilt: READY; native-selected item profile; input binding probes; right-stick up/down\n");
+    Logging.Debug("[QoL Enhancements/Crafting] workbench tilt: READY; native-selected item profile; input binding probes; right-stick up/down\n");
     return true;
 }
 

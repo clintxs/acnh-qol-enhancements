@@ -158,7 +158,7 @@ Preflight CanAdd(std::uintptr_t owner, const Item &item) {
     // Deliberately do not assume payment frees Bell/ticket pocket slots. Those
     // optimizations are deferred until checkout itself is implemented.
     const bool fits = Fits(storage, pockets, oldClothes, purchaseCount, extras);
-    Logging.Log("[QoL Enhancements/Fitting Room] CAPACITY storage=%u pockets=%u old=%d purchases=%d extras=%u fits=%d\n",
+    Logging.Debug("[QoL Enhancements/Fitting Room] CAPACITY storage=%u pockets=%u old=%d purchases=%d extras=%u fits=%d\n",
                 storage, pockets, oldClothes, purchaseCount, extras, fits);
     return fits ? Preflight::Ready : Preflight::NoSpace;
 }
@@ -179,7 +179,7 @@ int ItemPrice(const Item &item) {
 
 // Build an immutable, bounded list while the transaction is still read-only.
 Preflight InvalidPreflight(unsigned line) {
-    Logging.Log("[QoL Enhancements/Fitting Room] PREFLIGHT_INVALID line=%u\n", line);
+    Logging.Error("[QoL Enhancements/Fitting Room] PREFLIGHT_INVALID line=%u\n", line);
     return Preflight::Invalid;
 }
 Preflight PreparePurchase(std::uintptr_t owner) {
@@ -229,7 +229,7 @@ Preflight PreparePurchase(std::uintptr_t owner) {
     if (storage > 20000 || pockets > 40) return InvalidPreflight(__LINE__);
     const unsigned reserve = purchase.sendCount > purchase.wearCount ? purchase.sendCount : purchase.wearCount;
     const bool fits = reserve <= storage + pockets;
-    Logging.Log("[QoL Enhancements/Fitting Room] PREFLIGHT send=%u wear=%u storage=%u pockets=%u fits=%d\n",
+    Logging.Debug("[QoL Enhancements/Fitting Room] PREFLIGHT send=%u wear=%u storage=%u pockets=%u fits=%d\n",
                 purchase.sendCount, purchase.wearCount, storage, pockets, fits);
     return fits ? Preflight::Ready : Preflight::NoSpace;
 }
@@ -319,7 +319,7 @@ void UpdateBadge(std::uintptr_t row, const Item *item) {
     static unsigned reports{};
     if (reports < 48) {
         ++reports;
-        Logging.Log("[QoL Enhancements/Fitting Room] BADGE item=%u visible=%d found=%d\n", item ? item->id : 65535, visible, pane != 0);
+        Logging.Debug("[QoL Enhancements/Fitting Room] BADGE item=%u visible=%d found=%d\n", item ? item->id : 65535, visible, pane != 0);
     }
 }
 int RowLogicalIndex(std::uintptr_t list, int row) {
@@ -437,7 +437,7 @@ void HandleInput(std::uintptr_t page, std::uintptr_t snapshot, unsigned blocked)
     const auto masks = app ? At<std::uintptr_t>(app, 0x418) : 0;
     static unsigned inputReports{};
     if (pressed && inputReports++ < 64) {
-        Logging.Log("[QoL Enhancements/Fitting Room] INPUT state=%d command=%d focus=%d held=%x consumed=%x blocked=%u\n",
+        Logging.Debug("[QoL Enhancements/Fitting Room] INPUT state=%d command=%d focus=%d held=%x consumed=%x blocked=%u\n",
                     At<int>(owner, field::State), At<int>(owner, field::Command), session.focus,
                     buttons, At<unsigned>(record, 0x3c), blocked);
     }
@@ -468,7 +468,7 @@ void HandleInput(std::uintptr_t page, std::uintptr_t snapshot, unsigned blocked)
     session.notice = result == ToggleResult::Full ? "No room in storage/pockets" :
                      result == ToggleResult::Invalid ? "Cannot add this item" : "Y: Add/remove bag (test)";
     session.dirty = true;
-    Logging.Log("[QoL Enhancements/Fitting Room] TOGGLE item=%u extra=%x result=%u count=%u price=%d\n",
+    Logging.Debug("[QoL Enhancements/Fitting Room] TOGGLE item=%u extra=%x result=%u count=%u price=%d\n",
                 item.id, item.extra, unsigned(result), session.bag.count, price);
 }
 void Input(std::uintptr_t page, std::uintptr_t snapshot, unsigned blocked) {
@@ -558,7 +558,7 @@ HOOK_DEFINE_TRAMPOLINE(Begin) {
         session = {}; purchase = {}; motions = {}; nextMotion = 0; session.owner = owner;
         Orig(owner);
         session.dirty = true;
-        Logging.Log("[QoL Enhancements/Fitting Room] SESSION_BEGIN player=%u\n", At<std::uint8_t>(owner, field::Player));
+        Logging.Debug("[QoL Enhancements/Fitting Room] SESSION_BEGIN player=%u\n", At<std::uint8_t>(owner, field::Player));
     }
 };
 HOOK_DEFINE_TRAMPOLINE(Destroy) {
@@ -613,7 +613,7 @@ HOOK_DEFINE_TRAMPOLINE(Collect) {
         list->capacity = DeliveryLimit;
         list->count = count;
         list->free = list->tail = nullptr;
-        Logging.Log("[QoL Enhancements/Fitting Room] COMMIT_LIST wear=%u count=%u\n", wear & 1, count);
+        Logging.Debug("[QoL Enhancements/Fitting Room] COMMIT_LIST wear=%u count=%u\n", wear & 1, count);
     }
 };
 HOOK_DEFINE_TRAMPOLINE(PurchaseRecord) {
@@ -626,7 +626,7 @@ HOOK_DEFINE_TRAMPOLINE(PurchaseRecord) {
         std::memcpy(bounded, reinterpret_cast<const void *>(record), sizeof(bounded));
         At<unsigned>(reinterpret_cast<std::uintptr_t>(bounded), 0xc) = 16;
         Orig(recorder, reinterpret_cast<std::uintptr_t>(bounded));
-        Logging.Log("[QoL Enhancements/Fitting Room] RECORD_PREVIEW items=%u details=16\n", purchase.sendCount);
+        Logging.Debug("[QoL Enhancements/Fitting Room] RECORD_PREVIEW items=%u details=16\n", purchase.sendCount);
     }
 };
 HOOK_DEFINE_TRAMPOLINE(GrossPrice) {
@@ -682,7 +682,7 @@ HOOK_DEFINE_TRAMPOLINE(Play) {
             const auto active = At<std::uint8_t>(owner, 0x200);
             if (active <= 1 && At<int>(owner, 0x1f0 + active * 4) == -1)
                 At<int>(owner, 0x1f0 + active * 4) = 4;
-            Logging.Log("[QoL Enhancements/Fitting Room] CONFIRM total=%d wallet=%u\n", total, wallet);
+            Logging.Debug("[QoL Enhancements/Fitting Room] CONFIRM total=%d wallet=%u\n", total, wallet);
             return;
         }
         Orig(owner);
@@ -700,19 +700,19 @@ HOOK_DEFINE_TRAMPOLINE(Checkout) {
         const auto result = PreparePurchase(owner);
         const int total = Fn<PriceFn>(address::Price)(owner + field::PriceState);
         if (result != Preflight::Ready || total < 0 || unsigned(total) > Wallet(owner)) {
-            Logging.Log("[QoL Enhancements/Fitting Room] COMMIT_REJECTED result=%u total=%d\n", unsigned(result), total);
+            Logging.Debug("[QoL Enhancements/Fitting Room] COMMIT_REJECTED result=%u total=%d\n", unsigned(result), total);
             return;
         }
         At<int>(owner, field::NativeTotal) = total;
         purchase.active = true;
-        Logging.Log("[QoL Enhancements/Fitting Room] COMMIT_BEGIN wear=%u total=%d\n", wear & 1, total);
+        Logging.Debug("[QoL Enhancements/Fitting Room] COMMIT_BEGIN wear=%u total=%d\n", wear & 1, total);
         // Native code performs payment, ticket use, storage/pocket delivery,
         // clothing swap, result dialog routing, purchase records and milestones.
         Orig(owner, wear);
         purchase.active = false;
         purchase.done = true;
         session.bag.Clear(); session.dirty = false;
-        Logging.Log("[QoL Enhancements/Fitting Room] COMMIT_RETURNED\n");
+        Logging.Debug("[QoL Enhancements/Fitting Room] COMMIT_RETURNED\n");
     }
 };
 } // namespace
@@ -743,10 +743,10 @@ bool Install() {
     const auto replacement = reinterpret_cast<std::uintptr_t>(&Input);
     *inputSlot = replacement;
     if (*inputSlot != replacement) {
-        Logging.Log("[QoL Enhancements/Fitting Room] INPUT_HOOK_FAILED readback\n");
+        Logging.Error("[QoL Enhancements/Fitting Room] INPUT_HOOK_FAILED readback\n");
         return false;
     }
-    Logging.Log("[QoL Enhancements/Fitting Room] INPUT_HOOK_OK writable-data readback\n");
+    Logging.Debug("[QoL Enhancements/Fitting Room] INPUT_HOOK_OK writable-data readback\n");
     originalInput = Fn<InputFn>(address::OriginalInput);
     At<std::uintptr_t>(dialogSlot) = reinterpret_cast<std::uintptr_t>(&WearChoiceInput);
     InstallFittingHint();

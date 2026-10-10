@@ -204,7 +204,7 @@ bool QuantityShortcutInput(void *page, void *snapshot, unsigned blocked) {
         Field<unsigned char>(sequence, layout::FooterFlags) |= 4;
         Field<int>(sequence, layout::Pending + slot * 4) = QuantityState;
         Field<unsigned>(row, 0x3c) |= YMask;
-        Logging.Log("[QoL Enhancements/Crafting] quantity shortcut: open; recipe=%d resident=%u\n",
+        Logging.Debug("[QoL Enhancements/Crafting] quantity shortcut: open; recipe=%d resident=%u\n",
                     Field<int>(sequence, layout::Recipe), resident);
         return true;
     }
@@ -223,7 +223,7 @@ bool InstallCraftingQuantityShortcut() {
     };
     Main = exl::util::GetMainModuleInfo().m_Text.m_Start;
     for (const auto &check : checks) if (std::memcmp(reinterpret_cast<const void *>(Main + check.offset), check.words, sizeof(check.words))) {
-        Logging.Log("[QoL Enhancements/Crafting] quantity shortcut: DISABLED fingerprint at %lx\n", check.offset);
+        Logging.Error("[QoL Enhancements/Crafting] quantity shortcut: DISABLED fingerprint at %lx\n", check.offset);
         return false;
     }
     if (!core::RegisterPageInput(QuantityShortcutInput)) return false;
@@ -233,7 +233,7 @@ bool InstallCraftingQuantityShortcut() {
     LeaveQuantityShortcutPreview::InstallAtOffset(address::LeavePreview);
     BuildQuantityShortcutHint::InstallAtOffset(address::BuildFooter);
     ResolveQuantityShortcutCaption::InstallAtOffset(address::ResolveCaption);
-    Logging.Log("[QoL Enhancements/Crafting] quantity shortcut: READY; workbench preview Y / Set quantity; X / Favorite\n");
+    Logging.Debug("[QoL Enhancements/Crafting] quantity shortcut: READY; workbench preview Y / Set quantity; X / Favorite\n");
     return true;
 }
 } // namespace qol::crafting

@@ -260,7 +260,7 @@ bool TracePress(void *page, void *inputSnapshot) {
         return false;
     }
     ++reports;
-    Logging.Log("[QoL Enhancements/Pockets] QUICK_STORE_TRACE press=%u Y_rows=%x\n", reports,
+    Logging.Debug("[QoL Enhancements/Pockets] QUICK_STORE_TRACE press=%u Y_rows=%x\n", reports,
                 isYDown);
     return true;
 }
@@ -296,7 +296,7 @@ bool NativeMenuAllowsStorage(void *pocket, int slot, bool trace) {
     game::FunctionAt<void (*)(void *, MenuDescription *)>(address::BuildMenu)(pocket, &description);
     selected = previous;
     if (trace) {
-        Logging.Log("[QoL Enhancements/Pockets] QUICK_STORE_TRACE built rows=%d error=%d\n",
+        Logging.Debug("[QoL Enhancements/Pockets] QUICK_STORE_TRACE built rows=%d error=%d\n",
                     description.count, description.error);
     }
     eligibilityReason = "menu-row-count";
@@ -307,7 +307,7 @@ bool NativeMenuAllowsStorage(void *pocket, int slot, bool trace) {
     for (int i = 0; i < description.count; ++i) {
         const auto &row = description.rows[i];
         if (trace) {
-            Logging.Log("[QoL Enhancements/Pockets] QUICK_STORE_TRACE row=%d action=%d flags=%x "
+            Logging.Debug("[QoL Enhancements/Pockets] QUICK_STORE_TRACE row=%d action=%d flags=%x "
                         "extra=%x callback_vt=%lx fields=%lx,%lx,%lx\n",
                         i, row.action, row.flags, row.extra,
                         description.callbacks[i].vtable - game::MainAddress(0),
@@ -423,7 +423,7 @@ int FindFocusedItemSlot(void *page, int row) {
 // Diagnostics are observational; keep them separate from input/eligibility.
 void TracePocketBinding(void *page, void *owner, void *backButtonInput) {
 
-    Logging.Log("[QoL Enhancements/Pockets] QUICK_STORE_TRACE binding owner=%lx cols=%d rows=%d "
+    Logging.Debug("[QoL Enhancements/Pockets] QUICK_STORE_TRACE binding owner=%lx cols=%d rows=%d "
                 "unit=%lx button=%d input_row=%d\n",
                 reinterpret_cast<std::uintptr_t>(owner),
                 Field<int>(page, layout::BindingColumnCount),
@@ -434,14 +434,14 @@ void TracePocketBinding(void *page, void *owner, void *backButtonInput) {
     auto *first = Field<void *>(page, layout::InputBindings);
     if (!owner && first && Field<int>(page, layout::BindingColumnCount) > 0 &&
         Field<int>(page, layout::BindingRowCount) > 0) {
-        Logging.Log(
+        Logging.Debug(
             "[QoL Enhancements/Pockets] QUICK_STORE_TRACE first_binding vt=%lx fn=%lx adjust=%lx\n",
             Field<std::uintptr_t>(first, 0) - game::MainAddress(0),
             Field<std::uintptr_t>(first, layout::BindingFunction) - game::MainAddress(0),
             Field<std::uintptr_t>(first, layout::BindingAdjustment));
     }
     if (owner) {
-        Logging.Log("[QoL Enhancements/Pockets] QUICK_STORE_TRACE pocket state=%d mode=%d phase=%u "
+        Logging.Debug("[QoL Enhancements/Pockets] QUICK_STORE_TRACE pocket state=%d mode=%d phase=%u "
                     "queues=%d,%d equipped_slot=%d selected_mask=%lx blocked_mask=%lx error=%d "
                     "hover=%d logical=%x\n",
                     Field<int>(owner, layout::CurrentState), Field<int>(owner, layout::PocketMode),
@@ -501,7 +501,7 @@ void HandleQuickStoreInput(void *page, void *inputSnapshot, unsigned blocked) {
     auto *globalInputMasks =
         application ? Field<void *>(application, layout::GlobalInputMasks) : nullptr;
     if (trace) {
-        Logging.Log(
+        Logging.Debug(
             "[QoL Enhancements/Pockets] QUICK_STORE_TRACE input fresh=%u held=%x consumed=%x "
             "parent=%u local=%u global=%x mask=%x pending=%u\n",
             unsigned(isNewYPress), buttons, Field<unsigned>(inputRow, layout::ConsumedButtons),
@@ -520,16 +520,16 @@ void HandleQuickStoreInput(void *page, void *inputSnapshot, unsigned blocked) {
     }
     const int slot = FindFocusedItemSlot(page, row);
     if (trace) {
-        Logging.Log("[QoL Enhancements/Pockets] QUICK_STORE_TRACE focused_slot=%d\n", slot);
+        Logging.Debug("[QoL Enhancements/Pockets] QUICK_STORE_TRACE focused_slot=%d\n", slot);
     }
     std::uint64_t item{};
     const bool eligible = CanQuickStoreItem(owner, slot, state::Browsing, item, trace);
     if (trace) {
-        Logging.Log("[QoL Enhancements/Pockets] QUICK_STORE_TRACE eligibility=%s\n",
+        Logging.Debug("[QoL Enhancements/Pockets] QUICK_STORE_TRACE eligibility=%s\n",
                     eligibilityReason);
         auto *menu = Field<void *>(owner, layout::PocketMenu);
         if (menu) {
-            Logging.Log(
+            Logging.Debug(
                 "[QoL Enhancements/Pockets] QUICK_STORE_TRACE menu state=%d queues=%d,%d "
                 "builder_vt=%lx builder_fn=%lx owner_match=%u adjust=%lx\n",
                 Field<int>(menu, layout::CurrentState), Field<int>(menu, layout::TransitionA),
@@ -548,7 +548,7 @@ void HandleQuickStoreInput(void *page, void *inputSnapshot, unsigned blocked) {
     Field<unsigned>(inputRow, layout::ConsumedButtons) |= Y;
     QueueControllerState(owner, state::Command);
     if (trace) {
-        Logging.Log("[QoL Enhancements/Pockets] QUICK_STORE_TRACE queued state 7\n");
+        Logging.Debug("[QoL Enhancements/Pockets] QUICK_STORE_TRACE queued state 7\n");
     }
 }
 
@@ -572,7 +572,7 @@ HOOK_DEFINE_TRAMPOLINE(QuickStoreCommand) {
         std::uint64_t item{};
         if (Field<std::int8_t>(owner, layout::SelectedSlot) != request.slot ||
             !CanQuickStoreItem(owner, request.slot, state::Command, item) || item != request.item) {
-            Logging.Log("[QoL Enhancements/Pockets] QUICK_STORE_TRACE command cancelled selected=%d "
+            Logging.Debug("[QoL Enhancements/Pockets] QUICK_STORE_TRACE command cancelled selected=%d "
                         "expected=%d eligibility=%s identity_match=%u\n",
                         int(Field<std::int8_t>(owner, layout::SelectedSlot)), request.slot,
                         eligibilityReason, unsigned(item == request.item));
@@ -601,7 +601,7 @@ HOOK_DEFINE_TRAMPOLINE(QuickStoreCommand) {
             PlayItemFeedback(feedback);
             pendingTap = {owner, request.slot, request.inputRow};
         }
-        Logging.Log("[QoL Enhancements/Pockets] QUICK_STORE native Put in Storage dispatched\n");
+        Logging.Debug("[QoL Enhancements/Pockets] QUICK_STORE native Put in Storage dispatched\n");
     }
 };
 
@@ -644,18 +644,18 @@ bool InstallQuickStore() {
     for (const auto &check : checks) {
         if (std::memcmp(reinterpret_cast<const void *>(game::MainAddress(check.offset)),
                         check.words.data(), sizeof(check.words)) != 0) {
-            Logging.Log("[QoL Enhancements/Pockets] QUICK_STORE_DISABLED code mismatch at 0x%lx\n",
+            Logging.Error("[QoL Enhancements/Pockets] QUICK_STORE_DISABLED code mismatch at 0x%lx\n",
                         check.offset);
             return false;
         }
     }
     if (!qol::core::RegisterPageInput(QuickStoreInput)) {
-        Logging.Log("[QoL Enhancements/Pockets] QUICK_STORE_DISABLED shared input unavailable\n");
+        Logging.Error("[QoL Enhancements/Pockets] QUICK_STORE_DISABLED shared input unavailable\n");
         return false;
     }
     QuickStoreCommand::InstallAtOffset(address::Command);
     QuickStorePlay::InstallAtOffset(address::Play);
-    Logging.Log("[QoL Enhancements/Pockets] QUICK_STORE_READY Y uses native Put in Storage\n");
+    Logging.Debug("[QoL Enhancements/Pockets] QUICK_STORE_READY Y uses native Put in Storage\n");
     return true;
 }
 } // namespace qol_pockets::features

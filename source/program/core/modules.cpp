@@ -61,8 +61,8 @@ LoadResult LoadConfig(const ModuleDescription &module, Config *metadata, ConfigL
     if (result != 0) {
         // Horizon FS PathNotFound (module 2, description 1).
         if (result == 0x202) return LoadResult::Absent;
-        Logging.Log("[QoL Enhancements] %s: %s %sconfig open failed: 0x%x\n",
-                    custom ? "WARNING" : "ERROR", module.name, custom ? "custom " : "", result);
+        if (custom) Logging.Warning("[QoL Enhancements] WARNING: %s custom config open failed: 0x%x\n", module.name, result);
+        else Logging.Error("[QoL Enhancements] ERROR: %s config open failed: 0x%x\n", module.name, result);
         return LoadResult::Invalid;
     }
     long size = 0;
@@ -76,7 +76,7 @@ LoadResult LoadConfig(const ModuleDescription &module, Config *metadata, ConfigL
     if (valid && metadata) valid = ParseConfig(input, *metadata, layer, module.configure != nullptr);
     if (valid && module.configure) {
         const auto warnings = module.configure(input);
-        if (warnings) Logging.Log("[QoL Enhancements] WARNING: %s %sconfig issues=%u; invalid settings retain prior values\n",
+        if (warnings) Logging.Warning("[QoL Enhancements] WARNING: %s %sconfig issues=%u; invalid settings retain prior values\n",
                                   module.name, custom ? "custom " : "", warnings);
     }
     return valid ? LoadResult::Ready : LoadResult::Invalid;
@@ -88,9 +88,14 @@ bool ActivateCoreSettings() {
     const ModuleDescription core{"Core", "core", {}, nullptr, ConfigureCore};
     for (const auto layer : {ConfigLayer::Module, ConfigLayer::Custom}) {
         if (LoadConfig(core, nullptr, layer) == LoadResult::Invalid)
-            Logging.Log("[QoL Enhancements/Core] WARNING: %s config invalid/unreadable; retaining prior settings\n",
+            Logging.Warning("[QoL Enhancements/Core] WARNING: %s config invalid/unreadable; retaining prior settings\n",
                         layer == ConfigLayer::Custom ? "custom" : "regular");
     }
+    Logging.Configure(CorePreferences.logging);
+    Logging.Version("[QoL Enhancements] Core: %s; slot=subsdk6; configuration ready\n", ReleaseVersion);
+    Logging.Settings("[QoL Enhancements/Core] settings: amiibo_timeout_frames=%u log_versions=%s log_settings=%s log_debug=%s\n",
+                     CorePreferences.amiiboTimeoutFrames, CorePreferences.logging.versions ? "true" : "false",
+                     CorePreferences.logging.settings ? "true" : "false", CorePreferences.logging.debug ? "true" : "false");
     return InstallAmiiboTimeout(CorePreferences.amiiboTimeoutFrames);
 }
 } // namespace
@@ -100,31 +105,30 @@ bool ActivateCoreSettings() {
 const std::array<ModuleDescription, 6> Modules{{
     {"Catalog", "catalog", {0, 1, 0}, InstallCatalog},
     {"Pockets", "pockets", {0, 1, 0}, InstallPockets},
-    {"Faster Dialogue", "faster-dialogue", {0, 1, 0}, dialogue::Install, dialogue::Configure},
+    {"Faster Dialogue", "faster-dialogue", {0, 1, 0}, dialogue::Install, dialogue::Configure, nullptr, dialogue::ReportSettings},
     {"Fitting Room", "fitting-room", {0, 1, 0}, able_bag::Install, nullptr, PrepareFittingResources},
     {"Shopping Card", "shopping-card", {0, 3, 2}, shopping::Install, nullptr, shopping::PrepareResources},
-    {"Crafting", "crafting", {0, 3, 46}, crafting::Install, crafting::Configure},
+    {"Crafting", "crafting", {0, 3, 46}, crafting::Install, crafting::Configure, nullptr, crafting::ReportSettings},
 }};
 
 void ActivateModules() {
     if (ActivationStarted.exchange(true)) return;
-    Logging.Log("[QoL Enhancements] Core: %s; slot=subsdk6; configuration ready\n", ReleaseVersion);
     unsigned installed = 0, errors = !ActivateCoreSettings();
     for (const auto &module : Modules) {
         Config config{};
         const auto loaded = LoadConfig(module, &config, ConfigLayer::Module);
         if (loaded == LoadResult::Absent) {
-            Logging.Log("[QoL Enhancements] %s: not installed\n", module.name);
+            Logging.Debug("[QoL Enhancements] %s: not installed\n", module.name);
             continue;
         }
         if (module.prepareResources && !module.prepareResources()) {
-            Logging.Log("[QoL Enhancements] ERROR: %s resource support unavailable; feature code disabled\n",
+            Logging.Error("[QoL Enhancements] ERROR: %s resource support unavailable; feature code disabled\n",
                         module.name);
             ++errors;
             continue;
         }
         if (loaded == LoadResult::Invalid) {
-            Logging.Log("[QoL Enhancements] ERROR: %s config invalid/unreadable; feature code disabled\n", module.name);
+            Logging.Error("[QoL Enhancements] ERROR: %s config invalid/unreadable; feature code disabled\n", module.name);
             ++errors;
             continue;
         }
@@ -132,31 +136,33 @@ void ActivateModules() {
         // disabled modules: a personal enabled=true can re-enable their code.
         // An absent/invalid marker never reaches this optional read.
         if (LoadConfig(module, &config, ConfigLayer::Custom) == LoadResult::Invalid)
-            Logging.Log("[QoL Enhancements] WARNING: %s custom config invalid/unreadable; retaining regular config\n",
+            Logging.Warning("[QoL Enhancements] WARNING: %s custom config invalid/unreadable; retaining regular config\n",
                         module.name);
-        Logging.Log("[QoL Enhancements] %s: %u.%u.%u; enabled=%s; minimum=%u.%u.%u\n",
+        Logging.Version("[QoL Enhancements] %s: %u.%u.%u; enabled=%s; minimum=%u.%u.%u\n",
                     module.name, config.version.major, config.version.minor, config.version.patch,
                     config.enabled ? "true" : "false", module.minimum.major, module.minimum.minor,
                     module.minimum.patch);
+        Logging.Settings("[QoL Enhancements/%s] settings: enabled=%s\n", module.name, config.enabled ? "true" : "false");
+        if (module.reportSettings) module.reportSettings();
         if (!config.enabled) continue;
         const auto compatibility = CheckCompatibility(config.version, module.minimum, CoreVersion);
         if (compatibility == Compatibility::TooOld) {
-            Logging.Log("[QoL Enhancements] ERROR: %s package is below minimum; feature code disabled. "
+            Logging.Error("[QoL Enhancements] ERROR: %s package is below minimum; feature code disabled. "
                         "Update the suite or disable the module in Eden and restart.\n", module.name);
             ++errors;
             continue;
         }
         if (compatibility == Compatibility::NewerThanCore) {
-            Logging.Log("[QoL Enhancements] WARNING: %s package is newer than Core %s. "
+            Logging.Warning("[QoL Enhancements] WARNING: %s package is newer than Core %s. "
                         "Update Core to the same suite release.\n", module.name, ReleaseVersion);
         }
         const bool complete = module.install();
-        Logging.Log("[QoL Enhancements] %s: %s\n", module.name,
-                    complete ? "ENABLED" : "ERROR installation failed or partial; inspect feature logs");
+        if (complete) Logging.Debug("[QoL Enhancements] %s: ENABLED\n", module.name);
+        else Logging.Error("[QoL Enhancements] %s: ERROR installation failed or partial; inspect feature logs\n", module.name);
         installed += complete;
         errors += !complete;
     }
-    Logging.Log("[QoL Enhancements] %s %s; enabled_modules=%u errors=%u\n",
-                errors ? "BOOT_PARTIAL" : "BOOT_OK", ReleaseVersion, installed, errors);
+    if (errors) Logging.Error("[QoL Enhancements] BOOT_PARTIAL %s; enabled_modules=%u errors=%u\n", ReleaseVersion, installed, errors);
+    else Logging.Debug("[QoL Enhancements] BOOT_OK %s; enabled_modules=%u errors=%u\n", ReleaseVersion, installed, errors);
 }
 } // namespace qol::core

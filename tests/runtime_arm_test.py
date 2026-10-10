@@ -100,7 +100,8 @@ class Machine:
         return self.reg(0)
     def input(self,buttons,blocked=0,consumed=0):
         self.write(self.rows,buttons,4);self.write(self.rows+0x3c,consumed,4)
-        self.call(self.mod.find('L11HandleInput'),self.page,self.snapshot,blocked)
+        # Use the real vtable adapter; its private helper can be inlined.
+        self.call(self.mod.find('able_bag', 'L5InputE'),self.page,self.snapshot,blocked)
     def focus(self,i):self.call(self.mod.find('5Focus8Callback'),self.owner,i)
     def toggle(self):self.input(0);self.input(0x80)
     def size(self):return self.read(self.count,4)

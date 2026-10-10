@@ -154,7 +154,7 @@ HOOK_DEFINE_INLINE(NookMessageTrace) {
         } else {
             ++reports;
         }
-        Logging.Log("[QoL Enhancements/Catalog] NOOK_MESSAGE_TRACE message=%s caller=0x%lx\n", message,
+        Logging.Debug("[QoL Enhancements/Catalog] NOOK_MESSAGE_TRACE message=%s caller=0x%lx\n", message,
                     registers->X[30] - game::MainAddress(0));
     }
 };
@@ -183,7 +183,7 @@ HOOK_DEFINE_INLINE(NookDisplayCatalogStar) {
             char bank[64], label[128];
             CopyMessageId(registers->X[1], bank);
             CopyMessageId(registers->X[2], label);
-            Logging.Log("[QoL Enhancements/Catalog] NOOK_MESSAGE_DISPATCH bank=%s label=%s vtable=0x%lx\n",
+            Logging.Debug("[QoL Enhancements/Catalog] NOOK_MESSAGE_DISPATCH bank=%s label=%s vtable=0x%lx\n",
                         bank, label, vtable ? vtable - game::MainAddress(0) : 0);
         }
 #endif
@@ -197,7 +197,7 @@ HOOK_DEFINE_INLINE(NookDisplayCatalogStar) {
         const auto reject = [&](const char *reason) {
             if (rejectReports[shop] < 48) {
                 ++rejectReports[shop];
-                Logging.Log("[QoL Enhancements/Catalog] NOOK_CATALOG_SKIP reason=%s shop=%s\n", reason,
+                Logging.Debug("[QoL Enhancements/Catalog] NOOK_CATALOG_SKIP reason=%s shop=%s\n", reason,
                             ShopNames[shop]);
             }
         };
@@ -226,7 +226,7 @@ HOOK_DEFINE_INLINE(NookDisplayCatalogStar) {
         const bool marked = marker && RegisterMarkedItemName(formatter, item, marker);
         static unsigned reports[5]{};
         if (reports[shop]++ < 48) {
-            Logging.Log(
+            Logging.Debug(
                 "[QoL Enhancements/Catalog] NOOK_CATALOG_STAR item=%u player=%u status=%u marked=%d "
                 "shop=%s marker=0x%x\n",
                 item.id, player, static_cast<unsigned>(status), marked, ShopNames[shop],
@@ -262,16 +262,16 @@ bool InstallNookCatalogStars() {
                              character.words.data(), sizeof(character.words));
     }
     if (!valid) {
-        Logging.Log("[QoL Enhancements/Catalog] NOOK_CATALOG_STARS_DISABLED fingerprint mismatch\n");
+        Logging.Error("[QoL Enhancements/Catalog] NOOK_CATALOG_STARS_DISABLED fingerprint mismatch\n");
         return false;
     }
 #if CAS_VERBOSE_DIALOGUE_TRACE
     NookMessageTrace::InstallAtOffset(address::SplitMessageId);
 #endif
     NookDisplayCatalogStar::InstallAtOffset(address::DispatchMessage);
-    Logging.Log(
+    Logging.Debug(
         "[QoL Enhancements/Catalog] NOOK_CATALOG_STARS_READY SP_rcm_00_common:101 direct-context\n");
-    Logging.Log("[QoL Enhancements/Catalog] SHOP_CATALOG_STARS_READY hhp:001 hotel:151 able:051/052\n");
+    Logging.Debug("[QoL Enhancements/Catalog] SHOP_CATALOG_STARS_READY hhp:001 hotel:151 able:051/052\n");
     return true;
 }
 } // namespace catalog_aware_shops::features

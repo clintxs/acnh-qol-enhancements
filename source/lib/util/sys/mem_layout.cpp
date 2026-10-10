@@ -218,7 +218,7 @@ namespace exl::util {
     }
 
     static void LogLayout() {
-        Logging.Log(EXL_LOG_PREFIX "Static module layout:");
+        Logging.Debug(EXL_LOG_PREFIX "Static module layout:");
 
         /* Collect up the module names and measure the longest length. */
         std::string_view moduleNames[static_cast<size_t>(ModuleIndex::End)];
@@ -245,14 +245,14 @@ namespace exl::util {
             char nameBuffer[util::ModuleInfo::s_ModulePathLengthMax+1];
             util::CopyString(nameBuffer, moduleNames[i]);
 
-            Logging.Log(EXL_LOG_PREFIX "[ %-*s ]: \t%016lx-%016lx", maxModuleName, nameBuffer, mod.m_Total.m_Start, mod.m_Total.GetEnd());
+            Logging.Debug(EXL_LOG_PREFIX "[ %-*s ]: \t%016lx-%016lx", maxModuleName, nameBuffer, mod.m_Total.m_Start, mod.m_Total.GetEnd());
         }
 
-        Logging.Log("");
-        Logging.Log(EXL_LOG_PREFIX "Alias: \t%016lx-%016lx", mem_layout::s_Alias.m_Start,    mem_layout::s_Alias.GetEnd());
-        Logging.Log(EXL_LOG_PREFIX "Heap: \t%016lx-%016lx",  mem_layout::s_Heap.m_Start,     mem_layout::s_Heap.GetEnd());
-        Logging.Log(EXL_LOG_PREFIX "Aslr: \t%016lx-%016lx",  mem_layout::s_Aslr.m_Start,     mem_layout::s_Aslr.GetEnd());
-        Logging.Log(EXL_LOG_PREFIX "Stack: \t%016lx-%016lx", mem_layout::s_Stack.m_Start,    mem_layout::s_Stack.GetEnd());
+        Logging.Debug("");
+        Logging.Debug(EXL_LOG_PREFIX "Alias: \t%016lx-%016lx", mem_layout::s_Alias.m_Start,    mem_layout::s_Alias.GetEnd());
+        Logging.Debug(EXL_LOG_PREFIX "Heap: \t%016lx-%016lx",  mem_layout::s_Heap.m_Start,     mem_layout::s_Heap.GetEnd());
+        Logging.Debug(EXL_LOG_PREFIX "Aslr: \t%016lx-%016lx",  mem_layout::s_Aslr.m_Start,     mem_layout::s_Aslr.GetEnd());
+        Logging.Debug(EXL_LOG_PREFIX "Stack: \t%016lx-%016lx", mem_layout::s_Stack.m_Start,    mem_layout::s_Stack.GetEnd());
     }
 
     void impl::InitMemLayout() {

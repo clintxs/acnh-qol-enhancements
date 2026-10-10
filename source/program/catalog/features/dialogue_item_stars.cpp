@@ -73,7 +73,7 @@ void MarkDialogueItem(exl::hook::InlineCtx *registers, std::uintptr_t name,
     }
     static unsigned reports = 0;
     if (reports++ < 96) {
-        Logging.Log("[QoL Enhancements/Catalog] DIALOGUE_ITEM_STAR source=%s item=%u player=%u "
+        Logging.Debug("[QoL Enhancements/Catalog] DIALOGUE_ITEM_STAR source=%s item=%u player=%u "
                     "status=%u recipe_status=%u recipe=%u villager_craft=%d marker=0x%x marked=%d type=%u\n",
                     source, item.id, player, static_cast<unsigned>(status),
                     static_cast<unsigned>(recipeStatus), recipeId, villagerCraft, static_cast<unsigned>(marker), marked,
@@ -205,7 +205,7 @@ bool InstallDialogueItemStars() {
     for (const auto &check : checks) {
         if (std::memcmp(reinterpret_cast<const void *>(game::MainAddress(check.offset)),
                         check.words.data(), sizeof(check.words))) {
-            Logging.Log("[QoL Enhancements/Catalog] DIALOGUE_ITEM_STARS_DISABLED fingerprint mismatch\n");
+            Logging.Error("[QoL Enhancements/Catalog] DIALOGUE_ITEM_STARS_DISABLED fingerprint mismatch\n");
             return false;
         }
     }
@@ -214,7 +214,7 @@ bool InstallDialogueItemStars() {
     DialogueInventoryItemStar::InstallAtOffset(0x00c59bdc);
     DialogueUiResultItemStar::InstallAtOffset(0x00c5e138);
     DialogueScriptItemStar::InstallAtOffset(0x00a465d0);
-    Logging.Log("[QoL Enhancements/Catalog] DIALOGUE_ITEM_STARS_READY event item substitutions\n");
+    Logging.Debug("[QoL Enhancements/Catalog] DIALOGUE_ITEM_STARS_READY event item substitutions\n");
     return true;
 }
 } // namespace catalog_aware_shops::features

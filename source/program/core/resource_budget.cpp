@@ -51,7 +51,7 @@ bool InstallResourceBudget() {
     if (ResourceSizeQuery + sizeof(expected) > text.m_Size ||
         std::memcmp(reinterpret_cast<const void *>(Main(ResourceSizeQuery)),
                     expected.data(), sizeof(expected))) {
-        Logging.Log("[QoL Enhancements/Resources] DISABLED: resource size instruction mismatch\n");
+        Logging.Error("[QoL Enhancements/Resources] DISABLED: resource size instruction mismatch\n");
         return false;
     }
     CounterResourceBudget::InstallAtOffset(ResourceSizeQuery);

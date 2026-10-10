@@ -5,7 +5,7 @@ are modeled. The native encrypted savings representation, cap, withdrawal,
 shop sale branch and hash implementation execute directly from local main.
 """
 import struct
-from core_arm_test import Machine, RAW, DEFAULT
+from core_arm_test import Machine, RAW, DEFAULT, SLUGS, expected_hook_count
 from unicorn.arm64_const import *
 from unicorn import UC_HOOK_MEM_INVALID, UC_HOOK_CODE
 
@@ -261,8 +261,9 @@ for base in (0x7100000000, 0x7200000000):
         bad = Machine(base, {'shopping-card': DEFAULT})
         bad.write(base + int(offset, 16), 0xdeadbeef, 4)
         bad.boot(); bad.activate()
-        # Pane lookup is also a DIY renderer guard: damaging it declines both.
-        expected = 3 if int(offset, 16) == 0x27d1d0 else 8
+        # Only Shopping Card is present. Its independent resource allowance and
+        # Core discovery/amiibo hooks remain; Crafting is an optional module.
+        expected = expected_hook_count(bad, (False,) * len(SLUGS))
         assert len(bad.hooks) == expected and 'Shopping Card] DISABLED' in bad.text, (offset, bad.text)
 print('PASS: Shopping Card native savings, encrypted writes/cap, all 8 players, exact caller/room scope, native sale branch with ordinary success dialogue, fitting accessor, removal and all fingerprints at two ASLR bases')
 

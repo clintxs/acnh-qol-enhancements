@@ -16,7 +16,7 @@ HOOK_DEFINE_INLINE(ScanTimeout) {
 } // namespace
 bool InstallAmiiboTimeout(unsigned frames) {
     if (!frames) {
-        Logging.Log("[QoL Enhancements/Core] Amiibo timeout: disabled; native behavior retained\n");
+        Logging.Debug("[QoL Enhancements/Core] Amiibo timeout: disabled; native behavior retained\n");
         return true;
     }
     if (frames > MaxAmiiboTimeoutFrames) return false;
@@ -26,12 +26,12 @@ bool InstallAmiiboTimeout(unsigned frames) {
     constexpr auto start = ScanTimeoutAssignment - sizeof(std::uint32_t);
     if (start + sizeof(original) > main.m_Text.m_Size ||
         std::memcmp(reinterpret_cast<const void *>(main.m_Text.m_Start + start), original, sizeof(original))) {
-        Logging.Log("[QoL Enhancements/Core] Amiibo timeout: DISABLED; instruction mismatch\n");
+        Logging.Error("[QoL Enhancements/Core] Amiibo timeout: DISABLED; instruction mismatch\n");
         return false;
     }
     TimeoutFrames = frames;
     ScanTimeout::InstallAtOffset(ScanTimeoutAssignment);
-    Logging.Log("[QoL Enhancements/Core] Amiibo timeout: READY; C++ hook; frames=%u\n", TimeoutFrames);
+    Logging.Debug("[QoL Enhancements/Core] Amiibo timeout: READY; C++ hook; frames=%u\n", TimeoutFrames);
     return true;
 }
 } // namespace qol::core

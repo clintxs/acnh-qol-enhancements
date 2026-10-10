@@ -25,7 +25,7 @@ namespace exl::reloc {
             
             auto version = util::GetUserVersion();
             if(!s_UserTableSet.DoesTableExist(version)) {
-                Logging.Log(EXL_LOG_PREFIX "Failed to find lookup table for version 0x%x. Ignoring...", static_cast<int>(version));
+                Logging.Error(EXL_LOG_PREFIX "Failed to find lookup table for version 0x%x. Ignoring...", static_cast<int>(version));
                 s_InitializeSucceeded = false;
                 return;
             }

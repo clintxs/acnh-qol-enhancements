@@ -243,7 +243,7 @@ for base in (0x80000000,0x1234500000):
     locale=1
     replace_text(GRAB_TEN,'Grab 10');cases+=1
     replace_text(GRAB_FIVE,'Vanilla caption',16);cases+=1
-    assert opens==closes==1 and any('TEXT_READY' in log for log in logs)
+    assert opens==closes==1 and not logs # Successful caption loading is quiet by default.
     for failure in ('missing','read','oversize','invalid'):
         reset_catalog();opens=closes=0;logs=[]
         if failure=='invalid':contents=b'[USen]\nbroken line'
@@ -617,14 +617,10 @@ for base in (0x80000000,0x1234500000):
     reset_pocket();h.write(unit+0x10,1,4);y_input(row=1)
     y_input(0x10080,row=0);assert h.read(pocket+0x1f0,4)==0xffffffff
     y_input(0x10080,row=1);assert h.read(pocket+0x1f0,4)==7;cases+=1
-    assert any('QUICK_STORE_TRACE binding owner=' in line for line in quick_logs)
-    assert any('eligibility=not-own-home' in line for line in quick_logs)
-    assert any('first_binding vt=' in line for line in quick_logs)
-    assert any('built rows=3 error=40' in line for line in quick_logs)
-    assert any('command cancelled' in line for line in quick_logs)
+    assert not quick_logs # Ordinary input, eligibility and cancellations are debug-only.
     reset_pocket();h.write(unit+0x10,0,4)
     for _ in range(80):y_input();y_input(0x10080,blocked=1)
-    assert sum('QUICK_STORE_TRACE press=' in line for line in quick_logs)==64
+    assert not quick_logs # Repeated input remains quiet with shipping defaults.
     assert h.read(pocket+0x1f0)==0xffffffffffffffff and not transferred
     cases+=1
     # Regression: Nook's Cranny can leave selection bits behind in normal mode.

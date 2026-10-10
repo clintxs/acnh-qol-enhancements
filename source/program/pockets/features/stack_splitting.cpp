@@ -136,13 +136,13 @@ constexpr std::array Hooks{
 
 bool InstallStackSplitting() {
     if (!ValidateMenuText()) {
-        Logging.Log("[QoL Enhancements/Pockets] STACKS_DISABLED text hook mismatch\n");
+        Logging.Error("[QoL Enhancements/Pockets] STACKS_DISABLED text hook mismatch\n");
         return false;
     }
     const auto *fallback =
         reinterpret_cast<const std::uintptr_t *>(game::MainAddress(address::CallbackTable));
     if (fallback[0] != game::MainAddress(address::FallbackCallback) || fallback[1] != 0) {
-        Logging.Log("[QoL Enhancements/Pockets] STACKS_DISABLED callback fallback mismatch\n");
+        Logging.Error("[QoL Enhancements/Pockets] STACKS_DISABLED callback fallback mismatch\n");
         return false;
     }
     const auto &text = exl::util::GetMainModuleInfo().m_Text;
@@ -151,7 +151,7 @@ bool InstallStackSplitting() {
         if (!text.InRange(location) || location > text.GetEnd() - sizeof(hook.words) ||
             std::memcmp(reinterpret_cast<const void *>(location), hook.words.data(),
                         sizeof(hook.words)) != 0) {
-            Logging.Log("[QoL Enhancements/Pockets] STACKS_DISABLED hook mismatch at 0x%lx\n",
+            Logging.Error("[QoL Enhancements/Pockets] STACKS_DISABLED hook mismatch at 0x%lx\n",
                         hook.offset);
             return false;
         }
@@ -165,8 +165,8 @@ bool InstallStackSplitting() {
     ResolveStackCaption::InstallAtOffset(address::ResolveCaption);
     ResolveStackPostAction::InstallAtOffset(address::PostAction);
     BuildStackMenu::InstallAtOffset(address::BuildMenu);
-    Logging.Log("[QoL Enhancements/Pockets] STACKS_READY Grab 1 -> Grab 5 -> Grab 10\n");
-    Logging.Log("[QoL Enhancements/Pockets] IDS actions=0x4F550001/0x4F550002 "
+    Logging.Debug("[QoL Enhancements/Pockets] STACKS_READY Grab 1 -> Grab 5 -> Grab 10\n");
+    Logging.Debug("[QoL Enhancements/Pockets] IDS actions=0x4F550001/0x4F550002 "
                 "callbacks=0x4F551001/0x4F551002\n");
     return true;
 }

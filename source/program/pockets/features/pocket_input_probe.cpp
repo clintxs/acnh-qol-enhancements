@@ -50,7 +50,7 @@ HOOK_DEFINE_TRAMPOLINE(ProbePocketInput) {
                         ++reports;
                         const auto *input = Read<const void *>(page, 0x210);
                         const unsigned localBlock = input ? Read<std::uint8_t>(input, 0x54) : 1;
-                        Logging.Log(
+                        Logging.Debug(
                             "[QoL Enhancements/Pockets] POCKET_INPUT row=%d held=%08x consumed=%08x "
                             "blocked=%u local=%u\n",
                             index, rows[index].held, rows[index].consumed, blocked & 1, localBlock);
@@ -70,11 +70,11 @@ bool InstallPocketInputProbe() {
                                                     0xd65f03c0};
     if (std::memcmp(reinterpret_cast<const void *>(game::MainAddress(PageInputUpdate)),
                     expected.data(), sizeof(expected)) != 0) {
-        Logging.Log("[QoL Enhancements/Pockets] POCKET_INPUT_DISABLED code mismatch\n");
+        Logging.Error("[QoL Enhancements/Pockets] POCKET_INPUT_DISABLED code mismatch\n");
         return false;
     }
     ProbePocketInput::InstallAtOffset(PageInputUpdate);
-    Logging.Log(
+    Logging.Debug(
         "[QoL Enhancements/Pockets] POCKET_INPUT_READY read-only probe; Y-to-store not enabled\n");
     return true;
 }

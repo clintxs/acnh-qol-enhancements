@@ -418,7 +418,7 @@ namespace exl::hook::nx64 {
                         if (ref_idx > current_idx) {
                             // the bottom 12 bits of absolute_addr are masked out,
                             // so ref_idx must be less than or equal to current_idx!
-                            Logging.Log(EXL_LOG_PREFIX "ref_idx must be less than or equal to current_idx!");
+                            Logging.Error(EXL_LOG_PREFIX "ref_idx must be less than or equal to current_idx!");
                         }  // if
 
                         // *absolute_addr may be changed due to relocation fixing

@@ -219,7 +219,7 @@ bool QuantityInput(void *page, void *snapshot, unsigned blocked) {
     state.pauseStarted = svcGetSystemTick();
     PauseVerticalInput(row);
     if (WrapReports++ < 4)
-        Logging.Log("[QoL Enhancements/Crafting] quantity wrap: selected=%u maximum=%u resident=%u\n",
+        Logging.Debug("[QoL Enhancements/Crafting] quantity wrap: selected=%u maximum=%u resident=%u\n",
                     count-target, count, resident);
     return false; // A/B, horizontal input and ordinary repeat remain native.
 }
@@ -237,16 +237,16 @@ bool InstallCraftingQuantityWrap() {
     const auto &main = exl::util::GetMainModuleInfo();
     for (const auto &f : fingerprints) if (f.offset + sizeof(f.words) > main.m_Text.m_Size ||
         std::memcmp(reinterpret_cast<const void *>(main.m_Text.m_Start + f.offset), f.words, sizeof(f.words))) {
-        Logging.Log("[QoL Enhancements/Crafting] quantity wrap: DISABLED; instruction mismatch at main+0x%lx\n", f.offset);
+        Logging.Error("[QoL Enhancements/Crafting] quantity wrap: DISABLED; instruction mismatch at main+0x%lx\n", f.offset);
         return false;
     }
     Main = main.m_Text.m_Start;
     if (!core::RegisterPageInput(QuantityInput)) {
-        Logging.Log("[QoL Enhancements/Crafting] quantity wrap: DISABLED; shared input unavailable\n");
+        Logging.Error("[QoL Enhancements/Crafting] quantity wrap: DISABLED; shared input unavailable\n");
         return false;
     }
     ResetQuantityGrid::InstallAtOffset(address::ResetGrid);
-    Logging.Log("[QoL Enhancements/Crafting] quantity wrap: READY; native slide/sound; crafting/cooking limits; release before endpoint wrap\n");
+    Logging.Debug("[QoL Enhancements/Crafting] quantity wrap: READY; native slide/sound; crafting/cooking limits; release before endpoint wrap\n");
     return true;
 }
 }

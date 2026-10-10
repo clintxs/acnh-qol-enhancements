@@ -189,7 +189,7 @@ HOOK_DEFINE_TRAMPOLINE(UpdateStorageCommand) {
         WithdrawDirectly(storage, [](void *owner) { Orig(owner); });
         static bool reported = false;
         if (!reported) {
-            Logging.Log("[QoL Enhancements/Pockets] STORAGE_DIRECT single-action menu bypassed\n");
+            Logging.Debug("[QoL Enhancements/Pockets] STORAGE_DIRECT single-action menu bypassed\n");
             reported = true;
         }
     }
@@ -214,14 +214,14 @@ bool InstallStorageWithdrawal() {
     for (const auto &check : checks) {
         if (std::memcmp(reinterpret_cast<const void *>(game::MainAddress(check.offset)),
                         check.words.data(), sizeof(check.words)) != 0) {
-            Logging.Log("[QoL Enhancements/Pockets] STORAGE_DISABLED code mismatch at 0x%lx\n",
+            Logging.Error("[QoL Enhancements/Pockets] STORAGE_DISABLED code mismatch at 0x%lx\n",
                         check.offset);
             return false;
         }
     }
     EnterStorageCommand::InstallAtOffset(address::EnterCommand);
     UpdateStorageCommand::InstallAtOffset(address::ProcessSelection);
-    Logging.Log("[QoL Enhancements/Pockets] STORAGE_READY single Move to Pockets bypass\n");
+    Logging.Debug("[QoL Enhancements/Pockets] STORAGE_READY single Move to Pockets bypass\n");
     return true;
 }
 } // namespace qol_pockets::features

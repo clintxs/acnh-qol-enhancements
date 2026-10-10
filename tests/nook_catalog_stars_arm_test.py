@@ -156,17 +156,17 @@ def main():
             q.u.reg_write(UC_ARM64_REG_X0,q.ctx)
             q.call(q.mod+symbol('NookMessageTrace','Callback'))
             assert bytes(q.u.mem_read(q.ctx,31*8))==snapshot
-        assert len([s for s in q.logs if 'NOOK_MESSAGE_TRACE' in s])==48
+        assert not q.logs # Even a diagnostic build requires log_debug=true.
         q.string(full,'TalkSNpc/rcm/SP_rcm_00_common:101')
         q.u.reg_write(UC_ARM64_REG_X0,q.ctx);q.call(q.mod+symbol('NookMessageTrace','Callback'))
-        assert 'message=TalkSNpc/rcm/SP_rcm_00_common:101' in q.logs[-1]
+        assert not q.logs
     q.write(q.ctx+16,q.label)
     q.write(q.action,0);q.check(FURNITURE[0],marked=False)
-    assert any('NOOK_MESSAGE_DISPATCH' in s for s in q.logs) == verbose
-    assert 'reason=action-type' in q.logs[-1]
+    assert not q.logs
+    assert not q.logs
     q.write(q.action,q.base+0x4833a58)
     q.write(q.holder+0x20,0);q.check(FURNITURE[0],marked=False)
-    assert 'reason=formatter' in q.logs[-1]
+    assert not q.logs
     count+=63 if verbose else 2
     with tempfile.TemporaryDirectory(prefix='nook-names-') as folder:
         archive=Path(folder)/'String.sarc'

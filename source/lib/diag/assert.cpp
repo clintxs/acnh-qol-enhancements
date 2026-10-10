@@ -73,11 +73,11 @@ namespace exl::diag {
     void AbortImpl(const char *expr, const char *func, const char *file, int line) {
         #if defined(EXL_DEBUG)
         {
-            Logging.Log("Abort Called");
-            Logging.Log("    Location:   %s:%d", file, line);
-            Logging.Log("    Function:   %s", func);
-            Logging.Log("    Expression: %s", expr);
-            Logging.Log("");
+            Logging.Error("Abort Called");
+            Logging.Error("    Location:   %s:%d", file, line);
+            Logging.Error("    Function:   %s", func);
+            Logging.Error("    Expression: %s", expr);
+            Logging.Error("");
         }
         #else
         EXL_UNUSED(file, line, func, expr);
@@ -102,17 +102,17 @@ namespace exl::diag {
     void AbortImpl(const char *expr, const char *func, const char *file, int line, const char *format, ...) {
         #if defined(EXL_DEBUG)
         {
-            Logging.Log("Abort Called");
-            Logging.Log("    Location:   %s:%d", file, line);
-            Logging.Log("    Function:   %s", func);
-            Logging.Log("    Expression: %s", expr);
-            Logging.Log("");
+            Logging.Error("Abort Called");
+            Logging.Error("    Location:   %s:%d", file, line);
+            Logging.Error("    Function:   %s", func);
+            Logging.Error("    Expression: %s", expr);
+            Logging.Error("");
             {
                 ::std::va_list vl;
                 va_start(vl, format);
                 Logging.VLog(format, vl);
                 va_end(vl);
-                Logging.Log("");
+                Logging.Error("");
             }
         }
         #else
@@ -139,18 +139,18 @@ namespace exl::diag {
     void AbortImpl(const char *expr, const char *func, const char *file, int line, const ::exl::Result *result, const char *format, ...) {
         #if defined(EXL_DEBUG)
         {
-            Logging.Log("Abort Called");
-            Logging.Log("    Location:   %s:%d", file, line);
-            Logging.Log("    Function:   %s", func);
-            Logging.Log("    Expression: %s", expr);
-            Logging.Log("    Result:     0x%08" PRIx32 "", result);
-            Logging.Log("");
+            Logging.Error("Abort Called");
+            Logging.Error("    Location:   %s:%d", file, line);
+            Logging.Error("    Function:   %s", func);
+            Logging.Error("    Expression: %s", expr);
+            Logging.Error("    Result:     0x%08" PRIx32 "", result);
+            Logging.Error("");
             {
                 ::std::va_list vl;
                 va_start(vl, format);
                 Logging.VLog(format, vl);
                 va_end(vl);
-                Logging.Log("");
+                Logging.Error("");
             }
         }
         #else
@@ -177,17 +177,17 @@ namespace exl::diag {
     NOINLINE void OnAssertionFailure(AssertionType type, const char *expr, const char *func, const char *file, int line, const char *format, ...) {
         #if defined(EXL_DEBUG)
         {
-            Logging.Log("Assertion Failure");
-            Logging.Log("    Location:   %s:%d", file, line);
-            Logging.Log("    Function:   %s", func);
-            Logging.Log("    Expression: %s", expr);
-            Logging.Log("");
+            Logging.Error("Assertion Failure");
+            Logging.Error("    Location:   %s:%d", file, line);
+            Logging.Error("    Function:   %s", func);
+            Logging.Error("    Expression: %s", expr);
+            Logging.Error("");
             {
                 ::std::va_list vl;
                 va_start(vl, format);
                 Logging.VLog(format, vl);
                 va_end(vl);
-                Logging.Log("");
+                Logging.Error("");
             }
 
             EXL_UNUSED(type);

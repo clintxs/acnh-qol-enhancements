@@ -24,7 +24,7 @@ def expected_hook_count(machine, enabled):
     return 2 + int(resources) + int(shared_input) + sum(count for count, on in zip(COUNTS, enabled) if on) + (trace_enabled and enabled[0])
 
 class Machine:
-    def __init__(self, base, files):
+    def __init__(self, base, files, verbose=True):
         self.base = base
         self.u = Uc(UC_ARCH_ARM64, UC_MODE_ARM)
         self.services, self.logs, self.hooks = {}, [], {}
@@ -50,6 +50,16 @@ class Machine:
             self.services[self.module.find(name)] = ('cache', name)
         self.u.hook_add(UC_HOOK_CODE, self.service)
         self.u.hook_add(UC_HOOK_MEM_WRITE, self.alias_write, begin=self.alias, end=self.alias + 0x4725000 - 1)
+        # Existing feature tests inspect detailed diagnostics. Enable them via
+        # the compiled Core parser, without adding fake files or changing I/O counts.
+        # Logging tests pass verbose=False to exercise real shipping defaults.
+        if verbose:
+            preferences = b'log_debug=true'
+            buffer = self.ram + 0x1e0000
+            self.u.mem_write(buffer, preferences)
+            self.u.reg_write(UC_ARM64_REG_X0, len(preferences))
+            self.u.reg_write(UC_ARM64_REG_X1, buffer)
+            self.call(self.module.find('ConfigureCore'))
     def write(self, address, value, size=8):
         self.u.mem_write(address, value.to_bytes(size, 'little'))
     def read(self, address, size=8):
@@ -122,7 +132,7 @@ def check_all_subsets():
         for flags in product((False, True), repeat=len(SLUGS)):
             m = Machine(base, {slug: DEFAULT for slug, enabled in zip(SLUGS, flags) if enabled})
             m.boot()
-            assert len(m.hooks) == 1 and not m.opened and 'WAITING_FOR_CONTENT' in m.text
+            assert len(m.hooks) == 1 and not m.opened and not m.text
             m.activate()
             assert len(m.hooks) == expected_hook_count(m, flags), m.text
             assert 'BOOT_OK' in m.text and f'enabled_modules={sum(flags)} errors=0' in m.text, m.text

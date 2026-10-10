@@ -10,9 +10,9 @@ namespace exl::util {
         UserVersion s_UserVersion;
 
         void InitVersion() {
-            Logging.Log(EXL_LOG_PREFIX "Determining user version...");
+            Logging.Debug(EXL_LOG_PREFIX "Determining user version...");
             s_UserVersion = impl::DetermineUserVersion();
-            Logging.Log(EXL_LOG_PREFIX "User version: %d", s_UserVersion);
+            Logging.Debug(EXL_LOG_PREFIX "User version: %d", s_UserVersion);
         }
     }
 }
