@@ -25,7 +25,7 @@ cream details/outlines and a gold chip. Colors are based on the supplied
 screenshots. These options still display combined Bells and use the same payment priority.
 Balances at or above 999,999,999 display that cap; full funds remain spendable.
 Island takes its colors from the ACNH edition Switch, with a mint-green stripe
-(#95E2C5). The card face is now a slightly lighter turquoise-blue (#79C4CA),
+(#95E2C5). The card face is now a lighter turquoise-blue (#9BD4D9),
 standing apart from the original blue (#6ABDC4) used by the oval outline,
 card backing, balance and Bells bubble.
 Revision 5 matches both the oval background and Bells caption to the pockets

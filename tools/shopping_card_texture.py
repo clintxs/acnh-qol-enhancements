@@ -36,7 +36,7 @@ def linear_rgba(red, green, blue):
 
 # Reference photo's right Joy-Con midtone and left Joy-Con mint face, in sRGB.
 ISLAND_BLUE = linear_rgba(106, 189, 196)  # #6ABDC4
-ISLAND_CARD_BLUE = linear_rgba(121, 196, 202)  # #79C4CA, slightly lighter than the outline.
+ISLAND_CARD_BLUE = linear_rgba(155, 212, 217)  # #9BD4D9, visibly lighter than the outline.
 ISLAND_MINT = linear_rgba(149, 226, 197)  # #95E2C5
 ISLAND_CREAM = linear_rgba(255, 249, 227)  # #FFF9E3, sampled from the pockets UI screenshot.
 
