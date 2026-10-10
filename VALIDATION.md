@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.68 fitting-room controller hint
+# Unified QoL validation — 0.3.69 rounded trapezoid basket
 
 Validated locally on October 10, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,15 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.69 Basket appearance experiment
+
+Replace the semicircular body with a trapezoid: 34-unit top, 22-unit bottom,
+17-unit height, and radius-three corner fillets before the existing 1.25 scale.
+Keep the handle and centerline positions. Bake into the same RGBA8 texture;
+no runtime logic or pane-count changes. Inspected the generated texture at
+three scales on a simplified circle. Layout preservation, texture decode/native
+lookup and package checks cover the replacement; final appearance needs Eden.
 
 ## 0.3.68 Fitting-room Y hint and editable caption
 

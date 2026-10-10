@@ -1,7 +1,7 @@
 """Bake the existing basket silhouette into one antialiased UI picture.
 
-The old 70-strip silhouette is retained at its existing layout size. A single
-picture avoids multiplying draw constants/vertices by 70 for every bagged row.
+The silhouette is sampled at its intended layout size. A single picture
+avoids multiplying draw constants/vertices for every bagged row.
 White RGB with coverage alpha lets the native pane supply the mint tint.
 """
 from math import ceil

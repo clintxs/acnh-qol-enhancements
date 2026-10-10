@@ -1,11 +1,12 @@
-"""Basket silhouette: solid lower semicircle and hollow upper semicircle.
+"""Rounded trapezoid basket with the existing hollow semicircle handle.
 
-Horizontal native rectangle strips preserve the curved silhouette without a
-font, texture replacement, or an opaque fill inside the handle.
+Horizontal samples are baked into one texture, never emitted as drawing panes.
 """
 from math import sqrt
 MINT=(123,255,208,255)
-BODY_RADIUS=17.0
+BODY_TOP_HALF=17.0
+BODY_BOTTOM_HALF=11.0
+BODY_HEIGHT=17.0
 HANDLE_RADIUS=11.0
 HANDLE_INNER_RADIUS=7.0
 BASELINE=4.0
@@ -14,17 +15,21 @@ ICON_SCALE=1.25
 RIM_RADIUS=3.0
 
 def _unscaled_segments():
-    # Flat rim at the baseline, rounded bowl below it.
-    for i in range(round(BODY_RADIUS/STRIP)):
+    # Circle fillets tangent to the horizontal rim/base and diagonal side.
+    slope=(BODY_TOP_HALF-BODY_BOTTOM_HALF)/BODY_HEIGHT
+    normal=sqrt(1+slope*slope)
+    top_center=BODY_TOP_HALF-slope*RIM_RADIUS-RIM_RADIUS*normal
+    bottom_center=BODY_TOP_HALF-slope*(BODY_HEIGHT-RIM_RADIUS)-RIM_RADIUS*normal
+    top_join=RIM_RADIUS+RIM_RADIUS*slope/normal
+    bottom_join=BODY_HEIGHT-RIM_RADIUS+RIM_RADIUS*slope/normal
+    for i in range(round(BODY_HEIGHT/STRIP)):
         depth=(i+.5)*STRIP
-        # Radius-three fillet tangent to both the flat rim and circular bowl.
-        # The fillet center is inside the original circle by RIM_RADIUS.
-        join_depth=BODY_RADIUS*RIM_RADIUS/(BODY_RADIUS-RIM_RADIUS)
-        if depth < join_depth:
-            cx=sqrt(BODY_RADIUS**2-2*BODY_RADIUS*RIM_RADIUS)
-            half=cx+sqrt(max(0,RIM_RADIUS**2-(depth-RIM_RADIUS)**2))
+        if depth < top_join:
+            half=top_center+sqrt(max(0,RIM_RADIUS**2-(depth-RIM_RADIUS)**2))
+        elif depth > bottom_join:
+            half=bottom_center+sqrt(max(0,RIM_RADIUS**2-(depth-(BODY_HEIGHT-RIM_RADIUS))**2))
         else:
-            half=sqrt(BODY_RADIUS**2-depth**2)
+            half=BODY_TOP_HALF-slope*depth
         yield (0,BASELINE-depth,2*half,STRIP+.01,0)
     # True cutout: no panes are drawn in the interior of the handle.
     for i in range(round(HANDLE_RADIUS/STRIP)):

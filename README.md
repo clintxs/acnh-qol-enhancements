@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.68 fitting-room controller hint** for ACNH **3.0.3 on Eden**. One Core
+**0.3.69 rounded trapezoid basket** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -475,3 +475,9 @@ The shared parser accepts at most 127 UTF-16 units per label; short captions
 are recommended for the footer. Restart ACNH after editing. This message file
 belongs to Fitting Room and does not require the Pockets module to be enabled.
 Update both Core and Fitting Room to receive the feature and default INI.
+
+## Basket appearance (0.3.69)
+
+The basket body now has diagonal sides, a flat bottom and rounded corners.
+The handle, icon scale, circle and animation remain the same. It still renders
+as one texture picture, with no additional drawing panes.
