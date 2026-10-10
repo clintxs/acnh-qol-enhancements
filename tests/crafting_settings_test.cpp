@@ -8,7 +8,7 @@ int main() {
     Settings settings{};
     assert(settings.diyAppPreview && settings.workbenchPreviewTilt && settings.craftingQuantityWrap);
     assert(settings.craftingSpeed == 3);
-    assert(ApplySettings("enabled=true\nversion=0.3.48\ndiy_app_preview=false\n"
+    assert(ApplySettings("enabled=true\nversion=0.3.49\ndiy_app_preview=false\n"
                          "workbench_preview_tilt=false\ncrafting_quantity_wrap=false\ncrafting_speed=2", settings) == 0);
     assert(!settings.diyAppPreview && !settings.workbenchPreviewTilt && !settings.craftingQuantityWrap);
     assert(settings.craftingSpeed == 2);
@@ -29,18 +29,18 @@ int main() {
         assert(ApplySettings(std::string(key) + "=false\n" + key + "=true", parsed) == 1);
         assert(parsed.diyAppPreview && parsed.workbenchPreviewTilt && parsed.craftingQuantityWrap);
     }
-    for (unsigned speed = 1; speed <= 6; ++speed) {
+    for (unsigned speed = 1; speed <= 30; ++speed) {
         Settings parsed{};
         assert(!ApplySettings("crafting_speed=" + std::to_string(speed), parsed));
         assert(parsed.craftingSpeed == speed);
     }
-    for (const auto &clamped : {std::string("7"), std::string("10"), std::string("4294967295"),
+    for (const auto &clamped : {std::string("31"), std::string("100"), std::string("4294967295"),
                                std::string("999999999999999999"), std::string(4000, '9')}) {
         Settings parsed = settings;
         assert(!ApplySettings("crafting_speed=" + clamped, parsed));
-        assert(parsed.craftingSpeed == 6);
+        assert(parsed.craftingSpeed == 30);
         assert(ApplySettings("crafting_speed=" + clamped + "\ncrafting_speed=1", parsed) == 1);
-        assert(parsed.craftingSpeed == 6);
+        assert(parsed.craftingSpeed == 30);
         parsed = settings;
         assert(ApplySettings("crafting_speed=" + clamped + "\ncrafting_speed=1", parsed) == 1);
         assert(parsed.craftingSpeed == settings.craftingSpeed);
@@ -60,5 +60,5 @@ int main() {
         assert(ApplySettings(invalid, parsed) == 1);
         assert(parsed.craftingSpeed == settings.craftingSpeed && parsed.diyAppPreview == settings.diyAppPreview);
     }
-    std::cout << "PASS: Crafting defaults, active/reserved settings, 1..6 speed range, overflow-safe maximum clamping, layered inheritance, duplicates, invalid values and atomic encoding/size errors\n";
+    std::cout << "PASS: Crafting defaults, active/reserved settings, 1..30 speed range, overflow-safe maximum clamping, layered inheritance, duplicates, invalid values and atomic encoding/size errors\n";
 }

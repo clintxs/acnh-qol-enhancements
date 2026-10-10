@@ -12,8 +12,8 @@ Hotel banner layering/placement is implemented in 0.3.48. Initial orientation
 and recipe navigation follow-ups remain open.
 
 Speed is the peak of the existing 60-update logarithmic ramp, accepting integer
-1..6 as of 0.3.47. Peak 3 retains the original table exactly; other peaks scale
-its gain by `(peak-1)/2`, preserving timing. Above-maximum integers clamp to 6
+1..30 as of 0.3.49. Peak 3 retains the original table exactly; other peaks scale
+its gain by `(peak-1)/2`, preserving timing. Above-maximum integers clamp to 30
 without overflow, including decimal values too large for an unsigned integer.
 Peak 1 holds at 1x. Native actor/readiness/input/exit gates are unchanged. Both action
 hooks and all preview hooks live in the same Crafting marker, with independent
@@ -163,3 +163,24 @@ Host parser tests cover all six peaks, huge decimals, invalid suffixes and
 layered duplicate rollback. ARM tests execute compiled crafting/cooking hooks
 at both bases for every ramp sample at peaks 1..6, including regular/custom
 clamping. The 6x peak still needs a live Steam Deck check.
+
+
+## Expanded speed range and setter validation — 0.3.49
+
+Maximum `crafting_speed` is now 30; default 3 and the 60-update curve are
+unchanged. Above-maximum positive integers clamp to 30. This is an animation
+rate peak, not a multiplier for total crafting time. Short actions may finish
+before reaching the peak, and recipe readiness may still reset the rate to 1.
+
+Native animation-rate setter 03750760 copies S0 to S8, then writes the supplied
+rate directly to active animation tracks +A0 and the animation component +A8
+(037507B4..037507C4). It has no 3x/6x rate clamp. The ARM fixture now executes
+this full setter against two real-shaped track objects, stopping on return to
+the state update. Every curve sample at all 30 supported integer peaks is
+checked at both ASLR bases, including custom overrides and overflow-safe
+clamping. Readiness, local-player and exit/reset behavior remain unchanged.
+This establishes track-rate storage, not live animation completion timing.
+
+Synced logs inspected for this request contained one 0.3.47 run with speed 6
+and a newer 0.3.47 run with speed 3. They do not establish which run the user's
+perceived speed comparison came from. Live 30x behavior needs a Steam Deck test.

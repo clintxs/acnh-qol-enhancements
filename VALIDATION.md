@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.48 Hotel preview banner
+# Unified QoL validation — 0.3.49 Crafting speed up to 30x
 
 Validated locally on October 9, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,22 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.49 Crafting speed up to 30x
+
+Maximum `crafting_speed` rises to 30, with larger positive integers clamped to
+30 without overflow. Default 3, ramp timing, recipe readiness and native actor
+gates are unchanged. Local parser checks cover every integer 1..30, oversized
+decimals, custom-layer inheritance, duplicate rollback and invalid input.
+
+The 30,700 compiled crafting/cooking cases cover every ramp sample at all 30 peaks,
+custom values and clamping, register preservation and native entry/exit behavior
+at two ASLR bases. They now execute the real animation-rate setter 03750760 and
+verify both animation-track +A0 writes and component +A8 storage. No 3x/6x clamp
+exists in that setter. Other animation processing and live completion timing
+remain outside this fixture. Dialogue/transitions retain native timing, and
+short actions can end before the ramp's peak. Core/preview regressions and
+package hashes/source/binary parity are also checked before delivery.
 
 ## 0.3.48 Hotel preview banner
 

@@ -2,7 +2,7 @@
 #include "program/core/config.hpp"
 
 namespace qol::crafting {
-inline constexpr unsigned MaximumCraftingSpeed = 6;
+inline constexpr unsigned MaximumCraftingSpeed = 30;
 
 inline bool ParseCraftingSpeed(std::string_view value, unsigned &output) {
     // Saturate while parsing so even a very large decimal cannot overflow.
