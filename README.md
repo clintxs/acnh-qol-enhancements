@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.3.64 villager recipe dialogue update** for ACNH **3.0.3 on Eden**. One Core
+**0.3.65 crafting quantity wrap polish** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -91,13 +91,14 @@ suspension and exit/reset behavior remains intact.
 up to 60 degrees each way at the DIY preview's movement speed. Set it to `false`
 to retain vanilla workbench controls. Wallpapers, floors, rugs and fences keep
 their native fixed poses. This setting works independently of `diy_app_preview`.
-`crafting_quantity_wrap=true` lets a fresh down press at quantity 1 jump to 10,
-and a fresh up press at 10 jump to 1 (or the native maximum when lower). Hold
+`crafting_quantity_wrap=true` lets a fresh down press at quantity 1 scroll to 10,
+and a fresh up press at 10 scroll to 1 (or the native maximum when lower). Hold
 either direction to reach an endpoint and stop; release before pressing again
 to wrap. A fresh endpoint wrap pauses scrolling for 300 ms, then resumes if
 you keep holding that direction. Releasing during the pause allows another
 press normally. Return the stick to center; easing its pressure does not count
 as a release. Applies to the left stick and d-pad in crafting and cooking selectors.
+Wraps use the native number slide and the up/down sound for the pressed direction.
 Set it to `false` for vanilla quantity controls.
 Hotel request banners now draw over the bottom-right corner of the DIY preview,
 returning to their native placement in the grid. DIY previews start from the

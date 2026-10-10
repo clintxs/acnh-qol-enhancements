@@ -10,7 +10,7 @@ from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
 SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'shopping-card', 'crafting')
 COUNTS = (16, 15, 7, 11, 11, 13)  # Pockets/Crafting share one additional Core input hook.
-DEFAULT = b'enabled=true\nversion=0.3.63\n'
+DEFAULT = b'enabled=true\nversion=0.3.65\n'
 
 def expected_hook_count(machine, enabled):
     # The existing verbose-dialogue build adds a Catalog message trace hook.
@@ -404,14 +404,15 @@ def check_crafting_settings():
         assert 'BOOT_OK' in m.text and 'quantity wrap: READY' in m.text
         assert base+0x3764290 in m.hooks and base+0x3c58d24 in m.hooks
         assert base+0x192a590 not in m.hooks and len(m.hooks)==6
-        # A quantity-specific compatibility conflict cannot disable previews/speed.
-        m=Machine(base,{'crafting':DEFAULT}); m.write(base+0x3765674,0xdeadbeef,4)
-        m.boot(); m.activate()
-        assert 'BOOT_PARTIAL' in m.text and 'quantity wrap: DISABLED' in m.text
-        assert 'DIY preview: READY' in m.text and 'workbench tilt: READY' in m.text
-        assert base+0x3764290 not in m.hooks and all(base+a in m.hooks for a in speed_sites)
+        # Caller identity, row binding and native motion are independently guarded.
+        for site in (0x375fd8c,0x3469b50,0x2de7730,0x346b024,0x2de8bf4):
+            m=Machine(base,{'crafting':DEFAULT}); m.write(base+site,0xdeadbeef,4)
+            m.boot(); m.activate()
+            assert 'BOOT_PARTIAL' in m.text and 'quantity wrap: DISABLED' in m.text
+            assert 'DIY preview: READY' in m.text and 'workbench tilt: READY' in m.text
+            assert base+0x3764290 not in m.hooks and all(base+a in m.hooks for a in speed_sites)
         m=Machine(base,{'crafting':DEFAULT+b'crafting_quantity_wrap=false'})
-        m.write(base+0x3765674,0xdeadbeef,4); m.boot(); m.activate()
+        m.write(base+0x375fd8c,0xdeadbeef,4); m.boot(); m.activate()
         assert 'BOOT_OK' in m.text and base+0x3764290 not in m.hooks
         # A workbench-only compatibility failure leaves DIY/speed available.
         m=Machine(base,{'crafting':DEFAULT}); m.write(base+0x32bd9cc,0xdeadbeef,4)

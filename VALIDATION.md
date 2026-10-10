@@ -1,4 +1,4 @@
-# Unified QoL validation — 0.3.63 crafting quantity wrap timing
+# Unified QoL validation — 0.3.65 crafting quantity wrap polish
 
 Validated locally on October 10, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
@@ -8,6 +8,31 @@ in 0.3.5, the restored counter in 0.3.10 and the 0.3.14 allocation fix.
 Localized name capture, configuration layering, aspect-ratio placement and Able
 Sisters still need a live check. No running game or save files were accessed
 by the local tests below.
+
+## 0.3.65 Native quantity wrap animation and directional sound
+
+Wraps now use the native single-row cyclic movement and cScroll feedback
+instead of resetting/reopening the list. Quantity-only cAppear calls prepare
+cyclic neighbor binding before display; endpoint gesture gating retains the
+300 ms pause and stopping when held input reaches the next boundary. A scoped
+row-binding adapter preserves valid adjacent labels for material-limited
+ranges shorter than the padded runtime button pool.
+
+The ARM fixture executes original reset/activation, native quantity label and
+selection callbacks, button repeat, grid movement/interpolation and scroll
+feedback. It checks both directions and native page classes, quantities 2..10,
+pool sizes 5/15, two ASLR bases, correct visible neighbor labels, a single-row
+animation, direction-specific sound selectors, settling, reset scope and the
+existing exact 300 ms behavior at 30/60/120 Hz. Compatibility conflicts in
+movement, either row binder or either cAppear call disable only quantity wrap.
+Final text/layout/audio playback and controller/clock samples remain modeled;
+live visual/audio confirmation is pending.
+
+Validation: pinned offline build, all nine host suites, Core startup/settings
+checks across 64 module subsets and two ASLR bases, full preview/quantity
+fixtures, 30,700 crafting/cooking cases and shared Pockets regressions pass.
+Release archive integrity, manifest hashes and extracted/deployed/source parity
+are verified separately. Previous releases are preserved.
 
 ## 0.3.63 Fresh-wrap pause adjusted to 300 ms
 

@@ -325,3 +325,42 @@ User requests 300 ms after testing 200 ms. The deadline is now 5,760,000 ticks
 (19.2 MHz * 3 / 10); no latch/repeat behavior changes. Quantity tests derive
 frame counts from pause_ticks so the exact deadline remains covered at modeled
 30/60/120 Hz, including early release and restart of the pause.
+
+
+## Quantity wrap animation and directional feedback — 0.3.65
+
+Replace the reset/activate/select/focus jump at each wrap with the ordinary
+03762978 queued vertical-step fields (+3EC=2, +3F0=0 up/1 down, +3F4=-1/+1,
++3F8=0) consumed by 0375FD8C. Clear the queued kind afterwards because shared
+page input runs before the native grid update. Native movement selects the
+quantity, interpolates one row and calls 03765950's cScroll feedback. It sets
++468's selector +40 from direction, inverted by the quantity grid's reverse
+flag. The playback boundary receives "Scroll" (the native cScroll name).
+
+Prepare native GridRequest.loop (+17) at the normal quantity cAppear reset
+calls, return addresses 0346B028 / 02DE8BF8. Match these callers and the
+one-column/one-visible-row layout, copy the request and leave unrelated resets
+unchanged. Keep cyclic neighbor binding throughout the selector lifetime;
+toggling it at wrap time changes viewport padding and pops the number labels.
+Existing neutral/pause and fresh-gesture gates prevent native cyclic movement
+from wrapping again when a held control reaches an endpoint. The 300 ms timer
+and native material limit (2..10) are retained.
+
+LBtnListNumInput's two L_Btn panes are templates. 037611xx allocates a runtime
+pool including four padding rows; +2F8 is active pool size, not two rows. The
+native binders 03469B50 / 02DE7730 correct just one lap. Small material limits
+can be shorter than the padded pool, leaving a visible neighbor unbound.
+The scoped quantity row delegate normalizes each source index when one-lap
+binding would be insufficient. It calls the original native binder on each
+row, temporarily narrowing +2F8/+210, then restores both fields. Native
+formatting, material styling and callbacks are retained; no text is recreated.
+Binder bodies and both caller instructions are fingerprinted before install.
+
+ARM checks execute native reset, activation, selection, button repeat, move,
+interpolation, label binders and scroll feedback at two ASLR bases. Pool sizes
+5/15 and every native maximum 2..10 cover both visible neighbors and settle.
+Both native page identities, directional sound selectors, one-row distance,
+300 ms boundaries at 30/60/120 Hz, early release/restart, held stopping, input
+ownership and reopen guards are covered. Clock/controller samples, layout
+writes, text formatting and final timeline/audio playback are modeled. Actual
+animation appearance and audible sounds still need the Steam Deck test.

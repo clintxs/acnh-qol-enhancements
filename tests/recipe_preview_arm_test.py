@@ -263,6 +263,21 @@ class PreviewMachine(Machine):
             u.reg_write(UC_ARM64_REG_PC,self.base+0x3939528); return
         elif action == 'animation_pose':
             u.mem_write(self.reg(0),struct.pack('<2fI3If',0,0,0x3f800000,0x01000000,0x20000000,0x03000000,5))
+        elif action == 'quantity_reset_call':
+            u.reg_write(UC_ARM64_REG_LR,self.quantity_reset_caller)
+            u.reg_write(UC_ARM64_REG_PC,self.hooks[self.base+0x3764290]); return
+        elif action == 'quantity_reset_return':
+            u.reg_write(UC_ARM64_REG_PC,self.ram+0x100); return
+        elif action == 'quantity_scroll':
+            grid=self.reg(0)
+            self.events.append(('quantity_scroll',self.string(self.read(self.reg(1)+8)),
+                                self.reg(2),self.read(self.read(grid+0x468)+0x40,4),
+                                self.read(grid+0x418,4),self.read(grid+0x428,4)))
+        elif action == 'quantity_number':
+            self.quantity_numbers[self.reg(0)]=self.reg(1)
+            self.events.append(('quantity_number',self.reg(0),self.reg(1)))
+        elif action == 'quantity_position':
+            self.events.append(('quantity_position',bytes(u.mem_read(self.reg(1),12))))
         elif action == 'grid_enter': self.events.append(('grid_enter', self.reg(2)))
         elif action == 'grid_leave': self.events.append(('grid_leave', self.reg(2)))
         elif action == 'change_item':
@@ -1529,7 +1544,8 @@ for base in (0x7100000000,0x7200000000): initial_pose_fixture(base)
 
 for base in (0x7100000000,0x7200000000): navigation_fixture(base)
 
-def quantity_wrap_fixture(base):
+def quantity_wrap_fixture(base,pool=5):
+    margin=(pool-1)//2
     m=PreviewMachine(base)
     page=m.alloc(0x600); grid=m.alloc(0x600); context=m.alloc(0x100)
     m.write(page,base+0x4a3a7d8); m.write(page+0x578,grid)
@@ -1545,7 +1561,7 @@ def quantity_wrap_fixture(base):
     layout=m.alloc(); layout_methods=m.alloc(); layout_ops=m.alloc(0xa0)
     m.write(grid+0x270,layout); m.write(layout,layout_methods)
     m.write(layout+8,m.alloc()); m.write(layout+0x18,layout_ops)
-    m.write(layout_methods+0x18,m.stub('noop')); m.write(layout_ops+0x98,m.stub('noop'))
+    m.write(layout_methods+0x18,m.stub('noop')); m.write(layout_ops+0x98,m.stub('quantity_position'))
     states=m.alloc(8*8); m.write(context+0x18,8,4); m.write(context+0x20,states)
     m.write(context+0x14,0x1400,4)
     for i in range(8): m.write(states+8*i,m.alloc(0x130))
@@ -1554,19 +1570,20 @@ def quantity_wrap_fixture(base):
     input_methods=m.alloc(); m.write(input_methods+0x18,m.stub('noop'))
     enter_methods=m.alloc(); m.write(enter_methods,m.stub('grid_enter'))
     leave_methods=m.alloc(); m.write(leave_methods,m.stub('grid_leave'))
-    rows=m.alloc(10*8)
-    for i in range(10):
+    rows=m.alloc(pool*8)
+    for i in range(pool):
         button=m.alloc(0x300); key=m.alloc(0x1500)
         m.write(button,row_methods); m.write(button+0x218,key)
+        m.write(button+0x2f0,m.alloc(8))
         m.write(key,input_methods); m.write(key+0x18,context)
         m.write(key+0x20,enter_methods); m.write(key+0x40,leave_methods)
         m.write(key+0x14b0,0xff,4); m.write(rows+8*i,button)
-    m.write(grid+0x208,10,4); m.write(grid+0x210,rows)
-    for off,value in ((0x298,2),(0x2e0,3),(0x2e8,1),(0x2ec,3),(0x2f0,3),
-                      (0x2f4,3),(0x2f8,10),(0x3cc,10),(0x3d4,10),(0x3d0,10),
-                      (0x3d8,2),(0x3e8,5),(0x418,2),(0x434,7),(0x440,9),(0x430,7)):
+    m.write(grid+0x208,pool,4); m.write(grid+0x210,rows)
+    for off,value in ((0x298,2),(0x2e0,3),(0x2e8,1),(0x2ec,1),(0x2f0,1),
+                      (0x2f4,1),(0x2f8,pool),(0x3cc,10),(0x3d4,10),(0x3d0,10),
+                      (0x3d8,margin),(0x3e8,7),(0x418,2),(0x434,9),(0x440,9),(0x430,9)):
         m.write(grid+off,value,4)
-    delegate=m.alloc(); m.write(delegate+0x10,m.stub('zero')); m.write(grid+0x330,delegate)
+    delegate=m.alloc(); m.write(delegate,base+0x2d00198); m.write(delegate+0x10,m.stub('accept')); m.write(grid+0x330,delegate)
     key=m.alloc(); m.write(key+0x14,0xffffffff,4); m.write(grid+0x4c0,key)
     # Execute the real quantity selection callback via the native grid's +370
     # delegate. Formatting/material widgets are boundaries, not reimplemented.
@@ -1579,7 +1596,27 @@ def quantity_wrap_fixture(base):
     m.write(grid+0x380,base+0x3469e1c); m.write(grid+0x388,0)
     m.services[base+0x3464e40]=('preview','noop')
     m.services[base+0x3465370]=('preview','details')
+    # Execute the real quantity label binder, including its circular index
+    # calculation, type check and 1..native maximum bounds. Text writing is
+    # the boundary. Keep its native owner/delegate ABI, like selection above.
+    m.quantity_numbers={}
+    m.write(grid+0x338,sequence); m.write(grid+0x340,base+0x3469b50)
+    type_guard=m.alloc(); m.write(type_guard,1,1)
+    m.write(base+0x4ac4d98,type_guard); m.write(base+0x4ac4d90,m.alloc())
+    m.write(row_methods,m.stub('accept'))
+    m.services[base+0x34649bc]=('preview','quantity_number')
     m.services[base+0x37654a0]=('preview','noop')
+    # Execute native scroll animation/feedback. Only timeline/audio playback,
+    # row rendering and text writes are modeled; native interpolation and binding
+    # indices execute. Native grid setup adds four padding rows to the viewport;
+    # the two L_Btn panes in the layout are templates, not the full runtime pool.
+    m.write(grid+0x2b8,1,4); m.write(grid+0x2c0,m.alloc())
+    m.write(grid+0x3b0,0,4); m.write(grid+0x3c4,4,4)
+    m.u.mem_write(grid+0x308,struct.pack('<f',100.0))
+    scroll_binding=m.alloc(); sound_selector=m.alloc()
+    m.write(grid+0x450,scroll_binding); m.write(grid+0x468,sound_selector)
+    m.services[base+0x3c66950]=('preview','quantity_scroll')
+    m.write(base+0x4a5f620,base+struct.unpack_from('<Q',RAW,0x4a5f620)[0])
     # Run native logical-button dispatch and its repeat timer, rather than
     # assuming the axis-consumed bit also suppresses synthesized directions.
     clock=m.alloc(); clock_methods=m.alloc()
@@ -1610,10 +1647,31 @@ def quantity_wrap_fixture(base):
             for key in native_keys:
                 m.invoke(base+0x3c4b20c,key,m.last_input_snapshot,timing,kwargs.get('blocked',0))
             if m.read(grid+0x3ec,4): m.invoke(base+0x375fd8c,grid)
+        m.invoke(base+0x3763480,grid)
     def at(index):
+        callback=0x2de79fc if m.read(page)==base+0x49de8f0 else 0x3469e1c
+        m.write(grid+0x380,base+callback)
         m.write(grid+0x440,index,4)
-        m.write(grid+0x430,min(index,7),4); m.write(grid+0x438,0,4)
+        m.write(grid+0x430,index,4); m.write(grid+0x438,margin,4)
+        m.write(grid+0x434,m.read(grid+0x3cc,4)-1,4)
         m.write(grid+0x418,2,4)
+        m.u.mem_write(grid+0x424,bytes(8))
+        for offset in (0x400,0x40c): m.u.mem_write(grid+offset,struct.pack('<3f',0,margin*100,0))
+    # The real layout supplies a scissored one-number viewport and two button
+    # templates. Match that viewport instead of the earlier generic 3-row fixture.
+    quantity_layout=layout_sections(layout_asset('LBtnListNumInput'))
+    assert {pane_name(p) for p in quantity_layout if p[:4]==b'prt1'} >= {'L_Btn_00','L_Btn_01'}
+    assert any(p[:4]==b'usd1' and b'ScissorOn' in p for p in quantity_layout)
+    # Enter through the actual cAppear return address so native cyclic binding
+    # and the quantity-specific padded-row delegate are prepared before input.
+    request=m.alloc(0x30); m.write(request,base+0x4a2b020)
+    m.u.mem_write(request+8,struct.pack('<3I',10,9,9)); m.write(request+0x16,1,1)
+    m.write(request+0x18,1,1); m.write(request+0x2c,3,4)
+    reset_call=m.stub('quantity_reset_call')
+    m.quantity_reset_caller=base+0x346b028
+    m.services[m.quantity_reset_caller]=('preview','quantity_reset_return')
+    m.invoke(reset_call,grid,request); m.invoke(base+0x335b4a0,grid,0)
+    m.write(grid+0x418,2,4)
     # A held control on open is disarmed, then both d-pad and stick can wrap.
     step(-1); assert selected()==9
     for page_class in (0x4a3a7d8,0x49de8f0):
@@ -1621,11 +1679,17 @@ def quantity_wrap_fixture(base):
         for stick in (False,True):
             at(9); step(); step(-1,stick); assert selected()==0
             assert m.read(sequence+0x1c2d8,4)==9  # Native quantity index = quantity-1.
-            assert m.read(grid+0x3e8,1)&2==0  # No native continuous looping.
+            assert m.read(grid+0x3e8,1)&2 # Native cyclic neighbor binding is prepared on open.
+            feedback=[e for e in m.events if e[0]=='quantity_scroll'][-1]
+            assert feedback[1:]==('Scroll',scroll_binding,0,1,0x3f800000),feedback
+
             for _ in range(40): step(-1,stick,repeat=True)
             assert selected()==0 # A wrapped stick cannot immediately scroll to 9.
+            assert m.read(grid+0x3e8,1)&2 # Input gating, not removing neighbors, stops repeat wrapping.
             at(0); step(); step(1,stick); assert selected()==9
             assert m.read(sequence+0x1c2d8,4)==0
+            feedback=[e for e in m.events if e[0]=='quantity_scroll'][-1]
+            assert feedback[1:]==('Scroll',scroll_binding,1,0,0x3f800000),feedback
             # Hold from the interior all the way to an endpoint and beyond.
             at(5); step()
             for _ in range(80): step(1,stick,repeat=True)
@@ -1635,6 +1699,35 @@ def quantity_wrap_fixture(base):
             for _ in range(80): step(-1,stick,repeat=True)
             assert selected()==9
             step(); step(-1,stick); assert selected()==0
+    # Animate 1 <-> native maximum in a single row, including material-limited
+    # selectors, then verify interpolation settles and ordinary clamping returns.
+    for page_class in (0x4a3a7d8,0x49de8f0):
+        m.write(page,base+page_class)
+        for count in range(2,11):
+            for off in (0x3cc,0x3d4,0x3d0): m.write(grid+off,count,4)
+            for direction in (-1,1):
+                at(count-1 if direction<0 else 0); step()
+                m.events.clear(); step(direction,True)
+                feedback=[e for e in m.events if e[0]=='quantity_scroll']
+                assert len(feedback)==1,feedback
+                assert feedback[0][1:]==('Scroll',scroll_binding,int(direction>0),
+                                          int(direction<0),0x3f800000),feedback
+                assert m.read(grid+0x3ec,4)==0 # No second queued step.
+                positions=[struct.unpack('<3f',e[1]) for e in m.events if e[0]=='quantity_position']
+                assert any(0 < abs(p[1]-margin*100) < 100 for p in positions),positions
+                center=m.read(rows+margin*8)
+                neighbor=m.read(rows+(margin-1 if direction<0 else margin+1)*8)
+                assert m.quantity_numbers[center]==(count if direction<0 else 1)
+                assert m.quantity_numbers[neighbor]==(1 if direction<0 else count), (pool,count,direction)
+                assert m.read(grid+0x210)==rows and m.read(grid+0x2f8,4)==pool
+                assert any(e[0]=='quantity_number' for e in m.events)
+                for _ in range(80): step()
+                assert m.read(grid+0x418,4)==2 and m.read(grid+0x3e8,1)&2
+                assert m.read(grid+0x430,4)==selected()==(0 if direction<0 else count-1)
+                # Quantity detail callback ran once; wrapping did not reopen/reset
+                # the selector, which previously caused the standard click.
+                assert len([e for e in m.events if e[0]=='details'])==1
+    for off in (0x3cc,0x3d4,0x3d0): m.write(grid+off,10,4)
     # Pressure jitter below the press threshold is not a physical release.
     # Logical stick buttons can arrive after the raw axis, and both routes
     # must stay consumed after a wrap. Exercise the native repeat path too.
@@ -1713,11 +1806,27 @@ def quantity_wrap_fixture(base):
     m.write(m.read(page+0x210)+0x54,0,1); step(-1); assert selected()==9
     # Native reset/reopen disarms cached controls, even with reused pointers.
     step(); request=m.alloc(0x30); m.write(request,base+0x4a2b020)
-    m.u.mem_write(request+8,struct.pack('<3I',10,7,9)); m.write(request+0x16,1,1)
-    m.write(request+0x2c,3,4); m.hook(0x3764290,grid,request)
-    m.invoke(base+0x335b4a0,grid,0) # Native cAppear's reset is followed by activation.
-    step(-1); assert selected()==9
-    step(); step(-1); assert selected()==0
+    m.u.mem_write(request+8,struct.pack('<3I',10,9,9)); m.write(request+0x16,1,1)
+    m.write(request+0x18,1,1); m.write(request+0x2c,3,4)
+    reset_call=m.stub('quantity_reset_call')
+    for caller in (0x346b028,0x2de8bf8):
+        m.quantity_reset_caller=base+caller
+        m.services[base+caller]=('preview','quantity_reset_return')
+        m.invoke(reset_call,grid,request)
+        assert m.read(request+0x17,1)==0 # Do not mutate the caller's request.
+        assert m.read(grid+0x3e8,1)&2 and m.read(grid+0x438,4)==margin
+        m.invoke(base+0x335b4a0,grid,0)
+        assert m.read(grid+0x298,4)==2
+        # Native activation's state entry settles the motion; modeled state
+        # callbacks do not perform that part of the list lifecycle.
+        m.write(grid+0x418,2,4)
+        step(-1); assert selected()==9
+        step(); step(-1); assert selected()==0
+    # A reset from any other caller must retain the unmodified non-cyclic list.
+    m.hook(0x3764290,grid,request); assert m.read(grid+0x3e8,1)&2==0
+    m.invoke(base+0x335b4a0,grid,0)
+    # Restore the scoped quantity setup before continuing input regressions.
+    m.invoke(reset_call,grid,request); m.invoke(base+0x335b4a0,grid,0)
     # Honor the native range when materials limit the selector below ten.
     m.write(grid+0x3cc,4,4); m.write(grid+0x3d4,4,4); m.write(grid+0x3d0,4,4)
     at(3); step(); step(-1); assert selected()==0
@@ -1728,9 +1837,10 @@ def quantity_wrap_fixture(base):
     for held,left in ((0,(1,0)),(0x32,(0,0)),(3,(0,0)),(0,(0,float('nan')))):
         step(); m.input(page,held,resident=3,left=left); assert selected()==3
     assert any(e==('native_input',page) for e in m.events)
-    print(f'PASS: quantity endpoint wrap, 300 ms pause/resume boundary at 30/60/120 Hz, release cancels/restarts pause, no delay in range or repeat wrap at reached boundary, native button repeat and quantity/material callback, delayed stick buttons, pressure jitter and neutral rearm, d-pad/stick, crafting/cooking pages, native limits, blocking and reused-page reset; system clock/raw-to-logical input/layout services modeled; ASLR {base:#x}')
+    print(f'PASS: quantity endpoint wrap, 300 ms pause/resume boundary at 30/60/120 Hz, release cancels/restarts pause, no delay in range or repeat wrap at reached boundary, native button repeat and quantity/material callback, native one-row wrap slide and directional cScroll feedback, delayed stick buttons, pressure jitter and neutral rearm, d-pad/stick, crafting/cooking pages, native limits, blocking and reused-page reset; system clock/raw-to-logical input/layout services modeled; pool={pool}; ASLR {base:#x}')
 
-for base in (0x7100000000,0x7200000000): quantity_wrap_fixture(base)
+for base in (0x7100000000,0x7200000000):
+    for pool in (5,15): quantity_wrap_fixture(base,pool)
 
 def workbench_tilt_fixture(base):
     m=PreviewMachine(base)

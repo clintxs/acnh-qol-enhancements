@@ -1,4 +1,4 @@
-QoL Enhancements 0.3.64 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.3.65 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -18,6 +18,10 @@ Core uses subsdk6, leaving subsdk9 available for Jubbsticks Additions.
 This avoids that executable-slot collision; compatibility with its eventual
 ACNH v3 release still needs testing. Other mods must also avoid subsdk6 and
 our hook/layout files. Core supplies the suite's only main.npdm.
+
+0.3.65: Craft Multiple wraparound uses the native number transition and the
+up/down sound for the pressed direction. The 300 ms pause and held-input
+stopping behavior are retained for crafting and cooking.
 
 0.3.64: With Catalog enabled, a crafting/cooking villager's current item name
 gets a star only when you have not learned their recipe. Other item dialogue
@@ -204,6 +208,7 @@ Active settings:
   d-pad in crafting and cooking. A fresh endpoint wrap pauses scrolling for
   300 ms, then resumes if the direction stays held. Releasing during the pause
   allows another press normally. Return the stick to center to release it.
+  Wraps use the native number slide and the directional up/down sound.
   Set false for vanilla quantity controls.
 
 DIY right-stick horizontal rotation now matches the workbench. Workbench
