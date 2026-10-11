@@ -5,7 +5,7 @@
 using namespace qol::controls;
 int main() {
     Settings settings{};
-    assert(settings.holdToAdvanceDialogue);
+    assert(settings.holdToAdvanceDialogue && settings.holdToHoover);
     assert(!ApplySettings("enabled=true\nversion=0.4.15\nhold_to_advance_dialogue=false", settings));
     assert(!settings.holdToAdvanceDialogue);
     assert(!ApplySettings("# inherit\n", settings) && !settings.holdToAdvanceDialogue);
@@ -25,5 +25,23 @@ int main() {
         }
         assert(ApplySettings("unknown=true\nbroken", settings) == 2);
     }
+    for (bool prior : {false, true}) {
+        settings.holdToHoover = prior;
+        for (const auto *value : {"", "TRUE", "0", "1", "yes", "true # comment"}) {
+            assert(ApplySettings(std::string("hold_to_hoover=") + value, settings) == 1);
+            assert(settings.holdToHoover == prior);
+        }
+        assert(ApplySettings("hold_to_hoover=false\nhold_to_hoover=true", settings) == 1);
+        assert(settings.holdToHoover == prior);
+        assert(ApplySettings("hold_to_hoover=false\n\xff", settings) == 1);
+        assert(settings.holdToHoover == prior);
+        assert(!ApplySettings("# inherit", settings) && settings.holdToHoover == prior);
+    }
+    assert(!ApplySettings("hold_to_hoover=false\nhold_to_advance_dialogue=true", settings));
+    assert(!settings.holdToHoover && settings.holdToAdvanceDialogue);
+    assert(!ApplySettings("hold_to_hoover=true\nhold_to_advance_dialogue=false", settings));
+    assert(settings.holdToHoover && !settings.holdToAdvanceDialogue);
+    assert(ApplySettings("hold_to_hoover=false\nhold_to_hoover=true\nhold_to_advance_dialogue=true", settings) == 1);
+    assert(settings.holdToHoover && settings.holdToAdvanceDialogue);
     std::cout << "PASS: Controls default, inheritance, strict boolean, duplicate rollback and atomic invalid files\n";
 }

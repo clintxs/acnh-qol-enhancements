@@ -2298,3 +2298,23 @@ five-item deselection, mixed selected/unselected gaps, backtracking, switching
 direction after release, blocked deselection, and simultaneous A/navigation in
 both picker modes. All 842 imported Pockets cases pass. Live inverse behavior
 and selling remain unconfirmed.
+
+
+## 0.4.16 Controls hoover setting (2026-10-11)
+
+The user confirms hold-Y hoovering works in-game. Added `hold_to_hoover = true`
+to Controls, independently of `hold_to_advance_dialogue`. Both regular and
+custom INIs support it; missing values default to true, omitted custom values
+inherit, invalid values retain the prior value, and duplicate keys roll back
+only that setting. When false, all five pickup hooks and their fingerprint
+checks are skipped, leaving native field Y behavior intact. Dialogue remains
+independently configurable. Settings are logged after both config layers.
+
+The pinned offline build passes. Ten host suites and the Controls regression
+group pass: 181 hoover cases, 1,024 independent Controls dialogue cases, 712
+Hurry scenarios and 772 catch scenarios. The new cases exercise all four
+feature combinations, regular/custom overrides, invalid overlays and disabled
+pickup with conflicting native instructions at two ASLR bases. All 128 module
+subsets, shared configuration layering and default logging checks also pass.
+Package content/resource/hash checks pass. Release 0.4.16 includes matching
+suite and source archives; older archives remain intact.

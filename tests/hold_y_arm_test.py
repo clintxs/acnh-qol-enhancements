@@ -186,4 +186,28 @@ for offset in (0x2461f30, 0x2222a34, 0x2326e2c, 0x21baf28, 0x23282d0, 0x267d6c4,
     m.boot(); m.activate()
     assert len(m.hooks) == 2 and 'Controls] hold Y: DISABLED' in m.text
     cases += 1
+# Exercise independent regular/custom settings through the compiled loader.
+for base in (0x7100000000, 0x7200000000):
+    for regular, custom, hoover in (
+        (b'', None, True),
+        (b'hold_to_hoover=false\n', None, False),
+        (b'', b'hold_to_hoover=false', False),
+        (b'hold_to_hoover=false\n', b'hold_to_hoover=true', True),
+        (b'hold_to_hoover=false\n', b'# inherit', False),
+        (b'hold_to_hoover=false\n', b'hold_to_hoover=bad', False),
+        (b'hold_to_hoover=false\n', b'hold_to_hoover=true\nhold_to_hoover=false', False),
+        (b'hold_to_hoover=false\n', b'hold_to_hoover=true\n\xff', False),
+    ):
+        for dialogue in (False, True):
+            files = {'controls': DEFAULT + regular + f'hold_to_advance_dialogue={str(dialogue).lower()}\n'.encode()}
+            if custom is not None: files['controls.custom'] = custom
+            m = Machine(base, files)
+            # Disabled hoover must skip even fingerprint reads at these sites.
+            if not hoover: m.write(base + 0x2461f30, 0xdeadbeef, 4)
+            m.boot(); m.activate()
+            assert 'BOOT_OK' in m.text, m.text
+            assert f'hold_to_hoover={str(hoover).lower()}' in m.text
+            assert all((base + a in m.hooks) == hoover for a in (0x2461f30, 0x2222a34, 0x2326e2c, 0x21baf28, 0x23282d0))
+            assert (base + 0x1afa530 in m.hooks) == dialogue
+            cases += 1
 print(f'PASS: {cases} Controls cases; compiled lock/release/probe/commit guards, native Y and item classification, two ASLR bases; live Eden pending')

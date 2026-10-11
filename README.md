@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.4.15 release test build** for ACNH **3.0.3 on Eden**. One Core
+**0.4.16 release test build** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates seven optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -98,9 +98,14 @@ produce and weeds. It adds no animation speed multiplier or pickup radius.
 
 ```ini
 enabled = true
-version = 0.4.15
+version = 0.4.16
 hold_to_advance_dialogue = true
+hold_to_hoover = true
 ```
+
+Set `hold_to_hoover = false` for ordinary field Y behavior. Both settings
+work in `controls.ini` and `controls.custom.ini` and default to true. Restart
+after editing.
 
 Set `hold_to_advance_dialogue = false` to disable dialogue hurry while keeping
 hold-Y pickup enabled. This key works in both `controls.ini` and the optional
@@ -164,14 +169,14 @@ Diagnostic checks: `PYTHONPATH='../Grab 5/working/python:tests' python3 tests/di
 Install **QoL Enhancements - Crafting** with Core. This replaces the former
 Faster Crafting package; remove the old folder and rename personal
 `faster-crafting.custom.ini` preferences to `crafting.custom.ini`. Remove any old
-`version` override from that personal file (or update it to 0.4.15). The retired
+`version` override from that personal file (or update it to 0.4.16). The retired
 regular/custom paths are no longer read. Core alone no longer enables DIY previews.
 
 `romfs/qol-enhancements/config/crafting.ini` supplies these defaults:
 
 ```ini
 enabled = true
-version = 0.4.15
+version = 0.4.16
 diy_app_preview = true
 workbench_preview_tilt = true
 crafting_quantity_wrap = true
@@ -399,7 +404,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.4.15
+version = 0.4.16
 base_speed = 2
 boost_speed = 4
 faster_ui = true
@@ -544,9 +549,9 @@ at `../vanilla-3.0.3/Layout`; builders verify their hashes and archive structure
 The package script checks that every INI matches the Core release, refuses to
 replace existing archives, and creates:
 
-- `dist/qol-enhancements-v0_4_15_for_acnh_v3_0_3.zip`
-- `dist/qol-enhancements-v0_4_15_for_acnh_v3_0_3_source.zip`
-- `dist/qol-enhancements-v0_4_15_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
+- `dist/qol-enhancements-v0_4_16_for_acnh_v3_0_3.zip`
+- `dist/qol-enhancements-v0_4_16_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v0_4_16_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
 
 The binary ZIP contains a conspicuous installation text file, README, Core and
 seven independently selectable feature folders, plus a SHA-256 manifest. Source
