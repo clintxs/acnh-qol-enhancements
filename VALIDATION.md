@@ -1,5 +1,37 @@
 # Unified QoL validation
 
+## Equipped-ladder prototype 1 (2026-10-11)
+
+The user confirmed pole prototype 3 / diagnostic4 works live. This extension
+adds independent `auto_ladder=false` and retains `auto_vault=false` defaults.
+The separate ladder test ZIP enables both. Holding a ladder and pushing into
+a valid climb uses the same native automatic-hop intent guards and hold timer,
+then requests native ladder validation/reservation/action. Ordinary hops retain
+priority. No equip/unequip, transform, native timer or direct action writes.
+
+The ladder's native check-only result can also represent a DisableLadder error.
+A scoped inline observer at 02396BFC requires the real valid-climb branch before
+arming. One stable-phase validation transfers once to matching movement with the
+same player/handle, exact starting position and tool kind. Actual climb commit
+validates again. Ladder-specific compatibility conflicts leave pole enabled,
+and pole-specific conflicts leave ladder enabled; common conflicts disable both.
+
+The pinned diagnostic build and full Controls group pass: 268 pole cases, 116
+ladder cases, 181 pickup, 1024 Controls dialogue, 712 hurry and 772 first-catch
+cases, plus all 11 host suites. Ladder coverage exercises compiled policy, real
+native hop guards/timer, one-use transfer across tentative height changes,
+cancellation, tool switches, native-hop priority, error-success filtering,
+scoped observer context preservation and independent settings/fingerprints at
+two load bases. It also executes the actual final native ladder terrain/probe
+branches for low, allowed high and forbidden high landings.
+
+Terrain, contact responses and traversal reservation remain modeled. Live
+uphill/downhill cliff contact and animations must be tested independently;
+this first ladder package is a prototype. Bounded shared traversal traces remain
+in this test ZIP (VAULT labels, ladder tool=0x11, pole=0x28). Normal builds omit
+the diagnostic observers. See research/controls/auto-ladder.txt for addresses
+and the contact-path assumption.
+
 ## Equipped-pole auto vault prototype 3 (2026-10-11)
 
 Diagnostic 3 identifies the failing native height comparison: movement's tentative

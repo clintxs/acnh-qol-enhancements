@@ -17,10 +17,10 @@ CONFIG = DEFAULT + b'hold_to_hoover=false\nhold_to_advance_dialogue=false\nauto_
 
 
 class VaultMachine(Machine):
-    def __init__(self, base, verbose=True):
-        super().__init__(base, {'controls': CONFIG}, verbose=verbose)
+    def __init__(self, base, verbose=True, config=CONFIG, expected_hooks=None):
+        super().__init__(base, {'controls': config}, verbose=verbose)
         self.boot(); self.activate()
-        assert len(self.hooks) == 5 + EXTRA and all(base + a in self.hooks for a in (GEOMETRY, 0x230b8d0)), self.text
+        assert len(self.hooks) == (5 + EXTRA if expected_hooks is None else expected_hooks) and all(base + a in self.hooks for a in (GEOMETRY, 0x230b8d0)), self.text
         self.player = self.ram + 0x1000
         self.actor = self.ram + 0x6000
         self.request = self.ram + 0x8000

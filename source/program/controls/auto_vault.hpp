@@ -1,4 +1,4 @@
 #pragma once
 namespace qol::controls {
-bool InstallAutoVault();
+bool InstallAutoTraversal(bool vault = true, bool ladder = false);
 }

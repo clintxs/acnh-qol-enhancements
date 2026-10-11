@@ -21,6 +21,21 @@ int main() {
         assert(ApplySettings(std::string("auto_vault=false\n") + std::string(4096, ' '), settings) == 1);
         assert(settings.autoVault == prior);
     }
+    assert(!settings.autoLadder);
+    assert(!ApplySettings("auto_ladder=true", settings) && settings.autoLadder);
+    assert(!ApplySettings("# inherit", settings) && settings.autoLadder);
+    for (bool prior : {false, true}) {
+        settings.autoLadder = prior;
+        for (const auto *value : {"", "TRUE", "0", "1", "yes", "true # comment"}) {
+            assert(ApplySettings(std::string("auto_ladder=") + value, settings) == 1);
+            assert(settings.autoLadder == prior);
+        }
+        assert(ApplySettings("auto_ladder=false\nauto_ladder=true", settings) == 1);
+        assert(settings.autoLadder == prior);
+        assert(ApplySettings("auto_ladder=false\n\xff", settings) == 1 && settings.autoLadder == prior);
+    }
+    assert(!ApplySettings("auto_ladder=false\nauto_vault=true", settings));
+    assert(!settings.autoLadder && settings.autoVault);
     assert(settings.holdToAdvanceDialogue && settings.holdToHoover);
     assert(!ApplySettings("enabled=true\nversion=0.4.15\nhold_to_advance_dialogue=false", settings));
     assert(!settings.holdToAdvanceDialogue);

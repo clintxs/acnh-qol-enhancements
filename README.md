@@ -108,17 +108,25 @@ version = 0.4.18
 hold_to_advance_dialogue = true
 hold_to_hoover = true
 auto_vault = false
+auto_ladder = false
 ```
 
 Set `hold_to_hoover = false` for ordinary field Y behavior. The two hold-Y
 settings default to true. All Controls settings work in `controls.ini` and
 `controls.custom.ini`. Restart after editing.
 
+`auto_ladder = true` enables the equipped-ladder prototype. Hold a ladder and
+push firmly into a climbable cliff face or edge. After the native hop hold delay,
+the game requests its normal ladder action. This uses native climb validation
+and retains ordinary hop priority. Uphill/downhill live testing is pending.
+No automatic equipping or unequipping is included; it is independent of auto vault.
+
 `auto_vault = true` enables the equipped-pole prototype. Hold a vaulting pole
 and push firmly toward a valid crossing; after the native hop delay, Controls
 requests a native vault without pressing A. Ordinary narrow hops retain
 priority. This does not equip or put away tools. The feature is off by default
-pending live Eden validation; the separate auto-vault prototype ZIP enables it.
+as an opt-in feature; the user confirmed pole prototype 3 working in Eden.
+The separate traversal test ZIPs enable it.
 The key also works in `controls.custom.ini`. See the
 [traversal investigation and test limits](research/controls/auto-vault.txt).
 
@@ -126,7 +134,7 @@ Set `hold_to_advance_dialogue = false` to disable dialogue hurry while keeping
 hold-Y pickup enabled. This key works in both `controls.ini` and the optional
 `controls.custom.ini` overlay; omitted custom values inherit the regular file.
 A custom file cannot activate an absent Controls module. Disable or remove
-Controls to disable all three Controls features.
+Controls to disable all Controls features.
 It is independent of Pockets and Faster Dialogue. Restart after changing
 modules. Live Eden validation of movement, targeting and capacity handling is
 still required; see [the implementation notes](research/controls/NOTES.md).

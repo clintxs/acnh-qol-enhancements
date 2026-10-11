@@ -4,7 +4,8 @@ namespace qol::controls {
 struct Settings {
     bool holdToHoover = true;
     bool holdToAdvanceDialogue = true;
-    bool autoVault = false; // Opt in while live traversal validation is pending.
+    bool autoVault = false;
+    bool autoLadder = false; // Equipped-ladder prototype; opt in for live testing.
 };
 inline unsigned ApplySettings(std::string_view input, Settings &output) {
     if (input.size() > core::MaxConfigBytes || !core::ValidUtf8(input, true)) return 1;
@@ -22,17 +23,18 @@ inline unsigned ApplySettings(std::string_view input, Settings &output) {
         const auto key = core::Trim(line.substr(0, equals));
         const auto value = core::Trim(line.substr(equals + 1));
         if (key == "enabled" || key == "version") continue;
-        const unsigned bit = key == "hold_to_hoover" ? 1 : key == "hold_to_advance_dialogue" ? 2 : key == "auto_vault" ? 4 : 0;
+        const unsigned bit = key == "hold_to_hoover" ? 1 : key == "hold_to_advance_dialogue" ? 2 : key == "auto_vault" ? 4 : key == "auto_ladder" ? 8 : 0;
         if (!bit) { ++warnings; continue; }
         if (seen & bit) { duplicate |= bit; ++warnings; continue; }
         seen |= bit;
         if (value == "true" || value == "false")
-            (bit == 1 ? output.holdToHoover : bit == 2 ? output.holdToAdvanceDialogue : output.autoVault) = value == "true";
+            (bit == 1 ? output.holdToHoover : bit == 2 ? output.holdToAdvanceDialogue : bit == 4 ? output.autoVault : output.autoLadder) = value == "true";
         else ++warnings;
     }
     if (duplicate & 1) output.holdToHoover = previous.holdToHoover;
     if (duplicate & 2) output.holdToAdvanceDialogue = previous.holdToAdvanceDialogue;
     if (duplicate & 4) output.autoVault = previous.autoVault;
+    if (duplicate & 8) output.autoLadder = previous.autoLadder;
     return warnings;
 }
 unsigned Configure(std::string_view input);

@@ -8,6 +8,8 @@ namespace {
 namespace address {
 constexpr std::uintptr_t HopGeometry = 0x0230c470;
 constexpr std::uintptr_t HopEntry = 0x0230b8d0, HopDirection = 0x0230bf18;
+constexpr std::uintptr_t TryLadder = 0x02396154, LadderGeometry = 0x0239630c;
+constexpr std::uintptr_t ValidLadderLanding = 0x02396bfc;
 constexpr std::uintptr_t TryVault = 0x0239a340, PrepareVault = 0x0239aff4;
 constexpr std::uintptr_t EquippedToolKind = 0x015f5c40, PlayerParameters = 0x0241e98c;
 constexpr std::uintptr_t VaultPositionSelection = 0x0239a398;
@@ -24,7 +26,8 @@ constexpr std::size_t HopTimer = 0x6a0, JudgeTimerParameter = 0xed0;
 constexpr std::size_t Resident = 0x1ee8, PlayerHandle = 0x230;
 constexpr std::size_t ParameterValueMethod = 0xf0;
 }
-constexpr unsigned VaultingPoleKind = 0x28;
+constexpr unsigned VaultingPoleKind = 0x28, LadderKind = 0x11;
+bool VaultEnabled{}, LadderEnabled{};
 constexpr unsigned NoCrossing = 0, CrossingReady = 1, Waiting = 2;
 std::uintptr_t Main{};
 template<class T> T Read(const void *object, std::size_t offset = 0) {
@@ -54,7 +57,7 @@ static_assert(offsetof(HopRequest, alternate) == 0x10);
 // Only a synchronous automatic HopEntry may extend a failed native search.
 // Recording intent at geometry entry retains the upstream contact/direction
 // guards without copying them, while letting ALL native landing alternatives
-// finish before we consider a pole vault. Like the existing pickup scope,
+// finish before we consider a tool traversal. Like the existing pickup scope,
 // this relies on the player dispatcher running synchronously on the game thread.
 struct HopAttempt { void *player; bool eligible = false; unsigned geometry = 0; };
 HopAttempt *CurrentAttempt{};
@@ -65,7 +68,7 @@ HopAttempt *CurrentAttempt{};
 // guards still run in both phases, and every actual jump is validated afresh.
 struct MovementProof {
     void *player{};
-    unsigned handle{};
+    unsigned handle{}, tool{};
     std::array<float, 3> bank{};
     bool valid = false;
 };
@@ -82,17 +85,18 @@ MovementProof ConsumeProof(void *player) {
     }
     return {};
 }
-bool MatchesMovementStart(const MovementProof &proof, void *player) {
+bool MatchesMovementStart(const MovementProof &proof, void *player, unsigned tool) {
     auto actor = Read<void *>(player, field::Actor);
-    if (!proof.valid || proof.player != player || !actor ||
+    if (!proof.valid || proof.player != player || proof.tool != tool || !actor ||
         proof.handle != Read<unsigned>(player, field::PlayerHandle)) return false;
     for (unsigned i = 0; i < proof.bank.size(); ++i)
         if (proof.bank[i] != Read<float>(actor, field::AlternatePosition + i*sizeof(float))) return false;
     return true;
 }
-void RememberBank(void *player) {
+void RememberBank(void *player, unsigned tool) {
     if (auto proof = ProofFor(player)) {
         proof->player = player;
+        proof->tool = tool;
         proof->handle = Read<unsigned>(player, field::PlayerHandle);
         auto actor = Read<void *>(player, field::Actor);
         for (unsigned i = 0; i < proof->bank.size(); ++i)
@@ -130,6 +134,30 @@ VaultProbe ProbeCurrentPositionVault(void *player) {
     CurrentVaultProbe = previous;
     probe.nativeResult = result & 1;
     return probe;
+}
+
+// The native ladder probe returns success for both a real climb and its
+// DisableLadder error dialogue. Observe only the valid-climb branch, after
+// height, obstruction, occupancy and terrain checks. This hook reads context
+// without changing registers, flags or the native reservation/animation path.
+struct LadderProbe { void *player; bool valid = false; };
+LadderProbe *CurrentLadderProbe{};
+HOOK_DEFINE_INLINE(AutoLadderLanding) {
+    static void Callback(exl::hook::InlineCtx *ctx) {
+        if (CurrentLadderProbe && CurrentLadderProbe->player == reinterpret_cast<void *>(ctx->X[19]))
+            CurrentLadderProbe->valid = true;
+    }
+};
+VaultProbe ProbeCurrentPositionLadder(void *player) {
+    LadderProbe probe{player};
+    auto previous = CurrentLadderProbe;
+    CurrentLadderProbe = &probe;
+    const auto result = Native<unsigned (*)(void *, unsigned)>(address::TryLadder)(player, 1);
+    CurrentLadderProbe = previous;
+    VaultProbe check{player};
+    check.nativeResult = result & 1;
+    check.landingValidated = probe.valid;
+    return check;
 }
 
 #if CAS_AUTO_VAULT_DIAGNOSTIC
@@ -298,76 +326,101 @@ HOOK_DEFINE_TRAMPOLINE(AutoVaultEntry) {
         // Keep the complete ordinary-hop search, including adjusted landings
         // and its pending hold, first. Eligibility was observed only AFTER
         // native stick strength, low speed, contact and direction checks.
-        if (hop != NoCrossing || !attempt.eligible ||
-            Native<unsigned (*)(void *)>(address::EquippedToolKind)(player) != VaultingPoleKind) {
+        if (hop != NoCrossing || !attempt.eligible) {
+            TraceEntry(player, probe, automatic, hop, attempt.geometry);
+            return hop;
+        }
+        const auto tool = Native<unsigned (*)(void *)>(address::EquippedToolKind)(player);
+        const bool ladder = LadderEnabled && tool == LadderKind;
+        if (!(ladder || (VaultEnabled && tool == VaultingPoleKind))) {
             TraceEntry(player, probe, automatic, hop, attempt.geometry);
             return hop;
         }
 
-        auto vault = Native<unsigned (*)(void *, unsigned)>(address::TryVault);
+        auto traverse = Native<unsigned (*)(void *, unsigned)>(ladder ? address::TryLadder : address::TryVault);
         VaultProbe check{player};
         if (probe & 1) {
             // The full vault search reads tentative actor+0x278 even with
             // probe=1. Its transient river height fails the landing check.
-            check.transferred = MatchesMovementStart(movementProof, player);
+            check.transferred = MatchesMovementStart(movementProof, player, tool);
         } else {
-            check = ProbeCurrentPositionVault(player);
+            check = ladder ? ProbeCurrentPositionLadder(player) : ProbeCurrentPositionVault(player);
         }
         const unsigned valid = check.transferred || (check.nativeResult && check.landingValidated);
         const bool complete = valid && HoldComplete(player);
         if (!valid || !complete || (probe & 1)) {
             const auto result = !valid ? NoCrossing : complete ? CrossingReady : Waiting;
-            if (valid && !complete && !(probe & 1)) RememberBank(player);
+            if (valid && !complete && !(probe & 1)) RememberBank(player, tool);
             TraceEntry(player, probe, automatic, hop, attempt.geometry, valid, result, &check);
             return result;
         }
 
         // Re-run native validation against the current position and let the
-        // game reserve landing space and enter LongStickJumpReady itself.
-        const auto result = vault(player, 0) & 1;
+        // game reserve landing space and enter its normal tool-ready state.
+        const auto result = traverse(player, 0) & 1;
         TraceEntry(player, probe, automatic, hop, attempt.geometry, valid, result, &check);
-        if (result) Logging.Debug("[QoL Enhancements/Controls] auto vault: native traversal requested\n");
+        if (result) Logging.Debug("[QoL Enhancements/Controls] auto %s: native traversal requested\n",
+                                  ladder ? "ladder" : "vault");
         return result;
     }
 };
 }
 
-bool InstallAutoVault() {
-    struct Fingerprint { std::uintptr_t offset; std::uint32_t words[5]; };
+bool InstallAutoTraversal(bool vault, bool ladder) {
+    // Feature bits: 1 pole, 2 ladder, 3 shared dependency.
+    struct Fingerprint { std::uintptr_t offset; std::uint32_t words[5]; unsigned features = 3; };
     constexpr Fingerprint fingerprints[]{
 #if CAS_AUTO_VAULT_DIAGNOSTIC
-        {address::VaultCandidateRejected, {0x1100077b,0x71000f7f,0x54fffd40,0xf9403688,0xb4000428}},
-        {address::VaultSearchExit, {0x6d4a23e9,0x6d492beb,0x6d4833ed,0x6d473bef,0xa9504ff4}},
+        {address::VaultCandidateRejected, {0x1100077b,0x71000f7f,0x54fffd40,0xf9403688,0xb4000428}, 1},
+        {address::VaultSearchExit, {0x6d4a23e9,0x6d492beb,0x6d4833ed,0x6d473bef,0xa9504ff4}, 1},
         {address::MovementGuards, {0xb00144e8,0xf9414d08,0x79800108,0xb100051f,0x54000740}},
 #endif
+        {address::TryLadder, {0xb9417808,0x34000068,0x120003e0,0xd65f03c0,0xd101c3ff}, 2},
+        {address::LadderGeometry, {0xfc170fee,0x6d0133ed,0x6d022beb,0x6d0323e9,0xa9047bfd}, 2},
+        {address::ValidLadderLanding, {0x36000075,0x52800028,0x17fffff2,0x528e1488,0x72a7efa8}, 2},
         {address::HopGeometry, {0xd10783ff,0x6d143bef,0x6d1533ed,0x6d162beb,0x6d1723e9}},
         {address::HopEntry, {0xd10243ff,0x6d0523e9,0xa9067bfd,0xa90757f6,0xa9084ff4}},
         {address::HopDirection, {0xd10643ff,0xa9137bfd,0xa9146ffc,0xa91567fa,0xa9165ff8}},
-        {address::VaultPositionSelection, {0x7200027f,0xbd400008,0x52804f0a,0x5280508b,0x9a8a1178}},
-        {address::TryVault, {0xd10443ff,0x6d073bef,0x6d0833ed,0x6d092beb,0x6d0a23e9}},
-        {address::PrepareVault, {0x36000062,0x52800020,0xd65f03c0,0xd10343ff,0xfd0033e8}},
+        {address::VaultPositionSelection, {0x7200027f,0xbd400008,0x52804f0a,0x5280508b,0x9a8a1178}, 1},
+        {address::TryVault, {0xd10443ff,0x6d073bef,0x6d0833ed,0x6d092beb,0x6d0a23e9}, 1},
+        {address::PrepareVault, {0x36000062,0x52800020,0xd65f03c0,0xd10343ff,0xfd0033e8}, 1},
         {address::EquippedToolKind, {0xd10183ff,0xa9037bfd,0xa90457f6,0xa9054ff4,0x9100c3fd}},
         {address::PlayerParameters, {0xd100c3ff,0xa9017bfd,0xf90013f3,0x910043fd,0x7103ac1f}},
         {address::MovementProbe, {0xaa1303e0,0x52800021,0x52800022,0x9403c60c,0xb90003e0}},
         {address::HopCommit, {0xaa1303e0,0x2a1f03e1,0x52800022,0x52800035,0x9403a11b}},
     };
     const auto &main = exl::util::GetMainModuleInfo();
-    for (const auto &f : fingerprints) if (f.offset + sizeof(f.words) > main.m_Text.m_Size ||
-        std::memcmp(reinterpret_cast<const void *>(main.m_Text.m_Start + f.offset), f.words, sizeof(f.words))) {
-        Logging.Error("[QoL Enhancements/Controls] auto vault: DISABLED; instruction mismatch at main+0x%lx\n", f.offset);
-        return false;
+    unsigned enabled = unsigned(vault) | (unsigned(ladder) << 1);
+    const auto requested = enabled;
+    for (const auto &f : fingerprints) {
+        if (!(f.features & requested)) continue;
+        if (f.offset + sizeof(f.words) > main.m_Text.m_Size ||
+            std::memcmp(reinterpret_cast<const void *>(main.m_Text.m_Start + f.offset), f.words, sizeof(f.words))) {
+            if (vault && (f.features & 1))
+                Logging.Error("[QoL Enhancements/Controls] auto vault: DISABLED; instruction mismatch at main+0x%lx\n", f.offset);
+            if (ladder && (f.features & 2))
+                Logging.Error("[QoL Enhancements/Controls] auto ladder: DISABLED; instruction mismatch at main+0x%lx\n", f.offset);
+            enabled &= ~f.features;
+        }
     }
+    if (!enabled) return false;
+    VaultEnabled = enabled & 1;
+    LadderEnabled = enabled & 2;
     Main = main.m_Text.m_Start;
 #if CAS_AUTO_VAULT_DIAGNOSTIC
-    AutoVaultRejectedTrace::InstallAtOffset(address::VaultCandidateRejected);
-    AutoVaultExitTrace::InstallAtOffset(address::VaultSearchExit);
+    if (VaultEnabled) {
+        AutoVaultRejectedTrace::InstallAtOffset(address::VaultCandidateRejected);
+        AutoVaultExitTrace::InstallAtOffset(address::VaultSearchExit);
+    }
     AutoVaultMovementTrace::InstallAtOffset(address::MovementGuards);
     Logging.Log("[QoL Enhancements/Controls] DIAGNOSTIC: auto-vault-v4; bounded movement and entry traces\n");
 #endif
-    AutoVaultPrepare::InstallAtOffset(address::PrepareVault);
+    if (VaultEnabled) AutoVaultPrepare::InstallAtOffset(address::PrepareVault);
+    if (LadderEnabled) AutoLadderLanding::InstallAtOffset(address::ValidLadderLanding);
     AutoVaultGeometry::InstallAtOffset(address::HopGeometry);
     AutoVaultEntry::InstallAtOffset(address::HopEntry);
-    Logging.Debug("[QoL Enhancements/Controls] auto vault: READY; prototype 3; equipped pole; native hop timer\n");
-    return true;
+    if (LadderEnabled) Logging.Log("[QoL Enhancements/Controls] auto ladder: READY; prototype 1; equipped ladder; native hop timer\n");
+    if (VaultEnabled) Logging.Debug("[QoL Enhancements/Controls] auto vault: READY; prototype 3; equipped pole; native hop timer\n");
+    return enabled == requested;
 }
 }

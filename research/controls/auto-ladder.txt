@@ -1,0 +1,71 @@
+ACNH 3.0.3: equipped-ladder automatic traversal, prototype 1
+
+Scope and live evidence
+The user confirmed auto-vault diagnostic4 / pole prototype 3 works on 2026-10-11.
+The requested extension uses an already equipped ladder only. No inventory,
+equipment, unequipment, synthetic A input, position or direct state writes.
+Ladder live cliff contact and animations are not yet confirmed.
+
+Native ladder path
+Equipped tool kind is 0x11 (0x28 remains the vaulting pole). The action switch
+at 0222389C calls 02396154(player, 0) for kind 0x11.
+02396154 rejects player+178 != 0, quantizes actor+2B4 facing to eight directions,
+constructs a tile-centered request from actor+278, samples terrain height and
+calls 0239630C(player, request, flags & 1). Cardinal directions use tile centers;
+diagonal directions ask 02395BE4 for their candidate. Both up/down use this path.
+
+Request: xyz at +0, angle +C, diagonal +10, handheld ladder +11 (true),
+additional native fields +14/+18. Geometry samples a point 10 units ahead (9.9
+for diagonal). It retains obstruction, cliff transition (015F33F0 returns signed
+direction), start/end clearance, height, actor occupancy and stage restrictions.
+The ordinary height difference must be about 15 units (+/-0.61). Down/up is
+encoded from terrain, not selected by the mod. Fixed ladders/vines use another
+request variant and remain native.
+
+Important check-only behavior
+flags=1 suppresses both reservation/action setup AND error dialogue, but the
+return alone is insufficient: forbidden high terrain still returns 1 (would
+show Player_ToolActionError / DisableLadder when flags=0). An inline observer
+at 02396BFC witnesses the allowed branch, after all shared validation. X19 is
+the player; W21 contains flags. The probe requires both this witness and the
+native return bit. The observer changes no registers or native data, only a
+synchronous mod-owned scope. It is dormant for manual actions and real commits.
+
+On commit flags=0 re-runs native geometry, reservation via 02200EC8 and preparation
+02396FB8. Handheld mode enters state 0x8A, whose setup 02397188 selects
+PlayerLadderReady. The mod never writes the target or selects climb direction.
+
+Hold scheduling and existing pole preservation
+The extension shares the exact native automatic HopEntry guards used by the
+working pole feature: strong stick, low speed, contact normal, facing/input
+alignment, and original ordinary hop priority. Only a failed native search
+that reaches straight automatic HopGeometry may probe the selected tool.
+A stable action-phase valid ladder probe produces Waiting=2. A one-use proof
+is handed to the following movement phase, requiring exact actor+284 starting
+position, same player, resident and handle, and now the same tool kind. The
+native movement tail advances its own +6A0 timer. Past its >threshold comparison,
+the stable phase runs TryLadder(player,0), so landing reservation and animation
+remain native. No extra native ladder search occurs at the transient movement
+position. Release, contact loss, direction change or invalid probes cancel.
+
+The unconfirmed assumption is that wall and cliff-edge collision contacts reach
+the same native automatic HopDirection/Geometry eligibility as water contacts.
+HopEntry asks 015F3040 with masks 4 and 6; mask 6 includes another contact class
+alongside river contact. The next live test must check ascent and descent
+separately. Diagnostic traces retain geometry eligibility, tool, native probe,
+witness/prepared flag, transfer and timer for diagnosis. VAULT trace labels
+serve both tools; ladder is tool=0x11.
+
+Settings and compatibility
+New auto_ladder=false default; independent of auto_vault=false. The prototype
+ZIP enables both. Shared hop hooks install once. All requested fingerprints
+are checked before any hook is installed. Ladder-specific mismatches disable
+only ladder; pole-specific mismatches leave ladder enabled. Shared mismatches
+disable both traversal extensions. Existing unrelated Controls features remain
+independent. Normal ladder adds one read-only observer to the two shared hop
+hooks; pole retains its preparation observer. Diagnostic observers are omitted
+from normal builds.
+
+Validation
+See VALIDATION.md and tests/auto_ladder_arm_test.py. Terrain/collision responses
+and native reservation are modeled, not evidence that live cliffs work.
