@@ -1,4 +1,4 @@
-QoL Enhancements 0.4.13 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.4.14 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -10,7 +10,7 @@ Fully close ACNH. Disable the standalone Catalog Aware Shops, QoL Pockets
 Interactions, Able Sisters Bag Prototype, all Faster Interactions versions,
 Amiibo Scan - 5 Minutes, and the historical Optimized UI/Grab 5 patches.
 
-For the full suite, copy all seven “QoL Enhancements” folders into the game's
+For the full suite, copy all eight “QoL Enhancements” folders into the game's
 mods folder, then enable them in Eden. For selected features, copy Core plus
 only the feature folders you want. Restart the game after changing modules.
 
@@ -18,6 +18,15 @@ Core uses subsdk6, leaving subsdk9 available for Jubbsticks Additions.
 This avoids that executable-slot collision; compatibility with its eventual
 ACNH v3 release still needs testing. Other mods must also avoid subsdk6 and
 our hook/layout files. Core supplies the suite's only main.npdm.
+
+0.4.14: New optional Controls module: hold Y after picking up an item,
+harvesting a crop or pulling a weed to repeat that action while moving.
+The first successful action locks the category until release. Item pickup
+cannot harvest crops or pull weeds; crop harvesting works across crop species.
+An empty/unsupported/failed initial press does not arm it. Native targeting,
+animations and capacity checks remain. Placed furniture, flowers, trees,
+vines, fences, ladders and ground designs are excluded from repeats.
+Install Core plus Controls and fully restart. Live Eden validation is pending.
 
 0.4.13: Added Y / Set quantity to the cooking item 3D preview, including
 the localized controller hint. X / Favorite matches the workbench preview.
@@ -110,6 +119,7 @@ gets a star only when you have not learned their recipe. Other item dialogue
 keeps catalog ownership checks. This needs an in-game test.
 
 MODULES
+Controls: Hold Y to repeat the first item pickup, crop harvest or weed pull.
 Crafting: DIY app 3D previews and configurable crafting/cooking speed ramp.
 Catalog: catalog/recipe stars, catalog badges and furniture-variation markers.
 Pockets: Grab 5/10, direct storage withdrawal, Y-to-storage and footer hints.
@@ -236,7 +246,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.4.13
+  version = 0.4.14
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.
@@ -261,7 +271,7 @@ CRAFTING MODULE / SETTINGS (0.3.63)
 Install Core plus “QoL Enhancements - Crafting”. This replaces the former
 “QoL Enhancements - Faster Crafting” folder; remove that old folder when updating.
 Move any personal faster-crafting.custom.ini preferences to crafting.custom.ini.
-Remove old version overrides in that custom file, or update them to 0.4.13.
+Remove old version overrides in that custom file, or update them to 0.4.14.
 Old faster-crafting.ini/custom paths are no longer read.
 DIY app previews are now optional Crafting behavior, not always-on Core behavior.
 
@@ -269,7 +279,7 @@ Regular settings: romfs/qol-enhancements/config/crafting.ini
 Personal overlay: romfs/qol-enhancements/config/crafting.custom.ini
 Defaults in the regular file:
   enabled = true
-  version = 0.4.13
+  version = 0.4.14
   diy_app_preview = true
   workbench_preview_tilt = true
   crafting_quantity_wrap = true
@@ -365,7 +375,7 @@ scripted waits can limit conversation speed. Native overrides take priority.
 No preferences in either file: base 2, held 4, automatic UI/unnamed boost on,
 and an empty NPC list.
 
-Keep the personal mod folder when replacing the seven suite folders. Do not
+Keep the personal mod folder when replacing the eight suite folders. Do not
 reinstall the example preset over your edited preferences. Enable only one
 mod providing the custom file. Fully restart after changes. The custom file
 may include enabled/version and can override a disabled regular configuration.

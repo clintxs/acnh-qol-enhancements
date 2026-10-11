@@ -1,6 +1,7 @@
 #include "lib.hpp"
 #include "modules.hpp"
 #include "release.hpp"
+#include "program/controls/hold_y.hpp"
 #include "resource_budget.hpp"
 #include "settings.hpp"
 #include "program/crafting/settings.hpp"
@@ -104,13 +105,14 @@ bool ActivateCoreSettings() {
 
 // Minimum PACKAGE versions accepted by Core. Raise only when older assets
 // stop being compatible; release versions still advance with the whole suite.
-const std::array<ModuleDescription, 6> Modules{{
+const std::array<ModuleDescription, 7> Modules{{
     {"Catalog", "catalog", {0, 1, 0}, InstallCatalog},
     {"Pockets", "pockets", {0, 1, 0}, InstallPockets},
     {"Faster Dialogue", "faster-dialogue", {0, 1, 0}, dialogue::Install, dialogue::Configure, nullptr, dialogue::ReportSettings},
     {"Fitting Room", "fitting-room", {0, 1, 0}, able_bag::Install, nullptr, PrepareFittingResources},
     {"Shopping Card", "shopping-card", {0, 3, 2}, shopping::Install, nullptr, shopping::PrepareResources},
     {"Crafting", "crafting", {0, 3, 46}, crafting::Install, crafting::Configure, nullptr, crafting::ReportSettings},
+    {"Controls", "controls", {0, 4, 14}, controls::Install},
 }};
 
 void ActivateModules() {

@@ -2215,3 +2215,40 @@ preserved. The suite/source archives are verified after packaging, including
 manifest hashes, installed binary/config parity and tracked-source parity.
 Live Eden confirmation of hint positioning, localization and A/B behavior is
 still required; these local checks do not execute GPU footer rendering.
+
+
+## 0.4.14 Controls: Hold Y to hoover (2026-10-11)
+
+Added the seventh optional feature module, Controls, with its own versioned
+`controls.ini` marker. A successful first Y pickup reservation captures item,
+crop or weed category. Held Y repeats native pickup only within that category;
+release/new press clears it. All six crop species share one category. Empty,
+unsupported and failed initial attempts do not arm it. Native targeting,
+animations and capacity handling remain responsible for the actual action.
+
+Five C++ hooks observe physical input, extend only the native field Y branch,
+scope the native picker, exclude placed furniture during repeats and reject a
+mismatched actual source before the native reservation service. Seven native
+instruction fingerprints are checked before installing any Controls hook.
+Latches are bounded to eight resident slots and tied to player/generation.
+The source recheck protects against probe and commit selecting different items.
+See `research/controls/NOTES.md` for bindings, assumptions and the live checklist.
+
+Validation: the pinned offline Docker build passes. Core + Controls regressions
+pass, including nine host suites, quiet default logging, all 128 optional-module
+subsets at two ASLR bases, metadata/custom layering and native recipe-preview
+regressions. Controls adds 149 compiled ARM cases at two bases: all category
+transitions and crop species, unsupported/empty sources, initial/repeat refusal,
+release/repress during blocked actions, player/generation isolation, changed
+probe/commit source, unscoped service passthrough and atomic fingerprint failure.
+Native physical-Y mapping, packed item decoding and runtime field-kind decoding
+execute; loaded parameter tables, picker scheduling and reservation are modeled.
+
+Core and every feature marker advance to 0.4.14. Packaging now contains Core
+plus seven optional folders. Live Eden targeting, animation timing, inventory
+capacity behavior, multiplayer and save/reload confirmation remain pending.
+
+Package structure/resource/hash checks pass for eight mod folders, seven
+versioned feature configs, the unchanged Core NPDM and inherited layouts.
+The binary, matching source and optional personal-dialogue example archives
+are produced separately; older releases remain intact.

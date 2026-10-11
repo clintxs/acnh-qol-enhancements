@@ -15,7 +15,7 @@ assert not any(name.endswith('.ips') for name in files)
 assert {name.split('/')[0] for name in files if '/' in name} == {
     core, *(f'QoL Enhancements - {label}' for label in package.LABELS)}
 configs = [name for name in files if '/config/' in name]
-assert len(configs) == 7
+assert len(configs) == 8
 assert not any(name.endswith('/faster-dialogue.custom.ini') for name in files)
 core_config = f'{core}/romfs/qol-enhancements/config/core.ini'
 assert files[core_config] == (package.ROOT / 'modules/Core/romfs/qol-enhancements/config/core.ini').read_bytes()
@@ -37,7 +37,7 @@ for name, digest in manifest.items(): assert hashlib.sha256(files[name]).hexdige
 # Resource generation must reproduce the reviewed module baselines exactly.
 for name, digest in reference['assets'].items():
     assert hashlib.sha256(files[name]).hexdigest() == digest, name
-print('PASS: seven mod folders, subsdk6 only, six versioned feature configs and default Core settings, five inherited resources, revised basket and green Shopping Card layout and SHA-256 manifest')
+print('PASS: eight mod folders, subsdk6 only, seven versioned feature configs and default Core settings, five inherited resources, revised basket and green Shopping Card layout and SHA-256 manifest')
 custom = package.custom_files()
 personal = [name for name in custom if '/config/' in name]
 assert len(personal) == 1 and personal[0].endswith('/faster-dialogue.custom.ini')
@@ -58,6 +58,8 @@ if archive.exists():
         assert not any(Path(name).suffix in {'.elf','.nso','.npdm','.zs','.ips','.pyc'} for name in source.namelist())
         assert not any('/.git/' in name or '/build/' in name or '/dist/' in name for name in source.namelist())
         assert any(name.endswith('/source/program/dialogue/faster_dialogue.cpp') for name in source.namelist())
+        assert any(name.endswith('/source/program/controls/hold_y.cpp') for name in source.namelist())
+        assert any(name.endswith('/modules/Controls/romfs/qol-enhancements/config/controls.ini') for name in source.namelist())
         assert not any(name.endswith('/core/patches.hpp') for name in source.namelist())
     with ZipFile(package.ROOT / 'dist' / f'{stem}_faster-dialogue-custom-example.zip') as result:
         assert result.testzip() is None and set(result.namelist()) == set(custom)

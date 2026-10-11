@@ -1,7 +1,7 @@
 # QoL Enhancements
 
-**0.4.13 release test build** for ACNH **3.0.3 on Eden**. One Core
-executable in **subsdk6** activates six optional RomFS feature packages. The
+**0.4.14 release test build** for ACNH **3.0.3 on Eden**. One Core
+executable in **subsdk6** activates seven optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
 
@@ -28,9 +28,10 @@ end of the conversation. Release Y to return to your configured dialogue speed.
 | Fitting Room | Able Sisters Bag prototype 0.3.7 | Fitting row badge and original counter layout |
 | Crafting | DIY/workbench previews, quantity wrap + configurable crafting/cooking speed | Configuration only |
 | Shopping Card | Combined savings/cash routing prototype | Configuration + card currency layout |
+| Controls | Hold Y to repeat item pickup, crop harvest or weed pulling | Configuration only |
 
 Faster tool-wheel animations and other workspace mods are not bundled in this
-six-feature suite. Historical source notes under `docs/` describe each
+seven-feature suite. Historical source notes under `docs/` describe each
 baseline; their old installation/packaging instructions refer to standalone mods.
 
 Core includes the amiibo timeout fix. DIY Recipes app previews now belong to
@@ -44,7 +45,7 @@ Version 1.0.0 is reserved for the initial release.
 `source/program/bootstrap.cpp` validates the original content-mount call and
 continuation, then installs one SIMD-preserving discovery hook at main+037B5464.
 Only after the game's `nn::fs::MountRom("content", ...)` call does Core read the
-six known configuration paths and install enabled features. Activation is
+seven known configuration paths and install enabled features. Activation is
 once-only and does no recurring filesystem polling. No host mod-folder access,
 new mounts, filesystem permissions or module discovery are needed.
 
@@ -74,19 +75,39 @@ fingerprints only, checked before each feature's first hook.
 The eighth hook requests a native page advance while Y is held and a page is
 ready. It never sends a synthetic A press or confirms a choice.
 
+## Controls module
+
+Install **QoL Enhancements - Controls** with Core. Press Y to pick up an item,
+harvest a crop or pull a weed, then keep Y held while moving to repeat that
+action. Each hold locks to the first successful action: picking up an item
+will not harvest nearby crops or pull weeds, and harvesting any crop species
+allows the other crop species too. Release Y to clear the lock and start again.
+An empty, unsupported or unsuccessful initial press does not arm hoovering.
+
+Controls uses native targeting, pickup animations and capacity checks. Placed
+furniture, flowers, trees, vines, fences, ladders and ground designs are outside
+the repeat categories. Dropped items remain item pickups, including dropped
+produce and weeds. It adds no animation speed multiplier or pickup radius.
+
+`romfs/qol-enhancements/config/controls.ini` contains `enabled = true` and
+`version = 0.4.14`. Disable or remove Controls to restore ordinary field Y
+handling. It is independent of Pockets and Faster Dialogue. Restart after
+changing modules. Live Eden validation of movement, targeting and capacity
+handling is still required; see [the implementation notes](research/controls/NOTES.md).
+
 ## Crafting module
 
 Install **QoL Enhancements - Crafting** with Core. This replaces the former
 Faster Crafting package; remove the old folder and rename personal
 `faster-crafting.custom.ini` preferences to `crafting.custom.ini`. Remove any old
-`version` override from that personal file (or update it to 0.4.13). The retired
+`version` override from that personal file (or update it to 0.4.14). The retired
 regular/custom paths are no longer read. Core alone no longer enables DIY previews.
 
 `romfs/qol-enhancements/config/crafting.ini` supplies these defaults:
 
 ```ini
 enabled = true
-version = 0.4.13
+version = 0.4.14
 diy_app_preview = true
 workbench_preview_tilt = true
 crafting_quantity_wrap = true
@@ -314,7 +335,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.4.13
+version = 0.4.14
 base_speed = 2
 boost_speed = 4
 faster_ui = true
@@ -502,12 +523,12 @@ at `../vanilla-3.0.3/Layout`; builders verify their hashes and archive structure
 The package script checks that every INI matches the Core release, refuses to
 replace existing archives, and creates:
 
-- `dist/qol-enhancements-v0_4_13_for_acnh_v3_0_3.zip`
-- `dist/qol-enhancements-v0_4_13_for_acnh_v3_0_3_source.zip`
-- `dist/qol-enhancements-v0_4_13_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
+- `dist/qol-enhancements-v0_4_14_for_acnh_v3_0_3.zip`
+- `dist/qol-enhancements-v0_4_14_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v0_4_14_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
 
 The binary ZIP contains a conspicuous installation text file, README, Core and
-six independently selectable feature folders, plus a SHA-256 manifest. Source
+seven independently selectable feature folders, plus a SHA-256 manifest. Source
 includes modules/configurations, translations, code, tools, tests and notices;
 generated game resources and binaries are excluded.
 
