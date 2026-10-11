@@ -109,12 +109,13 @@ def main():
         assert bytes(q.u.mem_read(q.ctx,31*8))==context;total+=1
         # The experimental shop list permits every ordinary ItemKind, not just
         # the old wallpaper/flooring allowlist. Sample every real kind.
+        # Creatures require ready museum data, absent in this catalog fixture.
         kinds={}
         for ident,row in ids+nonwall:
             kind=struct.unpack_from('<I',bcsv,row+field_offsets[0x5270eb75])[0]
             kinds.setdefault(kind,ident)
         for kind,ident in kinds.items():
-            excluded=(kind in (0xeea2c69e,0x6693e43a,0x890e26a5,0x761e3ce0) or
+            excluded=(kind in (0xeea2c69e,0x6693e43a,0x890e26a5,0x761e3ce0,0x9f46eb0d,0x91b9b8d3,0xe47038b8) or
                       ident in (2543,3075,3247,5851,9964,*range(8773,8782),9771))
             q.display(ident,owned=False,expected='Sample wall' if excluded else '★ Sample wall');total+=1
         assert q.index_calls>0

@@ -92,8 +92,8 @@ bool MarkNameObject(std::uintptr_t nameObject, char16_t marker) {
 bool MarkBalloonName(std::uintptr_t nativeFrame, char16_t marker) {
     return MarkNameObject(nativeFrame - layout::NameBelowFrame, marker);
 }
-void MarkInventoryRecipe(exl::hook::InlineCtx *registers, std::uintptr_t nativeFrame,
-                         bool isStorage) {
+void MarkInventoryCollectible(exl::hook::InlineCtx *registers, std::uintptr_t nativeFrame,
+                              bool isStorage) {
     const auto controller = Read<std::uintptr_t>(nativeFrame, layout::SavedController);
     if (!controller ||
         Read<std::uintptr_t>(controller) !=
@@ -109,13 +109,28 @@ void MarkInventoryRecipe(exl::hook::InlineCtx *registers, std::uintptr_t nativeF
         return;
     }
     const auto item = Read<game::CatalogItem>(registers->X[22]);
-    if (item.id != game::RecipeCardId) {
+    const auto player = Read<std::uint8_t>(controller, layout::ControllerPlayer);
+    if (player >= 8) {
         return;
     }
-    const auto player = Read<std::uint8_t>(controller, layout::ControllerPlayer);
-    const auto status = game::QueryRecipeCard(player, item);
-    const bool marked =
-        status == game::RecipeStatus::Unlearned && MarkBalloonName(nativeFrame, u'★');
+    const bool recipe = item.id == game::RecipeCardId;
+    const auto status = recipe ? game::QueryRecipeCard(player, item) : game::RecipeStatus::Unavailable;
+    const auto donation = recipe ? game::CatalogStatus::Unavailable : game::QueryMuseumCreature(item);
+    if (!recipe && donation == game::CatalogStatus::Unavailable) {
+        return;
+    }
+    const bool missing = recipe ? status == game::RecipeStatus::Unlearned
+                                : donation == game::CatalogStatus::Uncataloged;
+    const bool marked = missing && MarkBalloonName(nativeFrame, u'★');
+    if (!recipe) {
+        static unsigned creatureReports = 0;
+        if (creatureReports++ < 64) {
+            Logging.Debug("[QoL Enhancements/Catalog] %s_CREATURE_STAR item=%u player=%u status=%u marked=%d\n",
+                          isStorage ? "STORAGE" : "POCKET", item.id, player,
+                          static_cast<unsigned>(donation), marked);
+        }
+        return;
+    }
     static unsigned reportCounts[2]{};
     auto &reports = reportCounts[isStorage ? 1 : 0];
     if (reports < 64) {
@@ -141,8 +156,8 @@ HOOK_DEFINE_INLINE(CabinetCatalogStar) {
         const auto returnAddress = Read<std::uintptr_t>(nativeFrame, layout::SavedReturn);
         if (returnAddress == game::MainAddress(address::PocketFocusReturn) ||
             returnAddress == game::MainAddress(address::StorageFocusReturn)) {
-            MarkInventoryRecipe(registers, nativeFrame,
-                                returnAddress == game::MainAddress(address::StorageFocusReturn));
+            MarkInventoryCollectible(registers, nativeFrame,
+                                     returnAddress == game::MainAddress(address::StorageFocusReturn));
             return;
         }
         const bool isFittingRoom = returnAddress == game::MainAddress(address::FittingFocusReturn);
@@ -303,6 +318,7 @@ bool InstallCatalogStars() {
     Logging.Debug("[QoL Enhancements/Catalog] FITTING_CATALOG_STARS_READY highlighted clothing balloon\n");
     Logging.Debug("[QoL Enhancements/Catalog] POCKET_RECIPE_STARS_READY learned-recipe balloons\n");
     Logging.Debug("[QoL Enhancements/Catalog] STORAGE_RECIPE_STARS_READY learned-recipe balloons\n");
+    Logging.Debug("[QoL Enhancements/Catalog] MUSEUM_CREATURE_STARS_READY undonated fish, bugs and sea creatures\n");
     Logging.Debug("[QoL Enhancements/Catalog] GROUND_STARS_READY recipes and ordinary items\n");
     return true;
 }

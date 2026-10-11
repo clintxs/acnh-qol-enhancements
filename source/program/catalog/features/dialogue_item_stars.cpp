@@ -41,7 +41,8 @@ bool MarkForm(std::uintptr_t name, std::size_t offset, char16_t marker) {
 }
 
 void MarkDialogueItem(exl::hook::InlineCtx *registers, std::uintptr_t name,
-                      std::uintptr_t itemAddress, const char *source, bool villagerCraft = false) {
+                      std::uintptr_t itemAddress, const char *source, bool villagerCraft = false,
+                      bool creatureOnly = false) {
     const auto action = registers->X[20];
     if (!action || !name || !itemAddress) {
         return;
@@ -61,7 +62,8 @@ void MarkDialogueItem(exl::hook::InlineCtx *registers, std::uintptr_t name,
         ? game::QueryVillagerCraftRecipe(player, event, recipeId)
         : recipe ? game::QueryRecipeCard(player, item) : game::RecipeStatus::Unavailable;
     const auto status =
-        recipe ? game::CatalogStatus::Unavailable : game::QueryCabinetCatalog(player, item);
+        recipe ? game::CatalogStatus::Unavailable
+               : creatureOnly ? game::QueryMuseumCreature(item) : game::QueryCabinetCatalog(player, item);
     const auto marker = recipe ? (recipeStatus == game::RecipeStatus::Unlearned ? u'★' : 0)
                                : game::CatalogMarker(status);
     const auto type = Read<unsigned>(name, layout::NameType);
@@ -94,6 +96,17 @@ HOOK_DEFINE_INLINE(DialogueValueItemStar) {
         }
         const auto stack = frame - layout::ValueFrameBytes;
         MarkDialogueItem(registers, stack + 0x400, stack + 0x28, "value");
+    }
+};
+// SetTagFromSystem's cChachFish/Insect/Seafood arms preserve x20 (action)
+// and x21 (the complete catch item). They share the value setter's name frame.
+HOOK_DEFINE_INLINE(DialogueCatchCreatureStar) {
+    static void Callback(exl::hook::InlineCtx *registers) {
+        const auto frame = registers->X[29];
+        if (frame && registers->X[21]) {
+            MarkDialogueItem(registers, frame - layout::ValueFrameBytes + 0x400,
+                             registers->X[21], "catch-creature", false, true);
+        }
     }
 };
 HOOK_DEFINE_INLINE(DialogueStoredItemStar) {
@@ -173,6 +186,16 @@ bool InstallDialogueItemStars() {
         std::array<std::uint32_t, 5> words;
     };
     constexpr Check checks[]{
+        {0x00c57abc, {0xf9400688, 0xb400fd88, 0x910aa100, 0x9460017e, 0xaa0003f5}},
+        {0x00c57ad8, {0xf001f2c2, 0x911003e0, 0xf946f842, 0xaa1503e1, 0x943acf7b}},
+        {0x00c57ae8, {0x943acf7b, 0xf9400688, 0x911003e1, 0x2a1b03e2, 0xf9414908}},
+        {0x00c57b10, {0xf9400688, 0xb400fae8, 0x910aa100, 0x94600169, 0xaa0003f5}},
+        {0x00c57b2c, {0xf001f2c2, 0x911003e0, 0xf946f842, 0xaa1503e1, 0x943acf66}},
+        {0x00c57b3c, {0x943acf66, 0xf9400688, 0x911003e1, 0x2a1b03e2, 0xf9414908}},
+        {0x00c587d0, {0xf9400688, 0xb40094e8, 0x910aa100, 0x945ffe39, 0xaa0003f5}},
+        {0x00c587ec, {0xd001f2c2, 0x911003e0, 0xf946f842, 0xaa1503e1, 0x943acc36}},
+        {0x00c587fc, {0x943acc36, 0xf9400688, 0x911003e1, 0x2a1b03e2, 0xf9414908}},
+
         {0x00a46318, {0xb940da81, 0x914007e0, 0x914007e2, 0x911fb000, 0x911fd042}},
         {0x00a53e54, {0xf9400408, 0xaa0003f3, 0xb4000068, 0xf9402515, 0x14000002}},
         {0x00a53e80, {0xf94002a8, 0x90020301, 0xaa1503e0, 0xf9401108, 0xf943e821}},
@@ -209,6 +232,9 @@ bool InstallDialogueItemStars() {
             return false;
         }
     }
+    DialogueCatchCreatureStar::InstallAtOffset(0x00c57aec);
+    DialogueCatchCreatureStar::InstallAtOffset(0x00c57b40);
+    DialogueCatchCreatureStar::InstallAtOffset(0x00c58800);
     DialogueValueItemStar::InstallAtOffset(0x00c592c8);
     DialogueStoredItemStar::InstallAtOffset(0x00c59bb4);
     DialogueInventoryItemStar::InstallAtOffset(0x00c59bdc);

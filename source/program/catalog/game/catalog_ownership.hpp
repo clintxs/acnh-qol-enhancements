@@ -18,7 +18,8 @@ constexpr char16_t CatalogMarker(CatalogStatus status) {
            : status == CatalogStatus::VariantUncataloged ? u'☆'
                                                          : 0;
 }
-// Each query reads the active player's historical catalog, not current pockets.
+// Ordinary items use the active player's historical catalog, not current pockets.
+// Creatures on Cabinet surfaces instead use the current island museum.
 // Cabinet: ordinary item kinds except recipes (also used for new shop dialogue).
 // Miles: ordinary items except recipe books and ability/upgrade books.
 // Furniture: furniture-only, for the original Nook display message.
@@ -28,5 +29,8 @@ CatalogStatus QueryCabinetCatalog(std::uint8_t player, const CatalogItem &item);
 CatalogStatus QueryMilesCatalog(std::uint8_t player, const CatalogItem &item);
 CatalogStatus QueryFurnitureCatalog(std::uint8_t player, const CatalogItem &item);
 CatalogStatus QueryFittingRoomCatalog(std::uint8_t player, const CatalogItem &item);
+// Island-wide museum state: Cataloged=donated, Uncataloged=undonated.
+// Unsupported creatures or missing data return Unavailable.
+CatalogStatus QueryMuseumCreature(const CatalogItem &item);
 bool ValidateCatalogBindings();
 } // namespace catalog_aware_shops::game

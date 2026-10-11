@@ -2363,3 +2363,39 @@ pickup with conflicting native instructions at two ASLR bases. All 128 module
 subsets, shared configuration layering and default logging checks also pass.
 Package content/resource/hash checks pass. Release 0.4.16 includes matching
 suite and source archives; older archives remain intact.
+
+
+## 0.4.18 Catalog museum creature stars (2026-10-11)
+
+Catalog now prefixes undonated fish, bugs and sea creatures with the existing
+filled star. The three native catch-tag branches are hooked before their owned
+name copies. Shared item dialogue, pocket/home-storage balloons and ground
+balloons use the current island museum rather than personal caught/catalog
+history. Any resident's donation counts; every display reads current state.
+The feature retains Catalog module gating, controller/player/mode guards,
+bounded UTF-16 handling and exact 3.0.3 instruction fingerprints. Missing
+runtime tables/providers/views or failed lock acquisition leave names unchanged.
+
+The pinned offline devkitA64 build passes. The new ARM suite passes 2,476 cases
+at two ASLR bases, including all 80 fish, 80 bugs and 40 sea creatures, donor
+ff/0/7, all eight active residents, catch and generic dialogue, pocket/storage
+scope, native donation lookup/comparison, lock pairing, unavailable resources,
+special flags, alternate island resolution, last record and missing species.
+Synthetic museum data is read-only to ARM and compared before/after; no live
+save is used. Research/ABI evidence and fixture service boundaries are recorded
+in research/museum-stars/NOTES.md.
+
+All host checks and the Catalog check group pass, including restaurant/villager
+recipes, UI-result sources, variation labels, Miles binding/counting, native
+counted names and 26,077 fitting-room cases. Additional regressions pass:
+2,248 ordinary catalog-star cases, 14,216 furniture variant cases, 3,882 pocket
+recipe cases, 14,538 storage/ground cases and 1,926 generic dialogue/ground cases.
+Core activation passes all 128 module subsets at two ASLR bases, configuration
+layering and isolated hook conflicts. Catalog's expected installed-hook count
+increases from 16 to 19.
+
+Live Eden verification remains pending: undonated and donated catches in each
+family, first and repeat catches, pocket refresh after donation (including by
+another resident), localization, storage/ground display and Catalog disabled.
+The 0.4.18 suite is an integration test build; no emulator deployment or
+in-game success is claimed. Older release archives are preserved.

@@ -19,6 +19,8 @@ constexpr std::uintptr_t ItemRemakeGlobal = 0x0522a7c8;
 constexpr std::uintptr_t ItemAccessorVtable = 0x04936b50;
 constexpr std::uintptr_t ResolvePlayerIndex = 0x02482d8c;
 constexpr std::uintptr_t ResolvePlayerSave = 0x02483354;
+constexpr std::uintptr_t HasMuseumDonation = 0x026bf130;
+constexpr std::uintptr_t ItemKindCache = 0x05226ec0, ItemKindGlobal = 0x0522a778;
 constexpr std::uintptr_t HasCatalogedItem = 0x0254a1e0;
 constexpr std::uintptr_t GetBodyVariantCount = 0x019d7260;
 constexpr std::uintptr_t GetVariantHistoryIndex = 0x01a00960;
@@ -222,6 +224,70 @@ bool HasNativeItemLookup(std::uint16_t itemId) {
            Read<std::uintptr_t>(rowPointers, sizeof(std::uintptr_t) * (itemId - firstItemId));
 }
 
+// Exact ItemKind hashes from 3.0.3 ItemParam. Excludes models, shells, fossils,
+// art and event catches (eggs/trash); those retain their existing behavior.
+bool IsMuseumCreature(const ItemMetadata &metadata) {
+    constexpr std::uint32_t Fish = 0x9f46eb0d, Insect = 0x91b9b8d3, DiveFish = 0xe47038b8;
+    return metadata.identityMatches && (metadata.kindHash == Fish || metadata.kindHash == Insect ||
+                                        metadata.kindHash == DiveFish);
+}
+CatalogStatus QueryCreatureDonation(const CatalogItem &item) {
+    if ((item.flags[1] & UnsupportedItemFlagsMask) || !HasNativeItemLookup(item.id) ||
+        !Read<std::uintptr_t>(MainAddress(address::ItemKindCache), 8) ||
+        !Read<std::uintptr_t>(MainAddress(address::ItemKindGlobal))) {
+        return CatalogStatus::Unavailable;
+    }
+    // Follow the native museum reader (01b172f8), including its alternate
+    // island branch. This is a live save-view object, not an on-disk offset.
+    constexpr std::size_t IslandProvider = 0x10, AlternateIslandFlag = 0x453;
+    constexpr std::size_t AlternateIslandProvider = 0x130, MainIslandData = 0x70;
+    constexpr std::size_t MuseumView = 0x1bf198, ViewOffset = 8, ViewLock = 0x20;
+    constexpr std::size_t GetDataVirtual = 0x38;
+    const auto manager = Read<std::uintptr_t>(MainAddress(address::FallbackSaveGlobal));
+    if (!manager) {
+        return CatalogStatus::Unavailable;
+    }
+    const auto provider = Read<std::uintptr_t>(manager, IslandProvider);
+    const bool alternate = Read<std::uint8_t>(manager, AlternateIslandFlag) & 1;
+    const auto owner =
+        provider ? Read<std::uintptr_t>(provider, alternate ? AlternateIslandProvider : 0) : 0;
+    const auto vtable = owner ? Read<std::uintptr_t>(owner) : 0;
+    const auto getter = vtable ? Read<std::uintptr_t>(vtable, GetDataVirtual) : 0;
+    if (!getter) {
+        return CatalogStatus::Unavailable;
+    }
+    const auto data = reinterpret_cast<std::uintptr_t (*)(std::uintptr_t)>(getter)(owner);
+    if (!data) {
+        return CatalogStatus::Unavailable;
+    }
+    const auto view = data + (alternate ? 0 : MainIslandData) + MuseumView;
+    const auto museum = Read<std::uintptr_t>(view);
+    if (!museum) {
+        return CatalogStatus::Unavailable;
+    }
+    const auto lock = Read<std::uintptr_t>(view, ViewLock);
+    const auto acquire = lock ? Read<std::uintptr_t>(lock) : 0;
+    const auto release = lock ? Read<std::uintptr_t>(lock, 8) : 0;
+    const auto acquireTable = acquire ? Read<std::uintptr_t>(acquire) : 0;
+    const auto releaseTable = release ? Read<std::uintptr_t>(release) : 0;
+    const auto acquireCallback = acquireTable ? Read<std::uintptr_t>(acquireTable) : 0;
+    const auto releaseCallback = releaseTable ? Read<std::uintptr_t>(releaseTable) : 0;
+    if (lock && (!acquireCallback || !releaseCallback ||
+                 !reinterpret_cast<bool (*)(std::uintptr_t)>(acquireCallback)(acquire))) {
+        return CatalogStatus::Unavailable;
+    }
+    // Native lookup compares the full item against 1024 donation records and
+    // checks the matching donor byte. Any resident's donation counts. It never
+    // reads the player's caught/catalog bits or writes museum progress.
+    const bool donated =
+        FunctionAt<bool (*)(std::uintptr_t, const CatalogItem *)>(address::HasMuseumDonation)(
+            museum + Read<std::uintptr_t>(view, ViewOffset), &item);
+    if (lock) {
+        reinterpret_cast<void (*)(std::uintptr_t)>(releaseCallback)(release);
+    }
+    return donated ? CatalogStatus::Cataloged : CatalogStatus::Uncataloged;
+}
+
 // Called only after the main item is known. Native getters preserve the game's
 // body/color interpretation and read-lock callbacks; fabric/custom designs do
 // not create additional missing catalog variants.
@@ -304,6 +370,9 @@ CatalogStatus QueryCatalog(std::uint8_t player, const CatalogItem &item, Surface
         !IsEligibleKind(metadata, surface)) {
         return CatalogStatus::Unavailable;
     }
+    if (IsMuseumCreature(metadata)) {
+        return QueryCreatureDonation(item);
+    }
     const auto catalogView = FindReadyCatalogView(player);
     if (!catalogView || !HasNativeItemLookup(item.id)) {
         return CatalogStatus::Unavailable;
@@ -320,6 +389,13 @@ CatalogStatus QueryCatalog(std::uint8_t player, const CatalogItem &item, Surface
 }
 } // namespace
 
+CatalogStatus QueryMuseumCreature(const CatalogItem &item) {
+    ItemMetadata metadata;
+    if (!ReadItemMetadata(item, metadata) || !IsMuseumCreature(metadata)) {
+        return CatalogStatus::Unavailable;
+    }
+    return QueryCreatureDonation(item);
+}
 CatalogStatus QueryCabinetCatalog(std::uint8_t player, const CatalogItem &item) {
     return QueryCatalog(player, item, Surface::Cabinet);
 }
@@ -341,6 +417,14 @@ bool ValidateCatalogBindings() {
         std::array<std::uint32_t, 5> words;
     };
     constexpr Check checks[]{
+        {0x01b172f8, {0xa9bd7bfd, 0xf9000bf5, 0xa9024ff4, 0x910003fd, 0xb001cae8}},
+        {0x01b17318, {0x39514d09, 0xaa0103f3, 0xf9400908, 0x37000109, 0xf9400100}},
+        {0x01b17360, {0x9146fc08, 0x91066114, 0xf9401288, 0xb40001c8, 0xf9400100}},
+        {0x026bf130, {0xd10183ff, 0xa9027bfd, 0xf9001bf7, 0xa90457f6, 0xa9054ff4}},
+        {0x026bf2fc, {0x52820088, 0xaa1f03f4, 0xaa1f03f5, 0x8b080276, 0xd503201f}},
+        {0x026bf350, {0x52860088, 0x7110029f, 0x8b080268, 0x8b140109, 0x9a883128}},
+        {0x0267d7b4, {0xd10203ff, 0xa9037bfd, 0xf90023f9, 0xa9055ff8, 0xa90657f6}},
+
         {0x0254ccd0, {0xd100c3ff, 0xa9017bfd, 0xa9024ff4, 0x910043fd, 0x39400008}},
         {0x01a00960, {0xd10203ff, 0xa9027bfd, 0xa9036ffc, 0xa90467fa, 0xa9055ff8}},
         {0x019d7260, {0xa9ba7bfd, 0xa9016ffc, 0xa90267fa, 0xa9035ff8, 0xa90457f6}},
