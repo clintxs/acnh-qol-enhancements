@@ -4,20 +4,23 @@ Terrain geometry, equipment lookup, parameter resources and traversal reservatio
 are modeled. This does not prove live collision, animation or multiplayer timing.
 """
 import struct
+from pathlib import Path
 from core_arm_test import Machine, DEFAULT, RAW
 from unicorn.arm64_const import *
 
 GEOMETRY = 0x230c470
 DEPENDENCIES = (GEOMETRY, 0x230b8d0, 0x230bf18, 0x239a340, 0x239aff4,
                 0x15f5c40, 0x241e98c, 0x221a094, 0x2223454)
+DIAGNOSTIC = b"DIAGNOSTIC: auto-vault-v1" in (Path(__file__).resolve().parents[1] / "project.elf").read_bytes()
+EXTRA = int(DIAGNOSTIC)
 CONFIG = DEFAULT + b'hold_to_hoover=false\nhold_to_advance_dialogue=false\nauto_vault=true\n'
 
 
 class VaultMachine(Machine):
-    def __init__(self, base):
-        super().__init__(base, {'controls': CONFIG})
+    def __init__(self, base, verbose=True):
+        super().__init__(base, {'controls': CONFIG}, verbose=verbose)
         self.boot(); self.activate()
-        assert len(self.hooks) == 4 and all(base + a in self.hooks for a in (GEOMETRY, 0x230b8d0)), self.text
+        assert len(self.hooks) == 4 + EXTRA and all(base + a in self.hooks for a in (GEOMETRY, 0x230b8d0)), self.text
         self.player = self.ram + 0x1000
         self.actor = self.ram + 0x6000
         self.request = self.ram + 0x8000
@@ -164,19 +167,42 @@ class VaultMachine(Machine):
 def main():
     cases = 0
     for base in (0x7100000000, 0x7200000000):
+        if DIAGNOSTIC:
+            trace = VaultMachine(base, verbose=False)
+            assert 'DIAGNOSTIC: auto-vault-v1' in trace.text
+            ctx = trace.ram + 0xf000
+            trace.u.mem_write(ctx, bytes(0x100))
+            trace.write(ctx + 19*8, trace.player)
+            trace.write(trace.player + 0x1810, 1, 4)
+            before_ctx = bytes(trace.u.mem_read(ctx, 0x100))
+            before_player = bytes(trace.u.mem_read(trace.player, 0x2000))
+            for _ in range(400):
+                trace.u.reg_write(UC_ARM64_REG_X0, ctx)
+                trace.call(trace.module.find('AutoVaultMovementTrace', 'Callback'))
+            assert bytes(trace.u.mem_read(ctx, 0x100)) == before_ctx
+            assert bytes(trace.u.mem_read(trace.player, 0x2000)) == before_player
+            assert 1 <= trace.text.count('VAULT movement:') <= 4
+            assert 'state=1 action=4294967295 tool=0x28 input=1' in trace.text
+            trace.nested = True
+            for count in (0, 15, 30, 31):
+                trace.write(trace.player + 0x6a0, count, 2)
+                assert trace.automatic(1) == (2 if count <= 30 else 1)
+            assert 'geometry=0x1f tool=0x28 timer=31 vault=1 result=1' in trace.text
+            assert trace.text.count('VAULT entry:') <= 8
+            cases += 3
         m = VaultMachine(base)
         for hop in (1, 2):
             m.hop_result = hop
-            assert m.geometry() == hop and not m.vault_calls and not m.equipment_calls
+            assert m.geometry() == hop and not m.vault_calls and (DIAGNOSTIC or not m.equipment_calls)
             cases += 1
         m.hop_result = 0
         for adjusted_hop in (1, 2):
             m.final_hop_result = adjusted_hop
-            assert m.geometry() == adjusted_hop and not m.vault_calls and not m.equipment_calls
+            assert m.geometry() == adjusted_hop and not m.vault_calls and (DIAGNOSTIC or not m.equipment_calls)
             cases += 1
         m.final_hop_result = None
         for arguments in ({'automatic': 0}, {'skew': 27.}, {'skew': -27.}, {'output': m.ram + 0xe000}):
-            assert m.geometry(**arguments) == 0 and not m.vault_calls and not m.equipment_calls
+            assert m.geometry(**arguments) == 0 and not m.vault_calls and (DIAGNOSTIC or not m.equipment_calls)
             cases += 1
         for tool in (0, 8, 9, 0x11, 0x12, 0x19, 0x71):
             m.tool = tool
@@ -256,7 +282,7 @@ def main():
         m.tick(m.automatic(1))
         assert m.read(m.player + 0x6a0, 2) == 0
 
-        for offset in DEPENDENCIES:
+        for offset in DEPENDENCIES + ((0x2219fc0,) if DIAGNOSTIC else ()):
             conflict = Machine(base, {'controls': CONFIG})
             conflict.write(base + offset, 0, 4)
             conflict.boot(); conflict.activate()
@@ -271,7 +297,7 @@ def main():
         assert len(overlay.hooks) == 2
         enabled = Machine(base, {'controls': DEFAULT, 'controls.custom': b'auto_vault=true'})
         enabled.boot(); enabled.activate()
-        assert base + GEOMETRY in enabled.hooks and len(enabled.hooks) == 15
+        assert base + GEOMETRY in enabled.hooks and len(enabled.hooks) == 15 + EXTRA
         absent = Machine(base, {'controls.custom': b'auto_vault=true'})
         absent.boot(); absent.activate()
         assert len(absent.hooks) == 2

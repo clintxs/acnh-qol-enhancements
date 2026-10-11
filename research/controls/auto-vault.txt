@@ -76,3 +76,32 @@ ordinary vaults, intermediate islands, diagonal banks, short ponds, wide water,
 ocean, river mouths, blocked landings, other tools/empty hands, release/turn
 while holding, manual A, UI/buildings, and sustained movement after landing.
 Test single-player first. Confirm no repeat vault or input lock after landing.
+
+2026-10-11 live failure / diagnostic 1
+------------------------------------
+The user's prototype 1 test did not vault. Eden's log confirms Controls
+0.4.17 with auto_vault=true, and no auto-vault fingerprint mismatch was
+reported. Debug logging was off, so this log cannot identify the failed
+native stage. Do not treat the modeled terrain tests as live confirmation.
+
+Build --auto-vault-diagnostic to add bounded, unconditional VAULT traces.
+It retains prototype 1's traversal policy. One diagnostic-only inline hook
+at 0x02219fc0 observes X19 before the movement scheduler's automatic-hop
+guards. The five original instructions are fingerprinted before any hooks
+install; the callback leaves its context and player memory unchanged.
+Movement traces report state1810, controller action280, native equipped
+kind, input-valid, stick, actor speed and timer. Entry traces report native
+hop result, geometry mask, tool, timer, vault probe and final return.
+Geometry mask: 1 reached, 2 automatic request observed, 4 straight request
+observed, 8 null output observed, 16 eligible request observed. Bits 1-8
+are accumulated across candidates; bit16 confirms the conjunction itself.
+Vault=-1/result=-1 means the extension was not reached at that entry.
+Manual short-hop checks nested within native vault validation have separate
+trace deduplication and budgets from automatic probes/commits. Free-input
+budgets are separate from firm-stick budgets. Logs are capped and work
+with log_debug=false; the normal build contains no extra hook or traces.
+
+Collect one session: pole equipped, push against a manually vaultable
+crossing for three seconds, release, then manually vault with A at that
+spot. An ordinary narrow hop is useful as a comparison. The diagnostic
+package uses current Core 0.4.18 to retain the subsequent Catalog changes.

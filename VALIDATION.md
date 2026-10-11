@@ -1,5 +1,24 @@
 # Unified QoL validation
 
+## Equipped-pole auto vault diagnostic 1 (2026-10-11)
+
+The first live prototype test did not vault. Eden confirms `auto_vault=true`
+and reports no instruction mismatch, but its normal log cannot locate the
+failed native stage. This build adds observation; it is not a confirmed fix.
+
+`--auto-vault-diagnostic` enables bounded movement and entry traces even with
+Core debug logging disabled. A fingerprinted inline observer runs before the
+movement scheduler's hop guards. Mode-specific trace state keeps recursive
+manual short-hop validation from exhausting the automatic probe/commit logs.
+The normal build excludes the observation hook and diagnostic log strings.
+
+The pinned offline diagnostic build and 158 focused ARM cases at two bases
+pass. Added checks cover debug-off traces, observer context/player preservation,
+deduplication, nested native validation logs, timer stages and the new fingerprint
+conflict. Terrain, equipment resources and actual vault commits are still modeled.
+The separate 0.4.18 diagnostic ZIP keeps subsequent Catalog changes, enables the
+prototype, and includes matching source. Previous archives are preserved.
+
 ## Equipped-pole auto vault prototype 1 (2026-10-11)
 
 Opt-in `auto_vault=true` extends the native held-stick hop path only while

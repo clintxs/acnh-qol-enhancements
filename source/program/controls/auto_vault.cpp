@@ -9,9 +9,13 @@ constexpr std::uintptr_t HopGeometry = 0x0230c470;
 constexpr std::uintptr_t HopEntry = 0x0230b8d0, HopDirection = 0x0230bf18;
 constexpr std::uintptr_t TryVault = 0x0239a340, PrepareVault = 0x0239aff4;
 constexpr std::uintptr_t EquippedToolKind = 0x015f5c40, PlayerParameters = 0x0241e98c;
+constexpr std::uintptr_t MovementGuards = 0x02219fc0;
 constexpr std::uintptr_t MovementProbe = 0x0221a094, HopCommit = 0x02223454;
 }
 namespace field {
+constexpr std::size_t Actor = 0x68, PlayerContext = 0x60, ActionController = 0x70;
+constexpr std::size_t Action = 0x280, MovementState = 0x1810, InputValid = 0x12f8;
+constexpr std::size_t StickX = 0xeec, StickY = 0xef0, Speed = 0x2e0;
 constexpr std::size_t HopTimer = 0x6a0, JudgeTimerParameter = 0xed0;
 constexpr std::size_t ParameterValueMethod = 0xf0;
 }
@@ -47,8 +51,74 @@ static_assert(offsetof(HopRequest, alternate) == 0x10);
 // guards without copying them, while letting ALL native landing alternatives
 // finish before we consider a pole vault. Like the existing pickup scope,
 // this relies on the player dispatcher running synchronously on the game thread.
-struct HopAttempt { void *player; bool eligible = false; };
+struct HopAttempt { void *player; bool eligible = false; unsigned geometry = 0; };
 HopAttempt *CurrentAttempt{};
+
+#if CAS_AUTO_VAULT_DIAGNOSTIC
+// Independent budgets retain useful river-contact traces after startup/walking.
+// Quantize timer/input values so the log records stages instead of every frame.
+struct TraceSnapshot {
+    void *player{};
+    unsigned state{}, action{}, tool{}, timer{}, strong{}, slow{}, input{};
+    bool operator==(const TraceSnapshot &) const = default;
+};
+TraceSnapshot LastMovement{};
+unsigned MovementFrames{}, MovementBudget = 16, ContactBudget = 128;
+HOOK_DEFINE_INLINE(AutoVaultMovementTrace) {
+    static void Callback(exl::hook::InlineCtx *ctx) {
+        auto player = reinterpret_cast<void *>(ctx->X[19]);
+        if (!player) return;
+        auto actor = Read<void *>(player, field::Actor);
+        if (!actor || !Read<void *>(player, field::PlayerContext)) return;
+        auto controller = Read<void *>(player, field::ActionController);
+        const auto x = Read<float>(player, field::StickX), y = Read<float>(player, field::StickY);
+        const auto speed = Read<float>(actor, field::Speed);
+        const auto timer = Read<unsigned short>(player, field::HopTimer);
+        TraceSnapshot now{player, Read<unsigned>(player, field::MovementState),
+            controller ? Read<unsigned>(controller, field::Action) : ~0u,
+            Native<unsigned (*)(void *)>(address::EquippedToolKind)(player),
+            timer / 15u, x*x + y*y >= .81f, speed >= -5.f && speed <= 5.f,
+            Read<unsigned char>(player, field::InputValid)};
+        auto &budget = now.strong && now.slow ? ContactBudget : MovementBudget;
+        if (!(now == LastMovement) || ++MovementFrames >= 120) {
+            LastMovement = now;
+            MovementFrames = 0;
+            if (budget) {
+                --budget;
+                Logging.Log("[QoL Enhancements/Controls] VAULT movement: state=%u action=%u tool=0x%x input=%u stick=%d,%d speed=%d timer=%u\n",
+                    now.state, now.action, now.tool, now.input,
+                    static_cast<int>(x*1000.f), static_cast<int>(y*1000.f),
+                    static_cast<int>(speed*1000.f), timer);
+            }
+        }
+    }
+};
+void TraceEntry(void *player, unsigned probe, unsigned automatic, unsigned hop,
+                unsigned geometry, int vault = -1, int result = -1) {
+    struct Stage {
+        unsigned budget = 96, otherBudget = 16, last[8]{}, frames{};
+        void *lastPlayer{};
+    };
+    // Native vault probes recursively check a manual short hop. Keep each
+    // mode's deduplication separate so recursion cannot exhaust the trace.
+    static Stage stages[4];
+    auto &stage = stages[((automatic & 1) << 1) | (probe & 1)];
+    const auto x = Read<float>(player, field::StickX), y = Read<float>(player, field::StickY);
+    auto &remaining = x*x+y*y >= .81f ? stage.budget : stage.otherBudget;
+    const unsigned tool = Native<unsigned (*)(void *)>(address::EquippedToolKind)(player);
+    const auto timer = Read<unsigned short>(player, field::HopTimer);
+    const unsigned now[]{probe, automatic, hop, geometry, tool, timer/15u,
+                         static_cast<unsigned>(vault), static_cast<unsigned>(result)};
+    if (stage.lastPlayer == player && !std::memcmp(stage.last, now, sizeof(now)) && ++stage.frames < 120) return;
+    stage.lastPlayer = player; stage.frames = 0; std::memcpy(stage.last, now, sizeof(now));
+    if (!remaining) return;
+    --remaining;
+    Logging.Log("[QoL Enhancements/Controls] VAULT entry: probe=%u auto=%u hop=%u geometry=0x%x tool=0x%x timer=%u vault=%d result=%d\n",
+        probe, automatic, hop, geometry, tool, timer, vault, result);
+}
+#else
+void TraceEntry(void *, unsigned, unsigned, unsigned, unsigned, int = -1, int = -1) {}
+#endif
 
 bool HoldComplete(void *player) {
     auto parameters = Native<void *(*)(unsigned)>(address::PlayerParameters)(1);
@@ -62,15 +132,28 @@ bool HoldComplete(void *player) {
 
 HOOK_DEFINE_TRAMPOLINE(AutoVaultGeometry) {
     static unsigned Callback(void *player, const HopRequest *request, void *output) {
-        if (CurrentAttempt && CurrentAttempt->player == player && request->automatic &&
-            request->skewDegrees == 0.0f && !output)
-            CurrentAttempt->eligible = true;
+        if (CurrentAttempt && CurrentAttempt->player == player) {
+#if CAS_AUTO_VAULT_DIAGNOSTIC
+            // Mask: reached=1, automatic=2, straight=4, null output=8.
+            CurrentAttempt->geometry |= 1u | (request->automatic ? 2u : 0u) |
+                (request->skewDegrees == 0.f ? 4u : 0u) | (!output ? 8u : 0u);
+#endif
+            if (request->automatic && request->skewDegrees == 0.0f && !output)
+                CurrentAttempt->eligible = true;
+#if CAS_AUTO_VAULT_DIAGNOSTIC
+            if (CurrentAttempt->eligible) CurrentAttempt->geometry |= 16u;
+#endif
+        }
         return Orig(player, request, output);
     }
 };
 HOOK_DEFINE_TRAMPOLINE(AutoVaultEntry) {
     static unsigned Callback(void *player, unsigned probe, unsigned automatic) {
-        if (!(automatic & 1)) return Orig(player, probe, automatic);
+        if (!(automatic & 1)) {
+            const auto result = Orig(player, probe, automatic);
+            TraceEntry(player, probe, automatic, result, false);
+            return result;
+        }
         HopAttempt attempt{player};
         auto previous = CurrentAttempt;
         CurrentAttempt = &attempt;
@@ -80,20 +163,27 @@ HOOK_DEFINE_TRAMPOLINE(AutoVaultEntry) {
         // and its pending hold, first. Eligibility was observed only AFTER
         // native stick strength, low speed, contact and direction checks.
         if (hop != NoCrossing || !attempt.eligible ||
-            Native<unsigned (*)(void *)>(address::EquippedToolKind)(player) != VaultingPoleKind)
+            Native<unsigned (*)(void *)>(address::EquippedToolKind)(player) != VaultingPoleKind) {
+            TraceEntry(player, probe, automatic, hop, attempt.geometry);
             return hop;
+        }
 
         auto vault = Native<unsigned (*)(void *, unsigned)>(address::TryVault);
         // The native validator first checks the short-hop path with automatic
         // false, so recursive geometry calls cannot extend themselves here.
         // Probe=1 skips the reservation/state transition in PrepareVault.
-        if (!(vault(player, 1) & 1)) return NoCrossing;
-        if (!HoldComplete(player)) return Waiting;
-        if (probe & 1) return CrossingReady;
+        const auto valid = vault(player, 1) & 1;
+        const bool complete = valid && HoldComplete(player);
+        if (!valid || !complete || (probe & 1)) {
+            const auto result = !valid ? NoCrossing : complete ? CrossingReady : Waiting;
+            TraceEntry(player, probe, automatic, hop, attempt.geometry, valid, result);
+            return result;
+        }
 
         // Re-run native validation against the current position and let the
         // game reserve landing space and enter LongStickJumpReady itself.
         const auto result = vault(player, 0) & 1;
+        TraceEntry(player, probe, automatic, hop, attempt.geometry, valid, result);
         if (result) Logging.Debug("[QoL Enhancements/Controls] auto vault: native traversal requested\n");
         return result;
     }
@@ -103,6 +193,9 @@ HOOK_DEFINE_TRAMPOLINE(AutoVaultEntry) {
 bool InstallAutoVault() {
     struct Fingerprint { std::uintptr_t offset; std::uint32_t words[5]; };
     constexpr Fingerprint fingerprints[]{
+#if CAS_AUTO_VAULT_DIAGNOSTIC
+        {address::MovementGuards, {0xb00144e8,0xf9414d08,0x79800108,0xb100051f,0x54000740}},
+#endif
         {address::HopGeometry, {0xd10783ff,0x6d143bef,0x6d1533ed,0x6d162beb,0x6d1723e9}},
         {address::HopEntry, {0xd10243ff,0x6d0523e9,0xa9067bfd,0xa90757f6,0xa9084ff4}},
         {address::HopDirection, {0xd10643ff,0xa9137bfd,0xa9146ffc,0xa91567fa,0xa9165ff8}},
@@ -120,6 +213,10 @@ bool InstallAutoVault() {
         return false;
     }
     Main = main.m_Text.m_Start;
+#if CAS_AUTO_VAULT_DIAGNOSTIC
+    AutoVaultMovementTrace::InstallAtOffset(address::MovementGuards);
+    Logging.Log("[QoL Enhancements/Controls] DIAGNOSTIC: auto-vault-v1; bounded movement and entry traces\n");
+#endif
     AutoVaultGeometry::InstallAtOffset(address::HopGeometry);
     AutoVaultEntry::InstallAtOffset(address::HopEntry);
     Logging.Debug("[QoL Enhancements/Controls] auto vault: READY; prototype 1; equipped pole; native hop timer\n");
