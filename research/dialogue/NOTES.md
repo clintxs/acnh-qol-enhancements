@@ -4,7 +4,7 @@ Target main build FF1D1C05670DB6021C85B624A710B963. All addresses are main-relat
 Original source identity matches the existing Faster Interactions research.
 This is a C++ hook rewrite of the 0.3.0 two-tier behavior, with custom selection.
 
-## Native path and hook sites
+## Original native path and hook sites (see 0.4.7 addition below)
 
 - 01AF9FB0 Print update selects active controller at 02435188 or application
   fallback. 01AFA00C is the common continuation, with x0 still that controller
@@ -321,3 +321,46 @@ Local ARM checks exercise all 100 speed pairs in each INI form at two bases,
 live-rate changes, both render paths, original tier forwarding, release,
 automatic categories without stacking, maximum-speed gate/override cases and
 the original 2/4 regressions. Eden confirmation of perceived speed is pending.
+
+## 0.4.7 Y-to-Hurry prototype
+
+Current speed settings accept 1..30. Hold Y (controller+8 halfword mask 0008)
+for fixed nominal 30x reveal, independently of configured base/boost. Existing
+EligibleFast runs only after native protection/mode gates. New flag 5 retains
+native nonzero fast mode and selects 30/2 in both rate hooks. ForwardFast carries
+it to both renderers; no parser loop, instant reveal or animation update is added.
+Nonnegative native speed overrides bypass these rate hooks as before.
+
+Hurry reads live input using native active-player getter 02435188 and its
+04AB3960 -> global slot -> application+F5B20 fallback, both during reveal and
+advance. It does not use the Print-only cached B/R input during waits. No
+controller writes, persistent hurry flag, last-speaker scalar, or synthetic A.
+
+New inline site 01AFA530 follows the advance-latch load into w22 in native
+01AFA4A4. Only w22 changes to 1, leaving the native advance function to process
+one page. Requirements: manager/text/context ownership agrees, manager FSM
+(+48) is Advance=5, context+28 is ready=2, window 0..2, reveal state +21AC is
+2 (page break) or 3 (message complete), countdown +2464 is -1 or 0, message
+controller (context+8) is idle=0 or ready=2, and choice controller (context+18)
+is idle=0. Opening/closing controllers and revealing/embedded-pause text reject
+hurry. Speed selection requires manager Print=3 and the same owned ready
+context/idle-choice check. Native FSM +58 is a default/resume state, not a
+pending transition, and is deliberately not used as a hurry gate.
+
+Native branches at 01AFA69C onward still clear a continued page via 01AFD78C
+and enter Print=3, enter Choice=6 when +2475 is set, or invoke 01AFB6B4 to
+close/continue a completed message. +AC keeps its native state-9 path. The
+hook never invokes choice processing or forces Print while a choice is active.
+The native FSM changes current state synchronously via 03DBB160. Incoming
+NZCV is not live at the inline site (following branches test loaded registers).
+All sites/dependencies are fingerprinted before any dialogue hook installs.
+
+dialogue_hurry_arm_test.py executes compiled callbacks through the real SIMD
+adapter, original reveal/renderer code, original advance function and native
+FSM setter at two ASLR bases. Controller lookup, renderer page cleanup and final
+UI notification are modeled. Checks cover both page kinds, all three windows,
+choice/end handoffs, repeated held updates after handoff, live release/fallback,
+manual A preservation, authored waits, protected text, renderer forwarding,
+scripted overrides and GP/SIMD/stack preservation. This does not substitute
+for live audio/emote/render/controller testing. No important/new-catch filter
+or eventflow compiler is part of this prototype; all eligible messages hurry.

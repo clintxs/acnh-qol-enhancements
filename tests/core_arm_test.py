@@ -10,7 +10,7 @@ from unicorn.arm64_const import *
 from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
 SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'shopping-card', 'crafting')
-COUNTS = (16, 19, 7, 12, 11, 18)  # Input and hint-text hooks belong to Core.
+COUNTS = (16, 19, 8, 12, 11, 18)  # Input and hint-text hooks belong to Core.
 RELEASE_VERSION = re.search(r'ReleaseVersion\[\] = "(\d+\.\d+\.\d+)"',
                             (ROOT / 'qol-enhancements/source/program/core/release.hpp').read_text())[1]
 DEFAULT = f'enabled=true\nversion={RELEASE_VERSION}\n'.encode()
@@ -192,7 +192,8 @@ def check_errors():
     # Dialogue hook sites and legacy paths must remain pristine; validate before installing.
     for offset in (0x1af9ff0, 0x1afdd20, 0x1afdebc, 0x1afded4,
                    0x1d9dc3c, 0x1d9e11c, 0x1d9e224, 0x1d9e244,
-                   0x1b04824, 0x1b04b80, 0x1b048ec, 0x1b04b5c, 0x5f5b28):
+                   0x1b04824, 0x1b04b80, 0x1b048ec, 0x1b04b5c, 0x5f5b28,
+                   0x1afa530, 0x2435188):
         m = Machine(0x7100000000, {'faster-dialogue': DEFAULT, 'amiibo': DEFAULT})
         m.write(m.base + offset, 0xdeadbeef, 4)
         m.boot(); m.activate()

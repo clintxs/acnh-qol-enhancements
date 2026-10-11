@@ -10,11 +10,17 @@ constexpr std::uintptr_t HeldInput = 0x01afa00c, EligibleFast = 0x01afdec0;
 constexpr std::uintptr_t ForwardFast = 0x01afded4;
 constexpr std::uintptr_t MainRate = 0x01afdefc, RendererRate = 0x01a969e0;
 constexpr std::uintptr_t NameBegin = 0x01b04824, NameReady = 0x01b04b80;
+constexpr std::uintptr_t AdvanceInput = 0x01afa530, ActiveController = 0x02435188;
+constexpr std::uintptr_t ApplicationGot = 0x04ab3960;
 constexpr std::uintptr_t EntityRegistryGot = 0x04ab27c0;
 constexpr std::uintptr_t NpcTypeGot = 0x04ab37d0, NpcTypeGuardGot = 0x04ab37d8;
 } // namespace address
 namespace layout {
 constexpr std::size_t TextManager = 0x208, ManagerText = 0x28, TalkContext = 0x20;
+constexpr std::size_t TextContext = 0x210, RevealState = 0x21ac;
+constexpr std::size_t ManagerState = 0x48, AdvanceTimer = 0x2464;
+constexpr std::size_t ContextPhase = 0x28, MessageController = 8, ChoiceController = 0x18;
+constexpr std::size_t ControllerState = 8, ApplicationController = 0xf5b20;
 constexpr std::size_t WindowKind = 0x2c, ActiveSpeaker = 0xc0;
 constexpr std::size_t ActiveMessageBank = 0x2488;
 constexpr std::size_t ActiveMessageLabel = 0x24f8;
@@ -27,12 +33,15 @@ constexpr std::size_t EntityResourceName = 0x3e8;
 constexpr std::size_t IsNpcType = 0x20;
 constexpr unsigned NpcEntity = 10, PlayerEntity = 0x4f, DialogWindow = 1, BalloonWindow = 2;
 constexpr std::uint16_t BoostButtons = 0x4002; // B/R; L is deliberately excluded.
+constexpr std::uint16_t HurryButton = 0x8; // Y, sampled without changing controller memory.
 } // namespace layout
 Settings Preferences{};
-// Flags remain 1 (base) / 3 (boost), so the native fast-mode voice parameter
-// and renderer forwarding stay unchanged. Bit 1 now selects the configured
-// tier instead of hardcoding a second doubling. Native fast rate is nominal 2x.
+constexpr unsigned HurryFlag = 5, HurrySpeed = 30;
+// Odd flags retain native fast mode. Bits 1/2 select configured boost / hurry;
+// native renderer gates test nonzero and forward the whole byte. Nominal 2x
+// is the native fast rate, so scale both text paths by the desired tier / 2.
 float RateScale(unsigned flag) {
+    if (flag & 4) return float(HurrySpeed) * 0.5f;
     return float(flag & 2 ? Preferences.boostSpeed : Preferences.baseSpeed) * 0.5f;
 }
 enum class NameTag { Unknown, Named, Unnamed };
@@ -53,6 +62,30 @@ template <class T> T Read(std::uintptr_t object, std::size_t offset = 0) {
 }
 std::uintptr_t Main(std::uintptr_t offset) {
     return exl::util::GetMainModuleInfo().m_Text.m_Start + offset;
+}
+bool HurryHeld() {
+    // Match Print's active-player getter and application fallback. Read live
+    // input in Advance as well: Print's cached B/R byte is stale while waiting.
+    auto controller = reinterpret_cast<std::uintptr_t (*)()>(Main(address::ActiveController))();
+    if (!controller) {
+        const auto slot = Read<std::uintptr_t>(Main(address::ApplicationGot));
+        const auto application = slot ? Read<std::uintptr_t>(slot) : 0;
+        controller = application ? Read<std::uintptr_t>(application, layout::ApplicationController) : 0;
+    }
+    return controller && (Read<std::uint16_t>(controller, layout::HeldButtons) & layout::HurryButton);
+}
+bool HurryContext(std::uintptr_t manager, std::uintptr_t text, unsigned state) {
+    if (!manager || !text || Read<std::uintptr_t>(manager, layout::ManagerText) != text ||
+        Read<std::uintptr_t>(text, layout::TextManager) != manager ||
+        Read<unsigned>(manager, layout::ManagerState) != state) return false;
+    const auto context = Read<std::uintptr_t>(manager, layout::TalkContext);
+    if (!context || Read<std::uintptr_t>(text, layout::TextContext) != context ||
+        Read<unsigned>(context, layout::ContextPhase) != 2 ||
+        Read<unsigned>(context, layout::WindowKind) > layout::BalloonWindow) return false;
+    const auto choices = Read<std::uintptr_t>(context, layout::ChoiceController);
+    // A choice can open on the final advance, but never advance while its
+    // controller is opening, active or closing. No synthetic confirm input.
+    return choices && Read<unsigned>(choices, layout::ControllerState) == 0;
 }
 bool CopyMessageId(std::uintptr_t manager, std::size_t field, char *output) {
     output[0] = 0;
@@ -313,13 +346,17 @@ HOOK_DEFINE_INLINE(DialogueSelectSpeed) {
     static void Callback(exl::hook::InlineFloatCtx *registers) {
         const auto text = registers->X[19];
         const auto speaker = CurrentSpeaker(text);
-        const auto speed = SelectSpeed(Preferences, speaker.kind, speaker.id,
+        auto speed = SelectSpeed(Preferences, speaker.kind, speaker.id,
                                       Read<std::uint8_t>(text, layout::HeldFast) != 0, speaker.localizedName);
         // Reached only AFTER native forced/protected/acceleration-disabled
         // checks. Native stores this flag and forwards it to both renderers.
-        // Store the selected tier, not the numeric multiplier. Both flags
+        // Store the selected tier, not the numeric multiplier. All flags
         // retain native fast mode; the two rate hooks apply its actual speed.
         registers->W[9] = speed > Preferences.baseSpeed ? 3 : 1;
+        if (HurryContext(Read<std::uintptr_t>(text, layout::TextManager), text, 3) && HurryHeld()) {
+            speed = HurrySpeed;
+            registers->W[9] = HurryFlag;
+        }
 #if CAS_VERBOSE_DIALOGUE_TRACE
         // Log transitions, not the first frames: title/save dialogs must not
         // consume the entire trace before the user reaches an NPC.
@@ -348,6 +385,26 @@ HOOK_DEFINE_INLINE(DialogueSelectSpeed) {
 #endif
     }
 };
+HOOK_DEFINE_INLINE(DialogueAdvanceInput) {
+    static void Callback(exl::hook::InlineFloatCtx *registers) {
+        const auto manager = registers->X[19];
+        const auto text = Read<std::uintptr_t>(manager, layout::ManagerText);
+        if (!HurryContext(manager, text, 5)) return;
+        const auto reveal = Read<unsigned>(text, layout::RevealState);
+        if (reveal != 2 && reveal != 3) return; // No revealing or embedded-pause bypass.
+        const auto timer = Read<int>(manager, layout::AdvanceTimer);
+        if (timer != -1 && timer != 0) return; // Preserve authored/countdown waits.
+        const auto context = Read<std::uintptr_t>(manager, layout::TalkContext);
+        const auto message = Read<std::uintptr_t>(context, layout::MessageController);
+        if (!message) return;
+        const auto phase = Read<unsigned>(message, layout::ControllerState);
+        if (phase != 0 && phase != 2) return; // Idle or ready; never opening/closing.
+        if (HurryHeld()) registers->W[22] = 1;
+        // Only the local advance request changes. The native function still
+        // clears a page (state 2), opens choices (manager+2475), or closes the
+        // message (state 3). Y never writes a persistent latch or controller.
+    }
+};
 HOOK_DEFINE_INLINE(DialogueMainRate) {
     static void Callback(exl::hook::InlineFloatCtx *registers) {
         if (registers->W[20]) registers->S[0] *= RateScale(registers->W[20]);
@@ -355,7 +412,7 @@ HOOK_DEFINE_INLINE(DialogueMainRate) {
 };
 HOOK_DEFINE_INLINE(DialogueForwardSpeed) {
     static void Callback(exl::hook::InlineFloatCtx *registers) {
-        // Native DED0 sets w20 to Boolean 1. Forward the selected 1/3 flag
+        // Native DED0 sets w20 to Boolean 1. Forward the selected 1/3/5 flag
         // after that assignment, before either the rate gate or renderers.
         registers->W[20] = Read<std::uint8_t>(registers->X[19], layout::EffectiveFast);
     }
@@ -395,6 +452,8 @@ bool Install() {
         {address::RendererRate, {0x14000002, 0xbd421400, 0xbd420801, 0xbd420c02, 0x5e21d821}},
         {address::NameBegin, {0xf9400008, 0x9105e3f4, 0xf9406118, 0xf9401008, 0xf9410d16}},
         {address::NameReady, {0xb4001153, 0x34001120, 0x79400268, 0x340010e8, 0xf94186c8}},
+        {address::AdvanceInput, {0xb964666b, 0x37f801ab, 0x3400024b, 0x5100096c, 0x7100057f}},
+        {address::ActiveController, {0xd10083ff, 0xa9017bfd, 0x910043fd, 0x90013ce8, 0x91276108}},
         {0x01b048ec, {0xf9409708, 0x9104a313, 0xaa1303e0, 0xf9400908, 0xd63f0100}},
         {0x01b04b5c, {0xf94007e8, 0x910023e0, 0xf9400d08, 0xd63f0100, 0xf94007e8}},
         {0x005f5b28, {0xf9400400, 0xd65f03c0, 0xb9401000, 0xd65f03c0, 0xa9bd7bfd}},
@@ -426,7 +485,8 @@ bool Install() {
     DialogueForwardSpeed::InstallAtOffset(address::ForwardFast);
     DialogueMainRate::InstallAtOffset(address::MainRate);
     DialogueRendererRate::InstallAtOffset(address::RendererRate);
-    Logging.Debug("[QoL Enhancements/Faster Dialogue] READY: C++ hooks\n");
+    DialogueAdvanceInput::InstallAtOffset(address::AdvanceInput);
+    Logging.Debug("[QoL Enhancements/Faster Dialogue] READY: C++ hooks; hold Y to hurry at %ux until choices/end\n", HurrySpeed);
     return true;
 }
 } // namespace qol::dialogue

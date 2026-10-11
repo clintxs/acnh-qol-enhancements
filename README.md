@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.4.6 release test build** for ACNH **3.0.3 on Eden**. One Core
+**0.4.7 release test build** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -13,6 +13,10 @@ always visible. Live Eden testing is still required before public release.
 The DIY Recipes app now shows **A / Select** while browsing recipes with
 Crafting’s DIY preview enabled. It uses the existing localized caption and
 hides the hint while a preview is open.
+
+Hold **Y** during dialogue to try the new text-only **Hurry** prototype:
+nominal 30x reveal and automatic page advancement, stopping at choices or the
+end of the conversation. Release Y to return to your configured dialogue speed.
 
 ## Included implementations
 
@@ -56,7 +60,7 @@ hook pools (32 KiB trampoline / 16 KiB inline; fake heap remains 20 KiB).
 Detailed feature logs identify the suite and feature. Pockets reads translations
 at `content:/qol-enhancements/messages/pockets.ini`.
 
-Faster Dialogue now lives in `source/program/dialogue/`: seven SIMD-preserving
+Faster Dialogue now lives in `source/program/dialogue/`: eight SIMD-preserving
 C++ hooks implement current B/R input, eligible speed selection/forwarding, and
 main/renderer multipliers. The active speaker is resolved through its owned
 entity handle, validated against the live registry. NPC resource IDs and the
@@ -67,19 +71,22 @@ code-cave helper remains. Amiibo's existing 9,000-update timeout is likewise a
 C++ hook; its behavior is unchanged. Expected instruction words are validation
 fingerprints only, checked before each feature's first hook.
 
+The eighth hook requests a native page advance while Y is held and a page is
+ready. It never sends a synthetic A press or confirms a choice.
+
 ## Crafting module
 
 Install **QoL Enhancements - Crafting** with Core. This replaces the former
 Faster Crafting package; remove the old folder and rename personal
 `faster-crafting.custom.ini` preferences to `crafting.custom.ini`. Remove any old
-`version` override from that personal file (or update it to 0.4.6). The retired
+`version` override from that personal file (or update it to 0.4.7). The retired
 regular/custom paths are no longer read. Core alone no longer enables DIY previews.
 
 `romfs/qol-enhancements/config/crafting.ini` supplies these defaults:
 
 ```ini
 enabled = true
-version = 0.4.6
+version = 0.4.7
 diy_app_preview = true
 workbench_preview_tilt = true
 crafting_quantity_wrap = true
@@ -306,7 +313,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.4.6
+version = 0.4.7
 base_speed = 2
 boost_speed = 4
 faster_ui = true
@@ -329,6 +336,20 @@ use `crafting.custom.ini`; Core uses the optional settings files described above
 Pockets and Fitting Room caption files are separate translation resources.
 
 ## Conditional Faster Dialogue
+
+With Faster Dialogue enabled, holding **Y** selects a fixed nominal **30x**
+text tier independently of `base_speed`, `boost_speed`, and automatic categories.
+It advances completed pages through the game's normal message handling,
+including fish/bug catch bubbles, and opens the next choice without selecting
+an answer. Keep holding Y after manually choosing to hurry the next message;
+release it to stop automatic advancement. No additional INI setting is needed.
+Scripted pauses, native text protection and explicit rate overrides still apply.
+
+This first prototype does **not** accelerate character animations or identify
+new catches, renovation announcements, or other important dialogue. It will
+hurry those messages too. New/important-line exceptions and eventflow analysis
+are deferred. Live Eden validation of text, sound, emotes and choice handoff is
+still needed.
 
 All five preferences below work in either Faster Dialogue INI. Personal
 preferences are best kept in a separate mod so suite updates cannot replace them.
@@ -451,9 +472,9 @@ at `../vanilla-3.0.3/Layout`; builders verify their hashes and archive structure
 The package script checks that every INI matches the Core release, refuses to
 replace existing archives, and creates:
 
-- `dist/qol-enhancements-v0_4_6_for_acnh_v3_0_3.zip`
-- `dist/qol-enhancements-v0_4_6_for_acnh_v3_0_3_source.zip`
-- `dist/qol-enhancements-v0_4_6_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
+- `dist/qol-enhancements-v0_4_7_for_acnh_v3_0_3.zip`
+- `dist/qol-enhancements-v0_4_7_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v0_4_7_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
 
 The binary ZIP contains a conspicuous installation text file, README, Core and
 six independently selectable feature folders, plus a SHA-256 manifest. Source

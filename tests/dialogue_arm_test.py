@@ -9,7 +9,7 @@ import struct
 from core_arm_test import Machine, RAW, DEFAULT, SLUGS
 from unicorn.arm64_const import *
 
-HOOKS = (0x1afa00c, 0x1afdec0, 0x1afded4, 0x1afdefc, 0x1a969e0, 0x1b04824, 0x1b04b80)
+HOOKS = (0x1afa00c, 0x1afdec0, 0x1afded4, 0x1afdefc, 0x1a969e0, 0x1b04824, 0x1b04b80, 0x1afa530)
 CUSTOM = b"base_speed=2\nboost_speed=4\nfaster_ui=true\nfaster_unnamed=true\nfaster_npc_list=Timmy,Tommy,Orville,Wilbur,Kapp'n\n"
 GP = [globals()[f'UC_ARM64_REG_X{i}'] for i in range(31)]
 Q = [globals()[f'UC_ARM64_REG_Q{i}'] for i in range(32)]
@@ -28,6 +28,7 @@ class DialogueMachine(Machine):
         self.adapter = self.module.find('exl_inline_float_hook_impl')
         self.obj, self.meta, self.stack = self.ram + 0x10000, self.ram + 0x14000, self.ram + 0x80000
         self.controller, self.app = self.ram + 0x15000, self.ram + 0xa0000
+        self.getter_null = False
         self.context, self.source = self.ram + 0x60000, self.ram + 0x61000
         self.entity, self.table, self.entries = self.ram + 0x62000, self.ram + 0x63000, self.ram + 0x64000
         self.write(self.meta + 0x20, self.context)
@@ -221,7 +222,7 @@ class DialogueMachine(Machine):
         self.u.reg_write(UC_ARM64_REG_SP, self.stack + 0x3000)
         self.u.reg_write(UC_ARM64_REG_LR, self.base + 0x1234)
         self.execute(0x1a969c0, (0x1234,))
-        selected = override if override >= 0 else fast * (speeds[flags == 3] / 2) if flags else 1.2
+        selected = override if override >= 0 else fast * ((30 if flags & 4 else speeds[flags == 3]) / 2) if flags else 1.2
         expected = 1. if complete else -2. + selected * scale
         assert abs(struct.unpack('<f', self.u.mem_read(obj + 0x20c, 4))[0] - expected) < 1e-5
         assert self.read(obj + 0x205, 1) == flags
