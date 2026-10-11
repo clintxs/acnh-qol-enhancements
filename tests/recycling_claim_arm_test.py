@@ -16,6 +16,17 @@ for base in (0x80000000,0x1234500000):
     h.write(base+0x4a01130+0x1c0,base+0x30127b8)
     h.write(base+0x4a01130+0x200,base+u64(raw,0x4a01130+0x200))
     h.write(base+0x4ac4eb8,h.ram+0x2b300)
+    # General close hides the shared cursor and releases its focused pane.
+    # The old fixture had no parent focus chain and missed that side effect.
+    parent=h.ram+0x2c000;focused_owner=h.ram+0x2d000;input_page=h.ram+0x2e000
+    focus=h.ram+0x2f000;focus_rows=h.ram+0x30000;focus_controller=h.ram+0x31000
+    pane=h.ram+0x32000;pane_vtable=h.ram+0x34000;ui_app=h.ram+0x35000;cursor=h.ram+0x36000
+    h.write(name_window+0xa0,parent);h.write(parent+0x80,focused_owner+0x78)
+    h.write(parent+0x8c,0x78,4);h.write(focused_owner+0x210,input_page)
+    h.write(input_page+0x48,focus);h.write(focus+0x18,1,4);h.write(focus+0x20,focus_rows)
+    h.write(focus_rows,focus_controller);h.write(focus_controller+0x10,pane)
+    h.write(pane+0x40,pane_vtable);h.write(pane_vtable,h.ram+0x37000)
+    h.u.mem_map(base+0x5639000,0x1000);h.write(base+0x5639190,ui_app);h.write(ui_app+0xd0,cursor)
     player=h.ram+0x28000;player_vt=player+0x100;global_object=player+0x200
     h.u.mem_map(h.ram+0x100000,0x800000)
     h.u.mem_map(base+0x5474000,0x14000)
@@ -64,9 +75,14 @@ for base in (0x80000000,0x1234500000):
         h.ram+0x29000:lambda:events.append('browse'),h.ram+0x29010:lambda:events.append('full-message'),
         h.ram+0x29020:lambda:save,
         base+0x3759380:lambda:None, # UI manager only; native close/queue runs.
+        h.ram+0x37000:lambda:None, # Pane focus-release event.
         h.mod+symbol('SvcLogger','LogRaw'):lambda:None}
+    h.put(0,name_window);h.run(base+0x2b0cb68)
+    assert h.read(cursor+0x26c,1)==1 and h.read(focus_controller+0x10)==0
+    cases+=1 # Reproduce the actual native cursor/focus regression.
     def reset():
         events.clear()
+        h.write(cursor+0x26c,0,1);h.write(focus_controller+0x10,pane)
         h.write(name_window+0x1f0,0xffffffffffffffff);h.write(name_window+0x201,0,1)
         h.write(owner+0x1b0,3,4);h.write(owner+0x1f0,0xffffffff,4);h.write(owner+0x1f4,4,4)
         h.write(owner+0x200,0,1);h.write(owner+0x218,slot,4)
@@ -95,6 +111,7 @@ for base in (0x80000000,0x1234500000):
                 assert h.read(menu+0x26d8,4)==3 and h.read(menu+0x3a0,4)==99
                 assert h.read(name_window+0x201,1)==int(success)
                 assert h.read(name_window+0x1f0,4)==(4 if success else 0xffffffff)
+                assert h.read(cursor+0x26c,1)==0 and h.read(focus_controller+0x10)==pane
                 transition();assert events[-1]==('browse' if success else 'full-message')
                 cases+=1
     room=insert_ok=True;slot=0

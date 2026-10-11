@@ -1,4 +1,24 @@
-# Unified QoL validation — 0.4.6 recycling item-name cleanup
+# Unified QoL validation — 0.4.8 recycling cursor preservation
+
+## 0.4.8 Name-only disappearance preserves grid focus
+
+User confirmed 0.4.6 dismisses the balloon, but the hand disappears until moving
+slots. General CloseController 02b0cb68 explicitly sets the shared cursor's
+hide flag (02b0cbf0) and releases/clears its focused pane (02b0cc58..02b0cc5c).
+Replace that call with the owned NameWindowCtrlSeq's native disappearance
+request 030127b8 (virtual +1c0), keeping the close-request flag and state-4
+transition without invoking parent focus cleanup or UI-manager removal.
+Scope remains successful quick Claims and the verified name-window type.
+
+The fixture now has a parent focus chain and shared cursor. It reproduces the
+old native close's cursor-hide and pane-clear side effects, then checks that
+the new path queues balloon disappearance with both values untouched. Passed:
+clean build, 842 compiled Pockets cases and 90 recycling cases at two bases,
+all 64 Core module combinations, and 580 retained Y-to-Hurry scenarios.
+The existing 0.4.7 Y-to-Hurry feature is retained. No new hooks or assets.
+
+Pending Eden: hand remains on the empty slot, old balloon disappears, the next
+item's name appears normally, and a failed/full-pockets Claim remains unchanged.
 
 ## 0.4.6 Recycling item-name cleanup
 

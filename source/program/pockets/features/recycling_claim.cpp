@@ -10,12 +10,13 @@ constexpr std::uintptr_t EnterMenu = 0x02df1c58, ProcessSelection = 0x02df1d68;
 constexpr std::uintptr_t BuildMenu = 0x02defbfc;
 constexpr std::uintptr_t ControllerVtable = 0x049df828, BuilderVtable = 0x049dfba8;
 constexpr std::uintptr_t DescriptionVtable = 0x049c7208, EmptyCallbackVtable = 0x049c7230;
-constexpr std::uintptr_t NameWindowVtable = 0x04a01130, CloseController = 0x02b0cb68;
+constexpr std::uintptr_t NameWindowVtable = 0x04a01130, DisappearNameWindow = 0x030127b8;
 }
 namespace layout {
 constexpr std::size_t State = 0x1b0, Queues = 0x1f0, Phase = 0x200;
 constexpr std::size_t SelectedSlot = 0x218, Menu = 0x228;
 constexpr std::size_t NameWindow = 0x220;
+constexpr std::size_t CloseRequested = 0x201;
 constexpr std::size_t ItemsCount = 0x1c1d8, Items = 0x1c1e0, AvailableSlots = 0x1c1e8;
 constexpr std::size_t Builder = 0x218, BuilderOwner = 0x220, BuilderFunction = 0x228, Adjustment = 0x230;
 constexpr std::size_t RowCount = 0x26d8, Selection = 0x26c9, FirstAction = 0x3a0;
@@ -54,7 +55,12 @@ void DismissClaimedItemName(void *owner, int slot) {
     if (Field<std::uint8_t>(owner, layout::AvailableSlots + slot / 8) & (1u << (slot % 8))) return;
     auto *nameWindow = Field<void *>(owner, layout::NameWindow);
     if (!nameWindow || Field<std::uintptr_t>(nameWindow, 0) != game::MainAddress(address::NameWindowVtable)) return;
-    game::FunctionAt<void (*)(void *)>(address::CloseController)(nameWindow);
+    if (Field<std::uint8_t>(nameWindow, layout::Phase) > 1) return;
+    // General CloseController (02b0cb68) also hides the shared cursor and clears
+    // its focused pane. Keep only the name window's close flag and native
+    // disappearance request (virtual +1c0), leaving the grid's focus untouched.
+    Field<std::uint8_t>(nameWindow, layout::CloseRequested) = 1;
+    game::FunctionAt<void (*)(void *)>(address::DisappearNameWindow)(nameWindow);
 }
 
 bool ProbeClaim(void *owner, ClaimRequest &request, bool entering = false) {
@@ -142,7 +148,7 @@ bool InstallRecyclingClaim() {
         Check{address::EnterMenu, {0xd10103ff, 0xa9027bfd, 0xa9034ff4, 0x910083fd, 0xf9410808}},
         Check{address::ProcessSelection, {0xd10183ff, 0xa9027bfd, 0xf9001bf7, 0xa90457f6, 0xa9054ff4}},
         Check{address::BuildMenu, {0xa9be7bfd, 0xa9014ff4, 0x910003fd, 0xf9400028, 0xaa0103e0}},
-        Check{address::CloseController, {0xd10103ff, 0xa9027bfd, 0xa9034ff4, 0x910083fd, 0x52800028}}};
+        Check{address::DisappearNameWindow, {0x39480008, 0x52800089, 0x8b080808, 0xb901f109, 0xd65f03c0}}};
     for (const auto &check : checks) {
         if (std::memcmp(reinterpret_cast<const void *>(game::MainAddress(check.offset)),
                         check.words.data(), sizeof(check.words))) {
