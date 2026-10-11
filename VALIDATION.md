@@ -1,6 +1,6 @@
-# Unified QoL validation — 0.3.71 localized fixed Bag hint
+# Unified QoL validation — 0.4.1 DIY app Select hint
 
-Validated locally on October 10, 2026 against the supplied original ACNH 3.0.3
+Validated locally on October 11, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
 dialogue fix and subsequently the corrected 0.2.3 NPC diagnostic build work in Eden. The user also confirmed Nook’s Cranny transactions in Shopping Card 0.3.1.
 The user confirmed the corrected savings HUD in 0.3.4 and balance animation
@@ -1989,3 +1989,33 @@ The binary suite, source and optional custom-dialogue example are packaged
 separately as 0.4.0 archives; previous releases are preserved. This is a local
 release test build for ACNH 3.0.3 on Eden. Live testing of the new defaults,
 speed limits and logging is still required before public release.
+
+
+## 0.4.1 DIY Recipes app A / Select hint (2026-10-11)
+
+Added a fingerprinted hook to the native MenuRecipe footer builder
+(`02E9C670`). When Crafting's `diy_app_preview` is enabled, a nonempty recipe
+list receives the native A icon and existing localized KeyGuide `1201`
+(Select). Category focus and open previews retain their native hints. No
+layout replacements or new translation strings are required.
+
+Preview opening, closing, and renderer refusal request a footer rebuild. The
+rebuild waits until KeyGuide has consumed its pending records, preserving the
+native Sort/Favorite/Close hints without duplicating or freeing engine records.
+Descriptor capacity and available pool entries are checked before appending.
+Disabling the DIY preview leaves this additional hook uninstalled.
+
+The compiled ARM64 fixture executes the original phone footer builder,
+KeyGuide descriptor copying and pending-to-displayed transfer at two ASLR
+bases. It covers recipe/category/empty-list scope, preview A/B lifecycle,
+renderer contention, deferred refresh with a pending batch and capacity limits.
+The Core, Crafting and Pockets regression groups pass, including independent
+settings, hook conflicts, existing preview rotation/navigation, workbench
+quantity shortcuts and shared page input. Nine host-side test suites also pass.
+The offline Docker build succeeds.
+
+Core and all six module version markers are 0.4.1. Prior release archives are
+preserved. The suite/source archives are verified after packaging, including
+manifest hashes, installed binary/config parity and tracked-source parity.
+Live Eden confirmation of hint positioning, localization and A/B behavior is
+still required; these local checks do not execute GPU footer rendering.

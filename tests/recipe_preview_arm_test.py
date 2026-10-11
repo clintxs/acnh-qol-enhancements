@@ -22,8 +22,8 @@ def layout_asset(name):
     r = resources(zstd.decompress((ASSETS / (name + '.Nin_NX_NVN.zs')).read_bytes()))
     return next(v for k, v in r.items() if k.endswith('/' + name + '.bflyt'))
 MENU = layout_asset('MenuRecipe')
-HOOKS = (0x267d64, 0x2e9cde0, 0x2e9fbb0, 0x2e9d538, 0x3c58d24, 0x39392b0, 0x32b9fcc, 0x32b9e08, 0x6021a4, 0x39f63f0, 0x192a590)
-GUARDS = HOOKS + (0x32bd990, 0x32ba5e4, 0x3dbb160, 0x27d1d0, 0x3a17390, 0x3a174f0, 0x3c66298, 0x2e93798, 0x2e96a80, 0x3c4b880, 0x2ea0754, 0x2b0c810, 0x32ba000, 0x3c4bac4, 0x2b0e20c, 0x32b9750, 0x1513a48, 0x32be2b0, 0x32ba034, 0x192a1f0, 0x19362f4)
+HOOKS = (0x2e9c670, 0x267d64, 0x2e9cde0, 0x2e9fbb0, 0x2e9d538, 0x3c58d24, 0x39392b0, 0x32b9fcc, 0x32b9e08, 0x6021a4, 0x39f63f0, 0x192a590)
+GUARDS = HOOKS + (0x2de2b00,0x32bd990, 0x32ba5e4, 0x3dbb160, 0x27d1d0, 0x3a17390, 0x3a174f0, 0x3c66298, 0x2e93798, 0x2e96a80, 0x3c4b880, 0x2ea0754, 0x2b0c810, 0x32ba000, 0x3c4bac4, 0x2b0e20c, 0x32b9750, 0x1513a48, 0x32be2b0, 0x32ba034, 0x192a1f0, 0x19362f4)
 GUARDS += (0x27bfb4, 0x27bfe4, 0x27d550, 0x27e208)
 GUARDS += (0x32ba168, 0x3764290, 0x335b4a0, 0x3763e14, 0x3765104, 0x3c49700, 0x3c49710, 0x19282fc, 0x5f7b4c, 0x690504, 0x3f03370)
 
@@ -55,6 +55,7 @@ class PreviewMachine(Machine):
         self.controller = self.alloc(0x1200)
         self.parameters = self.alloc(0x2200)
         self.context = self.alloc()
+        self.write(base + 0x4ac7280, 0)  # No footer unless a fixture supplies one.
         self.write(self.context + 0x30, self.controller)
         self.write(self.context + 0x28, self.parameters)
         slot = self.alloc(); self.write(slot, self.context); self.write(base + 0x4ab2230, slot)
@@ -239,6 +240,8 @@ class PreviewMachine(Machine):
             self.write(key+0x14,self.reg(2),4); self.write(key+0x10,self.reg(3),4)
             result=hint
         elif action == 'source': result = 7
+        elif action == 'footer_grid': result = self.footer_grid
+        elif action == 'footer_priority': result = self.reg(0)
         elif action == 'loading_icon':
             assert self.reg(0) == self.workbench_instance + 0x38
             assert self.string(self.read(self.reg(1)+8)) == '/L_LoadingIcon_00'
@@ -1967,3 +1970,75 @@ m.write(m.base+0x49e8378,m.base+0x2ea075c); m.boot(); m.activate()
 assert all(m.base+a not in m.hooks for a in HOOKS if a not in (0x3c58d24,0x192a590))
 assert 'renderer mode slot mismatch' in m.text
 print('PASS: renderer mode vtable conflict leaves the DIY integration disabled')
+
+# Execute the native phone footer builder, descriptor copying and pending ->
+# displayed transfer. Only RTTI, pane lookup and string preparation are modeled.
+for base in (0x7100000000, 0x7200000000):
+    m = PreviewMachine(base)
+    phone, page, row, panes = m.phone(resident=3)
+    m.u.mem_write(base+0x2e9c670, RAW[0x2e9c670:0x2e9c670+20])
+    m.write(m.module.find('BuildPhoneRecipeHints', 'OrigRef'), base+0x2e9c670)
+    footer, methods, guard = m.alloc(0x300), m.alloc(), m.alloc()
+    m.write(m.context+0x58, footer); m.write(footer, methods)
+    m.write(methods, m.stub('accept')); m.write(guard, 1, 1)
+    m.write(base+0x4ac7280, guard); m.write(base+0x4ac7278, m.alloc())
+    for got in (0x4ab2020, 0x4ab2bc0, 0x4ab2f70):
+        vt = m.alloc(0x40); m.write(vt+0x18, m.stub('zero')); m.write(base+got, vt-16)
+    active_player = m.alloc(); m.write(base+0x4ab32e0, active_player)
+    for offset, key in ((0x55cb998, b'sort'), (0x55cb9a8, b'close'), (0x55cb9b8, b'favorite')):
+        text = m.alloc(); m.u.mem_write(text, key+b'\0')
+        m.write(base+offset, m.read(base+0x4ab2bc0)+16); m.write(base+offset+8, text)
+    m.services[base+0x3f04470] = ('preview', 'copy')
+    m.services[base+0x2de2de0] = ('preview', 'footer_priority')
+    m.services[base+0x2ab21c8] = ('preview', 'footer_grid')
+    m.footer_grid = m.read(page+0x580); m.write(m.footer_grid+0x2cc, 7, 4)
+    m.write(footer+0x1b0, 2, 4); m.write(footer+0x1f0, 0xffffffffffffffff)
+    for start in (0x218, 0x248):
+        entries, pool = m.alloc(), m.alloc(5*0x88)
+        m.write(footer+start+4, 5, 4); m.write(footer+start+8, entries)
+        m.write(footer+start+16, pool)
+        for i in range(5): m.write(pool+i*0x88, pool+(i+1)*0x88 if i<4 else 0)
+    def hints(start):
+        entries = m.read(footer+start+8)
+        records = [m.read(entries+i*8) for i in range(m.read(footer+start,4))]
+        return [(m.read(p,4), m.string(m.read(p+0x18)), m.read(p+0x68,1)) for p in records]
+    def flush():
+        m.invoke(base+0x2de3e80, footer)
+        assert not m.read(footer+0x218,4)
+        return hints(0x248)
+    native = [(6,'sort',3), (5,'close',3), (7,'favorite',3)]
+    select = (4,'1201',3)
+    m.hook(0x2e9c670, phone, 0)
+    assert hints(0x218) == native+[select], hints(0x218)
+    assert flush() == native+[select]
+    # Category focus has no Select; returning to the grid restores it.
+    m.hook(0x2e9c670, phone, 1); assert flush() == [(5,'close',3)]
+    m.hook(0x2e9c670, phone, 0); assert flush() == native+[select]
+    # A opens the preview, B returns to the grid; native hints are retained.
+    m.confirm(page,resident=0); m.frame(phone)
+    assert flush() == native
+    m.frame(phone); m.input(page,0,resident=0)
+    m.input(page,0x20,resident=0); m.frame(phone); m.frame(phone)
+    assert flush() == native+[select]
+    # If a batch is already pending, defer the rebuild until native consumes
+    # it. The next update must neither duplicate hints nor lose the refresh.
+    m.input(page,0,resident=0); m.hook(0x2e9c670,phone,0)
+    m.confirm(page,resident=0); m.frame(phone)
+    assert hints(0x218) == native+[select]
+    flush(); m.frame(phone); assert flush() == native
+    # A full footer cannot overrun its record pool or displace native hints.
+    m.input(page,0,resident=0); m.input(page,0x20,resident=0)
+    m.frame(phone); m.frame(phone); flush()
+    m.write(footer+0x21c,3,4)
+    m.hook(0x2e9c670,phone,0); assert flush() == native
+    m.write(footer+0x21c,5,4)
+    m.write(phone+0x8a350,0,4)
+    m.hook(0x2e9c670,phone,0); assert flush() == native
+    m.write(phone+0x8a350,1,4); m.write(phone+0x218,1,4)
+    m.hook(0x2e9c670,phone,0); assert flush() == native
+    m.write(phone+0x218,0,4)
+    # Renderer contention leaves the grid visible and restores Select.
+    m.write(m.controller+0x50,4,4)
+    m.input(page,0); m.confirm(page); m.frame(phone); assert flush() == native
+    m.frame(phone); assert flush() == native+[select]
+print('PASS: native DIY A/Select footer, category/empty-list scope, preview open/close, renderer contention, pending batches and capacity at two bases')

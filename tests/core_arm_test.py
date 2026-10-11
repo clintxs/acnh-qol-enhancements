@@ -10,7 +10,7 @@ from unicorn.arm64_const import *
 from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
 SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'shopping-card', 'crafting')
-COUNTS = (16, 15, 7, 13, 11, 17)  # Pockets/Crafting share one additional Core input hook.
+COUNTS = (16, 15, 7, 13, 11, 18)  # Pockets/Crafting share one additional Core input hook.
 RELEASE_VERSION = re.search(r'ReleaseVersion\[\] = "(\d+\.\d+\.\d+)"',
                             (ROOT / 'qol-enhancements/source/program/core/release.hpp').read_text())[1]
 DEFAULT = f'enabled=true\nversion={RELEASE_VERSION}\n'.encode()
@@ -367,7 +367,7 @@ def check_config_layers():
     print('PASS: shared regular/custom order, enabled/version overrides for all six modules, atomic metadata, failure fallback, inheritance and settings parity at two bases')
 
 def check_crafting_settings():
-    preview_sites=(0x267d64,0x2e9cde0,0x2e9fbb0,0x2e9d538,0x39392b0,0x32b9fcc,0x32b9e08,0x6021a4,0x39f63f0)
+    preview_sites=(0x2e9c670,0x267d64,0x2e9cde0,0x2e9fbb0,0x2e9d538,0x39392b0,0x32b9fcc,0x32b9e08,0x6021a4,0x39f63f0)
     speed_sites=(0x22fc6bc,0x2279a14)
     configs=(
         ({},False,False),
@@ -399,7 +399,7 @@ def check_crafting_settings():
             quantity=speed and not any(b'crafting_quantity_wrap=false' in data for data in files.values())
             assert (base+0x3764290 in m.hooks)==quantity
             assert (base+0x3c58d24 in m.hooks)==speed
-            assert len(m.hooks)==2+6*speed+9*preview+int(preview or tilt)+quantity+int(speed),m.text
+            assert len(m.hooks)==2+6*speed+10*preview+int(preview or tilt)+quantity+int(speed),m.text
             assert ('workbench tilt: READY' in m.text)==tilt
             assert (m.read(base+0x49e8378)!=base+0x2ea0754)==preview
             assert base+0xbc4144 in m.hooks

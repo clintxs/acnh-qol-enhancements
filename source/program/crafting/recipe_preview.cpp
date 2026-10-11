@@ -2,6 +2,7 @@
 #include "recipe_preview.hpp"
 #include "recipe_preview_layout.hpp"
 #include "recipe_preview_banner.hpp"
+#include "recipe_preview_hint.hpp"
 #include "program/core/page_input.hpp"
 #include <algorithm>
 #include <array>
@@ -660,6 +661,8 @@ struct Session {
     void *focusedRow{};
     recipe_banner::Placement hotelBanner{};
     Phase phase{};
+    unsigned footerKind{};
+    bool refreshFooter{};
     unsigned frames{};
     unsigned rejectedPresses{}, inputReports{}, stickReports{}, rotationReports{};
     unsigned char gridFlags{}, scrollFlags{}, cursorFlags{}, savedHidden{};
@@ -679,6 +682,28 @@ Session *ForPhone(void *phone) {
     const auto resident = At<unsigned char>(phone, field::Resident);
     if (resident >= Sessions.size()) return nullptr;
     auto &s = Sessions[resident]; return s.phone == phone ? &s : nullptr;
+}
+HOOK_DEFINE_TRAMPOLINE(BuildPhoneRecipeHints) {
+    static void Callback(void *phone, unsigned kind) {
+        Orig(phone, kind);
+        auto session = ForPhone(phone);
+        if (session) { session->footerKind = kind; session->refreshFooter = false; }
+        // Native kind 1 is category focus. Only advertise A on the recipe
+        // list; the preview keeps the normal Sort/Favorite/Close hints.
+        const auto count = At<unsigned>(phone, field::Recipes);
+        if (!(kind & 1) && count && count <= 4096 && At<unsigned>(phone, field::Selection) < count &&
+            (!session || session->phase == Phase::Idle || session->phase == Phase::DrainBack))
+            recipe_hint::Append(Main, recipe_hint::Footer(Main, UiContext()),
+                                At<unsigned char>(phone, field::Resident));
+    }
+};
+void RefreshRecipeHints(Session &session) {
+    if (!session.refreshFooter) return;
+    auto footer = recipe_hint::Footer(Main, UiContext());
+    // KeyGuide consumes its pending records once per UI update (02DE3E80).
+    // Wait for an empty batch rather than duplicating or freeing native hints.
+    if (!footer || At<int>(footer, recipe_hint::PendingCount) != 0) return;
+    BuildPhoneRecipeHints::Callback(session.phone, session.footerKind);
 }
 int PhoneRendererMode(void *phone) {
     // The native base frame (02b0c720) asks virtual +200 AFTER PhoneFrame.
@@ -773,6 +798,7 @@ void Close(Session &s) {
     Visible(s.capture, false);
     s.controller = s.parameters = nullptr; s.ownsRenderer = false;
     s.phase = Phase::DrainBack;
+    s.refreshFooter = true;
     Logging.Debug("[QoL Enhancements/Crafting] DIY preview: grid restored; renderer released\n");
 }
 bool QueuePreview(Session &s) {
@@ -789,6 +815,7 @@ bool QueuePreview(Session &s) {
     }
     s.item = At<std::uint64_t>(recipes[selected], 8);
     s.phase = Phase::Queued;
+    s.refreshFooter = true;
     Logging.Debug("[QoL Enhancements/Crafting] DIY preview: A queued from input; recipe_index=%u item=%u\n", selected, unsigned(s.item & 0xffff));
     return true;
 }
@@ -1186,9 +1213,10 @@ HOOK_DEFINE_TRAMPOLINE(UpdatePhoneRecipes) {
         if (auto s = ForPhone(phone)) recipe_banner::Restore(s->hotelBanner);
         Orig(phone);
         auto s = ForPhone(phone); if (!s) return;
+        RefreshRecipeHints(*s);
         if (s->phase == Phase::Closing) { Close(*s); return; }
         if (s->phase == Phase::Queued) {
-            if (!Begin(*s)) { s->phase = Phase::Idle; Logging.Debug("[QoL Enhancements/Crafting] DIY preview: renderer busy/unavailable; grid retained\n"); }
+            if (!Begin(*s)) { s->phase = Phase::Idle; s->refreshFooter = true; Logging.Debug("[QoL Enhancements/Crafting] DIY preview: renderer busy/unavailable; grid retained\n"); }
             return;
         }
         if (s->phase == Phase::Showing) {
@@ -1239,6 +1267,8 @@ HOOK_DEFINE_TRAMPOLINE(DeactivatePhoneRecipes) {
 bool InstallRecipePreview() {
     struct Fingerprint { std::uintptr_t offset; std::uint32_t words[5]; };
     constexpr Fingerprint fingerprints[]{
+        {recipe_hint::BuildFooter, {0xd10383ff, 0xa9097bfd, 0xf90053f9, 0xa90b5ff8, 0xa90c57f6}},
+        {recipe_hint::AppendHint, {0xb941f008, 0x3100051f, 0xb941f409, 0xb941b00a, 0x3a410920}},
         {0x00267d64, {0xa9ba7bfd, 0xa9016ffc, 0x910003fd, 0xa90267fa, 0xa9035ff8}},
         {0x02e9cde0, {0xd10243ff, 0xa9037bfd, 0xa9046ffc, 0xa90567fa, 0xa9065ff8}},
         {0x02e9fbb0, {0xa9bb7bfd, 0xa90167fa, 0xa9025ff8, 0xa90357f6, 0xa9044ff4}},
@@ -1315,6 +1345,7 @@ bool InstallRecipePreview() {
         return false;
     }
     BuildRecipeLayout::InstallAtOffset(address::BuildLayout);
+    BuildPhoneRecipeHints::InstallAtOffset(recipe_hint::BuildFooter);
     BindPhoneRecipes::InstallAtOffset(address::PhoneBind);
     UpdatePhoneRecipes::InstallAtOffset(address::PhoneFrame);
     DeactivatePhoneRecipes::InstallAtOffset(address::PhoneDeactivate);
