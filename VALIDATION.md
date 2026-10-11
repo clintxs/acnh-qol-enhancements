@@ -1,5 +1,25 @@
 # Unified QoL validation
 
+## Equipped-pole auto vault prototype 2 (2026-10-11)
+
+The diagnostic log reaches the pole and geometry guards, but the action phase
+returns Waiting while the movement phase rejects the vault and resets the hold
+counter to zero. Native inspection confirms the vault probe flag also selects
+an alternate position. Prototype 2 probes the current-position vault path and
+uses a player-specific scope to suppress its nested manual hop and force only
+the final native preparation into check-only mode. Actual commit stays native.
+A third trampoline hooks PrepareVault; a new fingerprint covers position selection.
+
+The offline diagnostic build and 234 focused ARM cases at two ASLR bases pass.
+New checks execute native position selection and the final check-only early
+return, reproduce alternate-position rejection in the terrain model, exercise
+both scheduler phases through the hold threshold, and check player-memory
+preservation, prevention of nested-hop commits, scope restoration, other-player
+isolation and commit refusal. Full terrain/animation execution remains unverified.
+All eleven host suites and the Controls group pass, including pickup and dialogue
+regressions. A separate diagnostic2 package retains traces and 0.4.18 Catalog changes.
+Previous archives remain intact. Live confirmation of the fix is pending.
+
 ## Equipped-pole auto vault diagnostic 1 (2026-10-11)
 
 The first live prototype test did not vault. Eden confirms `auto_vault=true`

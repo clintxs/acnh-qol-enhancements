@@ -9,6 +9,7 @@ constexpr std::uintptr_t HopGeometry = 0x0230c470;
 constexpr std::uintptr_t HopEntry = 0x0230b8d0, HopDirection = 0x0230bf18;
 constexpr std::uintptr_t TryVault = 0x0239a340, PrepareVault = 0x0239aff4;
 constexpr std::uintptr_t EquippedToolKind = 0x015f5c40, PlayerParameters = 0x0241e98c;
+constexpr std::uintptr_t VaultPositionSelection = 0x0239a398;
 constexpr std::uintptr_t MovementGuards = 0x02219fc0;
 constexpr std::uintptr_t MovementProbe = 0x0221a094, HopCommit = 0x02223454;
 }
@@ -53,6 +54,29 @@ static_assert(offsetof(HopRequest, alternate) == 0x10);
 // this relies on the player dispatcher running synchronously on the game thread.
 struct HopAttempt { void *player; bool eligible = false; unsigned geometry = 0; };
 HopAttempt *CurrentAttempt{};
+
+// TryVault's argument combines position selection with side-effect control.
+// Use the current-position path, suppress its redundant short-hop attempt,
+// and make ONLY its final preparation check-only. No player positions change.
+struct VaultProbe { void *player; bool landingValidated = false; };
+VaultProbe *CurrentVaultProbe{};
+HOOK_DEFINE_TRAMPOLINE(AutoVaultPrepare) {
+    static unsigned Callback(void *player, const void *position, unsigned probe) {
+        auto scope = CurrentVaultProbe;
+        const bool checkOnly = scope && scope->player == player;
+        const auto result = Orig(player, position, probe | unsigned(checkOnly));
+        if (checkOnly && (result & 1)) scope->landingValidated = true;
+        return result;
+    }
+};
+bool ProbeCurrentPositionVault(void *player) {
+    VaultProbe probe{player};
+    auto previous = CurrentVaultProbe;
+    CurrentVaultProbe = &probe;
+    const auto result = Native<unsigned (*)(void *, unsigned)>(address::TryVault)(player, 0);
+    CurrentVaultProbe = previous;
+    return (result & 1) && probe.landingValidated;
+}
 
 #if CAS_AUTO_VAULT_DIAGNOSTIC
 // Independent budgets retain useful river-contact traces after startup/walking.
@@ -150,6 +174,9 @@ HOOK_DEFINE_TRAMPOLINE(AutoVaultGeometry) {
 HOOK_DEFINE_TRAMPOLINE(AutoVaultEntry) {
     static unsigned Callback(void *player, unsigned probe, unsigned automatic) {
         if (!(automatic & 1)) {
+            // The complete ordinary automatic-hop search already failed.
+            // A check-only current-position vault must not commit a nested hop.
+            if (CurrentVaultProbe && CurrentVaultProbe->player == player) return NoCrossing;
             const auto result = Orig(player, probe, automatic);
             TraceEntry(player, probe, automatic, result, false);
             return result;
@@ -169,10 +196,10 @@ HOOK_DEFINE_TRAMPOLINE(AutoVaultEntry) {
         }
 
         auto vault = Native<unsigned (*)(void *, unsigned)>(address::TryVault);
-        // The native validator first checks the short-hop path with automatic
-        // false, so recursive geometry calls cannot extend themselves here.
-        // Probe=1 skips the reservation/state transition in PrepareVault.
-        const auto valid = vault(player, 1) & 1;
+        // Native probe=1 also selects actor+0x284 instead of current +0x278.
+        // Live movement/action phases disagree there and keep clearing the
+        // timer. Validate current position with preparation scoped check-only.
+        const unsigned valid = ProbeCurrentPositionVault(player);
         const bool complete = valid && HoldComplete(player);
         if (!valid || !complete || (probe & 1)) {
             const auto result = !valid ? NoCrossing : complete ? CrossingReady : Waiting;
@@ -199,6 +226,7 @@ bool InstallAutoVault() {
         {address::HopGeometry, {0xd10783ff,0x6d143bef,0x6d1533ed,0x6d162beb,0x6d1723e9}},
         {address::HopEntry, {0xd10243ff,0x6d0523e9,0xa9067bfd,0xa90757f6,0xa9084ff4}},
         {address::HopDirection, {0xd10643ff,0xa9137bfd,0xa9146ffc,0xa91567fa,0xa9165ff8}},
+        {address::VaultPositionSelection, {0x7200027f,0xbd400008,0x52804f0a,0x5280508b,0x9a8a1178}},
         {address::TryVault, {0xd10443ff,0x6d073bef,0x6d0833ed,0x6d092beb,0x6d0a23e9}},
         {address::PrepareVault, {0x36000062,0x52800020,0xd65f03c0,0xd10343ff,0xfd0033e8}},
         {address::EquippedToolKind, {0xd10183ff,0xa9037bfd,0xa90457f6,0xa9054ff4,0x9100c3fd}},
@@ -215,11 +243,12 @@ bool InstallAutoVault() {
     Main = main.m_Text.m_Start;
 #if CAS_AUTO_VAULT_DIAGNOSTIC
     AutoVaultMovementTrace::InstallAtOffset(address::MovementGuards);
-    Logging.Log("[QoL Enhancements/Controls] DIAGNOSTIC: auto-vault-v1; bounded movement and entry traces\n");
+    Logging.Log("[QoL Enhancements/Controls] DIAGNOSTIC: auto-vault-v2; bounded movement and entry traces\n");
 #endif
+    AutoVaultPrepare::InstallAtOffset(address::PrepareVault);
     AutoVaultGeometry::InstallAtOffset(address::HopGeometry);
     AutoVaultEntry::InstallAtOffset(address::HopEntry);
-    Logging.Debug("[QoL Enhancements/Controls] auto vault: READY; prototype 1; equipped pole; native hop timer\n");
+    Logging.Debug("[QoL Enhancements/Controls] auto vault: READY; prototype 2; equipped pole; native hop timer\n");
     return true;
 }
 }

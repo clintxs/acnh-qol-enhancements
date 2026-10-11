@@ -105,3 +105,46 @@ Collect one session: pole equipped, push against a manually vaultable
 crossing for three seconds, release, then manually vault with A at that
 spot. An ordinary narrow hop is useful as a comparison. The diagnostic
 package uses current Core 0.4.18 to retain the subsequent Catalog changes.
+
+2026-10-11 diagnostic result / prototype 2
+-----------------------------------------
+The new Eden session reaches eligible geometry with equipped tool 0x28.
+At 83.605872 the automatic action check (probe=0) reports vault=1/result=2,
+then the movement check (probe=1) reports vault=0/result=0. Both show timer=0.
+The movement tail's real instructions clear the timer on result=0. Thus the
+extension is reached, but inconsistent validation prevents hold accumulation.
+The log establishes timer starvation; it does not independently establish
+which terrain predicate differs between those two native vault searches.
+
+Disassembly at 0239A394..0239A3B8 confirms TryVault argument bit0 selects
+actor+284 versus current actor+278. The flag ALSO controls the nested manual
+hop and final PrepareVault side effects. Calling TryVault(player,1) in both
+scheduler phases does not provide a current-position, side-effect-free check.
+Prototype 2 uses TryVault(player,0) within a synchronous player-specific probe
+scope. AutoVaultEntry suppresses the nested manual short hop only inside
+that scope: the complete ordinary automatic-hop search already failed, and
+calling a manual current-position hop here could start a jump during a probe.
+A third trampoline at PrepareVault forces its argument bit0 only for the
+scoped player. Its actual native early return validates without reservation
+or state preparation. A successful extension additionally requires reaching
+that final validator. Commit runs TryVault(player,0) outside the scope, so
+native reservation, manual-hop priority and LongStickJumpReady remain native.
+No transforms are temporarily overwritten and the game's timer still owns
+the delay. Explicit A and other-player preparation remain unchanged.
+
+All ten base fingerprints are checked before installing the three hooks;
+the diagnostic adds its existing movement observer and eleventh fingerprint.
+The added selector fingerprint covers 0239A398..0239A3A8. Scope pointers are
+saved/restored, including an enclosing scope belonging to another player.
+Diagnostic marker is now auto-vault-v2; ordinary READY marker is prototype 2.
+The package filenames advance to prototype2/diagnostic2, preserving prior ZIPs.
+
+The focused ARM suite executes the native position selector and final
+check-only return. Its terrain model rejects the alternate-position path
+while accepting the current position. Both automatic phases run through
+32 hold-counter values and the native timer tail, with no preparation or
+nested manual-hop commit while probing. It verifies scope restoration,
+other-player isolation, actual commit refusal and existing hook policy.
+Full native terrain search/animation remain live-test boundaries. This is a
+candidate fix for the observed timer starvation; retry live before claiming
+successful automatic traversal.

@@ -8,9 +8,9 @@ from package_auto_vault import prototype_files
 
 def main():
     root = package.ROOT
-    if b'DIAGNOSTIC: auto-vault-v1' not in (root / 'project.elf').read_bytes():
+    if b'DIAGNOSTIC: auto-vault-v2' not in (root / 'project.elf').read_bytes():
         raise ValueError('Build first: sh tools/build.sh --auto-vault-diagnostic')
-    stem = f'qol-enhancements-v{package.release_version().replace(".", "_")}_auto-vault-diagnostic1_for_acnh_v3_0_3'
+    stem = f'qol-enhancements-v{package.release_version().replace(".", "_")}_auto-vault-diagnostic2_for_acnh_v3_0_3'
     output = root / 'dist'
     output.mkdir(exist_ok=True)
     binary, source = output / f'{stem}.zip', output / f'{stem}_source.zip'
@@ -18,9 +18,9 @@ def main():
         if path.exists(): raise SystemExit(f'Refusing to replace existing archive: {path}')
     files = prototype_files()
     files['README.txt'] = (
-        'AUTO VAULT - DIAGNOSTIC 1 - ACNH 3.0.3\n\n'
-        f'Based on QoL Enhancements {package.release_version()}. This adds diagnostics to\n'
-        'prototype 1; it is not a confirmed fix for the failed live test.\n\n'
+        'AUTO VAULT - DIAGNOSTIC 2 - ACNH 3.0.3\n\n'
+        f'Based on QoL Enhancements {package.release_version()}. This fixes current-position probing.\n'
+        'Live confirmation of the revised prototype is pending.\n\n'
         'Fully close ACNH. Copy the included Core and Controls folders into\n'
         'your existing mod folders, replacing their matching files. Enable\n'
         'one Core copy and Controls. Keep other modules and personal settings.\n'
@@ -32,7 +32,7 @@ def main():
         'also try a narrow river where walking triggers an ordinary hop.\n'
         'Close ACNH and preserve the Eden log before the next session.\n'
         'Share the updated log for diagnosis.\n\n'
-        'The log identifies DIAGNOSTIC: auto-vault-v1 and records bounded\n'
+        'The log identifies DIAGNOSTIC: auto-vault-v2 and records bounded\n'
         'VAULT movement/entry messages even with log_debug=false. These show\n'
         'movement state, action, equipped tool kind, input, hold timer, hop\n'
         'geometry eligibility and native vault probe/commit results.\n'

@@ -10,8 +10,8 @@ from unicorn.arm64_const import *
 
 GEOMETRY = 0x230c470
 DEPENDENCIES = (GEOMETRY, 0x230b8d0, 0x230bf18, 0x239a340, 0x239aff4,
-                0x15f5c40, 0x241e98c, 0x221a094, 0x2223454)
-DIAGNOSTIC = b"DIAGNOSTIC: auto-vault-v1" in (Path(__file__).resolve().parents[1] / "project.elf").read_bytes()
+                0x15f5c40, 0x241e98c, 0x239a398, 0x221a094, 0x2223454)
+DIAGNOSTIC = b"DIAGNOSTIC: auto-vault-v2" in (Path(__file__).resolve().parents[1] / "project.elf").read_bytes()
 EXTRA = int(DIAGNOSTIC)
 CONFIG = DEFAULT + b'hold_to_hoover=false\nhold_to_advance_dialogue=false\nauto_vault=true\n'
 
@@ -20,7 +20,7 @@ class VaultMachine(Machine):
     def __init__(self, base, verbose=True):
         super().__init__(base, {'controls': CONFIG}, verbose=verbose)
         self.boot(); self.activate()
-        assert len(self.hooks) == 4 + EXTRA and all(base + a in self.hooks for a in (GEOMETRY, 0x230b8d0)), self.text
+        assert len(self.hooks) == 5 + EXTRA and all(base + a in self.hooks for a in (GEOMETRY, 0x230b8d0)), self.text
         self.player = self.ram + 0x1000
         self.actor = self.ram + 0x6000
         self.request = self.ram + 0x8000
@@ -31,9 +31,19 @@ class VaultMachine(Machine):
         self.original_entry = self.ram + 0xd030
         self.getter = self.ram + 0xd010
         self.nested_return = self.ram + 0xd020
+        self.prepare_return = self.ram + 0xd050
+        self.prepare_original = self.ram + 0xd060
+        self.manual_original = self.ram + 0xd070
+        self.prepare_calls = []
+        self.manual_original_calls = 0
+        self.commit_calls = 0
+        self.predicted_vaultable = False
+        self.write(self.module.find('AutoVaultPrepare', 'OrigRef'), self.prepare_original)
+        self.u.mem_write(base + 0x239aff4, RAW[0x239aff4:0x239aff4 + 20])
         self.manual_request = self.ram + 0xe000
         self.u.mem_write(self.manual_request, struct.pack('<B3xIB3xfB', 1, 0, 0, 0., 0))
         self.nested = False
+        self.manual_hop_result = 0
         self.nested_results = []
         self.write(self.module.find('AutoVaultGeometry', 'OrigRef'), self.original)
         # Installation is modeled, so restore the entry bytes to execute its
@@ -57,6 +67,13 @@ class VaultMachine(Machine):
         self.output = 0
         self.final_hop_result = None
         self.stick(0., 1.)
+
+    def prepare_vault(self):
+        self.u.reg_write(UC_ARM64_REG_X0, self.player)
+        self.u.reg_write(UC_ARM64_REG_X1, self.ram + 0xf000)
+        self.u.reg_write(UC_ARM64_REG_X2, self.vault_calls[-1])
+        self.u.reg_write(UC_ARM64_REG_LR, self.prepare_return)
+        self.u.reg_write(UC_ARM64_REG_PC, self.module.find('AutoVaultPrepare', 'Callback'))
 
     def stick(self, x, y):
         self.u.mem_write(self.player + 0xeec, struct.pack('<ff', x, y))
@@ -90,22 +107,51 @@ class VaultMachine(Machine):
             result = self.tool
         elif pc == self.base + 0x239a340:
             assert self.reg(0) == self.player and self.reg(1) in (0, 1)
-            self.vault_calls.append(self.reg(1))
-            result = int(self.vaultable if self.reg(1) else self.commit_ok)
+            argument = self.reg(1)
+            self.vault_calls.append(argument)
+            # Model the observed failure: the native argument=1 position can
+            # fail even when the current-position crossing is valid.
+            self.vault_result = int(self.predicted_vaultable if argument else self.vaultable)
+            self.outer_return = u.reg_read(UC_ARM64_REG_LR)
             if self.nested:
-                # The real vault validator calls the hop geometry in manual
-                # mode first. Exercise that re-entry into our compiled hook.
-                self.nested_result = result
-                self.outer_return = u.reg_read(UC_ARM64_REG_LR)
+                self.saved_entry = self.read(self.module.find('AutoVaultEntry', 'OrigRef'))
+                self.write(self.module.find('AutoVaultEntry', 'OrigRef'), self.manual_original)
                 u.reg_write(UC_ARM64_REG_X0, self.player)
-                u.reg_write(UC_ARM64_REG_X1, self.manual_request)
+                u.reg_write(UC_ARM64_REG_X1, argument)
                 u.reg_write(UC_ARM64_REG_X2, 0)
                 u.reg_write(UC_ARM64_REG_LR, self.nested_return)
-                u.reg_write(UC_ARM64_REG_PC, self.module.find('AutoVaultGeometry', 'Callback'))
+                u.reg_write(UC_ARM64_REG_PC, self.module.find('AutoVaultEntry', 'Callback'))
                 return
+            if self.vault_result:
+                self.prepare_vault()
+                return
+            result = 0
+        elif pc == self.manual_original:
+            self.manual_original_calls += 1
+            result = self.manual_hop_result
         elif pc == self.nested_return:
-            self.nested_results.append(self.reg(0))
-            u.reg_write(UC_ARM64_REG_X0, self.nested_result)
+            nested = self.reg(0)
+            self.nested_results.append(nested)
+            self.write(self.module.find('AutoVaultEntry', 'OrigRef'), self.saved_entry)
+            if nested == 1:
+                u.reg_write(UC_ARM64_REG_X0, 1)
+                u.reg_write(UC_ARM64_REG_PC, self.outer_return)
+                return
+            if self.vault_result:
+                self.prepare_vault()
+                return
+            u.reg_write(UC_ARM64_REG_X0, 0)
+            u.reg_write(UC_ARM64_REG_PC, self.outer_return)
+            return
+        elif pc == self.prepare_original:
+            self.prepare_calls.append(self.reg(2))
+            if self.reg(2) & 1:
+                # Execute the native check-only early return, not its model.
+                u.reg_write(UC_ARM64_REG_PC, self.base + 0x239aff4)
+                return
+            self.commit_calls += 1
+            result = int(self.commit_ok)
+        elif pc == self.prepare_return:
             u.reg_write(UC_ARM64_REG_PC, self.outer_return)
             return
         elif pc == self.base + 0x241e98c:
@@ -169,7 +215,7 @@ def main():
     for base in (0x7100000000, 0x7200000000):
         if DIAGNOSTIC:
             trace = VaultMachine(base, verbose=False)
-            assert 'DIAGNOSTIC: auto-vault-v1' in trace.text
+            assert 'DIAGNOSTIC: auto-vault-v2' in trace.text
             ctx = trace.ram + 0xf000
             trace.u.mem_write(ctx, bytes(0x100))
             trace.write(ctx + 19*8, trace.player)
@@ -191,6 +237,15 @@ def main():
             assert trace.text.count('VAULT entry:') <= 8
             cases += 3
         m = VaultMachine(base)
+        # Execute the native selector instead of inferring its flag semantics.
+        for argument, offset in ((0, 0x278), (1, 0x284)):
+            m.u.reg_write(UC_ARM64_REG_X20, m.player)
+            m.u.reg_write(UC_ARM64_REG_W19, argument)
+            m.u.reg_write(UC_ARM64_REG_X0, m.values)
+            m.u.emu_start(base + 0x239a394, base + 0x239a3b8, count=10)
+            assert m.u.reg_read(UC_ARM64_REG_X21) == m.actor + offset
+            assert m.u.reg_read(UC_ARM64_REG_X24) == offset
+            cases += 1
         for hop in (1, 2):
             m.hop_result = hop
             assert m.geometry() == hop and not m.vault_calls and (DIAGNOSTIC or not m.equipment_calls)
@@ -210,14 +265,14 @@ def main():
             cases += 1
         m.tool = 0x28
         m.vaultable = False
-        assert m.geometry() == 0 and m.vault_calls == [1] and not m.parameter_calls
+        assert m.geometry() == 0 and m.vault_calls == [0] and not m.parameter_calls
         m.vaultable = True
         for count in (0, 1, 29, 30, 31, 32, 65535):
             for probe in (0, 1):
                 m.vault_calls.clear()
                 m.write(m.player + 0x6a0, count, 2)
                 assert m.geometry(probe=probe) == (2 if count <= 30 else 1)
-                assert m.vault_calls == ([1, 0] if count > 30 and not probe else [1])
+                assert m.vault_calls == ([0, 0] if count > 30 and not probe else [0])
                 assert m.read(m.player + 0x6a0, 2) == count  # Hook doesn't own timer writes.
                 cases += 1
         # Read the resource's threshold instead of assuming 30 forever.
@@ -227,11 +282,11 @@ def main():
         m.write(m.values + 8, 30, 4)
         m.commit_ok = False
         m.vault_calls.clear()
-        assert m.geometry() == 0 and m.vault_calls == [1, 0]
+        assert m.geometry() == 0 and m.vault_calls == [0, 0]
         m.commit_ok = True
         m.nested = True
         m.vault_calls.clear()
-        assert m.geometry() == 1 and m.vault_calls == [1, 0] and m.nested_results == [0, 0]
+        assert m.geometry() == 1 and m.vault_calls == [0, 0] and m.nested_results == [0, 0]
         m.nested = False
         # Execute the real final validator in check-only mode: no reservation,
         # player write or state transition is permitted by this early return.
@@ -240,6 +295,50 @@ def main():
             m.u.reg_write(UC_ARM64_REG_X0 + index, value)
         m.call(base + 0x239aff4)
         assert m.reg(0) == 1 and before == bytes(m.u.mem_read(m.player, 0x3000))
+
+        # Reproduce the live timer reset with argument=1 water rejection.
+        # Both scheduler phases now probe current position using argument=0;
+        # only the final commit can reach real preparation mode.
+        regression = VaultMachine(base)
+        regression.nested = True
+        regression.manual_hop_result = 1  # A nested short hop WOULD commit.
+        for count in range(32):
+            for phase in (0, 1):
+                before = bytes(regression.u.mem_read(regression.player, 0x3000))
+                regression.vault_calls.clear()
+                assert regression.automatic(phase) == (2 if count <= 30 else 1)
+                assert regression.vault_calls == ([0, 0] if count > 30 and phase == 0 else [0])
+                assert before == bytes(regression.u.mem_read(regression.player, 0x3000))
+                if count <= 30:
+                    assert regression.commit_calls == 0
+                    assert regression.manual_original_calls == 0
+                    assert set(regression.prepare_calls) == {1}
+            if count <= 30: regression.tick(2)
+            cases += 1
+        # At threshold, commit's nested native short hop may take priority.
+        assert regression.manual_original_calls == 1 and regression.commit_calls == 0
+        assert regression.read(regression.module.find('CurrentVaultProbe')) == 0
+        # A scoped probe cannot leak into manual A or another player's prepare.
+        regression.manual_hop_result = 0
+        regression.vaultable = False
+        assert regression.automatic(1) == 0
+        regression.vaultable = True
+        # An enclosing different-player probe is restored exactly, and must
+        # not turn a manual prepare for this player into check-only mode.
+        enclosing = regression.ram + 0xe400
+        regression.write(enclosing, regression.player + 0x4000)
+        scope = regression.module.find('CurrentVaultProbe')
+        regression.write(scope, enclosing)
+        assert regression.automatic(1) == 1
+        assert regression.read(scope) == enclosing and regression.read(enclosing + 8, 1) == 0
+        regression.commit_ok = False
+        for i, value in enumerate((regression.player, regression.ram + 0xf000, 0)):
+            regression.u.reg_write(UC_ARM64_REG_X0 + i, value)
+        regression.call(regression.module.find('AutoVaultPrepare', 'Callback'))
+        assert regression.reg(0) == 0 and regression.commit_calls == 1
+        assert regression.prepare_calls[-1] == 0
+        regression.write(scope, 0)
+        cases += 3
 
         # Real native automatic-entry guards must reject before our extension.
         for x, y in ((0., 0.), (0., .5), (0., .919)):
@@ -267,12 +366,12 @@ def main():
             m.vault_calls.clear()
             result = m.automatic(1)
             assert result == (2 if count <= 30 else 1), (count, result)
-            assert m.vault_calls == [1]
+            assert m.vault_calls == [0]
             m.tick(result)
             assert m.read(m.player + 0x6a0, 2) == min(count + 1, 31)
             cases += 1
         m.vault_calls.clear()
-        assert m.automatic(0) == 1 and m.vault_calls == [1, 0]
+        assert m.automatic(0) == 1 and m.vault_calls == [0, 0]
         m.stick(0., 0.)
         m.tick(m.automatic(1))
         assert m.read(m.player + 0x6a0, 2) == 0
@@ -297,7 +396,7 @@ def main():
         assert len(overlay.hooks) == 2
         enabled = Machine(base, {'controls': DEFAULT, 'controls.custom': b'auto_vault=true'})
         enabled.boot(); enabled.activate()
-        assert base + GEOMETRY in enabled.hooks and len(enabled.hooks) == 15 + EXTRA
+        assert base + GEOMETRY in enabled.hooks and len(enabled.hooks) == 16 + EXTRA
         absent = Machine(base, {'controls.custom': b'auto_vault=true'})
         absent.boot(); absent.activate()
         assert len(absent.hooks) == 2
