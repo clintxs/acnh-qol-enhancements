@@ -1,4 +1,33 @@
-# Unified QoL validation — 0.4.9 recycling grid lifecycle
+# Unified QoL validation — 0.4.13 cooking quantity shortcut
+
+## 0.4.13 Cooking preview Y / Set quantity (2026-10-11)
+
+CookingTableInfoSeq inherits WorkCraftInfoSeq’s Play entry/exit and
+MultiCreation state (03494B2C / 03494E7C / 03496160 / 0349634C). It uses the
+same quantity child, recipe, material, action and result fields. Its concrete
+preview page is CookingTableInfoPage (049C88A0), obtained by 02CBB710, and its
+footer builder overrides the workbench builder at 02CBB99C.
+
+Accept this cooking page alongside WorkCraftInfoPage in the existing shortcut
+binding. Hook cooking’s native footer and use the same temporary X / Favorite
+descriptor copy, Y / Set quantity descriptor and localized label routing.
+Native eligibility and child readiness still decide whether quantity opens.
+The existing shared state opens cooking’s own selector and returns to its
+preview on cancel. Other page classes remain outside the shortcut binding.
+No changes to quantity_wrap.cpp, its input policy, timing or animations.
+
+The expanded ARM64 fixture runs both concrete preview types at two ASLR bases,
+including cooking’s real page getter, native footer construction, shared Play
+entry/exit, Favorite dispatch and quantity open/confirm/cancel. Recipe/material
+eligibility, fresh/held/consumed/blocked input, capacity limits, unrelated-page
+rejection, localized caption routing and atomic fingerprint conflicts are
+covered. Core, Crafting and Pockets groups plus the nine host test suites pass.
+The offline Docker build succeeds. Live cooking preview hints and controller
+flow still need an Eden check.
+
+Core and all six module markers are 0.4.13. Suite/source/custom-example ZIPs
+are preserved alongside older releases and checked for archive integrity,
+manifest hashes, extracted binary/config parity and source parity.
 
 ## 0.4.9 Preserve native Claim grid pause/resume
 

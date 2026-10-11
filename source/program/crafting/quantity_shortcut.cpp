@@ -9,6 +9,8 @@ namespace {
 namespace address {
 constexpr std::uintptr_t EnterPreview = 0x03494b2c, LeavePreview = 0x03494e7c;
 constexpr std::uintptr_t BuildFooter = 0x0346ec1c, WorkbenchPage = 0x04a3b3e0;
+constexpr std::uintptr_t KitchenBuildFooter = 0x02cbb99c, KitchenPage = 0x049c88a0;
+constexpr std::uintptr_t KitchenPageGetter = 0x02cbb710;
 constexpr std::uintptr_t AppendHint = 0x02de2b00, ResolveCaption = 0x02de4940;
 constexpr std::uintptr_t ApplicationGlobalGot = 0x04ab2230, Application = 0x059f83f0;
 constexpr std::uintptr_t FooterTypeGot = 0x04ac7278, FooterTypeGuardGot = 0x04ac7280;
@@ -61,7 +63,11 @@ struct PreviewBinding { void *sequence{}, *page{}; bool armed{}, favoriteArmed{}
 std::array<PreviewBinding, 8> Bindings{};
 void *PreviewPage(void *sequence) {
     auto page = Virtual<void *(*)(void *)>(sequence, layout::PageGetter)(sequence);
-    return page && Field<std::uintptr_t>(page) == Main + address::WorkbenchPage ? page : nullptr;
+    if (!page) return nullptr;
+    // CookingTableInfoSeq inherits the workbench's Play/MultiCreation state
+    // machine and fields, but supplies its own page and footer builder.
+    const auto type = Field<std::uintptr_t>(page);
+    return type == Main + address::WorkbenchPage || type == Main + address::KitchenPage ? page : nullptr;
 }
 bool SupportsQuantity(void *sequence) {
     if (!Field<unsigned char>(sequence, layout::SupportsMultiple) ||
@@ -111,19 +117,28 @@ void AppendQuantityHint(void *sequence) {
     std::memcpy(hint.key, QuantityHintKey, sizeof(QuantityHintKey));
     reinterpret_cast<void (*)(void *, const HintDescription *, unsigned)>(Main + address::AppendHint)(footer, &hint, 1);
 }
+template<class BuildNativeFooter>
+void BuildShortcutHints(void *sequence, BuildNativeFooter buildNative) {
+    auto page = PreviewPage(sequence);
+    auto hint = page ? Field<void *>(page, layout::Shortcut) : nullptr;
+    auto key = hint ? Field<void *>(hint, layout::ShortcutKey) : nullptr;
+    // Both native footer builders read this key solely for Favorite's
+    // descriptor. Use the X icon during that synchronous copy; retain the
+    // native key binding afterwards. Our subscriber handles X explicitly.
+    const unsigned button = key ? Field<unsigned>(key, 0x14) : 0;
+    if (key) Field<unsigned>(key, 0x14) = 6;
+    buildNative(sequence);
+    if (key) Field<unsigned>(key, 0x14) = button;
+    AppendQuantityHint(sequence);
+}
 HOOK_DEFINE_TRAMPOLINE(BuildQuantityShortcutHint) {
     static void Callback(void *sequence) {
-        auto page = PreviewPage(sequence);
-        auto hint = page ? Field<void *>(page, layout::Shortcut) : nullptr;
-        auto key = hint ? Field<void *>(hint, layout::ShortcutKey) : nullptr;
-        // 0346EC1C reads this key's button ID solely to build Favorite's
-        // descriptor. Use the X icon during that synchronous copy; retain the
-        // native key binding afterwards. Our subscriber handles X explicitly.
-        const unsigned button = key ? Field<unsigned>(key, 0x14) : 0;
-        if (key) Field<unsigned>(key, 0x14) = 6;
-        Orig(sequence);
-        if (key) Field<unsigned>(key, 0x14) = button;
-        AppendQuantityHint(sequence);
+        BuildShortcutHints(sequence, [](void *owner) { Orig(owner); });
+    }
+};
+HOOK_DEFINE_TRAMPOLINE(BuildCookingQuantityShortcutHint) {
+    static void Callback(void *sequence) {
+        BuildShortcutHints(sequence, [](void *owner) { Orig(owner); });
     }
 };
 HOOK_DEFINE_INLINE(ResolveQuantityShortcutCaption) {
@@ -217,6 +232,9 @@ bool InstallCraftingQuantityShortcut() {
         {address::EnterPreview,{0xd10143ff,0xa9027bfd,0xf9001bf5,0xa9044ff4,0x910083fd}},
         {address::LeavePreview,{0xd10103ff,0xa9027bfd,0xa9034ff4,0x910083fd,0xf9400008}},
         {address::BuildFooter,{0xd102c3ff,0xa9087bfd,0xa90957f6,0xa90a4ff4,0x910203fd}},
+        {address::KitchenBuildFooter,{0xd102c3ff,0xa9087bfd,0xa90957f6,0xa90a4ff4,0x910203fd}},
+        // Kitchen's inherited state machine must keep the same page getter.
+        {address::KitchenPageGetter,{0x52983f08,0x72a00028,0xf8686800,0xd65f03c0,0x52983f08}},
         {address::ResolveCaption,{0xf90213e8,0x9000e6e8,0xf945f908,0x91004108,0xf9004be8}},
         {0x03496160,{0xd103c3ff,0xa90d7bfd,0xa90e4ff4,0x910343fd,0x91407008}},
         {address::AppendHint,{0xb941f008,0x3100051f,0xb941f409,0xb941b00a,0x3a410920}},
@@ -232,8 +250,9 @@ bool InstallCraftingQuantityShortcut() {
     EnterQuantityShortcutPreview::InstallAtOffset(address::EnterPreview);
     LeaveQuantityShortcutPreview::InstallAtOffset(address::LeavePreview);
     BuildQuantityShortcutHint::InstallAtOffset(address::BuildFooter);
+    BuildCookingQuantityShortcutHint::InstallAtOffset(address::KitchenBuildFooter);
     ResolveQuantityShortcutCaption::InstallAtOffset(address::ResolveCaption);
-    Logging.Debug("[QoL Enhancements/Crafting] quantity shortcut: READY; workbench preview Y / Set quantity; X / Favorite\n");
+    Logging.Debug("[QoL Enhancements/Crafting] quantity shortcut: READY; workbench/cooking preview Y / Set quantity; X / Favorite\n");
     return true;
 }
 } // namespace qol::crafting

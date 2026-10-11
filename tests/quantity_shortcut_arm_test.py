@@ -1,4 +1,4 @@
-"""Workbench Y shortcut: compiled input/hooks and native open/cancel/footer paths.
+"""Workbench/cooking Y shortcut: compiled input/hooks and native open/cancel/footer paths.
 
 Layout allocation, engine type checks, recipe data and child readiness are
 modeled. Native Play entry/exit, MultiCreation entry/update and footer record
@@ -10,7 +10,8 @@ from core_arm_test import Machine, RAW, DEFAULT
 from unicorn.arm64_const import *
 
 class ShortcutMachine(Machine):
-    def __init__(self, base):
+    def __init__(self, base, kitchen=False):
+        self.footer_offset = 0x2cbb99c if kitchen else 0x346ec1c
         self.stubs = {}
         self.next = base + 0x10030000
         super().__init__(base, {'crafting': DEFAULT, 'pockets': DEFAULT})
@@ -22,7 +23,7 @@ class ShortcutMachine(Machine):
         self.seq, self.page, self.child = self.alloc(0x1c300), self.alloc(0x700), self.alloc(0x400)
         self.methods, self.child_methods = self.alloc(0x300), self.alloc(0x300)
         self.write(self.seq, self.methods); self.write(self.child, self.child_methods)
-        self.write(self.page, base+0x4a3b3e0)
+        self.write(self.page, base+(0x49c88a0 if kitchen else 0x4a3b3e0))
         self.write(self.seq+0x1c1f8, self.page); self.write(self.seq+0x1c1e8,self.child)
         self.write(self.seq+0x1c1f0,1,1); self.write(self.seq+0x264,17,4)
         self.write(self.seq+0x1f8,2,1); self.write(self.seq+0x260,3,4)
@@ -35,10 +36,12 @@ class ShortcutMachine(Machine):
                                (0x210,lambda:int(self.confirmed)),(0xe8,lambda:int(self.closed))):
             self.write(self.child_methods+method,self.stub(action))
         self.write(self.child+0xa8,2,4)
-        self.write(self.methods+0x248,self.hooks[base+0x346ec1c])
-        # Restore native originals behind the three trampoline hooks.
+        self.write(self.methods+0x248,self.hooks[base+self.footer_offset])
+        if kitchen: self.write(self.methods+0x218,base+0x2cbb710) # Actual inherited page getter.
+        # Restore native originals behind the four trampoline hooks.
         for name,offset in (('EnterQuantityShortcutPreview',0x3494b2c),
-                            ('LeaveQuantityShortcutPreview',0x3494e7c),('BuildQuantityShortcutHint',0x346ec1c)):
+                            ('LeaveQuantityShortcutPreview',0x3494e7c),('BuildQuantityShortcutHint',0x346ec1c),
+                            ('BuildCookingQuantityShortcutHint',0x2cbb99c)):
             self.u.mem_write(base+offset,RAW[offset:offset+20])
             self.write(self.module.find(name,'OrigRef'),base+offset)
         self.write(self.module.find('SharedPageInput','OrigRef'), self.stub(self.native_input))
@@ -123,12 +126,16 @@ class ShortcutMachine(Machine):
                 (self.read(self.entries+i*8) for i in range(self.read(self.footer+0x218,4)))]
 
 cases=0
-for base in (0x7100000000,0x7200000000):
-    m=ShortcutMachine(base)
+# Cooking supplies its own page/footer while inheriting the same native state
+# table. Keep the fixture tied to those real vtable entries, not only mocks.
+for offset,target in ((0x1e0,0x34942f0),(0x218,0x2cbb710),(0x248,0x2cbb99c)):
+    assert struct.unpack_from('<Q',RAW,0x49c8c50+offset)[0] == target
+for base,kitchen in product((0x7100000000,0x7200000000),(False,True)):
+    m=ShortcutMachine(base,kitchen)
     for valid,materials,multiple,supports in product((False,True),repeat=4):
         m.valid,m.materials,m.multiple=valid,materials,multiple
         m.write(m.seq+0x1c1f0,int(supports),1)
-        m.enter();m.reset_footer();m.hook(0x346ec1c,m.seq)
+        m.enter();m.reset_footer();m.hook(m.footer_offset,m.seq)
         labels=m.hints()
         allowed=valid and materials and multiple and supports
         assert labels==[(6,'2004'),(5,'2003'),(0xffffffff,'2005')]+([(7,'qol_crafting.set_quantity')] if allowed else []),labels
@@ -138,7 +145,7 @@ for base in (0x7100000000,0x7200000000):
         cases+=1
     m.valid=m.materials=m.multiple=True;m.write(m.seq+0x1c1f0,1,1)
     for capacity in (0,1,2,3,4,5):
-        m.reset_footer(capacity);m.hook(0x346ec1c,m.seq)
+        m.reset_footer(capacity);m.hook(m.footer_offset,m.seq)
         assert len(m.hints())==min(capacity,4)
         cases+=1
     # Held Y cannot open on entry. Blocked/consumed/competing/pending input
@@ -188,6 +195,10 @@ for base in (0x7100000000,0x7200000000):
     wrapper=m.read(m.page+0x570);key_pointer=m.read(wrapper+0xa0)
     assert m.read(key_pointer+0x14,4)==7
     cases+=4
+    saved_type=m.read(m.page);m.write(m.page,base+0x49de8f0)
+    m.enter();m.input_y();m.input_y(0x80)
+    assert m.read(m.seq+0x1f0,4)==0xffffffff and not m.read(m.row+0x3c,4)&0x80
+    m.write(m.page,saved_type);cases+=1
     # Existing localized caption routing, including with Pockets installed.
     regs,key,source=m.alloc(0x200),m.alloc(),m.alloc()
     m.write(key+8,source)
@@ -201,11 +212,11 @@ for base in (0x7100000000,0x7200000000):
         cases+=1
     # Module conflicts isolate the shortcut, including with every other
     # Crafting setting disabled. No partial shortcut hooks get installed.
-    for site in (0x3494b2c,0x3494e7c,0x346ec1c,0x2de4940,0x3496160,0x2de2b00):
+    for site in (0x3494b2c,0x3494e7c,0x346ec1c,0x2cbb99c,0x2cbb710,0x2de4940,0x3496160,0x2de2b00):
         q=Machine(base,{'crafting':DEFAULT+b'diy_app_preview=false\nworkbench_preview_tilt=false\ncrafting_quantity_wrap=false'})
         q.write(base+site,0xdeadbeef,4);q.boot();q.activate()
         assert 'quantity shortcut: DISABLED' in q.text and 'BOOT_PARTIAL' in q.text
-        assert not any(base+off in q.hooks for off in (0x3494b2c,0x3494e7c,0x346ec1c,0x2de4940))
+        assert not any(base+off in q.hooks for off in (0x3494b2c,0x3494e7c,0x346ec1c,0x2cbb99c,0x2de4940))
         assert base+0x22fc6bc in q.hooks and base+0x2279a14 in q.hooks
         cases+=1
-print(f'PASS: {cases} quantity-shortcut cases at two bases; native preview/footer, quantity open/cancel, material gates, fresh Y, caption routing and isolated conflicts. Live Eden test pending.')
+print(f'PASS: {cases} quantity-shortcut cases at two bases; native workbench/cooking preview/footer, quantity open/cancel, material gates, fresh Y, caption routing and isolated conflicts. Live Eden test pending.')

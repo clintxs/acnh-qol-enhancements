@@ -10,7 +10,7 @@ from unicorn.arm64_const import *
 from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
 SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'shopping-card', 'crafting')
-COUNTS = (16, 19, 8, 12, 11, 18)  # Input and hint-text hooks belong to Core.
+COUNTS = (16, 19, 8, 12, 11, 19)  # Input and hint-text hooks belong to Core.
 RELEASE_VERSION = re.search(r'ReleaseVersion\[\] = "(\d+\.\d+\.\d+)"',
                             (ROOT / 'qol-enhancements/source/program/core/release.hpp').read_text())[1]
 DEFAULT = f'enabled=true\nversion={RELEASE_VERSION}\n'.encode()
@@ -401,7 +401,7 @@ def check_crafting_settings():
             quantity=speed and not any(b'crafting_quantity_wrap=false' in data for data in files.values())
             assert (base+0x3764290 in m.hooks)==quantity
             assert (base+0x3c58d24 in m.hooks)==speed
-            assert len(m.hooks)==2+6*speed+10*preview+int(preview or tilt)+quantity+int(speed),m.text
+            assert len(m.hooks)==2+7*speed+10*preview+int(preview or tilt)+quantity+int(speed),m.text
             assert ('workbench tilt: READY' in m.text)==tilt
             assert (m.read(base+0x49e8378)!=base+0x2ea0754)==preview
             assert base+0xbc4144 in m.hooks
@@ -420,7 +420,7 @@ def check_crafting_settings():
         m=Machine(base,{'crafting':DEFAULT+b'diy_app_preview=false\nworkbench_preview_tilt=false\ncrafting_quantity_wrap=false'})
         m.write(base+0x192a590,0xdeadbeef,4)
         m.boot(); m.activate()
-        assert 'BOOT_OK' in m.text and len(m.hooks)==9
+        assert 'BOOT_OK' in m.text and len(m.hooks)==10
         assert base+0x192a590 not in m.hooks and base+0x3c58d24 in m.hooks
         # Quantity-only installation is independent of preview and actor hooks.
         m=Machine(base,{'crafting':DEFAULT+b'diy_app_preview=false\nworkbench_preview_tilt=false'})
@@ -428,7 +428,7 @@ def check_crafting_settings():
         m.boot(); m.activate()
         assert 'BOOT_OK' in m.text and 'quantity wrap: READY' in m.text
         assert base+0x3764290 in m.hooks and base+0x3c58d24 in m.hooks
-        assert base+0x192a590 not in m.hooks and len(m.hooks)==10
+        assert base+0x192a590 not in m.hooks and len(m.hooks)==11
         # Caller identity, row binding and native motion are independently guarded.
         for site in (0x375fd8c,0x3469b50,0x2de7730,0x346b024,0x2de8bf4):
             m=Machine(base,{'crafting':DEFAULT}); m.write(base+site,0xdeadbeef,4)

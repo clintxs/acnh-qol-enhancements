@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.4.12 release test build** for ACNH **3.0.3 on Eden**. One Core
+**0.4.13 release test build** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -79,14 +79,14 @@ ready. It never sends a synthetic A press or confirms a choice.
 Install **QoL Enhancements - Crafting** with Core. This replaces the former
 Faster Crafting package; remove the old folder and rename personal
 `faster-crafting.custom.ini` preferences to `crafting.custom.ini`. Remove any old
-`version` override from that personal file (or update it to 0.4.12). The retired
+`version` override from that personal file (or update it to 0.4.13). The retired
 regular/custom paths are no longer read. Core alone no longer enables DIY previews.
 
 `romfs/qol-enhancements/config/crafting.ini` supplies these defaults:
 
 ```ini
 enabled = true
-version = 0.4.12
+version = 0.4.13
 diy_app_preview = true
 workbench_preview_tilt = true
 crafting_quantity_wrap = true
@@ -128,9 +128,10 @@ from before that file. Crafting's regular marker must be installed and compatibl
 `enabled=false` disables its previews, tilt, quantity wrap, direct quantity
 shortcut and speed hooks together. Core remains required. Fully restart after changing module installation or settings.
 
-From the workbench’s large 3D item preview, press **Y / Set quantity** to
-open Craft Multiple directly. The hint uses the existing localized label and
-appears for recipes that support multiple crafting and have enough materials.
+From the workbench or cooking menu’s large 3D item preview, press
+**Y / Set quantity** to open the quantity selector directly. The hint uses the
+existing localized label and appears for recipes that support multiple
+crafting/cooking and have enough materials.
 **X / Favorite** toggles the recipe favorite in this preview; grid controls
 keep their original bindings. B returns to the item preview. This shortcut is included whenever Crafting is
 enabled, independently of `crafting_quantity_wrap`.
@@ -313,7 +314,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.4.12
+version = 0.4.13
 base_speed = 2
 boost_speed = 4
 faster_ui = true
@@ -501,9 +502,9 @@ at `../vanilla-3.0.3/Layout`; builders verify their hashes and archive structure
 The package script checks that every INI matches the Core release, refuses to
 replace existing archives, and creates:
 
-- `dist/qol-enhancements-v0_4_12_for_acnh_v3_0_3.zip`
-- `dist/qol-enhancements-v0_4_12_for_acnh_v3_0_3_source.zip`
-- `dist/qol-enhancements-v0_4_12_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
+- `dist/qol-enhancements-v0_4_13_for_acnh_v3_0_3.zip`
+- `dist/qol-enhancements-v0_4_13_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v0_4_13_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
 
 The binary ZIP contains a conspicuous installation text file, README, Core and
 six independently selectable feature folders, plus a SHA-256 manifest. Source

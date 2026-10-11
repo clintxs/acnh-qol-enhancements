@@ -1,4 +1,4 @@
-QoL Enhancements 0.4.12 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.4.13 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -18,6 +18,10 @@ Core uses subsdk6, leaving subsdk9 available for Jubbsticks Additions.
 This avoids that executable-slot collision; compatibility with its eventual
 ACNH v3 release still needs testing. Other mods must also avoid subsdk6 and
 our hook/layout files. Core supplies the suite's only main.npdm.
+
+0.4.13: Added Y / Set quantity to the cooking item 3D preview, including
+the localized controller hint. X / Favorite matches the workbench preview.
+Uses cooking’s native quantity selector; quantity wraparound is unchanged.
 
 0.4.12: Y waits for manual advancement on the first-catch announcement
 ("Yes!" in English) for fish, bugs and sea creatures. Exact message IDs are
@@ -232,7 +236,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.4.12
+  version = 0.4.13
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.
@@ -257,7 +261,7 @@ CRAFTING MODULE / SETTINGS (0.3.63)
 Install Core plus “QoL Enhancements - Crafting”. This replaces the former
 “QoL Enhancements - Faster Crafting” folder; remove that old folder when updating.
 Move any personal faster-crafting.custom.ini preferences to crafting.custom.ini.
-Remove old version overrides in that custom file, or update them to 0.4.12.
+Remove old version overrides in that custom file, or update them to 0.4.13.
 Old faster-crafting.ini/custom paths are no longer read.
 DIY app previews are now optional Crafting behavior, not always-on Core behavior.
 
@@ -265,7 +269,7 @@ Regular settings: romfs/qol-enhancements/config/crafting.ini
 Personal overlay: romfs/qol-enhancements/config/crafting.custom.ini
 Defaults in the regular file:
   enabled = true
-  version = 0.4.12
+  version = 0.4.13
   diy_app_preview = true
   workbench_preview_tilt = true
   crafting_quantity_wrap = true
