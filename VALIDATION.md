@@ -1,5 +1,35 @@
 # Unified QoL validation
 
+## Equipped-pole auto vault prototype 1 (2026-10-11)
+
+Opt-in `auto_vault=true` extends the native held-stick hop path only while
+a vaulting pole is equipped. Two C++ trampolines observe native intent and
+wait for the complete ordinary-hop landing search to fail before checking a
+native vault. The native hop counter and loaded delay threshold remain in
+control; native reservation and traversal perform the jump. Explicit A,
+pending/ready ordinary hops and other tools retain native behavior. Tool
+switching and ladder traversal are outside this prototype.
+
+The pinned offline build and eleven host suites pass. The Controls group
+passes, including 150 parameterized auto-vault cases at two ASLR bases,
+compiled hook policy, actual native stick/contact-direction guard flow and
+timer update, strict/dynamic threshold, pending/adjusted hop priority,
+recursive manual checks, commit refusal, configuration overlays and atomic
+fingerprint rejection. Equipment, resources, terrain and traversal commits
+are modeled; live Eden terrain/animation and multiplayer behavior remain
+unverified. The actual native final probe-only early return also executes.
+The Core group also passes, including logging, all 128 module combinations
+at two ASLR bases, configuration overlays and recipe-preview regressions.
+
+Core logging's stale 19-line expectation is corrected to 20: the existing
+Pockets detailed-settings line brought the total to four feature detail
+lines. Auto vault adds a field to the existing Controls settings line.
+
+The regular Controls marker keeps `auto_vault=false`. A separate 0.4.17-based
+prototype ZIP supplies updated Core executables and Controls with it enabled,
+plus a matching source ZIP. Normal numbered releases are preserved. See
+[the native investigation and live checklist](research/controls/auto-vault.txt).
+
 ## 0.4.17 Pockets menu-bypass settings (2026-10-11)
 
 Added three independent true-by-default preferences for sole Open, recycling

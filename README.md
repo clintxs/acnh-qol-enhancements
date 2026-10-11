@@ -101,17 +101,26 @@ enabled = true
 version = 0.4.17
 hold_to_advance_dialogue = true
 hold_to_hoover = true
+auto_vault = false
 ```
 
-Set `hold_to_hoover = false` for ordinary field Y behavior. Both settings
-work in `controls.ini` and `controls.custom.ini` and default to true. Restart
-after editing.
+Set `hold_to_hoover = false` for ordinary field Y behavior. The two hold-Y
+settings default to true. All Controls settings work in `controls.ini` and
+`controls.custom.ini`. Restart after editing.
+
+`auto_vault = true` enables the equipped-pole prototype. Hold a vaulting pole
+and push firmly toward a valid crossing; after the native hop delay, Controls
+requests a native vault without pressing A. Ordinary narrow hops retain
+priority. This does not equip or put away tools. The feature is off by default
+pending live Eden validation; the separate auto-vault prototype ZIP enables it.
+The key also works in `controls.custom.ini`. See the
+[traversal investigation and test limits](research/controls/auto-vault.txt).
 
 Set `hold_to_advance_dialogue = false` to disable dialogue hurry while keeping
 hold-Y pickup enabled. This key works in both `controls.ini` and the optional
 `controls.custom.ini` overlay; omitted custom values inherit the regular file.
 A custom file cannot activate an absent Controls module. Disable or remove
-Controls to restore ordinary field Y handling and disable dialogue hurry.
+Controls to disable all three Controls features.
 It is independent of Pockets and Faster Dialogue. Restart after changing
 modules. Live Eden validation of movement, targeting and capacity handling is
 still required; see [the implementation notes](research/controls/NOTES.md).

@@ -11,7 +11,7 @@ GROUPS = {
     'shopping': ['shopping_layout_test.py', 'shopping_resource_arm_test.py', 'shopping_texture_arm_test.py', 'shopping_display_arm_test.py', 'shopping_cash_arm_test.py'],
     'dialogue': ['dialogue_arm_test.py', 'dialogue_names_arm_test.py'],
     'crafting': ['crafting_arm_test.py', 'quantity_shortcut_arm_test.py'],
-    'controls': ['hold_y_arm_test.py', 'controls_dialogue_arm_test.py', 'dialogue_hurry_arm_test.py', 'dialogue_catch_hurry_arm_test.py'],
+    'controls': ['auto_vault_arm_test.py', 'hold_y_arm_test.py', 'controls_dialogue_arm_test.py', 'dialogue_hurry_arm_test.py', 'dialogue_catch_hurry_arm_test.py'],
     'pockets': ['storage_hint_arm_test.py', 'recycling_claim_arm_test.py', 'hold_select_arm_test.py'],  # Both include arm_stack_test.
     'fitting': ['purchase_arm_test.py', 'feedback_arm_test.py', 'fitting_hint_arm_test.py'],
     'catalog': ['restaurant_recipe_dialogue_arm_test.py', 'villager_recipe_dialogue_arm_test.py', 'dialogue_ui_sources_arm_test.py', 'catalog_variation_labels_arm_test.py',

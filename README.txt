@@ -353,13 +353,22 @@ romfs/qol-enhancements/config/controls.ini:
   version = 0.4.17
   hold_to_advance_dialogue = true
   hold_to_hoover = true
+  auto_vault = false
 
-Set hold_to_hoover=false for ordinary field Y behavior. Both settings default
-to true and support controls.custom.ini overrides. Restart after editing.
+Set hold_to_hoover=false for ordinary field Y behavior. The two hold-Y settings
+default to true. All Controls settings support controls.custom.ini overrides.
+Restart after editing.
 Set hold_to_advance_dialogue=false to disable only dialogue hurry.
 The same key works in controls.custom.ini, overriding the regular setting.
+
+AUTO VAULT PROTOTYPE: Set auto_vault=true, hold a vaulting pole, and push
+firmly toward a valid crossing. After the native hop delay, Controls requests
+a native vault without pressing A. Ordinary narrow hops retain priority.
+No automatic tool switching is included. Off by default pending live Eden
+validation; the separate auto-vault prototype ZIP explicitly enables it.
+The key also works in controls.custom.ini. Restart after changing it.
 A custom file alone cannot activate an absent Controls module. Removing or
-setting enabled=false disables both Controls features. Restart after edits.
+setting enabled=false disables all three Controls features. Restart after edits.
 
 Y TO HURRY PROTOTYPE: With Controls enabled and hold_to_advance_dialogue=true,
 hold Y for nominal 30x text and automatic completed-page advancement. Choices open normally; Y never

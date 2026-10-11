@@ -1,0 +1,78 @@
+Equipped-pole auto vault prototype 1 — ACNH 3.0.3 — 2026-10-11
+
+Scope
+
+While already holding a vaulting pole, push firmly toward a native-valid
+crossing and wait for the normal hop hold threshold. Controls then requests
+the game's native traversal. No synthetic A input, tool switching, animation
+speed changes, inventory writes, teleports or direct state edits are added.
+auto_vault defaults false and supports regular/custom Controls overlays.
+The separate test ZIP enables it. This is a prototype based on 0.4.17, not a
+replacement numbered release. Live Eden testing remains necessary.
+
+Native investigation (addresses are main-relative)
+
+0230B8D0: Hop entry. Automatic mode requires strong stick input and low
+movement/shape speed, then obtains collision normals through 015F3040.
+0230BF18: Normal/facing/input-direction checks (45-degree bounds), then
+straight and adjusted geometry attempts. Constructs the geometry request.
+0230C470: Hop geometry, landing/route checks and native waiting result.
+0230DF04: Prepare hop data and request JumpValleyReady (state 0x1E).
+0239A340: Pole-vault search and route/landing validation. First attempts the
+ordinary hop with automatic=false, then searches farther ahead for a vault.
+0239AFF4: Check-only return when argument 3 bit 0 is set; otherwise landing
+reservation and native LongStickJumpReady preparation (state 0xB4).
+015F5C40: Resolve the currently equipped tool kind; native dispatcher maps
+kind 0x28 to 0239A340. This does not mean the pole is merely in pockets.
+0241E98C(1): Loaded player parameters. Judge timer parameter is +0xED0;
+its vtable +0xF0 accessor supplies the threshold, initialized to 30.
+
+0221A094..0221A0E4: Movement calls HopEntry(player, 1, 1). Result 2 increments
+player+0x6A0; result 0 clears it; result 1 leaves it unchanged. This call is
+behind the native mode/state/ownership eligibility gates. Native dispatcher
+at 02223454 calls HopEntry(player, 0, 1) to commit. Thus the probe runs at
+the predicted transform, while the commit checks the current position.
+The threshold comparison is strict: equal still waits. Exact wall-clock
+duration and ordering under live frame pacing are not established here.
+
+Implementation
+
+Two trampolines at HopEntry and HopGeometry cooperate through a synchronous
+attempt scope. Geometry records eligible straight automatic intent without
+an output buffer, after upstream native intent/contact checks. HopEntry waits
+for the entire native search, including adjusted landing candidates, to fail
+before extending it. Original success OR pending native hop returns unchanged,
+preserving ordinary hops first. Native scheduling remains in control. Only equipped kind
+0x28 can extend a failure. A successful native vault probe returns Waiting
+until the existing counter exceeds the loaded native threshold. Then a
+geometry probe returns Ready; a commit invokes the native vault again with
+probe=false. Reservation refusal returns failure, without forced movement.
+
+Native vault's nested short-hop checks have automatic=false and pass through
+the hook unchanged, preventing recursion. Adjusted hop candidates and explicit
+A paths are also unchanged. There is no persistent extension latch or mod-owned
+timer. The attempt scope is restored before native vault calls; it assumes
+synchronous game-thread dispatch, as the existing pickup scope does. All nine
+instruction fingerprints are checked before installing either hook. Pickup,
+dialogue and vault installation fail independently.
+
+Validation boundaries
+
+The ARM fixture runs the compiled callback at two ASLR bases, real HopEntry
+and HopDirection, the actual movement timer tail, and PrepareVault's actual
+probe-only early return. Controller vectors are real fixture data; contact
+normals, angle conversions, geometry, tool lookup, parameter resources and
+vault reservation are modeled. It covers tool exclusion, pending hop priority,
+probe/commit separation, strict/dynamic threshold, native strength/motion/
+facing/input-direction gates, native timer accumulation/reset, recursive manual
+hop passthrough, changed-target/refused commit, regular/custom activation,
+absent Controls and atomic fingerprint conflicts.
+
+The fixture does not establish live terrain classification, the precise
+pond/ocean/river-mouth rules, animation scheduling, frame pacing or co-op/online
+behavior. Native terrain validation is retained, not replaced by guessed
+water enums or tile distances. In-game checks should include narrow hops,
+ordinary vaults, intermediate islands, diagonal banks, short ponds, wide water,
+ocean, river mouths, blocked landings, other tools/empty hands, release/turn
+while holding, manual A, UI/buildings, and sustained movement after landing.
+Test single-player first. Confirm no repeat vault or input lock after landing.
