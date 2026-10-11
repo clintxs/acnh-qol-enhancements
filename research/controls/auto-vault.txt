@@ -148,3 +148,42 @@ other-player isolation, actual commit refusal and existing hook policy.
 Full native terrain search/animation remain live-test boundaries. This is a
 candidate fix for the observed timer starvation; retry live before claiming
 successful automatic traversal.
+
+2026-10-11 prototype 2 live failure / diagnostic 3
+-------------------------------------------------
+Eden identifies auto-vault-v2. Multiple pole-equipped eligible attempts again
+show action probe=0 vault=1/result=2 followed by movement probe=1 vault=0/result=0,
+with timer staying zero. Current-position probing did not resolve the failure.
+The earlier position-selection explanation was incomplete. Retain this as a
+failed candidate, not a verified fix; don't bypass native terrain validation
+or introduce a cached positive result based only on the action-phase success.
+
+Diagnostic 3 retains prototype 2 policy and adds two fingerprinted float-inline
+observers inside TryVault: candidate rejection at 0239A6C0 and common return
+at 0239A5CC. X20 still holds the player at these points. Saved LR identifies
+the last native query before rejection; W0 and S0 bits capture integer results
+or the float/arithmetic value used by the following branch. The inline engine
+backs up original LR at GP context+F0; FloatCtx puts GP at +200 and SIMD at +0.
+The observers read these values, change only the synchronous probe record,
+and preserve the entire saved GP/SIMD context and player memory.
+
+VAULT search accompanies deduplicated entry logs. It separates the raw native
+return from whether the final check-only preparation actually ran, counts
+rejected candidate landings, and records the last query return site and a
+category mask aggregated across candidates. Mask categories: 1 landing
+obstruction, 2 occupancy, 4 intermediate water, 8 height/type query or its
+following comparison, 16 terrain/radius, 32 route height, 64 preparation,
+128 unclassified. Interpret the exact last site with disassembly, especially
+float-return helpers: W0 alone is not their success result. No-candidate exits
+capture the last call from the epilogue instead. Current/alternate xyz positions
+are logged in hundredths of game units, along with facing's raw angle bits.
+The observers run only for the active matching-player automatic vault probe.
+All 13 diagnostic fingerprints validate before any of its six hooks install.
+Ordinary builds still install only the three opted-in traversal hooks.
+
+248 focused ARM cases at two ASLR bases pass. Added checks exercise all rejection
+categories, native-return-site capture, raw float bits, early exit, preserved
+failure details at the final epilogue, GP/SIMD and player-memory preservation,
+null-scope and other-player isolation, and atomic observer fingerprint rejection.
+These fixtures test observer callbacks, not a live native terrain search.
+A new live log is needed to locate the failing native predicate or probe guard.

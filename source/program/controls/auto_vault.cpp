@@ -10,11 +10,13 @@ constexpr std::uintptr_t HopEntry = 0x0230b8d0, HopDirection = 0x0230bf18;
 constexpr std::uintptr_t TryVault = 0x0239a340, PrepareVault = 0x0239aff4;
 constexpr std::uintptr_t EquippedToolKind = 0x015f5c40, PlayerParameters = 0x0241e98c;
 constexpr std::uintptr_t VaultPositionSelection = 0x0239a398;
+constexpr std::uintptr_t VaultCandidateRejected = 0x0239a6c0, VaultSearchExit = 0x0239a5cc;
 constexpr std::uintptr_t MovementGuards = 0x02219fc0;
 constexpr std::uintptr_t MovementProbe = 0x0221a094, HopCommit = 0x02223454;
 }
 namespace field {
 constexpr std::size_t Actor = 0x68, PlayerContext = 0x60, ActionController = 0x70;
+constexpr std::size_t Position = 0x278, AlternatePosition = 0x284, Facing = 0x2b4;
 constexpr std::size_t Action = 0x280, MovementState = 0x1810, InputValid = 0x12f8;
 constexpr std::size_t StickX = 0xeec, StickY = 0xef0, Speed = 0x2e0;
 constexpr std::size_t HopTimer = 0x6a0, JudgeTimerParameter = 0xed0;
@@ -58,7 +60,14 @@ HopAttempt *CurrentAttempt{};
 // TryVault's argument combines position selection with side-effect control.
 // Use the current-position path, suppress its redundant short-hop attempt,
 // and make ONLY its final preparation check-only. No player positions change.
-struct VaultProbe { void *player; bool landingValidated = false; };
+struct VaultProbe {
+    void *player;
+    bool landingValidated = false;
+    unsigned nativeResult = 0;
+#if CAS_AUTO_VAULT_DIAGNOSTIC
+    unsigned failedCandidates = 0, failureMask = 0, lastCall = 0, integerResult = 0, floatBits = 0;
+#endif
+};
 VaultProbe *CurrentVaultProbe{};
 HOOK_DEFINE_TRAMPOLINE(AutoVaultPrepare) {
     static unsigned Callback(void *player, const void *position, unsigned probe) {
@@ -69,16 +78,56 @@ HOOK_DEFINE_TRAMPOLINE(AutoVaultPrepare) {
         return result;
     }
 };
-bool ProbeCurrentPositionVault(void *player) {
+VaultProbe ProbeCurrentPositionVault(void *player) {
     VaultProbe probe{player};
     auto previous = CurrentVaultProbe;
     CurrentVaultProbe = &probe;
     const auto result = Native<unsigned (*)(void *, unsigned)>(address::TryVault)(player, 0);
     CurrentVaultProbe = previous;
-    return (result & 1) && probe.landingValidated;
+    probe.nativeResult = result & 1;
+    return probe;
 }
 
 #if CAS_AUTO_VAULT_DIAGNOSTIC
+// Each rejected candidate branches here with LR still identifying the last
+// native query. Capture GP and SIMD without changing either or calling the
+// query again. This also covers arithmetic checks following float queries.
+unsigned RejectionCategory(unsigned call) {
+    switch (call) {
+    case 0x239a8b0: return 1; // landing obstruction
+    case 0x239a98c: case 0x239aa04: case 0x239aa40: return 2; // occupancy
+    case 0x239aabc: case 0x239ab60: case 0x239ac04: case 0x239aca8:
+    case 0x239ad4c: case 0x239adec: case 0x239ae90: return 4; // water samples
+    case 0x239aad4: case 0x239ab78: case 0x239ac1c: case 0x239acc0:
+    case 0x239ad64: case 0x239ae04: case 0x239aea8: case 0x239aefc:
+    case 0x239a85c: case 0x239a908: case 0x239a5a0: return 8; // height/type query
+    case 0x239ab08: case 0x239abac: case 0x239ac50: case 0x239acf4:
+    case 0x239ad98: case 0x239ae38: case 0x239aedc: case 0x239af30: return 16; // terrain/radius
+    case 0x239af80: return 32; // path height
+    case 0x239a6b4: return 64; // final preparation
+    default: return 128;
+    }
+}
+void ObserveSearch(exl::hook::InlineFloatCtx *ctx, bool rejected) {
+    auto scope = CurrentVaultProbe;
+    if (!scope || scope->player != reinterpret_cast<void *>(ctx->X[20])) return;
+    if (rejected || !scope->failedCandidates) {
+        scope->lastCall = static_cast<unsigned>(ctx->X[30] - Main);
+        scope->integerResult = ctx->W[0];
+        const float value = ctx->S[0];
+        std::memcpy(&scope->floatBits, &value, sizeof(value));
+    }
+    if (rejected) {
+        ++scope->failedCandidates;
+        scope->failureMask |= RejectionCategory(scope->lastCall);
+    }
+}
+HOOK_DEFINE_INLINE(AutoVaultRejectedTrace) {
+    static void Callback(exl::hook::InlineFloatCtx *ctx) { ObserveSearch(ctx, true); }
+};
+HOOK_DEFINE_INLINE(AutoVaultExitTrace) {
+    static void Callback(exl::hook::InlineFloatCtx *ctx) { ObserveSearch(ctx, false); }
+};
 // Independent budgets retain useful river-contact traces after startup/walking.
 // Quantize timer/input values so the log records stages instead of every frame.
 struct TraceSnapshot {
@@ -118,9 +167,9 @@ HOOK_DEFINE_INLINE(AutoVaultMovementTrace) {
     }
 };
 void TraceEntry(void *player, unsigned probe, unsigned automatic, unsigned hop,
-                unsigned geometry, int vault = -1, int result = -1) {
+                unsigned geometry, int vault = -1, int result = -1, const VaultProbe *details = nullptr) {
     struct Stage {
-        unsigned budget = 96, otherBudget = 16, last[8]{}, frames{};
+        unsigned budget = 96, otherBudget = 16, last[10]{}, frames{};
         void *lastPlayer{};
     };
     // Native vault probes recursively check a manual short hop. Keep each
@@ -132,16 +181,30 @@ void TraceEntry(void *player, unsigned probe, unsigned automatic, unsigned hop,
     const unsigned tool = Native<unsigned (*)(void *)>(address::EquippedToolKind)(player);
     const auto timer = Read<unsigned short>(player, field::HopTimer);
     const unsigned now[]{probe, automatic, hop, geometry, tool, timer/15u,
-                         static_cast<unsigned>(vault), static_cast<unsigned>(result)};
+                         static_cast<unsigned>(vault), static_cast<unsigned>(result),
+                         details ? details->lastCall : 0, details ? details->failureMask : 0};
     if (stage.lastPlayer == player && !std::memcmp(stage.last, now, sizeof(now)) && ++stage.frames < 120) return;
     stage.lastPlayer = player; stage.frames = 0; std::memcpy(stage.last, now, sizeof(now));
     if (!remaining) return;
     --remaining;
     Logging.Log("[QoL Enhancements/Controls] VAULT entry: probe=%u auto=%u hop=%u geometry=0x%x tool=0x%x timer=%u vault=%d result=%d\n",
         probe, automatic, hop, geometry, tool, timer, vault, result);
+    if (details) {
+        auto actor = Read<void *>(player, field::Actor);
+        Logging.Log("[QoL Enhancements/Controls] VAULT search: phase=%u native=%u prepared=%u candidates=%u mask=0x%x last=0x%x ret=0x%x fp=0x%x pos=%d,%d,%d alt=%d,%d,%d facing=0x%x\n",
+            probe, details->nativeResult, details->landingValidated, details->failedCandidates,
+            details->failureMask, details->lastCall, details->integerResult, details->floatBits,
+            static_cast<int>(Read<float>(actor, field::Position)*100.f),
+            static_cast<int>(Read<float>(actor, field::Position+4)*100.f),
+            static_cast<int>(Read<float>(actor, field::Position+8)*100.f),
+            static_cast<int>(Read<float>(actor, field::AlternatePosition)*100.f),
+            static_cast<int>(Read<float>(actor, field::AlternatePosition+4)*100.f),
+            static_cast<int>(Read<float>(actor, field::AlternatePosition+8)*100.f),
+            Read<unsigned>(actor, field::Facing));
+    }
 }
 #else
-void TraceEntry(void *, unsigned, unsigned, unsigned, unsigned, int = -1, int = -1) {}
+void TraceEntry(void *, unsigned, unsigned, unsigned, unsigned, int = -1, int = -1, const VaultProbe * = nullptr) {}
 #endif
 
 bool HoldComplete(void *player) {
@@ -199,18 +262,19 @@ HOOK_DEFINE_TRAMPOLINE(AutoVaultEntry) {
         // Native probe=1 also selects actor+0x284 instead of current +0x278.
         // Live movement/action phases disagree there and keep clearing the
         // timer. Validate current position with preparation scoped check-only.
-        const unsigned valid = ProbeCurrentPositionVault(player);
+        const auto check = ProbeCurrentPositionVault(player);
+        const unsigned valid = check.nativeResult && check.landingValidated;
         const bool complete = valid && HoldComplete(player);
         if (!valid || !complete || (probe & 1)) {
             const auto result = !valid ? NoCrossing : complete ? CrossingReady : Waiting;
-            TraceEntry(player, probe, automatic, hop, attempt.geometry, valid, result);
+            TraceEntry(player, probe, automatic, hop, attempt.geometry, valid, result, &check);
             return result;
         }
 
         // Re-run native validation against the current position and let the
         // game reserve landing space and enter LongStickJumpReady itself.
         const auto result = vault(player, 0) & 1;
-        TraceEntry(player, probe, automatic, hop, attempt.geometry, valid, result);
+        TraceEntry(player, probe, automatic, hop, attempt.geometry, valid, result, &check);
         if (result) Logging.Debug("[QoL Enhancements/Controls] auto vault: native traversal requested\n");
         return result;
     }
@@ -221,6 +285,8 @@ bool InstallAutoVault() {
     struct Fingerprint { std::uintptr_t offset; std::uint32_t words[5]; };
     constexpr Fingerprint fingerprints[]{
 #if CAS_AUTO_VAULT_DIAGNOSTIC
+        {address::VaultCandidateRejected, {0x1100077b,0x71000f7f,0x54fffd40,0xf9403688,0xb4000428}},
+        {address::VaultSearchExit, {0x6d4a23e9,0x6d492beb,0x6d4833ed,0x6d473bef,0xa9504ff4}},
         {address::MovementGuards, {0xb00144e8,0xf9414d08,0x79800108,0xb100051f,0x54000740}},
 #endif
         {address::HopGeometry, {0xd10783ff,0x6d143bef,0x6d1533ed,0x6d162beb,0x6d1723e9}},
@@ -242,8 +308,10 @@ bool InstallAutoVault() {
     }
     Main = main.m_Text.m_Start;
 #if CAS_AUTO_VAULT_DIAGNOSTIC
+    AutoVaultRejectedTrace::InstallAtOffset(address::VaultCandidateRejected);
+    AutoVaultExitTrace::InstallAtOffset(address::VaultSearchExit);
     AutoVaultMovementTrace::InstallAtOffset(address::MovementGuards);
-    Logging.Log("[QoL Enhancements/Controls] DIAGNOSTIC: auto-vault-v2; bounded movement and entry traces\n");
+    Logging.Log("[QoL Enhancements/Controls] DIAGNOSTIC: auto-vault-v3; bounded movement and entry traces\n");
 #endif
     AutoVaultPrepare::InstallAtOffset(address::PrepareVault);
     AutoVaultGeometry::InstallAtOffset(address::HopGeometry);

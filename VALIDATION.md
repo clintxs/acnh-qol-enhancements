@@ -1,5 +1,20 @@
 # Unified QoL validation
 
+## Equipped-pole auto vault diagnostic 3 (2026-10-11)
+
+Prototype 2 also fails live: eligible action checks wait, movement checks reject,
+and the hold timer stays zero. Current-position probing did not fix the problem.
+Diagnostic 3 keeps that traversal policy and adds native rejection/exit observers.
+Its search logs distinguish raw native return from the scoped preparation guard,
+identify the last native query at rejected candidates, and record category masks,
+raw GP/float results, current/alternate positions and facing.
+
+The offline build and 248 focused ARM cases pass at two ASLR bases. New coverage
+checks every rejection category, return-site and float capture, early exit,
+context/player preservation, null/other-player isolation and the extra instruction
+fingerprints. Full native terrain behavior remains a live-test boundary. This is
+a diagnostic package, not another claimed fix. Older archives remain preserved.
+
 ## Equipped-pole auto vault prototype 2 (2026-10-11)
 
 The diagnostic log reaches the pole and geometry guards, but the action phase

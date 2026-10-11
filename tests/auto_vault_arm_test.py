@@ -11,8 +11,8 @@ from unicorn.arm64_const import *
 GEOMETRY = 0x230c470
 DEPENDENCIES = (GEOMETRY, 0x230b8d0, 0x230bf18, 0x239a340, 0x239aff4,
                 0x15f5c40, 0x241e98c, 0x239a398, 0x221a094, 0x2223454)
-DIAGNOSTIC = b"DIAGNOSTIC: auto-vault-v2" in (Path(__file__).resolve().parents[1] / "project.elf").read_bytes()
-EXTRA = int(DIAGNOSTIC)
+DIAGNOSTIC = b"DIAGNOSTIC: auto-vault-v3" in (Path(__file__).resolve().parents[1] / "project.elf").read_bytes()
+EXTRA = 3 * int(DIAGNOSTIC)
 CONFIG = DEFAULT + b'hold_to_hoover=false\nhold_to_advance_dialogue=false\nauto_vault=true\n'
 
 
@@ -215,7 +215,7 @@ def main():
     for base in (0x7100000000, 0x7200000000):
         if DIAGNOSTIC:
             trace = VaultMachine(base, verbose=False)
-            assert 'DIAGNOSTIC: auto-vault-v2' in trace.text
+            assert 'DIAGNOSTIC: auto-vault-v3' in trace.text
             ctx = trace.ram + 0xf000
             trace.u.mem_write(ctx, bytes(0x100))
             trace.write(ctx + 19*8, trace.player)
@@ -235,7 +235,50 @@ def main():
                 assert trace.automatic(1) == (2 if count <= 30 else 1)
             assert 'geometry=0x1f tool=0x28 timer=31 vault=1 result=1' in trace.text
             assert trace.text.count('VAULT entry:') <= 8
-            cases += 3
+            assert 'VAULT search: phase=1 native=1 prepared=1' in trace.text
+            # Float-inline context: SIMD at +0, GP at +0x200, saved LR at +0x2f0.
+            # Exercise each rejection category; callback must preserve every
+            # GP/SIMD byte and player memory while changing only its scope.
+            float_ctx = trace.ram + 0x11000
+            scope = trace.ram + 0x12000
+            scope_slot = trace.module.find('CurrentVaultProbe')
+            trace.u.mem_write(scope, bytes(64)); trace.write(scope, trace.player)
+            trace.write(scope_slot, scope)
+            trace.u.mem_write(float_ctx, bytes([0x5a])*0x300)
+            trace.write(float_ctx + 0x200 + 20*8, trace.player)
+            trace.write(float_ctx + 0x200, 7)
+            trace.u.mem_write(float_ctx, struct.pack('<f', 1.25))
+            for site in (0x239a8b0, 0x239a98c, 0x239aabc, 0x239aad4,
+                         0x239ab08, 0x239af80, 0x239a6b4, 0x239a574):
+                trace.write(float_ctx + 0x2f0, base + site)
+                snapshot = bytes(trace.u.mem_read(float_ctx, 0x300))
+                player_snapshot = bytes(trace.u.mem_read(trace.player, 0x3000))
+                trace.u.reg_write(UC_ARM64_REG_X0, float_ctx)
+                trace.call(trace.module.find('AutoVaultRejectedTrace', 'Callback'))
+                assert bytes(trace.u.mem_read(float_ctx, 0x300)) == snapshot
+                assert bytes(trace.u.mem_read(trace.player, 0x3000)) == player_snapshot
+                assert trace.read(scope + 24, 4) == site
+            assert trace.read(scope + 16, 4) == 8 and trace.read(scope + 20, 4) == 255
+            assert trace.read(scope + 28, 4) == 7 and trace.read(scope + 32, 4) == 0x3fa00000
+            scope_snapshot = bytes(trace.u.mem_read(scope, 64))
+            trace.write(float_ctx + 0x2f0, base + 0x239a5a0)
+            trace.u.reg_write(UC_ARM64_REG_X0, float_ctx)
+            trace.call(trace.module.find('AutoVaultExitTrace', 'Callback'))
+            assert bytes(trace.u.mem_read(scope, 64)) == scope_snapshot
+            trace.write(scope + 16, 0, 4)
+            trace.u.reg_write(UC_ARM64_REG_X0, float_ctx)
+            trace.call(trace.module.find('AutoVaultExitTrace', 'Callback'))
+            assert trace.read(scope + 24, 4) == 0x239a5a0
+            scope_snapshot = bytes(trace.u.mem_read(scope, 64))
+            trace.write(float_ctx + 0x200 + 20*8, trace.player + 0x4000)
+            trace.u.reg_write(UC_ARM64_REG_X0, float_ctx)
+            trace.call(trace.module.find('AutoVaultRejectedTrace', 'Callback'))
+            assert bytes(trace.u.mem_read(scope, 64)) == scope_snapshot
+            trace.write(scope_slot, 0)
+            trace.u.reg_write(UC_ARM64_REG_X0, float_ctx)
+            trace.call(trace.module.find('AutoVaultRejectedTrace', 'Callback'))
+            assert bytes(trace.u.mem_read(scope, 64)) == scope_snapshot
+            cases += 8
         m = VaultMachine(base)
         # Execute the native selector instead of inferring its flag semantics.
         for argument, offset in ((0, 0x278), (1, 0x284)):
@@ -381,7 +424,7 @@ def main():
         m.tick(m.automatic(1))
         assert m.read(m.player + 0x6a0, 2) == 0
 
-        for offset in DEPENDENCIES + ((0x2219fc0,) if DIAGNOSTIC else ()):
+        for offset in DEPENDENCIES + ((0x2219fc0, 0x239a6c0, 0x239a5cc) if DIAGNOSTIC else ()):
             conflict = Machine(base, {'controls': CONFIG})
             conflict.write(base + offset, 0, 4)
             conflict.boot(); conflict.activate()
