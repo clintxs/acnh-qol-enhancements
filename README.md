@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.4.4 release test build** for ACNH **3.0.3 on Eden**. One Core
+**0.4.5 release test build** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -72,14 +72,14 @@ fingerprints only, checked before each feature's first hook.
 Install **QoL Enhancements - Crafting** with Core. This replaces the former
 Faster Crafting package; remove the old folder and rename personal
 `faster-crafting.custom.ini` preferences to `crafting.custom.ini`. Remove any old
-`version` override from that personal file (or update it to 0.4.4). The retired
+`version` override from that personal file (or update it to 0.4.5). The retired
 regular/custom paths are no longer read. Core alone no longer enables DIY previews.
 
 `romfs/qol-enhancements/config/crafting.ini` supplies these defaults:
 
 ```ini
 enabled = true
-version = 0.4.4
+version = 0.4.5
 diy_app_preview = true
 workbench_preview_tilt = true
 crafting_quantity_wrap = true
@@ -306,7 +306,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.4.4
+version = 0.4.5
 base_speed = 2
 boost_speed = 4
 faster_ui = true
@@ -451,9 +451,9 @@ at `../vanilla-3.0.3/Layout`; builders verify their hashes and archive structure
 The package script checks that every INI matches the Core release, refuses to
 replace existing archives, and creates:
 
-- `dist/qol-enhancements-v0_4_4_for_acnh_v3_0_3.zip`
-- `dist/qol-enhancements-v0_4_4_for_acnh_v3_0_3_source.zip`
-- `dist/qol-enhancements-v0_4_4_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
+- `dist/qol-enhancements-v0_4_5_for_acnh_v3_0_3.zip`
+- `dist/qol-enhancements-v0_4_5_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v0_4_5_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
 
 The binary ZIP contains a conspicuous installation text file, README, Core and
 six independently selectable feature folders, plus a SHA-256 manifest. Source
@@ -470,6 +470,18 @@ The prepared NPDM preserves original services/filesystem/META settings and adds
 only the existing four Exlaunch process-mapping/session syscall permissions.
 Using subsdk6 avoids Jubbsticks Additions' subsdk9 slot, but does not establish
 compatibility with that mod's future hooks or NPDM.
+
+## Pockets single-action menus (0.4.5)
+
+Pressing A on a pocket item opens it directly **only when Open is its sole
+menu option**. The three native Open actions (present, treasure, and bottle)
+are recognized by their action and message keys, independent of language.
+Menus with additional options and second-level menus remain unchanged.
+
+Selecting an item in the recycling box similarly bypasses a sole **Claim**
+option. Native pocket-capacity checks and the full-pockets message still apply.
+Home-storage quick withdrawal, Y/ZL/ZR shortcuts, and other menus are unchanged;
+this is not a general bypass of every single-option menu.
 
 ## Pockets trigger shortcuts (0.4.2)
 

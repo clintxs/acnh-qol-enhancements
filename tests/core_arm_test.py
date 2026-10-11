@@ -10,7 +10,7 @@ from unicorn.arm64_const import *
 from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
 SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'shopping-card', 'crafting')
-COUNTS = (16, 15, 7, 12, 11, 18)  # Input and hint-text hooks belong to Core.
+COUNTS = (16, 19, 7, 12, 11, 18)  # Input and hint-text hooks belong to Core.
 RELEASE_VERSION = re.search(r'ReleaseVersion\[\] = "(\d+\.\d+\.\d+)"',
                             (ROOT / 'qol-enhancements/source/program/core/release.hpp').read_text())[1]
 DEFAULT = f'enabled=true\nversion={RELEASE_VERSION}\n'.encode()

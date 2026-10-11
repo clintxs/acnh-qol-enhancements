@@ -11,7 +11,7 @@ GROUPS = {
     'shopping': ['shopping_layout_test.py', 'shopping_resource_arm_test.py', 'shopping_texture_arm_test.py', 'shopping_display_arm_test.py', 'shopping_cash_arm_test.py'],
     'dialogue': ['dialogue_arm_test.py', 'dialogue_names_arm_test.py'],
     'crafting': ['crafting_arm_test.py', 'quantity_shortcut_arm_test.py'],
-    'pockets': ['storage_hint_arm_test.py'],  # Includes full arm_stack_test.
+    'pockets': ['storage_hint_arm_test.py', 'recycling_claim_arm_test.py'],  # Both include arm_stack_test.
     'fitting': ['purchase_arm_test.py', 'feedback_arm_test.py', 'fitting_hint_arm_test.py'],
     'catalog': ['restaurant_recipe_dialogue_arm_test.py', 'villager_recipe_dialogue_arm_test.py', 'dialogue_ui_sources_arm_test.py', 'catalog_variation_labels_arm_test.py',
                 'miles_name_binding_arm_test.py', 'miles_and_counted_names_arm_test.py',

@@ -19,6 +19,7 @@ constexpr std::uintptr_t PocketInputCallback = 0x03088724;
 constexpr std::uintptr_t PocketPageVtable = 0x04a06b00;
 constexpr std::uintptr_t ApplicationGlobal = 0x059f83f0;
 constexpr std::uintptr_t Play = 0x0308aa80, Command = 0x0308c5f8;
+constexpr std::uintptr_t EnterMenu = 0x0308c4c4, UpdateMenu = 0x0308c590;
 constexpr std::uintptr_t BuildMenu = 0x03088df0, OwnHome = 0x02815598;
 constexpr std::uintptr_t Capacity = 0x02572e00, Item = 0x02577ea0;
 constexpr std::uintptr_t ButtonFeedback = 0x03c66950;
@@ -93,6 +94,13 @@ constexpr std::size_t PrepareOperationVirtual = 0x18, PlayVirtual = 0x190;
 } // namespace cursor_layout
 namespace state {
 constexpr int Browsing = 3, Command = 7, Refresh = 14, NoQueuedTransition = -1;
+constexpr int SelectingCommand = 5;
+}
+// Not an input bit: A already reached native CommandSelect and supplied its
+// sound/cursor feedback. This request just skips a redundant one-row popup.
+constexpr unsigned AutomaticOpen = 0;
+namespace open_action {
+constexpr int Present = 32, Treasure = 33, Bottle = 54; // ItemUIContextMenu rows.
 }
 constexpr int PocketSlotLimit = 40, InputRowLimit = 8, NativeBackButtonId = 5;
 constexpr unsigned OtherActionButtons = 0x37f; // D-pad, A/B/X and L/R.
@@ -317,7 +325,13 @@ bool FindNativeShortcut(void *pocket, int slot, unsigned button, int &action, bo
                         description.callbacks[i].fields[0], description.callbacks[i].fields[1],
                         description.callbacks[i].fields[2]);
         }
-        if (shortcuts::Matches(button, row.action) && row.flags == 0 && row.extra == 0 &&
+        const bool soleOpen = description.count == 1 && row.bank && row.key &&
+            std::strcmp(row.bank, "CmnSubWin") == 0 &&
+            ((row.action == open_action::Present && std::strcmp(row.key, "0113") == 0) ||
+             (row.action == open_action::Treasure && std::strcmp(row.key, "0144") == 0) ||
+             (row.action == open_action::Bottle && std::strcmp(row.key, "0148") == 0));
+        if ((button == AutomaticOpen ? soleOpen : shortcuts::Matches(button, row.action)) &&
+            row.flags == 0 && row.extra == 0 &&
             description.callbacks[i].vtable == game::MainAddress(address::EmptyCallbackVtable) &&
             description.callbacks[i].fields[0] == 0 && description.callbacks[i].fields[1] == 0 &&
             description.callbacks[i].fields[2] == 0) {
@@ -329,8 +343,9 @@ bool FindNativeShortcut(void *pocket, int slot, unsigned button, int &action, bo
     return false;
 }
 bool CanUseShortcut(void *pocket, int slot, int state, unsigned button, int &action,
-                    std::uint64_t &itemIdentity, bool trace = false) {
-    // Only browsing (3) / our dispatch (7) are allowed; drag states 8/9 are not.
+                    std::uint64_t &itemIdentity, bool trace = false, bool enteringMenu = false) {
+    // Callers allow browsing (3), first-level A menu (5), or dispatch (7).
+    // Drag states 8/9 and second-level menu 6 are never automatic actions.
     // +1c516 is the equipped-item slot, not a drag flag. Leave it to the game.
     // +1c4e8 can retain multi-selection bits in normal mode. Native single-item
     // actions ignore them; require mode 0 below, not an empty selection mask.
@@ -338,11 +353,17 @@ bool CanUseShortcut(void *pocket, int slot, int state, unsigned button, int &act
     if (Field<std::uintptr_t>(pocket, 0) != game::MainAddress(address::PocketControllerVtable) ||
         Field<int>(pocket, layout::PocketMode) != 0 ||
         Field<int>(pocket, layout::CurrentState) != state ||
-        Field<std::uint8_t>(pocket, layout::TransitionSlot) > 1 || !HasNoQueuedTransition(pocket) ||
+        Field<std::uint8_t>(pocket, layout::TransitionSlot) > 1 ||
         Field<int>(pocket, layout::PocketError) != 0 || slot < 0 || slot >= PocketSlotLimit ||
         (Field<std::uint64_t>(pocket, layout::BlockedSlots) & (1ull << slot))) {
         return false;
     }
+    const unsigned phase = Field<std::uint8_t>(pocket, layout::TransitionSlot);
+    const int activeQueue = Field<int>(pocket, layout::TransitionA + 4 * phase);
+    const int otherQueue = Field<int>(pocket, layout::TransitionA + 4 * (1 - phase));
+    // During ENTRY the previous phase still holds the state being entered.
+    if (activeQueue != -1 || (otherQueue != -1 &&
+        !(enteringMenu && state == state::SelectingCommand && otherQueue == state))) return false;
     auto *inventory = static_cast<std::byte *>(pocket) + layout::PocketInventory;
     eligibilityReason = "capacity";
     if (slot >= game::FunctionAt<int (*)(void *)>(address::Capacity)(inventory)) {
@@ -570,6 +591,49 @@ bool QuickStoreInput(void *page, void *inputSnapshot, unsigned blocked) {
     return false;
 }
 
+HOOK_DEFINE_TRAMPOLINE(EnterPocketMenu) {
+    static void Callback(void *owner) {
+        pending = {};
+        pendingTap = {};
+        const int slot = Field<std::int8_t>(owner, layout::SelectedSlot);
+        int action = -1;
+        std::uint64_t item{};
+        // State 6 is a second-level menu: never auto-confirm it.
+        if (!CanUseShortcut(owner, slot, state::SelectingCommand, AutomaticOpen, action, item, false, true)) {
+            Orig(owner);
+            return;
+        }
+        pending = {owner, slot, item, 0, AutomaticOpen, action};
+        // Native entry blocks this page while selecting a command. Preserve
+        // that lock, but don't start the child menu or queue a state in ENTRY.
+        auto *page = Field<void *>(owner, layout::PocketPage);
+        auto *context = page ? Field<void *>(page, layout::InputContext) : nullptr;
+        if (context) Field<std::uint8_t>(context, layout::InputBlocked) = 1;
+    }
+};
+
+HOOK_DEFINE_TRAMPOLINE(UpdatePocketMenu) {
+    static void Callback(void *owner) {
+        if (pending.owner != owner || pending.button != AutomaticOpen) {
+            Orig(owner);
+            return;
+        }
+        int action = -1;
+        std::uint64_t item{};
+        if (Field<std::int8_t>(owner, layout::SelectedSlot) != pending.slot ||
+            !CanUseShortcut(owner, pending.slot, state::SelectingCommand, AutomaticOpen, action, item) ||
+            item != pending.item || action != pending.action) {
+            pending = {};
+            EnterPocketMenu::Orig(owner);
+            return;
+        }
+        // UPDATE survives the transition consumer's clearing of entry queues.
+        // Command's normal entry initializes the action phase; its existing
+        // hook supplies the selected row across as many updates as needed.
+        QueueControllerState(owner, state::Command);
+    }
+};
+
 HOOK_DEFINE_TRAMPOLINE(QuickStoreCommand) {
     static void Callback(void *owner) {
         if (pending.owner != owner) {
@@ -606,7 +670,8 @@ HOOK_DEFINE_TRAMPOLINE(QuickStoreCommand) {
         // Run in state UPDATE, never entry: the transition consumer clears
         // pending states after entry. Native dispatch queues refresh/error here.
         const auto feedback = CaptureItemFeedback(owner, request.slot, request.inputRow);
-        if (!request.started && request.button != shortcuts::Storage) PlayItemFeedback(feedback);
+        if (!request.started && request.button != shortcuts::Storage && request.button != AutomaticOpen)
+            PlayItemFeedback(feedback);
         pending.started = true;
         Orig(owner);
         count = oldCount;
@@ -624,7 +689,7 @@ HOOK_DEFINE_TRAMPOLINE(QuickStoreCommand) {
                                        Field<std::uint8_t>(owner, layout::TransitionSlot));
             // Hold/Release may close Pockets. Do not carry a cursor tap into
             // the next opening of a recycled controller at the same address.
-            if (next == state::Browsing || next == state::Refresh)
+            if (request.button != AutomaticOpen && (next == state::Browsing || next == state::Refresh))
                 pendingTap = {owner, request.slot, request.inputRow};
         }
         Logging.Debug("[QoL Enhancements/Pockets] POCKET_SHORTCUT action=%d dispatched\n", request.action);
@@ -657,6 +722,8 @@ bool InstallQuickStore() {
     constexpr std::array checks{
         Check{address::Play, {0xa9ba7bfd, 0xa9016ffc, 0x910003fd, 0xa90267fa, 0xa9035ff8}},
         Check{address::Command, {0xa9bd7bfd, 0xf9000bf5, 0xa9024ff4, 0x910003fd, 0x91407008}},
+        Check{address::EnterMenu, {0xd10103ff, 0xa9027bfd, 0xa9034ff4, 0x910083fd, 0xf9410808}},
+        Check{address::UpdateMenu, {0xf9410c08, 0xb941b108, 0x7100051f, 0x540000c1, 0x39480008}},
         Check{address::BuildMenu, {0xd10383ff, 0xa9087bfd, 0xa9096ffc, 0xa90a67fa, 0xa90b5ff8}},
         Check{address::OwnHome, {0xf0011988, 0x798fa908, 0xb100051f, 0x540007a0, 0xd100c3ff}},
         Check{0x03076d78, {0xd10103ff, 0xa9017bfd, 0xa90257f6, 0xa9034ff4, 0x910043fd}},
@@ -681,6 +748,9 @@ bool InstallQuickStore() {
     }
     QuickStoreCommand::InstallAtOffset(address::Command);
     QuickStorePlay::InstallAtOffset(address::Play);
+    EnterPocketMenu::InstallAtOffset(address::EnterMenu);
+    UpdatePocketMenu::InstallAtOffset(address::UpdateMenu);
+    Logging.Debug("[QoL Enhancements/Pockets] OPEN_READY single-action A menu bypass\n");
     Logging.Debug("[QoL Enhancements/Pockets] QUICK_STORE_READY Y storage; ZL drop/release; ZR hold/wear/put-away\n");
     return true;
 }

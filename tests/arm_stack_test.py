@@ -78,6 +78,8 @@ class Machine:
                          ('EnterStorageCommand',0x316dd58),('UpdateStorageCommand',0x316deec),
                          ('SharedPageInput',0x3c58d24),
                          ('QuickStorePlay',0x308aa80),('QuickStoreCommand',0x308c5f8),
+                         ('EnterPocketMenu',0x308c4c4),('UpdatePocketMenu',0x308c590),
+                         ('EnterRecyclingMenu',0x2df1c58),('UpdateRecyclingMenu',0x2df1d68),
                          ('BuildPocketStorageHint',0x3094fb4)]:
             self.write(self.mod+symbol(name,'s_FnPtr'),base+off)
         self.write(self.mod+symbol('InputHandlers'),self.mod+symbol('15QuickStoreInput'))
@@ -797,6 +799,76 @@ for base in (0x80000000,0x1234500000):
     assert h.read(item,2)==0xfffe
     cases+=1
     own_home=True; h.stubs=saved_stubs
+    # A -> one Open row: real state transitions and command dispatcher. A's
+    # native feedback already happened; the bypass must not emit it again.
+    open_stubs=dict(h.stubs)
+    for state,entry,updater in ((5,h.callback('EnterPocketMenu'),h.callback('UpdatePocketMenu')),
+                                (6,h.callback('EnterPocketMenu'),h.callback('UpdatePocketMenu'))):
+        record=states+state*0x40
+        h.write(record,base+0x4a16510);h.write(record+8,pocket)
+        h.write(record+0x10,entry);h.write(record+0x20,updater)
+    bank=h.ram+0x8e000;key=bank+32
+    h.u.mem_write(bank,b'CmnSubWin\0')
+    offered_open=32;open_count=1;open_flags=0;open_extra=0;custom_callback=False
+    def open_builder():
+        desc=h.reg(1)
+        h.write(desc+0x44,open_count,4);h.write(desc+0x48,bank);h.write(desc+0x50,key)
+        h.write(desc+0x58,offered_open,4);h.write(desc+0x5c,open_flags,4);h.write(desc+0x60,open_extra,4)
+        if custom_callback:h.write(desc+0x130,pocket)
+    open_updates=0;open_complete_after=1
+    def perform_open():
+        global open_updates
+        open_updates+=1
+        events.append('open')
+        return int(open_updates>=open_complete_after)
+    h.stubs[base+0x3088df0]=open_builder
+    h.stubs[base+0x308c4c4]=lambda:events.append('menu')
+    h.stubs[base+0x307d490]=lambda:34
+    h.write(base+0x4a06740+34*16,h.ram+0x8f000)
+    h.stubs[h.ram+0x8f000]=perform_open
+    for offered_open,caption in ((32,b'0113'),(33,b'0144'),(54,b'0148')):
+        h.u.mem_write(key,caption+b'\0')
+        for child_state in (0,1):
+            for open_complete_after in (1,3):
+                h.write(child+0x1b0,child_state,4);reset_pocket();open_updates=0
+                h.write(pocket+0x1c514,selected_slot,1);h.write(pocket+0x1f4,5,4)
+                transition();assert h.read(pocket+0x1b0,4)==5 and events==[]
+                assert h.read(ctx+0x54,1)==1
+                update();assert h.read(pocket+0x1f4,4)==7
+                transition();assert events==['helper-close']
+                for n in range(open_complete_after):
+                    update()
+                    assert h.read(pocket+0x1f4,4)==(14 if n+1==open_complete_after else 0xffffffff)
+                assert events==['helper-close']+['open']*open_complete_after
+                assert confirmations==[] and taps==[]
+                assert h.read(child+0x1b0,4)==child_state
+                assert h.read(child+0x26d8,4)==4 and h.read(child+0x3a0,4)==99
+                assert h.read(child+0x26c9,1)==255
+                transition();update();transition()
+                assert events[-1]=='play' and h.read(ctx+0x54,1)==0 and taps==[]
+                cases+=1
+    offered_open=32;h.u.mem_write(key,b'0113\0')
+    for setting in ('two-rows','zero-rows','different-action','different-key','flags','extra','callback','second-menu','other-mode'):
+        reset_pocket();h.write(pocket+0x1c514,selected_slot,1)
+        open_count={'two-rows':2,'zero-rows':0}.get(setting,1)
+        offered_open=30 if setting=='different-action' else 32
+        h.u.mem_write(key,b'9999\0' if setting=='different-key' else b'0113\0')
+        open_flags=int(setting=='flags');open_extra=int(setting=='extra');custom_callback=setting=='callback'
+        h.write(pocket+0x1c4fc,int(setting=='other-mode'),4)
+        h.write(pocket+0x1f4,6 if setting=='second-menu' else 5,4)
+        transition();assert events==['menu']
+        cases+=1
+    open_count=1;offered_open=32;open_flags=open_extra=0;custom_callback=False
+    h.write(pocket+0x1c4fc,0,4);h.u.mem_write(key,b'0113\0')
+    for changed in ('item','slot','new-row'):
+        reset_pocket();h.write(pocket+0x1c514,selected_slot,1);h.write(pocket+0x1f4,5,4)
+        transition();assert events==[]
+        if changed=='item':h.write(item,0x87654321)
+        if changed=='slot':h.write(pocket+0x1c514,selected_slot+1,1)
+        if changed=='new-row':open_count=2
+        update();assert events==['menu'] and h.read(pocket+0x1f4,4)==0xffffffff
+        open_count=1;cases+=1
+    h.stubs=open_stubs
     # Run REAL feedback helper and Decide delegate, including override selection.
     del h.stubs[base+0x3c66950]
     h.stubs[safe_prepare]=lambda:None

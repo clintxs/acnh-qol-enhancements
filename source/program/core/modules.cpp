@@ -13,6 +13,7 @@
 #include "program/pockets/game/build_profile.hpp"
 #include "program/pockets/features/stack_splitting.hpp"
 #include "program/pockets/features/storage_withdrawal.hpp"
+#include "program/pockets/features/recycling_claim.hpp"
 #include "program/pockets/features/quick_store.hpp"
 #include "program/pockets/features/storage_hint.hpp"
 #include <nn/fs/fs_files.hpp>
@@ -43,9 +44,10 @@ bool InstallPockets() {
     const bool stacks = InstallStackSplitting();
     const bool storage = InstallStorageWithdrawal();
     const bool quickStore = InstallQuickStore();
+    const bool claim = InstallRecyclingClaim();
     const bool hint = quickStore && InstallStorageHint();
     const bool withdrawalHint = storage && hint && InstallStorageWithdrawalHint();
-    return stacks && storage && quickStore && hint && withdrawalHint;
+    return stacks && storage && quickStore && claim && hint && withdrawalHint;
 }
 
 enum class LoadResult { Absent, Invalid, Ready };

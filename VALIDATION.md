@@ -1,4 +1,38 @@
-# Unified QoL validation — 0.4.4 short Pockets hints
+# Unified QoL validation — 0.4.5 single-action Open and Claim
+
+## 0.4.5 Single-action Open / Claim bypasses
+
+Pockets hooks CommandSelect entry 0308c4c4 and update 0308c590, restricted to
+normal mode and first-level state 5. A live builder probe must produce exactly
+one unflagged row with an empty callback: action 32 / CmnSubWin 0113, 33 / 0144,
+or 54 / 0148. These are the three native English Open captions; matching keys
+does not depend on the active locale. Second-level state 6 is never bypassed.
+Entry preserves the page input lock but defers transitions until update. The
+existing command hook supplies the row to native dispatch, including multi-frame
+operations; A's existing feedback is not emitted again. Identity and eligibility
+are checked again before dispatch. Normal menus remain the fallback.
+
+Recycling uses its own controller (049df828), builder (02defbfc), command entry
+(02df1c58) and selection update (02df1d68), state 4. Require one native action 0
+with CmnSubWin/1602, an available nonempty slot, and the exact builder binding.
+Revalidate the 12-byte item/record descriptor before executing the original
+selection processor in UPDATE. Native capacity/insertion, saved-box record
+removal, visible-slot invalidation, focus restoration and error routing remain
+native. No changes to Hotel donations or unrelated one-option menus.
+
+Compiled fixtures cover first-open child states 0/1, full pockets and failed
+insertion without removal, actual native Claim record removal, menu fallbacks,
+changed identities, and one-/multi-update Open dispatch at two relocated bases.
+Open's engine action is stubbed; Claim's capacity/insertion and rendered UI are
+stubbed. These are not full-game or save tests.
+
+Passed: clean offline build; nine host suites; 842 compiled Pockets cases,
+82 recycling Claim cases and 194 footer cases; Fitting Room checkout/feedback/
+caption regressions; and all 64 Core module combinations at two bases. Pockets
+now installs 19 feature hooks (plus its shared Core input/caption subscriptions).
+
+Pending Eden: first and repeated Open/Claim, exit/reopen, full pockets, a normal
+multi-option item, Open inside/outside, and existing Y/ZL/ZR/storage behavior.
 
 ## 0.4.4 Short hint captions
 
