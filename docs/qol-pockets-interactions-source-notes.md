@@ -139,3 +139,31 @@ explain why moving work into Entry or retaining pointers longer would be wrong.
 Formatting is defined in `.clang-format`, including the hook macros. This pass
 changes project code under `source/program`, leaving upstream `source/lib` and
 `source/rtld` intact. Existing translation keys remain compatible.
+
+## Merged suite 0.4.2: trigger shortcuts
+
+`features/quick_store.cpp` now hosts the shared native command shortcut path:
+Y storage, ZL Drop/Release, ZR Hold/Wear. `pocket_shortcuts.hpp` names the input
+bits and native menu row IDs. Do not confuse BCSV row indices with the operation
+enum stored in each row. `ItemUIContextMenu.bcsv` rows 5/6/30/41 name
+Wear/HoldHand/PutUnitIcon/Release and use CmnSubWin 0107/0108/0110/0118.
+Native action mapping 0307d490 maps these to callback indices 7/8/10/26 in
+04a06740, pointing to 0307464c/03074d90/0307513c/03076698.
+
+Important: Drop's 0307513c callback returns incomplete while +1c517 advances
+through its initial six-update sequence. Command entry 0308c5c4 resets that
+byte. Keep supplying the selected action on later Command UPDATEs, but restore
+the menu's old row/count between calls. Revalidating inventory halfway through
+placement or clearing the request after one UPDATE can interrupt native work.
+Stop supplying it when native dispatch queues refresh/close/error. Only queue
+cursor feedback for transitions back toward browsing, not closing Pockets.
+
+UI button IDs 10/11 have native glyph records initialized at 032f94c4 onward
+(glyph message keys 007/008), and UI masks are 1<<button. These are not HID
+button-mask values. Existing input ownership/focus checks are reused.
+
+`storage_hint.cpp` appends fixed ZL/ZR hints after the existing home Y hint,
+bounded by the native five-record footer. New captions are private INI keys;
+USen fallback is shipped and users can add per-locale overrides. Shared
+`core/hint_text.cpp` owns 01aea210 once and accepts independent providers from
+Pockets and Fitting Room; do not install two hooks at that entrypoint.

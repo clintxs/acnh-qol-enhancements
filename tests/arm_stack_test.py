@@ -694,6 +694,88 @@ for base in (0x80000000,0x1234500000):
         transition();update();transition()
         assert transferred==[item_bytes] and confirmations==[selected_slot] and taps==[]
         h.write(pointer,saved,width);cases+=1
+    # Trigger shortcuts use only matching, enabled native rows, outside home
+    # too. Execute real command dispatch with world/equipment callbacks mocked.
+    action_map = {5:7, 6:8, 30:10, 41:26}
+    offered, row_flags, row_extra, callback_fields = [30], 0, 0, 0
+    dispatched, trigger_feedback = [], []
+    def shortcut_menu():
+        desc=h.reg(1); h.write(desc+0x44,len(offered),4)
+        for i,a in enumerate(offered):
+            h.write(desc+0x48+i*32+16,a,4)
+            h.write(desc+0x48+i*32+20,row_flags,4)
+            h.write(desc+0x48+i*32+24,row_extra,4)
+            h.write(desc+0x128+i*32+8,callback_fields)
+    native_updates=0
+    def shortcut_dispatch():
+        assert h.reg(0)==pocket and h.read(pocket+0x1c514,1)==selected_slot
+        dispatched.append(h.read(child+0x3a0,4))
+        return int(len(dispatched)>native_updates)
+    for a,index in action_map.items():
+        target=base+u64(raw,0x4a06740+index*16)
+        h.write(base+0x4a06740+index*16,target)
+        h.stubs[target]=shortcut_dispatch
+    saved_stubs=dict(h.stubs)
+    h.stubs[base+0x3088df0]=shortcut_menu
+    h.stubs[base+0x307d490]=lambda:action_map[h.reg(0)]
+    h.stubs[base+0x3c66950]=lambda:trigger_feedback.append(selected_slot)
+    own_home=False
+    for button,action in ((0x400,30),(0x400,41),(0x800,5),(0x800,6)):
+        for native_updates in (0,5):
+            offered=[35,action,46]; reset_pocket(); dispatched.clear(); trigger_feedback.clear()
+            y_input(); y_input(button); assert h.read(pocket+0x1f0,4)==7
+            transition()
+            for i in range(native_updates+1):
+                update()
+                assert dispatched==[action]*(i+1)
+                assert trigger_feedback==[selected_slot]
+                assert h.read(child+0x3a0,4)==99 and h.read(child+0x26c9,1)==255
+                if i<native_updates: assert h.read(pocket+0x1f4,4)==0xffffffff
+            assert h.read(pocket+0x1f4,4)==14
+            update(); assert len(dispatched)==native_updates+1
+            cases+=1
+        for offered in ([],[23],[49],[5 if button==0x400 else 30]):
+            reset_pocket(); y_input(); y_input(button)
+            assert h.read(pocket+0x1f0,4)==0xffffffff; cases+=1
+        offered=[action]
+        for extra_buttons,blocked,consumed in ((0x10,0,0),(0x20,0,0),(0x80,0,0),
+                                              (0xc00,0,0),(0,1,0),(0,0,button)):
+            reset_pocket(); y_input(); y_input(button|extra_buttons,blocked,consumed)
+            assert h.read(pocket+0x1f0,4)==0xffffffff
+            y_input(button) # Held through a blocker/chord must not fire later.
+            assert h.read(pocket+0x1f0,4)==0xffffffff; cases+=1
+        for row_flags,row_extra,callback_fields in ((1,0,0),(0,1,0),(0,0,1)):
+            reset_pocket(); y_input(); y_input(button)
+            assert h.read(pocket+0x1f0,4)==0xffffffff; cases+=1
+        row_flags=row_extra=callback_fields=0
+        reset_pocket(); y_input(); y_input(button); transition(); offered=[]; update()
+        assert h.read(pocket+0x1f4,4)==3; cases+=1
+    # Execute the actual Drop Item callback, including its six-update delay.
+    # Only world placement services are replaced, not the callback/dispatcher.
+    offered=[30]; native_updates=0; reset_pocket(); trigger_feedback.clear()
+    del h.stubs[base+0x307513c]
+    placement_events=[]
+    h.stubs[base+0x3322650]=lambda:1 # Native placement eligibility.
+    def begin_placement():
+        assert h.reg(0)==pocket+0x1c2d0
+        placement_events.append('begin'); h.write(pocket+0x1c318,3,4)
+        return 0
+    h.stubs[base+0x3354db0]=begin_placement
+    h.stubs[base+0x3355b14]=lambda:placement_events.append('finish')
+    def placement_update():
+        assert h.reg(0)==pocket+0x1c2d0
+        placement_events.append('update'); h.write(pocket+0x1c318,1,4)
+    h.stubs[base+0x3dbb268]=placement_update
+    y_input(); y_input(0x400); transition()
+    h.write(pocket+0x200,1,1)
+    for i in range(6):
+        h.put(0,pocket); h.run(h.callback('QuickStoreCommand'))
+        assert h.read(pocket+0x1f4,4)==(14 if i==5 else 0xffffffff)
+    assert placement_events==['begin','finish','update']
+    assert events==['helper-close','remove-refresh'] and trigger_feedback==[selected_slot]
+    assert h.read(item,2)==0xfffe
+    cases+=1
+    own_home=True; h.stubs=saved_stubs
     # Run REAL feedback helper and Decide delegate, including override selection.
     del h.stubs[base+0x3c66950]
     h.stubs[safe_prepare]=lambda:None

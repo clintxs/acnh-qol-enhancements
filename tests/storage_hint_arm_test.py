@@ -81,14 +81,17 @@ for base in (0x80000000, 0x1234500000):
                         assert h.read(p, 4) == 7 and h.read(p + 4, 4) == 0xffffffff
                         assert h.read(p + 0x68, 1) == 2
                         assert h.read(p + 0x18) == p + 0x24  # Owned native copy, not stack pointer.
-                        assert [cstr(h.read(r + 0x18)) for r in rows] == [b'1101', b'1102', KEY]
+                        assert [cstr(h.read(r + 0x18)) for r in rows] == [b'1101', b'1102', KEY,
+                            b'qol_pockets.drop_release', b'qol_pockets.hold_wear']
+                    shortcuts = [p for p in rows if h.read(p, 4) in (10, 11)]
+                    assert len(shortcuts) == (2 if kind == 0 and mode == 0 and not suppressed else 0)
                     cases += 1
     at_home = True
     h.write(pocket + 0x1c4fc, 0, 4); h.write(pocket + 0x1c51e, 0, 1)
     for capacity in (0, 1, 2, 3, 5):
         reset(capacity)
         rows = build()
-        assert len(rows) == min(capacity, 3)
+        assert len(rows) == min(capacity, 5)
         cases += 1
     reset(); right_type = False
     assert build() == []
@@ -101,7 +104,7 @@ for base in (0x80000000, 0x1234500000):
     reset(); rows = build()
     h.stubs[base + 0x3094fb4] = lambda: None
     build()
-    assert h.read(footer + 0x218, 4) == 3; cases += 1
+    assert h.read(footer + 0x218, 4) == 5; cases += 1
     del h.stubs[base + 0x3094fb4]
 
     # Initialize static caption references as the installer does, then execute

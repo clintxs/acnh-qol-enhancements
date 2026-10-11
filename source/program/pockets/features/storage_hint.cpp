@@ -1,4 +1,6 @@
 #include "storage_hint.hpp"
+#include "menu_text.hpp"
+#include "program/core/hint_text.hpp"
 #include "program/pockets/game/stack_bindings.hpp"
 #include <array>
 #include <cstring>
@@ -31,6 +33,15 @@ constexpr int NativeY = 7;
 // A private string token, not a new shared message ID or an input registration.
 constexpr char StorageHintKey[] = "qol_pockets.put_in_storage";
 constexpr char WithdrawalHintKey[] = "qol_pockets.move_to_pockets";
+constexpr char DropHintKey[] = "qol_pockets.drop_release";
+constexpr char EquipHintKey[] = "qol_pockets.hold_wear";
+
+const char16_t *PocketHintText(const char *key) {
+    const bool drop = std::strcmp(key, DropHintKey) == 0;
+    if (!drop && std::strcmp(key, EquipHintKey) != 0) return nullptr;
+    const auto *caption = PocketMessage(key);
+    return caption ? caption : drop ? u"Drop / Release" : u"Hold / Wear";
+}
 
 template <typename T> T &Field(void *object, std::size_t offset) {
     return *reinterpret_cast<T *>(static_cast<std::byte *>(object) + offset);
@@ -100,7 +111,7 @@ void *PocketFooter() {
     return (isType(footer, type) & 1) ? footer : nullptr;
 }
 
-void AppendStorageHint(void *pocket) {
+void AppendPocketHint(void *pocket, int button, const char *key) {
     auto *footer = PocketFooter();
     if (!footer) {
         return;
@@ -116,12 +127,12 @@ void AppendStorageHint(void *pocket) {
     }
     for (int index = 0; index < count; ++index) {
         if (entries[index] && entries[index]->caption.text &&
-            std::strcmp(entries[index]->caption.text, StorageHintKey) == 0) {
+            std::strcmp(entries[index]->caption.text, key) == 0) {
             return;
         }
     }
     HintDescription hint;
-    hint.button = NativeY;
+    hint.button = button;
     hint.player = Field<std::uint8_t>(pocket, layout::Inventory);
     if (hint.player > 7) {
         hint.player = 0xff;
@@ -129,7 +140,9 @@ void AppendStorageHint(void *pocket) {
     hint.caption.vtable = *reinterpret_cast<const std::uintptr_t *>(
                              game::MainAddress(address::BufferedStringVtableGot)) + 16;
     hint.caption.text = hint.key;
-    std::memcpy(hint.key, StorageHintKey, sizeof(StorageHintKey));
+    const auto length = std::strlen(key);
+    if (length >= sizeof(hint.key)) return;
+    std::memcpy(hint.key, key, length + 1);
     // The game copies the descriptor and sorts hints by its normal button
     // priority before rendering. It also handles sizing and opening/closing.
     game::FunctionAt<void (*)(void *, const HintDescription *, unsigned)>(address::AppendHint)(
@@ -151,8 +164,10 @@ HOOK_DEFINE_TRAMPOLINE(BuildPocketStorageHint) {
         }
         auto *inventory = static_cast<std::byte *>(pocket) + layout::Inventory;
         if (game::FunctionAt<unsigned (*)(void *)>(address::OwnHome)(inventory) & 1) {
-            AppendStorageHint(pocket);
+            AppendPocketHint(pocket, NativeY, StorageHintKey);
         }
+        AppendPocketHint(pocket, 10, DropHintKey);
+        AppendPocketHint(pocket, 11, EquipHintKey);
     }
 };
 
@@ -202,6 +217,7 @@ bool InstallStorageHint() {
     StorageBank = {vtable, "CmnSubWin"};
     StorageCaption = {vtable, "0121"};
     WithdrawalCaption = {vtable, "0202"};
+    if (!qol::core::RegisterHintText(PocketHintText)) return false;
     ResolveStorageHintCaption::InstallAtOffset(address::ResolveFooterCaptionCall);
     BuildPocketStorageHint::InstallAtOffset(address::BuildPocketFooter);
     Logging.Debug("[QoL Enhancements/Pockets] STORAGE_HINT_READY native Y / Put in Storage\n");

@@ -34,9 +34,12 @@ class HintMachine(Machine):
         self.write(self.footer+0x1b0,2,4);self.write(self.footer+0x1f0,0xffffffff,4);self.write(self.footer+0x1f4,0xffffffff,4)
         self.write(self.footer+0x220,self.entries)
         self.ticket=False
-        self.write(self.module.find('InitializeBagCaption','OrigRef'),base+0x1aea210)
+        self.write(self.module.find('InitializeHintCaption','OrigRef'),base+0x1aea210)
+        self.write(self.module.find('HintProviders'),self.module.find('FittingHintText'))
         self.install_adapter()
     def service(self,u,pc,size,data):
+        if not hasattr(self,'typefn'):
+            return super().service(u,pc,size,data)
         result=None
         if pc==self.typefn: result=int(self.right_type)
         elif pc==self.safe_fn: result=0
@@ -87,8 +90,8 @@ class HintMachine(Machine):
         self.write(token,self.safe);self.write(token+8,token+0x20);self.u.mem_write(token+0x20,key+b'\0')
         self.write(binding+0x48,adapter);self.write(adapter+8,binding+0x900);self.write(adapter+0x18,methods)
         self.write(methods+0x5e0,self.base+(0 if bad_adapter else 0x3c47b90 if group else 0x3c1b588))
-        self.invoke(self.module.find('InitializeBagCaption','Callback'),msg,binding,bank,token)
-        if key==KEY:
+        self.invoke(self.module.find('InitializeHintCaption','Callback'),msg,binding,bank,token)
+        if key in (KEY, b'qol_pockets.drop_release', b'qol_pockets.hold_wear'):
             assert self.read(msg+0xc,4)==12
             self.invoke(self.base+0x1aea9c8,msg) # Must not attempt MSBT lookup.
         else: assert self.read(msg+0xc,4)==1
@@ -140,3 +143,19 @@ for index,locale in enumerate(locales):
     assert m.texts[-1]==ini[locale]['fitting_room.add_to_bag'],locale
 assert m.opened==[PATH]
 print('PASS: all 16 shipped locale captions through compiled UTF-8 parser and native-message lifecycle; one file read')
+
+# The shared hook must work with Pockets alone and with both providers, without
+# attempting to load Fitting Room text for a Pockets token (or vice versa).
+for both in (False, True):
+    m=HintMachine(0x7100000000)
+    providers=m.module.find('HintProviders')
+    m.write(providers,m.module.find('PocketHintText'))
+    m.write(providers+8,m.module.find('FittingHintText') if both else 0)
+    path='content:/qol-enhancements/messages/pockets.ini'
+    m.files[path]=b'[USen]\nqol_pockets.drop_release=Drop / Release\nqol_pockets.hold_wear=Equip\n'
+    m.caption(key=b'qol_pockets.drop_release'); m.caption(key=b'qol_pockets.hold_wear',group=True)
+    assert m.texts==['Drop / Release','Equip'] and m.opened==[path]
+    if both:
+        m.caption(); assert m.texts[-1]=='Bag' and m.opened==[path,PATH]
+    m.caption(key=b'1201')
+print('PASS: shared caption hook, Pockets-only and combined providers, independent once-only files')

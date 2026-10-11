@@ -75,6 +75,11 @@ HOOK_DEFINE_INLINE(ReplaceMenuCaption) {
 };
 } // namespace
 
+const char16_t *PocketMessage(std::string_view key) {
+    LoadMessages();
+    return Messages.Text(key, game::FunctionAt<unsigned (*)()>(GetActiveLocale)());
+}
+
 bool ValidateMenuText() {
     constexpr std::array<std::uint32_t, 5> expected{0x91002280, 0x2a1f03e1, 0x52803c02, 0x9491a129,
                                                     0xf00180bc};

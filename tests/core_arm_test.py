@@ -10,7 +10,7 @@ from unicorn.arm64_const import *
 from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
 SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'shopping-card', 'crafting')
-COUNTS = (16, 15, 7, 13, 11, 18)  # Pockets/Crafting share one additional Core input hook.
+COUNTS = (16, 15, 7, 12, 11, 18)  # Input and hint-text hooks belong to Core.
 RELEASE_VERSION = re.search(r'ReleaseVersion\[\] = "(\d+\.\d+\.\d+)"',
                             (ROOT / 'qol-enhancements/source/program/core/release.hpp').read_text())[1]
 DEFAULT = f'enabled=true\nversion={RELEASE_VERSION}\n'.encode()
@@ -24,7 +24,8 @@ def expected_hook_count(machine, enabled):
     # Core has discovery + amiibo. Pockets and DIY previews share one input hook.
     active = dict(zip(SLUGS, enabled))
     shared_input = active.get('pockets', False) or active.get('crafting', False)
-    return 2 + int(resources) + int(shared_input) + sum(count for count, on in zip(COUNTS, enabled) if on) + (trace_enabled and enabled[0])
+    shared_hints = active.get('pockets', False) or active.get('fitting-room', False)
+    return 2 + int(resources) + int(shared_input) + int(shared_hints) + sum(count for count, on in zip(COUNTS, enabled) if on) + (trace_enabled and enabled[0])
 
 class Machine:
     def __init__(self, base, files, verbose=True):

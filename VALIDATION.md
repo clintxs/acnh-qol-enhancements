@@ -1,4 +1,34 @@
-# Unified QoL validation — 0.4.1 DIY app Select hint
+# Unified QoL validation — 0.4.2 Pockets trigger shortcuts
+
+## 0.4.2 Pockets trigger shortcuts
+
+ZL selects native Release (menu row 41) or Drop Item (30); ZR selects Hold (6)
+or Wear (5). These are original ItemUIContextMenu.bcsv row indices, not its
+operation IDs. The native builder must offer an unflagged row with its empty
+callback. Y retains the additional own-home restriction. No save edits, item
+spawns, direct world mutations, or LayoutMsg replacement are introduced.
+
+The native Command UPDATE drives the operation. Drop Item callback 0307513c
+requires multiple UPDATEs: the synthetic selected row is supplied on each
+update until native code queues its next state. Item identity/menu eligibility
+are rechecked before starting, not halfway through a native transaction.
+Shortcuts require a fresh, unconsumed single button and normal browsing/focus;
+holding, chords, dragging, special modes, disabled/absent actions and queued
+transitions are rejected. New hints use native ZL/ZR glyphs and configurable
+plain-text captions; Pockets and Fitting Room share Core's caption hook.
+
+Local checks: 760 compiled ARM Pockets cases at two relocated bases, including
+the actual six-update Drop Item callback with world-placement services mocked;
+190 native footer/caption cases; all 64 module subsets at two bases; independent
+and combined Pockets/Fitting Room caption providers and once-only text loading.
+These checks do not emulate the full world, render the footer, or test a save.
+
+Pending Eden: ZL on ordinary items and critters, ZR on tools/clothes, unavailable
+actions/empty slots, no-room placement, already-held items, rapid/held/chorded
+input, outside/inside transitions, and the existing Y storage/withdrawal flows.
+Check five-hint width in the house (including controller-font mods and longer
+localized captions), and Fitting Room Bag with Pockets enabled/disabled.
+
 
 Validated locally on October 11, 2026 against the supplied original ACNH 3.0.3
 main (build FF1D1C05670DB6021C85B624A710B963). The user confirmed the player
