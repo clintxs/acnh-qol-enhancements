@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.4.16 release test build** for ACNH **3.0.3 on Eden**. One Core
+**0.4.17 release test build** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates seven optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -98,7 +98,7 @@ produce and weeds. It adds no animation speed multiplier or pickup radius.
 
 ```ini
 enabled = true
-version = 0.4.16
+version = 0.4.17
 hold_to_advance_dialogue = true
 hold_to_hoover = true
 ```
@@ -169,14 +169,14 @@ Diagnostic checks: `PYTHONPATH='../Grab 5/working/python:tests' python3 tests/di
 Install **QoL Enhancements - Crafting** with Core. This replaces the former
 Faster Crafting package; remove the old folder and rename personal
 `faster-crafting.custom.ini` preferences to `crafting.custom.ini`. Remove any old
-`version` override from that personal file (or update it to 0.4.16). The retired
+`version` override from that personal file (or update it to 0.4.17). The retired
 regular/custom paths are no longer read. Core alone no longer enables DIY previews.
 
 `romfs/qol-enhancements/config/crafting.ini` supplies these defaults:
 
 ```ini
 enabled = true
-version = 0.4.16
+version = 0.4.17
 diy_app_preview = true
 workbench_preview_tilt = true
 crafting_quantity_wrap = true
@@ -404,7 +404,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.4.16
+version = 0.4.17
 base_speed = 2
 boost_speed = 4
 faster_ui = true
@@ -420,11 +420,26 @@ configuration intact. Neither malformed metadata nor duplicate metadata is
 partially applied. Each file is limited to 4 KiB of valid UTF-8 text, with whole-line
 comments, CRLF and an optional UTF-8 BOM.
 
-Catalog, Pockets, Fitting Room and Shopping Card expose just `enabled` and
+Catalog, Fitting Room and Shopping Card expose just `enabled` and
 `version`. Their overlays are `catalog.custom.ini`, `pockets.custom.ini`,
 `fitting-room.custom.ini` and `shopping-card.custom.ini`. Crafting preferences
 use `crafting.custom.ini`; Controls uses `controls.custom.ini`; Core uses the optional settings files described above.
 Pockets and Fitting Room caption files are separate translation resources.
+
+Pockets supports three independent settings in `pockets.ini` or
+`pockets.custom.ini`, all defaulting to `true`:
+
+```ini
+bypass_menu_open_containers = true
+bypass_menu_claim_recycle_box = true
+bypass_menu_withdraw_home_storage = true
+```
+
+Set one to `false` to restore its normal menu. The first applies only to a sole
+Open action (presents, deliveries, message bottles); the second to a sole Claim
+action in the recycling box; the third to home-storage withdrawal. Disabling
+withdrawal also restores the Select hint. Other shortcuts are unaffected.
+Restart the game after changing settings.
 
 ## Conditional Faster Dialogue
 
@@ -549,9 +564,9 @@ at `../vanilla-3.0.3/Layout`; builders verify their hashes and archive structure
 The package script checks that every INI matches the Core release, refuses to
 replace existing archives, and creates:
 
-- `dist/qol-enhancements-v0_4_16_for_acnh_v3_0_3.zip`
-- `dist/qol-enhancements-v0_4_16_for_acnh_v3_0_3_source.zip`
-- `dist/qol-enhancements-v0_4_16_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
+- `dist/qol-enhancements-v0_4_17_for_acnh_v3_0_3.zip`
+- `dist/qol-enhancements-v0_4_17_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v0_4_17_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
 
 The binary ZIP contains a conspicuous installation text file, README, Core and
 seven independently selectable feature folders, plus a SHA-256 manifest. Source

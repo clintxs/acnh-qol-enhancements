@@ -1,4 +1,19 @@
-# Unified QoL validation — 0.4.13 cooking quantity shortcut
+# Unified QoL validation
+
+## 0.4.17 Pockets menu-bypass settings (2026-10-11)
+
+Added three independent true-by-default preferences for sole Open, recycling
+Claim, and home-storage withdrawal. They gate existing eligibility checks,
+including pending-action revalidation, without changing hook ownership or
+shortcut handling. The storage Select hint is restored when withdrawal is off.
+
+Validation: offline release build; all host policy tests including new settings
+defaults, eight combinations, custom inheritance and invalid/duplicate inputs;
+Pockets compiled/native ARM suite (846 cases), storage hints (226), recycling
+Claim (104), and hold-A selection (88), at two ASLR bases. Added compiled Core
+regular/custom configuration checks for all eight combinations. Engine/rendering
+boundaries are mocked; false-setting behavior still needs live Eden testing.
+
 
 ## 0.4.13 Cooking preview Y / Set quantity (2026-10-11)
 

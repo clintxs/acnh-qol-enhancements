@@ -1,4 +1,5 @@
 #include "storage_withdrawal.hpp"
+#include "program/pockets/settings.hpp"
 #include "storage_policy.hpp"
 #include "program/pockets/game/stack_bindings.hpp"
 #include <array>
@@ -72,6 +73,7 @@ static_assert(offsetof(MenuDescription, rows) == 0x48 &&
 static_assert(sizeof(MenuDescription) == 0x208);
 
 bool CanWithdrawDirectly(void *storage) {
+    if (!GetSettings().bypassMenuWithdrawHomeStorage) return false;
     // Home-storage browsing only. Interior decorating and other controllers keep
     // their normal interaction, even if they happen to have a one-row menu.
     if (Field<std::uintptr_t>(storage, 0) != game::MainAddress(address::StorageVtable) ||

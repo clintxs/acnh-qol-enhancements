@@ -136,7 +136,8 @@ for base in (0x80000000, 0x1234500000):
     # not replace its writable pointer or leak into the subsequent Close row.
     storage = h.ram + 0x40000
     h.stubs[base + 0x3359d70] = lambda: None
-    for correct_type in (False, True):
+    for correct_type, enabled in ((False,True),(True,True),(True,False)):
+        h.write(h.mod+symbol('qol_pockets','Preferences')+2,int(enabled),1)
         for mode in (0, 1, 2, 7):
             for flags in (0, 1, 2, 3):
                 reset()
@@ -148,7 +149,7 @@ for base in (0x80000000, 0x1234500000):
                 labels = [cstr(h.read(p + 0x18)) for p in rows]
                 expected = []
                 if flags & 1:
-                    expected.append(WITHDRAWAL_KEY if correct_type and mode == 0 else b'1201')
+                    expected.append(WITHDRAWAL_KEY if enabled and correct_type and mode == 0 else b'1201')
                 if flags & 2:
                     expected.append(b'1202')
                 assert labels == expected, (correct_type, mode, flags, labels)

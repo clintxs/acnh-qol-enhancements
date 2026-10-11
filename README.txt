@@ -1,4 +1,4 @@
-QoL Enhancements 0.4.16 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.4.17 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -258,7 +258,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.4.16
+  version = 0.4.17
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.
@@ -273,17 +273,25 @@ inherit them. This includes enabled and version. Both are required in the
 regular file, optional in the custom file. Invalid/duplicate metadata rejects
 that entire file; an invalid custom file retains the regular configuration.
 An absent/invalid regular marker cannot be activated by a custom file.
-Modules other than Faster Dialogue and Crafting have only enabled/version
-settings. Pockets captions
+Catalog, Fitting Room and Shopping Card have only enabled/version settings.
+Pockets captions
 remain a separate translation resource, outside module configuration layering.
 Whole-line #/; comments, a UTF-8 BOM, CRLF and valid UTF-8 text up to 4 KiB per file
 are supported. Versions use numeric major.minor.patch.
+
+Pockets settings (pockets.ini or pockets.custom.ini), all default true:
+  bypass_menu_open_containers = true
+  bypass_menu_claim_recycle_box = true
+  bypass_menu_withdraw_home_storage = true
+Set false to restore the normal menu for sole Open actions, recycling-box Claim,
+or home-storage withdrawal respectively. Disabling withdrawal also restores the
+Select hint. Other shortcuts are unaffected. Restart after changing settings.
 
 CRAFTING MODULE / SETTINGS (0.3.63)
 Install Core plus “QoL Enhancements - Crafting”. This replaces the former
 “QoL Enhancements - Faster Crafting” folder; remove that old folder when updating.
 Move any personal faster-crafting.custom.ini preferences to crafting.custom.ini.
-Remove old version overrides in that custom file, or update them to 0.4.16.
+Remove old version overrides in that custom file, or update them to 0.4.17.
 Old faster-crafting.ini/custom paths are no longer read.
 DIY app previews are now optional Crafting behavior, not always-on Core behavior.
 
@@ -291,7 +299,7 @@ Regular settings: romfs/qol-enhancements/config/crafting.ini
 Personal overlay: romfs/qol-enhancements/config/crafting.custom.ini
 Defaults in the regular file:
   enabled = true
-  version = 0.4.16
+  version = 0.4.17
   diy_app_preview = true
   workbench_preview_tilt = true
   crafting_quantity_wrap = true
@@ -342,7 +350,7 @@ CONTROLS SETTINGS
 The Controls module includes both hold-Y pickups and dialogue hurry.
 romfs/qol-enhancements/config/controls.ini:
   enabled = true
-  version = 0.4.16
+  version = 0.4.17
   hold_to_advance_dialogue = true
   hold_to_hoover = true
 

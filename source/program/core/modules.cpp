@@ -12,6 +12,7 @@
 #include "program/catalog/features/catalog_badges.hpp"
 #include "program/catalog/features/catalog_variation_labels.hpp"
 #include "program/pockets/game/build_profile.hpp"
+#include "program/pockets/settings.hpp"
 #include "program/pockets/features/stack_splitting.hpp"
 #include "program/pockets/features/storage_withdrawal.hpp"
 #include "program/pockets/features/recycling_claim.hpp"
@@ -109,7 +110,7 @@ bool ActivateCoreSettings() {
 // stop being compatible; release versions still advance with the whole suite.
 const std::array<ModuleDescription, 7> Modules{{
     {"Catalog", "catalog", {0, 1, 0}, InstallCatalog},
-    {"Pockets", "pockets", {0, 1, 0}, InstallPockets},
+    {"Pockets", "pockets", {0, 1, 0}, InstallPockets, qol_pockets::Configure, nullptr, qol_pockets::ReportSettings},
     {"Faster Dialogue", "faster-dialogue", {0, 1, 0}, dialogue::Install, dialogue::Configure, nullptr, dialogue::ReportSettings},
     {"Fitting Room", "fitting-room", {0, 1, 0}, able_bag::Install, nullptr, PrepareFittingResources},
     {"Shopping Card", "shopping-card", {0, 3, 2}, shopping::Install, nullptr, shopping::PrepareResources},

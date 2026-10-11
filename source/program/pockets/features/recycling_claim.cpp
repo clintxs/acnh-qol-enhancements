@@ -1,4 +1,5 @@
 #include "recycling_claim.hpp"
+#include "program/pockets/settings.hpp"
 #include "program/pockets/game/stack_bindings.hpp"
 #include <array>
 #include <cstring>
@@ -83,6 +84,7 @@ void DismissClaimedItemName(void *owner, int slot) {
 }
 
 bool ProbeClaim(void *owner, ClaimRequest &request, bool entering = false) {
+    if (!GetSettings().bypassMenuClaimRecycleBox) return false;
     if (Field<std::uintptr_t>(owner, 0) != game::MainAddress(address::ControllerVtable) ||
         Field<int>(owner, layout::State) != SelectingCommand) return false;
     auto *page = Field<void *>(owner, layout::Page);

@@ -1,4 +1,5 @@
 #include "quick_store.hpp"
+#include "program/pockets/settings.hpp"
 #include "pocket_input.hpp"
 #include "hold_select.hpp"
 #include "pocket_shortcuts.hpp"
@@ -339,6 +340,7 @@ bool FindNativeShortcut(void *pocket, int slot, unsigned button, int &action, bo
 }
 bool CanUseShortcut(void *pocket, int slot, int state, unsigned button, int &action,
                     std::uint64_t &itemIdentity, bool trace = false, bool enteringMenu = false) {
+    if (button == AutomaticOpen && !GetSettings().bypassMenuOpenContainers) return false;
     // Callers allow browsing (3), first-level A menu (5), or dispatch (7).
     // Drag states 8/9 and second-level menu 6 are never automatic actions.
     // +1c516 is the equipped-item slot, not a drag flag. Leave it to the game.

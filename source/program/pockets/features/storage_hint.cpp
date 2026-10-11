@@ -1,4 +1,5 @@
 #include "storage_hint.hpp"
+#include "program/pockets/settings.hpp"
 #include "menu_text.hpp"
 #include "program/core/hint_text.hpp"
 #include "program/pockets/game/stack_bindings.hpp"
@@ -73,6 +74,7 @@ SafeString StorageBank, StorageCaption, WithdrawalCaption, DropCaption, HoldCapt
 
 HOOK_DEFINE_INLINE(RenameStorageSelectHint) {
     static void Callback(exl::hook::InlineCtx *registers) {
+        if (!GetSettings().bypassMenuWithdrawHomeStorage) return;
         // Storage footer 0316f388: x20 is the storage controller, x1 the
         // temporary A/Select descriptor. This call site is not shared with
         // donation menus. Mode 0 matches our direct-withdrawal feature.

@@ -343,6 +343,11 @@ for base in (0x80000000,0x1234500000):
         h.write(storage+0x1f0,0xffffffff,4);h.write(storage+0xaa9e9,selected_slot,1)
         h.write(storage_menu+0x26d8,4,4);h.write(storage_menu+0x3a0,99,4)
         h.write(storage_menu+0x26c9,2,1)
+    preferences=h.mod+symbol('qol_pockets','Preferences')
+    h.write(preferences+2,0,1)
+    reset_storage_result();h.put(0,storage);h.run(h.callback('EnterStorageCommand'))
+    assert events==['menu'];cases+=1
+    h.write(preferences+2,1,1)
     for selected_slot in (0,1,9,17):
         for initial_state,can_move in ((0,False),(0,True),(1,False),(1,True)):
             h.write(storage_menu+0x1b0,initial_state,4)
@@ -848,7 +853,8 @@ for base in (0x80000000,0x1234500000):
                 assert events[-1]=='play' and h.read(ctx+0x54,1)==0 and taps==[]
                 cases+=1
     offered_open=32;h.u.mem_write(key,b'0113\0')
-    for setting in ('two-rows','zero-rows','different-action','different-key','flags','extra','callback','second-menu','other-mode'):
+    for setting in ('disabled','two-rows','zero-rows','different-action','different-key','flags','extra','callback','second-menu','other-mode'):
+        h.write(preferences,int(setting!='disabled'),1)
         reset_pocket();h.write(pocket+0x1c514,selected_slot,1)
         open_count={'two-rows':2,'zero-rows':0}.get(setting,1)
         offered_open=30 if setting=='different-action' else 32

@@ -465,6 +465,21 @@ def check_crafting_settings():
         assert base+0x3c58d24 in m.hooks and base+0x2e9cde0 not in m.hooks
     print('PASS: Crafting marker/rename, independent DIY toggle, workbench toggle, layered defaults and failures, untouched disabled preview, isolated hook conflicts and shared Pockets input at two bases')
 
+def check_pockets_settings():
+    keys=('bypass_menu_open_containers','bypass_menu_claim_recycle_box','bypass_menu_withdraw_home_storage')
+    for base in (0x80000000,0x1234500000):
+        for values in product((False,True),repeat=3):
+            # Read all three regular keys, then independently override each.
+            regular=DEFAULT+b''.join(f'{key}=true\n'.encode() for key in keys)
+            custom=b''.join(f'{key}={str(value).lower()}\n'.encode() for key,value in zip(keys,values))
+            m=Machine(base,{'pockets':regular,'pockets.custom':custom})
+            m.boot();m.activate()
+            assert 'BOOT_OK' in m.text and 'Pockets: ENABLED' in m.text
+            ptr=m.module.find('qol_pockets','Preferences')
+            assert tuple(bool(m.read(ptr+i,1)) for i in range(3))==values
+            for key,value in zip(keys,values):assert f'{key}={str(value).lower()}' in m.text
+    print('PASS: Pockets regular/custom config activation and all eight independent combinations at two bases')
+
 if __name__ == '__main__':
     check_all_subsets()
     check_errors()
@@ -472,3 +487,4 @@ if __name__ == '__main__':
     check_custom_preferences()
     check_config_layers()
     check_crafting_settings()
+    check_pockets_settings()

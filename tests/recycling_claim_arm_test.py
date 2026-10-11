@@ -125,6 +125,11 @@ for base in (0x80000000,0x1234500000):
     assert events==['capacity','insert','refresh'] and h.read(grid+0x298,4)==2
     assert h.read(cursor+0x26c,1)==1 and h.read(focus_controller+0x10)==0
     cases+=1
+    preferences=h.mod+symbol('qol_pockets','Preferences')
+    h.write(preferences+1,0,1)
+    reset();transition();assert events==['menu']
+    assert h.read(grid+0x298,4)==2
+    h.write(preferences+1,1,1);cases+=1
     for slot in (0,19,59):
         for child_state in (0,1):
             for room,insert_ok in ((False,True),(True,False),(True,True)):
