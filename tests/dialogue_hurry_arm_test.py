@@ -44,11 +44,17 @@ class HurryMachine(DialogueMachine):
         self.write(self.meta + 0x2464, timer & 0xffffffff, 4)
         self.write(self.meta + 0x246c, 0xffffffff, 4)
         self.write(self.meta + 0x2475, int(choice), 1)
-        self.write(self.meta + 0x2488, self.ram + 0x6d000)
+        self.message_id('', '')
         self.getter_null = False
         self.write(self.app + 0xf5b20, self.controller)
         self.write(self.controller + 8, buttons, 2)
         self.page_clears, self.notifications = 0, 0
+
+    def message_id(self, bank, label):
+        for offset, address, value in ((0x2488, self.ram + 0x6d000, bank),
+                                       (0x24f8, self.ram + 0x6d100, label)):
+            self.write(self.meta + offset, address)
+            self.u.mem_write(address, value.encode() + b'\0')
 
     def service(self, u, pc, size, user):
         if self.native and pc == self.base + 0x2435188:

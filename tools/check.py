@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 GROUPS = {
     'core': ['logging_arm_test.py', 'core_arm_test.py', 'recipe_preview_arm_test.py'],
     'shopping': ['shopping_layout_test.py', 'shopping_resource_arm_test.py', 'shopping_texture_arm_test.py', 'shopping_display_arm_test.py', 'shopping_cash_arm_test.py'],
-    'dialogue': ['dialogue_arm_test.py', 'dialogue_names_arm_test.py', 'dialogue_hurry_arm_test.py'],
+    'dialogue': ['dialogue_arm_test.py', 'dialogue_names_arm_test.py', 'dialogue_hurry_arm_test.py', 'dialogue_catch_hurry_arm_test.py'],
     'crafting': ['crafting_arm_test.py', 'quantity_shortcut_arm_test.py'],
     'pockets': ['storage_hint_arm_test.py', 'recycling_claim_arm_test.py'],  # Both include arm_stack_test.
     'fitting': ['purchase_arm_test.py', 'feedback_arm_test.py', 'fitting_hint_arm_test.py'],

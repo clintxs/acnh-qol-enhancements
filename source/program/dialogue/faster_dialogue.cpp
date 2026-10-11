@@ -99,6 +99,31 @@ const char *HurryContextBlock(std::uintptr_t manager, std::uintptr_t text, unsig
     if (!choices) return "missing-choices";
     return Read<unsigned>(choices, layout::ControllerState) == 0 ? nullptr : "choice-active";
 }
+bool CopyMessageId(std::uintptr_t manager, std::size_t field, char *output) {
+    output[0] = 0;
+    const auto data = Read<std::uintptr_t>(manager, field);
+    if (!data) return false;
+    for (unsigned i = 0; i < layout::MessageBankBytes; ++i) {
+        const auto c = Read<char>(data, i);
+        if (!c) { output[i] = 0; return i != 0; }
+        if (i + 1 < layout::MessageBankBytes) output[i] = c;
+    }
+    output[0] = 0;
+    return false;
+}
+bool IsNewCatchAnnouncement(std::uintptr_t manager) {
+    // Player_GetDemo's cFirstGet branches open label 001 in these banks.
+    // All 14 supplied locale packs share the IDs, even when the localized
+    // announcement is not "Yes!". Read the active pair each time so the stop
+    // cannot leak into the species message or a later conversation.
+    char bank[layout::MessageBankBytes]{}, label[layout::MessageBankBytes]{};
+    if (!CopyMessageId(manager, layout::ActiveMessageBank, bank) ||
+        !CopyMessageId(manager, layout::ActiveMessageLabel, label) ||
+        std::strcmp(label, "001")) return false;
+    return !std::strcmp(bank, "SYS_Get_Fish") ||
+           !std::strcmp(bank, "SYS_Get_Insect") ||
+           !std::strcmp(bank, "SYS_Get_DiveFish");
+}
 const char *AdvanceHurryBlock(std::uintptr_t manager, std::uintptr_t text) {
     if (const auto block = HurryContextBlock(manager, text, 5)) return block;
     const auto reveal = Read<unsigned>(text, layout::RevealState);
@@ -117,19 +142,10 @@ const char *AdvanceHurryBlock(std::uintptr_t manager, std::uintptr_t text) {
     // states: live NPC pages wait for input in phase 1. Allow that state in
     // addition to the existing 0/2 paths; the separate choice guard still
     // blocks opening, active and closing menus.
-    return phase <= 2 ? nullptr : "message-transition";
-}
-bool CopyMessageId(std::uintptr_t manager, std::size_t field, char *output) {
-    output[0] = 0;
-    const auto data = Read<std::uintptr_t>(manager, field);
-    if (!data) return false;
-    for (unsigned i = 0; i < layout::MessageBankBytes; ++i) {
-        const auto c = Read<char>(data, i);
-        if (!c) { output[i] = 0; return i != 0; }
-        if (i + 1 < layout::MessageBankBytes) output[i] = c;
-    }
-    output[0] = 0;
-    return false;
+    if (phase > 2) return "message-transition";
+    // Only suppress our synthetic advance request. Native manual input and
+    // text speed remain unchanged, including localized pages within label 001.
+    return IsNewCatchAnnouncement(manager) ? "new-catch" : nullptr;
 }
 #if CAS_VERBOSE_HURRY_TRACE
 enum class HurryStage { Input, Speed, Advance };

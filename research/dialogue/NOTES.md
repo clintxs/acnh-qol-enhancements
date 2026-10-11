@@ -444,3 +444,34 @@ after resume. Additional checks cover release and active choice rejection
 while paused, plus existing page/end/native-input/protection regressions.
 Live confirmation of this fix remains pending; no new log was required to
 identify the explicit pause in the supplied example.
+
+
+## 0.4.12 locale-independent first-catch announcement stops
+
+Player_GetDemo::Get_Fish and Get_Insect check cFirstGet and open respectively
+TalkSys/SYS_Get_Fish:001 and TalkSys/SYS_Get_Insect:001 before their ordinary
+species/pun message. Player_GetDemo_30_Diving::Get_DiveFish uses the equivalent
+TalkSys/SYS_Get_DiveFish:001. These branches are independent of translated
+text and already distinguish new catches without reading or changing saves.
+The English announcements are "Yes!"; the same label 001 exists in all three
+banks across the 14 supplied TalkSys locale archives. Some translations have
+additional page/pause tags and different wording.
+
+AdvanceHurryBlock now checks the current manager's bounded active bank +
+label SafeStrings after normal readiness/ownership/choice/timer checks. Exact
+matching of the three bank names with label 001 rejects only the mod's local
+advance request (diagnostic gate=new-catch). It does not change native input,
+automatic/scripted readiness, text speed, animations, save data or message
+state. Manual advancement works while Y remains held, including subsequent
+pages within the protected ID. The next message is checked afresh; no stop
+latch persists into ordinary catch text or a later conversation. Other labels,
+including collection-completion 002/003, are outside this requested exception.
+
+New ARM checks read all 42 localized MSBT entries in temporary files, execute
+compiled callbacks/native Advance at two bases, and cover repeated held Y,
+all three ready reveal kinds, manual advancement, 30x reveal, queued choices,
+next-message continuation, exact bank/label boundaries, missing/empty/overlong
+IDs, disabled behavior and native automatic readiness. Fixtures now initialize
+both active ID buffers every preparation to prevent stale modeled metadata.
+Diagnostic coverage verifies the new reason with held Y and logging disabled.
+In-game confirmation of the new stop remains pending.

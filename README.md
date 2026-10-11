@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.4.11 release test build** for ACNH **3.0.3 on Eden**. One Core
+**0.4.12 release test build** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -79,14 +79,14 @@ ready. It never sends a synthetic A press or confirms a choice.
 Install **QoL Enhancements - Crafting** with Core. This replaces the former
 Faster Crafting package; remove the old folder and rename personal
 `faster-crafting.custom.ini` preferences to `crafting.custom.ini`. Remove any old
-`version` override from that personal file (or update it to 0.4.11). The retired
+`version` override from that personal file (or update it to 0.4.12). The retired
 regular/custom paths are no longer read. Core alone no longer enables DIY previews.
 
 `romfs/qol-enhancements/config/crafting.ini` supplies these defaults:
 
 ```ini
 enabled = true
-version = 0.4.11
+version = 0.4.12
 diy_app_preview = true
 workbench_preview_tilt = true
 crafting_quantity_wrap = true
@@ -313,7 +313,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.4.11
+version = 0.4.12
 base_speed = 2
 boost_speed = 4
 faster_ui = true
@@ -347,11 +347,18 @@ also resume while Y remains held (for example, the Sunday turnip-price message).
 No additional INI setting is needed.
 Timed waits, native text protection and explicit rate overrides still apply.
 
-This first prototype does **not** accelerate character animations or identify
-new catches, renovation announcements, or other important dialogue. It will
-hurry those messages too. New/important-line exceptions and eventflow analysis
-are deferred. Live Eden validation of text, sound, emotes and choice handoff is
-still needed.
+Automatic advancement stops on the first-catch announcement (English "Yes!")
+for fish, bugs and sea creatures. The exact active IDs are `SYS_Get_Fish:001`,
+`SYS_Get_Insect:001`, and `SYS_Get_DiveFish:001`, verified in all 14 supplied
+locale packs. Text still reveals at the selected speed, but held Y waits for
+you to advance manually. Further localized pages within that same ID also
+wait; subsequent species/pun messages can hurry normally. No translated-text
+matching, saved catch flags or additional INI setting is used.
+
+This prototype does **not** accelerate character animations or identify
+renovation announcements, collection-completion speeches, or other important
+dialogue. Those messages still hurry. Further exceptions and eventflow
+analysis are deferred; live confirmation of the new first-catch stop is pending.
 
 The first live NPC test of 0.4.7 reported no Y effect. The synced diagnostic
 identified the game's Y bit as `0x0010` and a completed NPC page waiting in
@@ -494,9 +501,9 @@ at `../vanilla-3.0.3/Layout`; builders verify their hashes and archive structure
 The package script checks that every INI matches the Core release, refuses to
 replace existing archives, and creates:
 
-- `dist/qol-enhancements-v0_4_11_for_acnh_v3_0_3.zip`
-- `dist/qol-enhancements-v0_4_11_for_acnh_v3_0_3_source.zip`
-- `dist/qol-enhancements-v0_4_11_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
+- `dist/qol-enhancements-v0_4_12_for_acnh_v3_0_3.zip`
+- `dist/qol-enhancements-v0_4_12_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v0_4_12_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
 
 The binary ZIP contains a conspicuous installation text file, README, Core and
 six independently selectable feature folders, plus a SHA-256 manifest. Source

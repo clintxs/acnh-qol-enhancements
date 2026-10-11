@@ -48,6 +48,12 @@ for base in (0x7100000000, 0x7200000000):
     assert m.advance() == 7
     assert 'gate=ready buttons=0010 y=1' in lines(m, 'advance')[-1]
     assert 'result=1' in lines(m, 'advance')[-1]
+    m.prepare(window=2)
+    m.message_id('SYS_Get_Fish', '001')
+    assert m.advance() == 5 and m.request == 0
+    row = lines(m, 'advance')[-1]
+    assert 'gate=new-catch buttons=0010 y=1' in row and 'result=0' in row, row
+    assert 'bank=SYS_Get_Fish label=001' in row, row
 
     # Duplicate frames are quiet, and an exhausted unheld budget cannot hide Y.
     budget = HurryMachine(base, verbose=False)
