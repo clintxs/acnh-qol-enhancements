@@ -1,4 +1,23 @@
-# Unified QoL validation — 0.4.5 single-action Open and Claim
+# Unified QoL validation — 0.4.6 recycling item-name cleanup
+
+## 0.4.6 Recycling item-name cleanup
+
+User confirmed Claim bypass works, but the name balloon remains after removal.
+Recycling owns NameWindowCtrlSeq at +220 (creation 02df0808, item-name update
+02def8b0 -> 03011440); its vtable is 04a01130. After a successful native Claim
+clears the slot's availability bit, call that controller's native close method
+02b0cb68 (virtual +b0). This reaches 030127b8 and queues its disappearance
+state 4. No blanket name-window hook or text/layout edits. Null/unrecognized
+windows and failed transfers are untouched.
+
+The recycling fixture executes the original close and disappearance-queue
+code, checking success versus full pockets/insertion failure. UI manager and
+rendering remain mocked; visible dismissal and the next item's balloon need
+Eden verification.
+
+Passed: clean build, 842 compiled Pockets cases, 88 recycling cases (including
+missing/unrecognized windows and both close-queue phases), and all 64 Core
+module subsets at two relocated bases. No additional hooks are installed.
 
 ## 0.4.5 Single-action Open / Claim bypasses
 

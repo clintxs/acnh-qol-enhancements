@@ -11,6 +11,11 @@ for base in (0x80000000,0x1234500000):
     h=Machine(base)
     owner=h.ram+0x1000;menu=h.ram+0x20000;page=h.ram+0x24000;grid=h.ram+0x25000
     items=h.ram+0x26000;states=h.ram+0x27000
+    name_window=h.ram+0x2b000
+    h.write(owner+0x220,name_window);h.write(name_window,base+0x4a01130)
+    h.write(base+0x4a01130+0x1c0,base+0x30127b8)
+    h.write(base+0x4a01130+0x200,base+u64(raw,0x4a01130+0x200))
+    h.write(base+0x4ac4eb8,h.ram+0x2b300)
     player=h.ram+0x28000;player_vt=player+0x100;global_object=player+0x200
     h.u.mem_map(h.ram+0x100000,0x800000)
     h.u.mem_map(base+0x5474000,0x14000)
@@ -58,9 +63,11 @@ for base in (0x80000000,0x1234500000):
         base+0x3764fe0:lambda:events.append('focus-restored'),
         h.ram+0x29000:lambda:events.append('browse'),h.ram+0x29010:lambda:events.append('full-message'),
         h.ram+0x29020:lambda:save,
+        base+0x3759380:lambda:None, # UI manager only; native close/queue runs.
         h.mod+symbol('SvcLogger','LogRaw'):lambda:None}
     def reset():
         events.clear()
+        h.write(name_window+0x1f0,0xffffffffffffffff);h.write(name_window+0x201,0,1)
         h.write(owner+0x1b0,3,4);h.write(owner+0x1f0,0xffffffff,4);h.write(owner+0x1f4,4,4)
         h.write(owner+0x200,0,1);h.write(owner+0x218,slot,4)
         h.u.mem_write(items+slot*12,item_bytes+struct.pack('<I',record_index))
@@ -86,15 +93,29 @@ for base in (0x80000000,0x1234500000):
                 assert bool(h.read(owner+0x1c1e8+slot//8,1)&(1<<(slot%8))) != success
                 assert h.read(menu+0x1b0,4)==child_state and h.read(menu+0x26c9,1)==255
                 assert h.read(menu+0x26d8,4)==3 and h.read(menu+0x3a0,4)==99
+                assert h.read(name_window+0x201,1)==int(success)
+                assert h.read(name_window+0x1f0,4)==(4 if success else 0xffffffff)
                 transition();assert events[-1]==('browse' if success else 'full-message')
                 cases+=1
     room=insert_ok=True;slot=0
+    for guard in ('missing-window','other-window','alternate-phase'):
+        reset()
+        if guard=='missing-window':h.write(owner+0x220,0)
+        if guard=='other-window':h.write(name_window,0)
+        if guard=='alternate-phase':h.write(name_window+0x200,1,1)
+        transition();update()
+        assert h.read(owner+0x1f4,4)==3
+        assert h.read(name_window+0x201,1)==int(guard=='alternate-phase')
+        if guard=='alternate-phase':assert h.read(name_window+0x1f4,4)==4
+        h.write(owner+0x220,name_window);h.write(name_window,base+0x4a01130)
+        h.write(name_window+0x200,0,1);cases+=1
     for ptr,width,bad in ((owner,8,0),(owner+0x218,4,60),(owner+0x1c1d8,4,0),
         (owner+0x1c1e0,8,0),(owner+0x1c1e8,1,0),(items,2,0xfffe),
         (menu+0x218,8,0),(menu+0x220,8,0),(menu+0x228,8,0),(menu+0x230,8,1),
         (menu+0x1b0,4,2),(menu+0x1f0,4,2)):
         reset();old=h.read(ptr,width);h.write(ptr,bad,width)
         transition();assert events==['menu']
+        assert h.read(name_window+0x201,1)==0
         h.write(ptr,old,width);cases+=1
     for change in ('item','slot','binding','available'):
         reset();transition();assert events==[]

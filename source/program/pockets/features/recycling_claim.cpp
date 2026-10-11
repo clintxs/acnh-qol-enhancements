@@ -10,10 +10,12 @@ constexpr std::uintptr_t EnterMenu = 0x02df1c58, ProcessSelection = 0x02df1d68;
 constexpr std::uintptr_t BuildMenu = 0x02defbfc;
 constexpr std::uintptr_t ControllerVtable = 0x049df828, BuilderVtable = 0x049dfba8;
 constexpr std::uintptr_t DescriptionVtable = 0x049c7208, EmptyCallbackVtable = 0x049c7230;
+constexpr std::uintptr_t NameWindowVtable = 0x04a01130, CloseController = 0x02b0cb68;
 }
 namespace layout {
 constexpr std::size_t State = 0x1b0, Queues = 0x1f0, Phase = 0x200;
 constexpr std::size_t SelectedSlot = 0x218, Menu = 0x228;
+constexpr std::size_t NameWindow = 0x220;
 constexpr std::size_t ItemsCount = 0x1c1d8, Items = 0x1c1e0, AvailableSlots = 0x1c1e8;
 constexpr std::size_t Builder = 0x218, BuilderOwner = 0x220, BuilderFunction = 0x228, Adjustment = 0x230;
 constexpr std::size_t RowCount = 0x26d8, Selection = 0x26c9, FirstAction = 0x3a0;
@@ -43,6 +45,17 @@ struct ClaimRequest {
     std::array<std::byte, 12> item{}; // Native item plus recycling-box record index.
 };
 ClaimRequest pending{};
+
+void DismissClaimedItemName(void *owner, int slot) {
+    // Native Claim clears this availability bit only after insertion/removal.
+    // Its ordinary popup moves focus away and dismisses the name window; our
+    // bypass never opens that popup, so explicitly close the same owned window.
+    // Do not close it on a full-pockets or insertion failure.
+    if (Field<std::uint8_t>(owner, layout::AvailableSlots + slot / 8) & (1u << (slot % 8))) return;
+    auto *nameWindow = Field<void *>(owner, layout::NameWindow);
+    if (!nameWindow || Field<std::uintptr_t>(nameWindow, 0) != game::MainAddress(address::NameWindowVtable)) return;
+    game::FunctionAt<void (*)(void *)>(address::CloseController)(nameWindow);
+}
 
 bool ProbeClaim(void *owner, ClaimRequest &request, bool entering = false) {
     if (Field<std::uintptr_t>(owner, 0) != game::MainAddress(address::ControllerVtable) ||
@@ -114,6 +127,7 @@ HOOK_DEFINE_TRAMPOLINE(UpdateRecyclingMenu) {
         // record and refreshes the grid. Failure retains the item and opens the
         // game's pockets-full message. Do not reproduce those operations here.
         Orig(owner);
+        DismissClaimedItemName(owner, expected.slot);
         Field<int>(menu, layout::State) = oldState;
         Field<int>(menu, layout::RowCount) = oldCount;
         Field<int>(menu, layout::FirstAction) = oldAction;
@@ -127,7 +141,8 @@ bool InstallRecyclingClaim() {
     constexpr std::array checks{
         Check{address::EnterMenu, {0xd10103ff, 0xa9027bfd, 0xa9034ff4, 0x910083fd, 0xf9410808}},
         Check{address::ProcessSelection, {0xd10183ff, 0xa9027bfd, 0xf9001bf7, 0xa90457f6, 0xa9054ff4}},
-        Check{address::BuildMenu, {0xa9be7bfd, 0xa9014ff4, 0x910003fd, 0xf9400028, 0xaa0103e0}}};
+        Check{address::BuildMenu, {0xa9be7bfd, 0xa9014ff4, 0x910003fd, 0xf9400028, 0xaa0103e0}},
+        Check{address::CloseController, {0xd10103ff, 0xa9027bfd, 0xa9034ff4, 0x910083fd, 0x52800028}}};
     for (const auto &check : checks) {
         if (std::memcmp(reinterpret_cast<const void *>(game::MainAddress(check.offset)),
                         check.words.data(), sizeof(check.words))) {
