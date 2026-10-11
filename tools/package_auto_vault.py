@@ -7,7 +7,7 @@ import package
 
 def prototype_files():
     root = package.ROOT
-    if b'auto vault: READY; prototype 2;' not in (root / 'project.elf').read_bytes():
+    if b'auto vault: READY; prototype 3;' not in (root / 'project.elf').read_bytes():
         raise ValueError('Build the auto-vault prototype first: sh tools/build.sh')
     core = package.CORE_FOLDER
     controls = 'QoL Enhancements - Controls'
@@ -20,7 +20,7 @@ def prototype_files():
         f'{controls}/romfs/qol-enhancements/config/controls.ini':
             config.replace(b'auto_vault = false\n', b'auto_vault = true\n'),
         'README.txt': (
-            'AUTO VAULT - EQUIPPED POLE PROTOTYPE 2 - ACNH 3.0.3\n\n'
+            'AUTO VAULT - EQUIPPED POLE PROTOTYPE 3 - ACNH 3.0.3\n\n'
             f'Based on QoL Enhancements {package.release_version()}. Live Eden validation is pending.\n'
             'Fully close ACNH. Copy this Core folder into your existing\n'
             'QoL Enhancements - Core (REQUIRED) folder, replacing subsdk6 and\n'
@@ -57,7 +57,7 @@ def prototype_files():
 
 def main():
     root = package.ROOT
-    stem = f'qol-enhancements-v{package.release_version().replace(".", "_")}_auto-vault-prototype2_for_acnh_v3_0_3'
+    stem = f'qol-enhancements-v{package.release_version().replace(".", "_")}_auto-vault-prototype3_for_acnh_v3_0_3'
     output = root / 'dist'
     output.mkdir(exist_ok=True)
     binary, source = output / f'{stem}.zip', output / f'{stem}_source.zip'

@@ -1,5 +1,26 @@
 # Unified QoL validation
 
+## Equipped-pole auto vault prototype 3 (2026-10-11)
+
+Diagnostic 3 identifies the failing native height comparison: movement's tentative
+player height is about -2.1, while the bank/landing is at 0; the native vault
+search rejects differences >=0.5. Stable action-phase validation succeeds.
+Prototype 3 transfers one fully validated bank check to the following movement
+probe, requiring matching player/handle, exact bank xyz, equipped pole and native
+intent/contact guards. Each proof is consumed once. Actual jump commit always
+performs fresh native search/reservation; transforms and the native timer are
+never overwritten by the mod. Ordinary hops retain priority.
+
+The pinned offline build and 268 focused ARM cases pass at two bases. A new
+full-frame regression reproduces the observed stable/tentative position split,
+runs native hop guards/timer updates through the hold threshold, verifies no
+movement-phase vault search or repeat proof use, preserves actor memory and
+requires native validation/preparation at commit. Cancellation covers bank and
+player identity changes, input release, direction/contact changes, another tool,
+manual A, missed action checks and native-hop priority. Live animation and terrain
+still require a retry. The separate diagnostic4 ZIP includes the candidate fix
+and detailed traces, preserving previous archives and 0.4.18 Catalog changes.
+
 ## Equipped-pole auto vault diagnostic 3 (2026-10-11)
 
 Prototype 2 also fails live: eligible action checks wait, movement checks reject,

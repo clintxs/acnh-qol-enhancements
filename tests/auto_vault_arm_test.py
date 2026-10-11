@@ -11,7 +11,7 @@ from unicorn.arm64_const import *
 GEOMETRY = 0x230c470
 DEPENDENCIES = (GEOMETRY, 0x230b8d0, 0x230bf18, 0x239a340, 0x239aff4,
                 0x15f5c40, 0x241e98c, 0x239a398, 0x221a094, 0x2223454)
-DIAGNOSTIC = b"DIAGNOSTIC: auto-vault-v3" in (Path(__file__).resolve().parents[1] / "project.elf").read_bytes()
+DIAGNOSTIC = b"DIAGNOSTIC: auto-vault-v4" in (Path(__file__).resolve().parents[1] / "project.elf").read_bytes()
 EXTRA = 3 * int(DIAGNOSTIC)
 CONFIG = DEFAULT + b'hold_to_hoover=false\nhold_to_advance_dialogue=false\nauto_vault=true\n'
 
@@ -38,6 +38,7 @@ class VaultMachine(Machine):
         self.manual_original_calls = 0
         self.commit_calls = 0
         self.predicted_vaultable = False
+        self.reject_tentative = False
         self.write(self.module.find('AutoVaultPrepare', 'OrigRef'), self.prepare_original)
         self.u.mem_write(base + 0x239aff4, RAW[0x239aff4:0x239aff4 + 20])
         self.manual_request = self.ram + 0xe000
@@ -112,6 +113,8 @@ class VaultMachine(Machine):
             # Model the observed failure: the native argument=1 position can
             # fail even when the current-position crossing is valid.
             self.vault_result = int(self.predicted_vaultable if argument else self.vaultable)
+            if self.reject_tentative and struct.unpack('<f', bytes(u.mem_read(self.actor + 0x27c, 4)))[0] < -.5:
+                self.vault_result = 0
             self.outer_return = u.reg_read(UC_ARM64_REG_LR)
             if self.nested:
                 self.saved_entry = self.read(self.module.find('AutoVaultEntry', 'OrigRef'))
@@ -179,7 +182,12 @@ class VaultMachine(Machine):
         u.reg_write(UC_ARM64_REG_X0, result)
         u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
 
-    def geometry(self, probe=0, automatic=1, skew=0., output=0):
+    def geometry(self, probe=0, automatic=1, skew=0., output=0, prime=True):
+        if prime and probe and automatic:
+            count = self.read(self.player + 0x6a0, 2)
+            self.write(self.player + 0x6a0, 0, 2)
+            self.geometry(0, automatic, skew, output, prime=False)
+            self.write(self.player + 0x6a0, count, 2)
         self.u.mem_write(self.request, struct.pack('<B3xIB3xfB', probe, 0, automatic, skew, 0))
         self.output = output
         self.write(self.module.find('AutoVaultEntry', 'OrigRef'), self.original_entry)
@@ -188,7 +196,14 @@ class VaultMachine(Machine):
         self.call(self.module.find('AutoVaultEntry', 'Callback'))
         return self.reg(0)
 
-    def automatic(self, probe):
+    def automatic(self, probe, prime=True):
+        # Independent probe cases first create a real compiled action proof
+        # below threshold. Full frame regressions pass prime=False explicitly.
+        if prime and probe:
+            count = self.read(self.player + 0x6a0, 2)
+            self.write(self.player + 0x6a0, 0, 2)
+            self.automatic(0, prime=False)
+            self.write(self.player + 0x6a0, count, 2)
         # Execute native HopEntry and HopDirection, not a Python copy of their
         # strength, motion, facing, direction and alternate-candidate guards.
         for index, value in enumerate((self.player, probe, 1)):
@@ -215,7 +230,7 @@ def main():
     for base in (0x7100000000, 0x7200000000):
         if DIAGNOSTIC:
             trace = VaultMachine(base, verbose=False)
-            assert 'DIAGNOSTIC: auto-vault-v3' in trace.text
+            assert 'DIAGNOSTIC: auto-vault-v4' in trace.text
             ctx = trace.ram + 0xf000
             trace.u.mem_write(ctx, bytes(0x100))
             trace.write(ctx + 19*8, trace.player)
@@ -235,7 +250,7 @@ def main():
                 assert trace.automatic(1) == (2 if count <= 30 else 1)
             assert 'geometry=0x1f tool=0x28 timer=31 vault=1 result=1' in trace.text
             assert trace.text.count('VAULT entry:') <= 8
-            assert 'VAULT search: phase=1 native=1 prepared=1' in trace.text
+            assert 'VAULT search: phase=1 native=0 prepared=0 transfer=1' in trace.text
             # Float-inline context: SIMD at +0, GP at +0x200, saved LR at +0x2f0.
             # Exercise each rejection category; callback must preserve every
             # GP/SIMD byte and player memory while changing only its scope.
@@ -339,49 +354,91 @@ def main():
         m.call(base + 0x239aff4)
         assert m.reg(0) == 1 and before == bytes(m.u.mem_read(m.player, 0x3000))
 
-        # Reproduce the live timer reset with argument=1 water rejection.
-        # Both scheduler phases now probe current position using argument=0;
-        # only the final commit can reach real preparation mode.
+        # Real frame sequence: stable bank action -> tentative river movement.
+        # The terrain model rejects tentative y=-2.09, as in the live log;
+        # only the stable action phase may search for a vault.
         regression = VaultMachine(base)
         regression.nested = True
-        regression.manual_hop_result = 1  # A nested short hop WOULD commit.
-        for count in range(32):
-            for phase in (0, 1):
-                before = bytes(regression.u.mem_read(regression.player, 0x3000))
-                regression.vault_calls.clear()
-                assert regression.automatic(phase) == (2 if count <= 30 else 1)
-                assert regression.vault_calls == ([0, 0] if count > 30 and phase == 0 else [0])
-                assert before == bytes(regression.u.mem_read(regression.player, 0x3000))
-                if count <= 30:
-                    assert regression.commit_calls == 0
-                    assert regression.manual_original_calls == 0
-                    assert set(regression.prepare_calls) == {1}
-            if count <= 30: regression.tick(2)
+        regression.reject_tentative = True
+        bank = struct.pack('<fff', 386.38, 0., 614.94)
+        tentative = struct.pack('<fff', 386.58, -2.09, 614.19)
+        for count in range(31):
+            regression.u.mem_write(regression.actor + 0x278, bank)
+            regression.u.mem_write(regression.actor + 0x284, bank)
+            regression.vault_calls.clear()
+            assert regression.automatic(0, prime=False) == 2
+            assert regression.vault_calls == [0]
+            assert regression.commit_calls == 0 and regression.manual_original_calls == 0
+            regression.u.mem_write(regression.actor + 0x278, tentative)
+            before_actor = bytes(regression.u.mem_read(regression.actor, 0x400))
+            regression.vault_calls.clear()
+            result = regression.automatic(1, prime=False)
+            assert result == 2 and regression.vault_calls == []
+            assert bytes(regression.u.mem_read(regression.actor, 0x400)) == before_actor
+            regression.tick(result)
+            assert regression.read(regression.player + 0x6a0, 2) == count + 1
+            # One proof cannot advance two movement checks.
+            assert regression.automatic(1, prime=False) == 0
             cases += 1
-        # At threshold, commit's nested native short hop may take priority.
-        assert regression.manual_original_calls == 1 and regression.commit_calls == 0
+        regression.u.mem_write(regression.actor + 0x278, bank)
+        regression.vault_calls.clear()
+        assert regression.automatic(0, prime=False) == 1
+        assert regression.vault_calls == [0, 0] and regression.commit_calls == 1
+        assert regression.prepare_calls[-2:] == [1, 0]
+        assert regression.automatic(1, prime=False) == 0  # No proof survives commit.
         assert regression.read(regression.module.find('CurrentVaultProbe')) == 0
-        # A scoped probe cannot leak into manual A or another player's prepare.
-        regression.manual_hop_result = 0
-        regression.vaultable = False
-        assert regression.automatic(1) == 0
-        regression.vaultable = True
-        # An enclosing different-player probe is restored exactly, and must
-        # not turn a manual prepare for this player into check-only mode.
+        cases += 1
+
+        # Cancel transfer on changed bank, identity, released stick, a native
+        # hop taking priority, manual A or failed stable validation.
+        for change in ('bank', 'handle', 'resident', 'release', 'native', 'manual', 'invalid', 'pointer', 'tool', 'turn', 'contact', 'skip'):
+            cancel = VaultMachine(base)
+            assert cancel.automatic(0, prime=False) == 2
+            cancel.vault_calls.clear()
+            if change == 'bank': cancel.u.mem_write(cancel.actor + 0x284, struct.pack('<f', .01))
+            elif change == 'handle': cancel.write(cancel.player + 0x230, 1, 4)
+            elif change == 'resident': cancel.write(cancel.player + 0x1ee8, 1, 1)
+            elif change == 'release': cancel.stick(0., 0.)
+            elif change == 'native': cancel.hop_result = 1
+            elif change == 'tool': cancel.tool = 8
+            elif change == 'turn': cancel.input_direction = 0x40000000
+            elif change == 'contact': cancel.contact = False
+            elif change == 'skip':
+                cancel.stick(0., 0.)
+                assert cancel.automatic(0, prime=False) == 0
+                cancel.stick(0., 1.)
+            elif change == 'manual':
+                assert cancel.geometry(automatic=0) == 0
+            elif change == 'invalid':
+                cancel.vaultable = False
+                assert cancel.automatic(0, prime=False) == 0
+                cancel.vault_calls.clear()
+            elif change == 'pointer':
+                # Different actor/player in the same resident slot must not
+                # inherit a cached validation from the previous owner.
+                other = cancel.player + 0x3000
+                cancel.u.mem_write(other, bytes(cancel.u.mem_read(cancel.player, 0x2000)))
+                cancel.player = other
+            assert cancel.automatic(1, prime=False) == (1 if change == 'native' else 0)
+            assert cancel.vault_calls == []
+            cases += 1
+
+        # Scoped check-only preparation still restores an enclosing different
+        # player scope and never changes ordinary manual preparation.
         enclosing = regression.ram + 0xe400
         regression.write(enclosing, regression.player + 0x4000)
         scope = regression.module.find('CurrentVaultProbe')
         regression.write(scope, enclosing)
-        assert regression.automatic(1) == 1
+        regression.write(regression.player + 0x6a0, 0, 2)
+        assert regression.automatic(0, prime=False) == 2
         assert regression.read(scope) == enclosing and regression.read(enclosing + 8, 1) == 0
         regression.commit_ok = False
         for i, value in enumerate((regression.player, regression.ram + 0xf000, 0)):
             regression.u.reg_write(UC_ARM64_REG_X0 + i, value)
         regression.call(regression.module.find('AutoVaultPrepare', 'Callback'))
-        assert regression.reg(0) == 0 and regression.commit_calls == 1
-        assert regression.prepare_calls[-1] == 0
+        assert regression.reg(0) == 0 and regression.prepare_calls[-1] == 0
         regression.write(scope, 0)
-        cases += 3
+        cases += 1
 
         # Real native automatic-entry guards must reject before our extension.
         for x, y in ((0., 0.), (0., .5), (0., .919)):

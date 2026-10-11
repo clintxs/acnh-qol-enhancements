@@ -1,6 +1,7 @@
 #include "lib.hpp"
 #include "auto_vault.hpp"
 #include <cstring>
+#include <array>
 
 namespace qol::controls {
 namespace {
@@ -20,6 +21,7 @@ constexpr std::size_t Position = 0x278, AlternatePosition = 0x284, Facing = 0x2b
 constexpr std::size_t Action = 0x280, MovementState = 0x1810, InputValid = 0x12f8;
 constexpr std::size_t StickX = 0xeec, StickY = 0xef0, Speed = 0x2e0;
 constexpr std::size_t HopTimer = 0x6a0, JudgeTimerParameter = 0xed0;
+constexpr std::size_t Resident = 0x1ee8, PlayerHandle = 0x230;
 constexpr std::size_t ParameterValueMethod = 0xf0;
 }
 constexpr unsigned VaultingPoleKind = 0x28;
@@ -57,12 +59,54 @@ static_assert(offsetof(HopRequest, alternate) == 0x10);
 struct HopAttempt { void *player; bool eligible = false; unsigned geometry = 0; };
 HopAttempt *CurrentAttempt{};
 
+// Movement tests a tentative transform before collision correction. Transfer
+// one stable-phase validation to the following movement timer check, requiring
+// the same player/handle and EXACT starting bank position. The native intent
+// guards still run in both phases, and every actual jump is validated afresh.
+struct MovementProof {
+    void *player{};
+    unsigned handle{};
+    std::array<float, 3> bank{};
+    bool valid = false;
+};
+std::array<MovementProof, 8> MovementProofs{};
+MovementProof *ProofFor(void *player) {
+    const auto resident = Read<unsigned char>(player, field::Resident);
+    return resident < MovementProofs.size() ? &MovementProofs[resident] : nullptr;
+}
+MovementProof ConsumeProof(void *player) {
+    if (auto proof = ProofFor(player)) {
+        const auto result = *proof;
+        *proof = {};
+        return result;
+    }
+    return {};
+}
+bool MatchesMovementStart(const MovementProof &proof, void *player) {
+    auto actor = Read<void *>(player, field::Actor);
+    if (!proof.valid || proof.player != player || !actor ||
+        proof.handle != Read<unsigned>(player, field::PlayerHandle)) return false;
+    for (unsigned i = 0; i < proof.bank.size(); ++i)
+        if (proof.bank[i] != Read<float>(actor, field::AlternatePosition + i*sizeof(float))) return false;
+    return true;
+}
+void RememberBank(void *player) {
+    if (auto proof = ProofFor(player)) {
+        proof->player = player;
+        proof->handle = Read<unsigned>(player, field::PlayerHandle);
+        auto actor = Read<void *>(player, field::Actor);
+        for (unsigned i = 0; i < proof->bank.size(); ++i)
+            proof->bank[i] = Read<float>(actor, field::Position + i*sizeof(float));
+        proof->valid = true;
+    }
+}
+
 // TryVault's argument combines position selection with side-effect control.
 // Use the current-position path, suppress its redundant short-hop attempt,
 // and make ONLY its final preparation check-only. No player positions change.
 struct VaultProbe {
     void *player;
-    bool landingValidated = false;
+    bool landingValidated = false, transferred = false;
     unsigned nativeResult = 0;
 #if CAS_AUTO_VAULT_DIAGNOSTIC
     unsigned failedCandidates = 0, failureMask = 0, lastCall = 0, integerResult = 0, floatBits = 0;
@@ -182,7 +226,7 @@ void TraceEntry(void *player, unsigned probe, unsigned automatic, unsigned hop,
     const auto timer = Read<unsigned short>(player, field::HopTimer);
     const unsigned now[]{probe, automatic, hop, geometry, tool, timer/15u,
                          static_cast<unsigned>(vault), static_cast<unsigned>(result),
-                         details ? details->lastCall : 0, details ? details->failureMask : 0};
+                         details ? details->lastCall : 0, details ? details->failureMask | (unsigned(details->transferred) << 31) : 0};
     if (stage.lastPlayer == player && !std::memcmp(stage.last, now, sizeof(now)) && ++stage.frames < 120) return;
     stage.lastPlayer = player; stage.frames = 0; std::memcpy(stage.last, now, sizeof(now));
     if (!remaining) return;
@@ -191,8 +235,8 @@ void TraceEntry(void *player, unsigned probe, unsigned automatic, unsigned hop,
         probe, automatic, hop, geometry, tool, timer, vault, result);
     if (details) {
         auto actor = Read<void *>(player, field::Actor);
-        Logging.Log("[QoL Enhancements/Controls] VAULT search: phase=%u native=%u prepared=%u candidates=%u mask=0x%x last=0x%x ret=0x%x fp=0x%x pos=%d,%d,%d alt=%d,%d,%d facing=0x%x\n",
-            probe, details->nativeResult, details->landingValidated, details->failedCandidates,
+        Logging.Log("[QoL Enhancements/Controls] VAULT search: phase=%u native=%u prepared=%u transfer=%u candidates=%u mask=0x%x last=0x%x ret=0x%x fp=0x%x pos=%d,%d,%d alt=%d,%d,%d facing=0x%x\n",
+            probe, details->nativeResult, details->landingValidated, details->transferred, details->failedCandidates,
             details->failureMask, details->lastCall, details->integerResult, details->floatBits,
             static_cast<int>(Read<float>(actor, field::Position)*100.f),
             static_cast<int>(Read<float>(actor, field::Position+4)*100.f),
@@ -240,10 +284,12 @@ HOOK_DEFINE_TRAMPOLINE(AutoVaultEntry) {
             // The complete ordinary automatic-hop search already failed.
             // A check-only current-position vault must not commit a nested hop.
             if (CurrentVaultProbe && CurrentVaultProbe->player == player) return NoCrossing;
+            ConsumeProof(player);
             const auto result = Orig(player, probe, automatic);
             TraceEntry(player, probe, automatic, result, false);
             return result;
         }
+        const auto movementProof = ConsumeProof(player);
         HopAttempt attempt{player};
         auto previous = CurrentAttempt;
         CurrentAttempt = &attempt;
@@ -259,14 +305,19 @@ HOOK_DEFINE_TRAMPOLINE(AutoVaultEntry) {
         }
 
         auto vault = Native<unsigned (*)(void *, unsigned)>(address::TryVault);
-        // Native probe=1 also selects actor+0x284 instead of current +0x278.
-        // Live movement/action phases disagree there and keep clearing the
-        // timer. Validate current position with preparation scoped check-only.
-        const auto check = ProbeCurrentPositionVault(player);
-        const unsigned valid = check.nativeResult && check.landingValidated;
+        VaultProbe check{player};
+        if (probe & 1) {
+            // The full vault search reads tentative actor+0x278 even with
+            // probe=1. Its transient river height fails the landing check.
+            check.transferred = MatchesMovementStart(movementProof, player);
+        } else {
+            check = ProbeCurrentPositionVault(player);
+        }
+        const unsigned valid = check.transferred || (check.nativeResult && check.landingValidated);
         const bool complete = valid && HoldComplete(player);
         if (!valid || !complete || (probe & 1)) {
             const auto result = !valid ? NoCrossing : complete ? CrossingReady : Waiting;
+            if (valid && !complete && !(probe & 1)) RememberBank(player);
             TraceEntry(player, probe, automatic, hop, attempt.geometry, valid, result, &check);
             return result;
         }
@@ -311,12 +362,12 @@ bool InstallAutoVault() {
     AutoVaultRejectedTrace::InstallAtOffset(address::VaultCandidateRejected);
     AutoVaultExitTrace::InstallAtOffset(address::VaultSearchExit);
     AutoVaultMovementTrace::InstallAtOffset(address::MovementGuards);
-    Logging.Log("[QoL Enhancements/Controls] DIAGNOSTIC: auto-vault-v3; bounded movement and entry traces\n");
+    Logging.Log("[QoL Enhancements/Controls] DIAGNOSTIC: auto-vault-v4; bounded movement and entry traces\n");
 #endif
     AutoVaultPrepare::InstallAtOffset(address::PrepareVault);
     AutoVaultGeometry::InstallAtOffset(address::HopGeometry);
     AutoVaultEntry::InstallAtOffset(address::HopEntry);
-    Logging.Debug("[QoL Enhancements/Controls] auto vault: READY; prototype 2; equipped pole; native hop timer\n");
+    Logging.Debug("[QoL Enhancements/Controls] auto vault: READY; prototype 3; equipped pole; native hop timer\n");
     return true;
 }
 }

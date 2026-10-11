@@ -187,3 +187,49 @@ failure details at the final epilogue, GP/SIMD and player-memory preservation,
 null-scope and other-player isolation, and atomic observer fingerprint rejection.
 These fixtures test observer callbacks, not a live native terrain search.
 A new live log is needed to locate the failing native predicate or probe guard.
+
+2026-10-11 diagnostic 3 result / prototype 3
+-------------------------------------------
+The raw native search itself fails during movement; the preparation guard is
+not the cause. Action: native=1 prepared=1, current/alternate bank height=0.
+Movement: native=0 prepared=0, all 21 candidates rejected, tentative current
+height about -2.1 while alternate/start height remains 0. The common rejection
+records last=0239AEFC with fp=40066666 (about 2.1). Disassembly AEFC..AF14
+computes abs(startY-landingY) and rejects >=0.5. Thus even TryVault(player,1)
+is insufficient: it changes initial position checks, but the candidate search
+and final height comparison still read tentative actor+278/+27C. Re-running
+that full search in the movement phase cannot validate the stable bank.
+
+Prototype 3 transfers one successful stable action-phase validation to the
+following movement timer check. It records player pointer, handle230 and exact
+xyz bank position in one of eight resident slots. Each automatic entry consumes
+any previous proof first. A pending, fully native-validated action probe records
+a replacement. A movement probe must still fail the entire ordinary-hop search,
+pass native stick/contact/facing gates, hold the pole, and match both identity
+and actor+284 starting position exactly. It then returns the native timer result
+without repeating the full vault search against the transient current position.
+No proof can be consumed twice. Failed/new action checks, manual A, released
+input, other tools, changed contact/direction, a different bank or identity and
+ordinary-hop priority discard it. Nothing overrides either actor transform.
+
+At the actual commit, the stable action phase again runs the full native vault
+search, checks the loaded native hold threshold, and invokes the native vault
+outside the check-only scope. This preserves landing/route/reservation checks
+and LongStickJumpReady preparation. No synthetic input or direct native timer
+writes are added. The original movement tail alone increments/resets the timer.
+The transferred proof is a one-use scheduling handoff, not permission to commit
+a cached landing later. Diagnostic logs distinguish transfer=1 from actual
+native searches (native/prepared values), and retain native rejection observers.
+
+268 focused ARM cases at two ASLR bases pass. The frame regression gives action
+probes a stable bank and movement probes the logged -2.09 tentative height with
+a matching alternate/start bank; the terrain model would reject a movement
+vault search. It executes actual native HopEntry/HopDirection guards and timer
+tail for all hold frames, proves zero vault searches in movement, zero repeated
+use of a proof, preserved actor bytes, and a fully revalidated final commit.
+Additional cases reject changed xyz, player pointer/handle/resident, tool,
+contact, direction, released stick, missed action, manual A and native-hop
+priority. Independent movement-policy cases explicitly prime an action proof
+below threshold; the full-frame regression does not use that fixture shortcut.
+Full native collision/animation execution remains a live validation boundary.
+Markers advance to prototype 3 and auto-vault-v4; archives remain separate.
