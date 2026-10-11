@@ -2565,3 +2565,22 @@ Live automatic equipping, animation timing, restoration and multiplayer remain
 unverified. The diagnostic prototype enables all three traversal settings and
 includes bounded SWAP events alongside the existing traversal traces. Older
 archives remain untouched; matching source accompanies the new binary ZIP.
+
+
+## Controls silent tool borrowing prototype 2 (2026-10-11)
+
+Live prototype 1 exposed camera-facing rotation during equip and premature
+restoration before southward vaults. ToolChange's native animate=0 path now
+handles borrowing and restoration, skipping rotation and animation waits while
+retaining native equipment/model updates. A new action-entry observer requires
+actual ToolChange -> Move and actual ladder/pole traversal -> Move sequences;
+a queued action with an old Move value cannot be treated as complete.
+
+Pinned diagnostic build and all host/Controls checks pass: pole 268, ladder
+144, silent swap 130, pickup 181, dialogue 1,024, hurry 712, catch 772. The swap
+suite runs real native silent/animated branch instructions and action-data
+copying, with modeled animation transitions/inventory/terrain. It covers all
+four facing directions, queued equip/traversal gaps, restoration/cancellation,
+previous-tool/empty-hands cases and twelve borrowing fingerprints at two bases.
+Silent animation/model timing remains unverified live. A separate prototype 2
+ZIP and matching source preserve prototype 1 and earlier releases.

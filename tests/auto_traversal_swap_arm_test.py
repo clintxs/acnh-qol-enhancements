@@ -13,11 +13,11 @@ from unicorn.arm64_const import *
 SWAP_CONFIG = CONFIG + b'auto_equip_traversal=true\n'
 EMPTY, NET, POLE, LADDER, AXE = 0xfffe, 0x1234567800001001, 0x1002, 0x1003, 0x999900001004
 KINDS = {EMPTY: 0, NET: 1, POLE: 0x28, LADDER: 0x11, AXE: 3}
-DEPENDENCIES = (0x2222950, 0x2272704, 0x2572e00, 0x2577ea0, 0x242d8f0, 0x19d5d04, 0x19d78cc, 0x256a0c0)
+DEPENDENCIES = (0x2222950, 0x2272704, 0x2572e00, 0x2577ea0, 0x242d8f0, 0x19d5d04, 0x19d78cc, 0x256a0c0, 0x2275730, 0x23758a0, 0x2375ed0, 0x2376018)
 
 class SwapMachine(LadderMachine):
     def __init__(self, base):
-        super().__init__(base, config=SWAP_CONFIG, expected_hooks=8 + EXTRA)
+        super().__init__(base, config=SWAP_CONFIG, expected_hooks=9 + EXTRA)
         self.controller = self.ram + 0x16000
         self.write(self.player + 0x70, self.controller)
         self.write(self.controller + 0x280, 0xc, 4)
@@ -30,6 +30,8 @@ class SwapMachine(LadderMachine):
         self.dispatch_original = self.ram + 0xd0c0
         self.write(self.module.find('AutoTraversalSwap', 'OrigRef'), self.dispatch_original)
         self.dispatch_result = 0
+        self.enter_original = self.ram + 0xd0d0
+        self.write(self.module.find('AutoTraversalActionEntered', 'OrigRef'), self.enter_original)
         self.ladder_valid = False
         self.ladder_result = False
         self.u.mem_write(self.player+0x18e0, bytes(range(32)))
@@ -58,9 +60,11 @@ class SwapMachine(LadderMachine):
                 assert data[:32] == bytes(range(32))
                 item = struct.unpack_from('<Q', data, 32)[0]
                 slot = struct.unpack_from('<b', data, 0x29)[0]
-                assert data[0x28] == 0 and data[0x2a] == 1 and data[0x2e] == 1
+                assert data[0x28] == 0 and data[0x2a] == 1 and data[0x2e] == 0
                 self.action_requests.append((item, slot))
                 self.write(self.controller + 0x280, 0x29, 4)
+                result = 0
+            elif pc == self.enter_original:
                 result = 0
             elif pc == self.dispatch_original:
                 result = self.dispatch_result
@@ -76,10 +80,17 @@ class SwapMachine(LadderMachine):
         self.call(self.module.find('AutoTraversalSwap', 'Callback'))
         return self.reg(0)
 
+    def enter(self, action):
+        self.write(self.controller+0x280, action, 4)
+        self.u.reg_write(UC_ARM64_REG_X0, self.player)
+        self.u.reg_write(UC_ARM64_REG_X1, action)
+        self.call(self.module.find('AutoTraversalActionEntered', 'Callback'))
+
     def finish_change(self):
+        self.enter(0x29)
         self.held = self.action_requests[-1][0]
         self.tool = KINDS[self.held]
-        self.write(self.controller + 0x280, 0xc, 4)
+        self.enter(0xc)
 
     def begin(self, ladder=False):
         self.ladder_valid = self.ladder_result = ladder
@@ -105,14 +116,17 @@ def main():
                 m.write(m.controller+0x280, 0xc, 4)
                 assert m.dispatch() == 1
                 assert len(m.action_requests) == 1
+                # Old Move while the native traversal is still queued must
+                # neither restore nor request a second traversal.
+                assert m.dispatch() == 0 and len(m.action_requests) == 1
                 # Traverse action must finish before restoration, even if
                 # input is released during the animation.
                 for action in ((0x8a,0x8b,0x8c) if ladder else (0xb4,0xb5,0xb6)):
-                    m.write(m.controller+0x280, action, 4)
+                    m.enter(action)
                     assert m.dispatch() == 0
                     cases += 1
                 m.stick(0.,0.)
-                m.write(m.controller+0x280, 0xc, 4)
+                m.enter(0xc)
                 assert m.dispatch() == 1
                 assert m.action_requests[-1] == (prior, {NET:0, AXE:3, EMPTY:-1}[prior])
                 m.finish_change()
@@ -166,6 +180,33 @@ def main():
             m.begin(ladder); m.stick(0.,0.); assert m.dispatch() == 1
             assert m.action_requests[-1] == (held, m.held_slot)
             cases += 1
+        for ladder in (False,True):
+            for facing in (0,0x40000000,0x80000000,0xc0000000):
+                m = SwapMachine(base)
+                m.direction = m.input_direction = facing
+                m.write(m.actor+0x2b4,facing,4)
+                m.begin(ladder)
+                assert m.read(m.actor+0x2b4,4) == facing
+                assert m.dispatch() == 1
+                assert m.dispatch() == 0 and len(m.action_requests) == 1
+                m.enter(0x8a if ladder else 0xb4)
+                m.enter(0xc)
+                assert m.dispatch() == 1 and m.action_requests[-1] == (NET,0)
+                cases += 1
+        for animate in (0,1):
+            m = SwapMachine(base)
+            m.write(m.player+0x190e, animate, 1)
+            m.u.reg_write(UC_ARM64_REG_X23, m.player+0x190b)
+            m.u.emu_start(base+0x2376018, base+0x237617c, count=2)
+            assert m.u.reg_read(UC_ARM64_REG_PC) == base+(0x237617c if animate == 0 else 0x2376020)
+            cases += 1
+        # A queued equip that hasn't entered/exited ToolChange is not ready.
+        m = SwapMachine(base)
+        m.write(m.player+0x6a0,31,2); assert m.automatic(0, prime=False) == 1
+        m.write(m.controller+0x280,0xc,4)
+        assert m.dispatch() == 0 and len(m.action_requests) == 1
+        m.finish_change(); assert m.dispatch() == 1
+        cases += 1
         for dependency in DEPENDENCIES:
             config = DEFAULT + b'hold_to_hoover=false\nhold_to_advance_dialogue=false\nauto_vault=true\nauto_ladder=true\nauto_equip_traversal=true\n'
             n = Machine(base, {'controls':config})

@@ -59,3 +59,35 @@ assumptions. Begin with single-player; multiplayer timing is unverified.
 
 Diagnostic builds retain bounded SWAP events in addition to traversal traces.
 Normal builds omit the extra diagnostic messages/observers. Older ZIPs remain.
+
+Prototype 2: silent tool changes and confirmed action lifecycle
+
+Live prototype 1 failed: the equip animation turned the player toward the
+camera, violating the remembered-facing check. Southward attempts also put
+away the pole before jumping. The previous completion test incorrectly
+assumed controller action=Move meant no action was still queued.
+
+Native ToolChange already supports animate=0 (request+2E / player+190E).
+023758A0 skips starting PlayerToolChangeOn/Off. In update 02375ED0, the
+branch at 02376018 takes 0237617C for animate=0, skipping the facing rotation
+and animation-event wait. It refreshes tool visibility via 02372404(1.0),
+updates the held model through context methods, and returns through
+022752F4. Both borrowing and restoration now use this native silent path.
+No global animation patch or direct equipment/position/facing write is used.
+
+02275730(player, action) is the native shared action-entry helper. ToolChange
+entry wrapper 02293A60 calls it with 0x29; Move entry wrapper 02290734 calls
+it with 0x0C. A read-only observer records actual ToolChange -> Move before
+continuing a borrowed-tool attempt, and actual ladder 0x8A..0x8C or pole
+0xB4..0xB7 -> Move before restoring. An old Move value during queued equip
+or queued traversal cannot advance the transaction. Native failed traversal
+requests still restore immediately. No restoration occurs merely because
+an animation has not started yet.
+
+Four additional fingerprints protect action-entry observation, ToolChange
+entry/update and the silent branch: twelve borrowing dependencies total.
+The normal default is unchanged. The compiled swap suite now passes 130
+cases at two ASLR bases, including north/south/east/west, both tools,
+queued-state gaps and actual native silent/animated branch instructions.
+The full Controls and host suites pass. Live silent equip/model refresh,
+traversal/restoration timing and multiplayer still require in-game testing.

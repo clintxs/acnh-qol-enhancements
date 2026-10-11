@@ -132,10 +132,12 @@ The key also works in `controls.custom.ini`. See the
 [traversal investigation and test limits](research/controls/auto-vault.txt).
 
 `auto_equip_traversal = true` extends the enabled traversal features to use a
-ladder or pole from your pockets. After the crossing, it restores the previous
+ladder or pole from your pockets using the native no-animation equip path.
+It preserves facing while swapping. After the crossing, it restores the previous
 held tool, or puts the borrowed tool away if your hands were empty. Ordinary
 hops keep priority. Releasing/turning away while equipping restores the previous
-tool; manually choosing another tool cancels restoration. This prototype is
+tool; manually choosing another tool cancels restoration. Restoration waits
+for a confirmed traversal action to finish, including when its start is queued. This prototype is
 unverified in-game and defaults to false. It requires `auto_vault` and/or
 `auto_ladder`; tools must be in your pockets.
 

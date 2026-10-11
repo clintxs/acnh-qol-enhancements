@@ -6,6 +6,9 @@
 namespace qol::controls {
 namespace {
 namespace address {
+constexpr std::uintptr_t ActionEntered = 0x02275730;
+constexpr std::uintptr_t ToolChangeEntry = 0x023758a0, ToolChangeUpdate = 0x02375ed0;
+constexpr std::uintptr_t ToolChangeAnimationBranch = 0x02376018;
 constexpr std::uintptr_t StableActions = 0x02222950, RequestAction = 0x02272704;
 constexpr std::uintptr_t PocketCapacity = 0x02572e00, PocketItem = 0x02577ea0;
 constexpr std::uintptr_t IsEquippedSlot = 0x0256a0c0;
@@ -97,7 +100,11 @@ bool ChangeTool(void *player, ToolSelection selection) {
     std::memcpy(request.header.data(), static_cast<const std::byte *>(player) + field::CurrentActionData, request.header.size());
     request.item = selection.item;
     request.slot = static_cast<signed char>(selection.slot);
-    request.shortcut = request.animate = 1;
+    // Native entry skips PlayerToolChangeOn/Off when animate=0. Its update
+    // takes a separate non-rotating path, refreshes the held model/visibility,
+    // and returns to movement without waiting for animation events.
+    request.shortcut = 1;
+    request.animate = 0;
     return Native<bool (*)(void *, unsigned, const void *)>(address::RequestAction)(player, ToolChangeAction, &request);
 }
 enum class SwapStage { None, Equipping, Traversing };
@@ -107,6 +114,7 @@ struct BorrowedTool {
     unsigned handle{}, kind{}, facing{};
     ToolSelection borrowed{}, previous{};
     std::array<float, 3> bank{};
+    bool equipEntered{}, equipFinished{}, traversalEntered{}, traversalFinished{};
 };
 std::array<BorrowedTool, 8> BorrowedTools{};
 BorrowedTool *SwapFor(void *player) {
@@ -565,6 +573,24 @@ HOOK_DEFINE_TRAMPOLINE(AutoVaultEntry) {
         return result;
     }
 };
+// The dispatcher can still report Move while a new action is queued. Observe
+// actual action entries, rather than treating that old Move value as completion.
+HOOK_DEFINE_TRAMPOLINE(AutoTraversalActionEntered) {
+    static void Callback(void *player, unsigned action) {
+        if (auto swap = SwapFor(player); swap && swap->stage != SwapStage::None) {
+            if (swap->stage == SwapStage::Equipping) {
+                if (action == ToolChangeAction) swap->equipEntered = true;
+                if (action == MoveAction && swap->equipEntered) swap->equipFinished = true;
+            } else {
+                const bool traversal = swap->kind == LadderKind ? action >= 0x8a && action <= 0x8c
+                                                               : action >= 0xb4 && action <= 0xb7;
+                if (traversal) swap->traversalEntered = true;
+                if (action == MoveAction && swap->traversalEntered) swap->traversalFinished = true;
+            }
+        }
+        Orig(player, action);
+    }
+};
 HOOK_DEFINE_TRAMPOLINE(AutoTraversalSwap) {
     static unsigned Callback(void *player) {
         const auto result = Orig(player);
@@ -574,12 +600,13 @@ HOOK_DEFINE_TRAMPOLINE(AutoTraversalSwap) {
         auto actor = Read<void *>(player, field::Actor);
         if (!controller || !actor || Read<unsigned>(controller, field::Action) != MoveAction ||
             !Read<unsigned char>(player, field::InputValid)) return result;
+        if (swap->stage == SwapStage::Equipping && !swap->equipFinished) return result;
         // Manual tool changes take ownership away from this transaction.
         if (Held(player) != swap->borrowed.item) { TraceSwap("ownership lost", swap->kind, swap->borrowed.slot); *swap = {}; return result; }
         if (swap->stage == SwapStage::Traversing) {
-            // This is the stable Move action dispatcher, reached again only
-            // after the native ready/climb/jump action yields back to Move.
-            // Also restore on a cancelled traversal that never left its bank.
+            if (!swap->traversalFinished) return result;
+            // A real traversal state followed by Move proves completion, even
+            // for a cancelled traversal that never left its starting bank.
             RestoreTool(player, *swap);
             return CrossingReady;
         }
@@ -646,6 +673,10 @@ bool InstallAutoTraversal(bool vault, bool ladder, bool autoEquip) {
     LadderEnabled = enabled & 2;
     Main = main.m_Text.m_Start;
     constexpr Fingerprint swapFingerprints[]{
+        {address::ActionEntered, {0xd10303ff,0x6d0523e9,0xa9067bfd,0xa9076ffc,0xa90867fa}},
+        {address::ToolChangeEntry, {0xd101c3ff,0xa9037bfd,0xa9045ff8,0xa90557f6,0xa9064ff4}},
+        {address::ToolChangeUpdate, {0xd10683ff,0xfd00abe8,0xf900b7fc,0xa915fbfd,0xa9175ff8}},
+        {address::ToolChangeAnimationBranch, {0x39400ee8,0x34000b08,0x52800020,0x9402a25a,0xf949d809}},
         {address::StableActions, {0xd103c3ff,0xfd003bea,0x6d0823e9,0xa9097bfd,0xa90a6ffc}},
         {address::RequestAction, {0xa9be7bfd,0xf9000bf3,0x910003fd,0xb9001fa1,0xb9401fb3}},
         {address::PocketCapacity, {0xd100c3ff,0xa9017bfd,0xa9024ff4,0x910043fd,0x39400008}},
@@ -663,7 +694,10 @@ bool InstallAutoTraversal(bool vault, bool ladder, bool autoEquip) {
             Logging.Error("[QoL Enhancements/Controls] auto equip: DISABLED; instruction mismatch at main+0x%lx\n", f.offset);
         }
     }
-    if (AutoEquipEnabled) AutoTraversalSwap::InstallAtOffset(address::StableActions);
+    if (AutoEquipEnabled) {
+        AutoTraversalActionEntered::InstallAtOffset(address::ActionEntered);
+        AutoTraversalSwap::InstallAtOffset(address::StableActions);
+    }
 #if CAS_AUTO_VAULT_DIAGNOSTIC
     if (VaultEnabled) {
         AutoVaultRejectedTrace::InstallAtOffset(address::VaultCandidateRejected);
@@ -681,7 +715,7 @@ bool InstallAutoTraversal(bool vault, bool ladder, bool autoEquip) {
     AutoVaultEntry::InstallAtOffset(address::HopEntry);
     if (LadderEnabled) Logging.Log("[QoL Enhancements/Controls] auto ladder: READY; prototype 2; equipped ladder; native hop timer\n");
     if (VaultEnabled) Logging.Debug("[QoL Enhancements/Controls] auto vault: READY; prototype 3; equipped pole; native hop timer\n");
-    if (AutoEquipEnabled) Logging.Log("[QoL Enhancements/Controls] auto equip: READY; prototype 1; pocket tool and restore\n");
+    if (AutoEquipEnabled) Logging.Log("[QoL Enhancements/Controls] auto equip: READY; prototype 2; pocket tool and restore\n");
     return enabled == requested && (!autoEquip || AutoEquipEnabled);
 }
 }

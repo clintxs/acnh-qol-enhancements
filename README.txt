@@ -391,7 +391,8 @@ setting enabled=false disables all Controls features. Restart after edits.
 
 AUTO EQUIP TRAVERSAL PROTOTYPE: Set auto_equip_traversal=true alongside
 auto_vault and/or auto_ladder. The needed tool must be in your pockets.
-Controls borrows it for the crossing, then restores the previous held tool
+Controls borrows it without the turn-to-camera animation, preserves facing,
+and restores the previous held tool after a confirmed traversal finishes
 or returns to empty hands. Releasing/turning away while equipping restores
 the previous tool. Manually choosing another tool cancels restoration.
 This new prototype is unverified in-game and defaults to false.

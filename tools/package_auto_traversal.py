@@ -9,9 +9,9 @@ from package_auto_vault import prototype_files
 def main():
     root = package.ROOT
     elf = (root / 'project.elf').read_bytes()
-    for marker in (b'auto equip: READY; prototype 1;', b'auto ladder: READY; prototype 2;', b'DIAGNOSTIC: auto-vault-v4'):
+    for marker in (b'auto equip: READY; prototype 2;', b'auto ladder: READY; prototype 2;', b'DIAGNOSTIC: auto-vault-v4'):
         if marker not in elf: raise ValueError('Build first: sh tools/build.sh --auto-vault-diagnostic')
-    stem = f'qol-enhancements-v{package.release_version().replace(".", "_")}_auto-traversal-prototype1_for_acnh_v3_0_3'
+    stem = f'qol-enhancements-v{package.release_version().replace(".", "_")}_auto-traversal-prototype2_for_acnh_v3_0_3'
     output = root / 'dist'
     output.mkdir(exist_ok=True)
     binary, source = output / f'{stem}.zip', output / f'{stem}_source.zip'
@@ -24,9 +24,9 @@ def main():
         assert files[key].count(old) == 1
         files[key] = files[key].replace(old, new)
     files['README.txt'] = (
-        'AUTO TRAVERSAL - AUTO EQUIP PROTOTYPE 1 - ACNH 3.0.3\n\n'
+        'AUTO TRAVERSAL - SILENT AUTO EQUIP PROTOTYPE 2 - ACNH 3.0.3\n\n'
         f'Based on QoL Enhancements {package.release_version()}. Includes the working pole\n'
-        'and uphill/downhill ladder traversal features. This adds automatic\n'
+        'and uphill/downhill ladder traversal features. This adds silent\n'
         'equipping from pockets and restoration after the crossing.\n\n'
         'Fully close ACNH. Merge the included Core and Controls folders into\n'
         'your existing mod folders, replacing matching files, then restart.\n'
@@ -39,7 +39,9 @@ def main():
         'against a vaultable river, then try a cliff face and a cliff edge.\n'
         'After the normal hop delay, the needed tool should equip, traverse,\n'
         'and put itself away. Repeat while holding a net, shovel or other tool:\n'
-        'the previous tool should return after landing. Also try holding the\n'
+        'the previous tool should return after landing. Equipping and putting\n'
+        'away should be immediate, without turning to face the camera.\n'
+        'Test rivers to the north, south, east and west. Also try holding the\n'
         'ladder at a river and the pole at a cliff. Already holding the needed\n'
         'tool keeps the previous equipped-tool behavior.\n\n'
         'Check narrow ordinary hops, missing tools, blocked landings, releasing\n'
@@ -49,7 +51,7 @@ def main():
         'Compiled checks pass; live animation timing and multiplayer are unverified.\n\n'
         'This diagnostic build logs bounded VAULT movement/entry/search lines\n'
         'and SWAP events even when log_debug=false. Startup should say:\n'
-        'auto equip: READY; prototype 1. Preserve the Eden log if it fails.\n\n'
+        'auto equip: READY; prototype 2. Preserve the Eden log if it fails.\n\n'
         'To disable only automatic equipping, set auto_equip_traversal=false\n'
         'and restart; equipped-tool traversal continues. Reinstall the preserved\n'
         'auto-ladder-prototype2 Core to roll back the executable.\n\n'
