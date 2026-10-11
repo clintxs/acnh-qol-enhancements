@@ -2287,3 +2287,14 @@ Test 3's pinned build passes. 72 compiled/native ARM cases pass at two bases,
 including the observed slot-10-through-14 input sequence, all four directions,
 all seven conflicting action buttons, release/re-arm behavior, and the prior
 selection/limit/capacity cases. The imported 842 Pockets cases also pass.
+
+The user confirms test 3 works for held-A selection in shed put-away.
+Test 4 adds deselection: each hold captures the opposite of its first clicked
+item's selection state, retaining that target until release/cancellation.
+Native first-click destination takes precedence when A and navigation arrive
+together. Temporary always-on diagnostics are removed after the live fix.
+The pinned build and 88 compiled/native ARM cases at two bases pass, including
+five-item deselection, mixed selected/unselected gaps, backtracking, switching
+direction after release, blocked deselection, and simultaneous A/navigation in
+both picker modes. All 842 imported Pockets cases pass. Live inverse behavior
+and selling remain unconfirmed.

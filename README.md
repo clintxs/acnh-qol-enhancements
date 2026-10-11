@@ -546,11 +546,12 @@ compatibility with that mod's future hooks or NPDM.
 ## Pockets hold-A selection (development test)
 
 In Nook’s Cranny selling and shed put-away screens, hold **A** and move over
-items to add them to the selection. Revisiting an already selected item leaves
-it selected. Release A and tap again to toggle an item normally. The game’s
+items to repeat the first press's action. Start on an unselected item to select
+items, or on a selected item to deselect them. Each hold keeps that action until
+A is released; revisiting items does not reverse it. The game’s
 selection limits and storage-capacity checks still apply. Release A after
 opening the picker or after input is blocked before starting a new gesture.
-Live Eden verification is pending.
+Selecting is user-confirmed in the shed; deselecting and selling need live testing.
 
 ## Pockets single-action menus (0.4.5)
 

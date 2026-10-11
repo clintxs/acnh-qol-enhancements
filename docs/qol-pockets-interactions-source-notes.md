@@ -171,9 +171,11 @@ Pockets and Fitting Room; do not install two hooks at that entrypoint.
 ## Hold A to select while moving (development test)
 
 Selling and shed put-away support holding A while moving over pocket items.
-Entering an unselected, enabled item queues the same request as a native click.
-Already selected items remain selected when revisited; separate A taps retain
-vanilla toggle behavior. Other pockets modes and single-item pickers are excluded.
+Each hold retains the first press's action: select when starting on an unselected
+item, deselect when starting on a selected item. Entering an enabled item whose
+selection differs from that target queues the same request as a native click.
+Revisiting items does not reverse the action; release A to start another gesture.
+Other pockets modes and single-item pickers are excluded.
 Release A after opening the picker or after input is blocked before starting a
 new gesture. This adds no new caption or configuration setting.
 
@@ -197,6 +199,11 @@ update 0308b3f0 retains ownership of mask toggles, selection limits, mode 9
 capacity errors, and feedback. Producer/consumer fingerprints are checked at
 installation. No global button-repeat or navigation behavior is changed.
 
+The hold target is captured before the initial native selection toggle. If A
+and navigation share the first frame, the native click's slot takes precedence
+when choosing that target. It stays fixed across selected/unselected gaps and
+is discarded on release, blocked input, mode changes or reopening.
+
 `tests/hold_select_arm_test.py` runs compiled observers/shared dispatch and the
 original selection code through mask/limit/capacity/refresh handling at two
 ASLR bases. Navigation and rendering are modeled. Live Eden testing must still
@@ -214,3 +221,8 @@ while A remains held. The cancellation was the incorrect 0x303e0 conflict mask:
 live UI rows carry 0x10000 alongside A/directions, while actual ZL/ZR are IDs
 10/11. Test 3 uses only IDs 5..11 for conflicting actions. Replaying 0x10010 /
 0x10018 through the compiled observers reproduces the failure before the fix.
+
+The user confirmed test 3 selects while sweeping in the shed. Test 4 adds the
+requested inverse gesture, retaining select/deselect until release. Temporary
+automatic traces are removed following that live confirmation; readiness uses
+the normal debug logging preference again.
