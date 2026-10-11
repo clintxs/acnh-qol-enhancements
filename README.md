@@ -543,6 +543,15 @@ only the existing four Exlaunch process-mapping/session syscall permissions.
 Using subsdk6 avoids Jubbsticks Additions' subsdk9 slot, but does not establish
 compatibility with that mod's future hooks or NPDM.
 
+## Pockets hold-A selection (development test)
+
+In Nook’s Cranny selling and shed put-away screens, hold **A** and move over
+items to add them to the selection. Revisiting an already selected item leaves
+it selected. Release A and tap again to toggle an item normally. The game’s
+selection limits and storage-capacity checks still apply. Release A after
+opening the picker or after input is blocked before starting a new gesture.
+Live Eden verification is pending.
+
 ## Pockets single-action menus (0.4.5)
 
 Pressing A on a pocket item opens it directly **only when Open is its sole

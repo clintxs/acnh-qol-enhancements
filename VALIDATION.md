@@ -2252,3 +2252,17 @@ Package structure/resource/hash checks pass for eight mod folders, seven
 versioned feature configs, the unchanged Core NPDM and inherited layouts.
 The binary, matching source and optional personal-dialogue example archives
 are produced separately; older releases remain intact.
+
+## Pockets hold-A selection development test
+
+- Pinned Docker build passes for ACNH 3.0.3.
+- 48 new compiled/native ARM scenarios pass at two ASLR bases, plus 842 inherited
+  Pockets cases: five-item sweep, stationary hold, backtracking, independent A
+  taps, slot 39, active controller row, blocked/consumed input, native pending
+  clicks, screen/mode changes, suppressed dispatch and unrelated page dispatch.
+- Original native selection code rejects additions beyond the selection limit
+  and mode 9 storage capacity, preserving the prior mask and queuing native
+  error 0x69/state 12 for storage-full rejection.
+- Feature registration validates native producer/consumer fingerprints. The
+  Exlaunch installer, actual navigation, rendering and live frame timing remain
+  outside the emulator fixture and require an Eden playtest.

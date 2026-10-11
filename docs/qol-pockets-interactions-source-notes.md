@@ -167,3 +167,37 @@ bounded by the native five-record footer. New captions are private INI keys;
 USen fallback is shipped and users can add per-locale overrides. Shared
 `core/hint_text.cpp` owns 01aea210 once and accepts independent providers from
 Pockets and Fitting Room; do not install two hooks at that entrypoint.
+
+## Hold A to select while moving (development test)
+
+Selling and shed put-away support holding A while moving over pocket items.
+Entering an unselected, enabled item queues the same request as a native click.
+Already selected items remain selected when revisited; separate A taps retain
+vanilla toggle behavior. Other pockets modes and single-item pickers are excluded.
+Release A after opening the picker or after input is blocked before starting a
+new gesture. This adds no new caption or configuration setting.
+
+`UIItemSelectWindowHandling` uses `cItemSelect` for selling and `cPutInStorage`
+for shed put-away. Native 3.0.3 handler 00d0fd10 maps these to opening requests
+0x0a and 0x60; dispatcher 02d1e950 maps them to pockets modes 1 and 9, and
+033598a0 writes the mode at controller +1c4fc. The cSell/cMoveToChest strings
+choose eligibility filters, not controller mode numbers.
+
+Core's existing 03c58d24 page-input trampoline now supports observers around
+native dispatch. Hold-select captures allowed held A and old focus before the
+native pass, then resolves new focus afterward. Native processing consumes all
+input rows, so consumption must be checked before dispatch. A suppressing
+handler sends a blocked observation and skips native/post dispatch. Shared
+binding/focus lookup lives in `pocket_input.cpp`, also used by Quick Store.
+The existing Play-entry hook resets the gesture when a picker reopens.
+
+Native click 030884b0 queues slot +1c518 and logical bit 2 at +1c51a; hold-select
+mirrors that request only if no native request is pending. Native browsing
+update 0308b3f0 retains ownership of mask toggles, selection limits, mode 9
+capacity errors, and feedback. Producer/consumer fingerprints are checked at
+installation. No global button-repeat or navigation behavior is changed.
+
+`tests/hold_select_arm_test.py` runs compiled observers/shared dispatch and the
+original selection code through mask/limit/capacity/refresh handling at two
+ASLR bases. Navigation and rendering are modeled. Live Eden testing must still
+confirm input/update timing, cursor feedback and storage-full behavior.
