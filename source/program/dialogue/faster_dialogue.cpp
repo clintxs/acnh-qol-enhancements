@@ -102,7 +102,11 @@ const char *HurryContextBlock(std::uintptr_t manager, std::uintptr_t text, unsig
 const char *AdvanceHurryBlock(std::uintptr_t manager, std::uintptr_t text) {
     if (const auto block = HurryContextBlock(manager, text, 5)) return block;
     const auto reveal = Read<unsigned>(text, layout::RevealState);
-    if (reveal != 2 && reveal != 3) return "text-not-ready";
+    // Reveal 4 is the explicit input pause (<10:4>), e.g. the Sunday turnip
+    // message. Native Advance resumes Print without clearing the page, and
+    // Print entry changes 4 back to revealing=1. Held Y can supply that local
+    // advance request just as it does for a page break or completed message.
+    if (reveal != 2 && reveal != 3 && reveal != 4) return "text-not-ready";
     const auto timer = Read<int>(manager, layout::AdvanceTimer);
     if (timer != -1 && timer != 0) return "scripted-timer";
     const auto context = Read<std::uintptr_t>(manager, layout::TalkContext);

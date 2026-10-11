@@ -102,9 +102,9 @@ def main():
     count = 0
     for base in (0x7100000000, 0x7200000000):
         m, native = HurryMachine(base), HurryMachine(base, enabled=False)
-        for window, reveal, choice, timer, message_phase in itertools.product(range(3), (2, 3), (False, True), (-1, 0), (1, 2)):
+        for window, reveal, choice, timer, message_phase in itertools.product(range(3), (2, 3, 4), (False, True), (-1, 0), (1, 2)):
             m.prepare(window=window, reveal=reveal, choice=choice, timer=timer, message_phase=message_phase)
-            expected = 3 if reveal == 2 else 6 if choice else 7
+            expected = 3 if reveal != 3 else 6 if choice else 7
             assert m.advance() == expected, (window, reveal, choice, timer)
             assert m.request == 1 and m.page_clears == (reveal == 2)
             assert m.notifications == (reveal == 3)
@@ -115,9 +115,9 @@ def main():
         # End flag retains its native state-9 route.
         m.prepare(); m.write(m.meta + 0xac, 1, 1)
         assert m.advance() == 9
-        # No hurry across revealing text, embedded pauses, authored wait,
+        # No hurry across revealing text, transient parser state, authored wait,
         # choice opening/active/closing, unknown message states, or ownership loss.
-        cases = ([dict(reveal=r) for r in (0, 1, 4, 5)] +
+        cases = ([dict(reveal=r) for r in (0, 1, 5)] +
                  [dict(timer=t) for t in (-2, 1, 2, 60)] +
                  [dict(choice_phase=p) for p in (1, 2, 3)] +
                  [dict(message_phase=p) for p in (3, 4, 0xffffffff)] +
@@ -149,6 +149,32 @@ def main():
         # Native idle/automatic pages continue to advance without Y.
         m.prepare(buttons=0, message_phase=0)
         assert m.advance() == 7 and m.request == 0
+
+        # The Sunday turnip price line SP_rcm_00_common/082 contains <10:4>.
+        # Execute its native input-pause handler, then Advance and the real
+        # Print entry/resume branch. No new press, page clear or end/choice
+        # notification is needed, even with a choice queued after the text.
+        for choice in (False, True):
+            m.prepare(reveal=1, choice=choice)
+            m.u.reg_write(UC_ARM64_REG_X0, m.obj)
+            m.execute(0x1afe49c, (0x1afe4a4,))
+            assert m.read(m.obj + 0x21ac, 4) == 4
+            assert m.advance() == 3 and m.request == 1
+            assert m.page_clears == m.notifications == 0
+            assert m.read(m.obj + 0x21ac, 4) == 4
+            assert m.read(m.controller + 8, 2) == 0x10
+            m.u.reg_write(UC_ARM64_REG_X0, m.meta)
+            m.u.reg_write(UC_ARM64_REG_SP, m.stack + 0x3000)
+            m.execute(0x1af9f74, (0x1afb60c,))
+            assert m.read(m.obj + 0x21ac, 4) == 1
+            assert m.read(m.controller + 8, 2) == 0x10
+            result, _ = m.run((1, 0, 0, 0, 0, 1, 1, -1.), 0)
+            assert result[0x21b7] == 5
+            count += 1
+        for buttons, choice_phase in ((0, 0), (0x10, 1), (0x10, 2), (0x10, 3)):
+            m.prepare(buttons=buttons, reveal=4, choice_phase=choice_phase)
+            assert m.advance() == 5 and m.request == 0
+            count += 1
 
         # Real reveal/renderer instructions consume the hurry tier. Release
         # Y returns to the configured tier on the very next print update.

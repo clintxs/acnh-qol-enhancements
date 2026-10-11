@@ -417,3 +417,30 @@ bit does not activate hurry, including B/R combinations. Diagnostic checks
 expect buttons=0010 y=1, and still verify bounded logs with debug disabled.
 These checks verify the observed state sequence against compiled hooks and
 native advance instructions; Eden sound/emote/render validation is pending.
+
+
+## 0.4.11 held Y across explicit mid-message input pauses
+
+Live 0.4.10 confirmation: hurry works, except the Sunday turnip-price line
+requires releasing and pressing Y again. The local eventflow identifies
+Rcm_Common_TurnipChk -> TalkSNpc/rcm/SP_rcm_00_common:082:
+"On Sundays we take a little break from buying turnips.<10:4> Please check
+back in with us tomorrow." The native input-pause handler at 01AFE49C writes
+reveal state 4. Print detects 4 at 01AFA1D4 and enters its normal wait/advance
+sequence. The old hurry guard deliberately rejected reveal 4.
+
+Allow reveal 4 at the existing Advance hook, keeping owner/context/window,
+choice-controller, timer and message-controller checks. Native 01AFA790..7E0
+resumes Print=3 and only clears a page for reveal 2; it does not finish the
+message or open its queued choice for reveal 4. Native Print entry 01AF9F74
+calls 01AFB490; its 01AFB4E0..4F4 branch changes reveal 4 to revealing=1,
+retaining the current text. No direct reveal-state mutation or repeated
+controller press is introduced by the hook. Timed waits continue naturally.
+
+ARM checks execute the native pause handler, compiled hurry adapter, native
+Advance and Print entry/resume branch at both bases, with and without a
+queued choice. Continuous Y remains held throughout and selects the 30x tier
+after resume. Additional checks cover release and active choice rejection
+while paused, plus existing page/end/native-input/protection regressions.
+Live confirmation of this fix remains pending; no new log was required to
+identify the explicit pause in the supplied example.

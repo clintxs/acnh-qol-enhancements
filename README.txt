@@ -1,4 +1,4 @@
-QoL Enhancements 0.4.10 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.4.11 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -18,6 +18,9 @@ Core uses subsdk6, leaving subsdk9 available for Jubbsticks Additions.
 This avoids that executable-slot collision; compatibility with its eventual
 ACNH v3 release still needs testing. Other mods must also avoid subsdk6 and
 our hook/layout files. Core supplies the suite's only main.npdm.
+
+0.4.11: Held Y also resumes explicit input pauses within a message, such as
+the Sunday turnip-price dialogue, without needing a fresh button press.
 
 0.4.10: Fix Y-to-Hurry input detection and allow completed NPC pages waiting
 for input to advance. Choice menus retain their separate protection.
@@ -225,7 +228,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.4.10
+  version = 0.4.11
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.
@@ -250,7 +253,7 @@ CRAFTING MODULE / SETTINGS (0.3.63)
 Install Core plus “QoL Enhancements - Crafting”. This replaces the former
 “QoL Enhancements - Faster Crafting” folder; remove that old folder when updating.
 Move any personal faster-crafting.custom.ini preferences to crafting.custom.ini.
-Remove old version overrides in that custom file, or update them to 0.4.10.
+Remove old version overrides in that custom file, or update them to 0.4.11.
 Old faster-crafting.ini/custom paths are no longer read.
 DIY app previews are now optional Crafting behavior, not always-on Core behavior.
 
@@ -258,7 +261,7 @@ Regular settings: romfs/qol-enhancements/config/crafting.ini
 Personal overlay: romfs/qol-enhancements/config/crafting.custom.ini
 Defaults in the regular file:
   enabled = true
-  version = 0.4.10
+  version = 0.4.11
   diy_app_preview = true
   workbench_preview_tilt = true
   crafting_quantity_wrap = true
@@ -311,7 +314,7 @@ text and automatic completed-page advancement. Choices open normally; Y never
 selects an answer. Release Y to stop; keep holding after making a choice to
 hurry the next message. Fish/bug catch bubbles are included. No INI key needed.
 Your normal base/boost/category preferences resume when Y is released.
-Native scripted waits, text protection and explicit speed overrides remain.
+Native timed waits, text protection and explicit speed overrides remain.
 Animations are unchanged. New catches and important/renovation announcements
 are NOT detected yet and will also be hurried. Live Eden testing is required.
 
