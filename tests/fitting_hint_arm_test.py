@@ -97,6 +97,11 @@ class HintMachine(Machine):
             self.write(msg+offset,self.safe);self.write(msg+offset+8,msg+offset+20);self.write(msg+offset+16,64,4)
         self.write(bank,self.safe);self.write(bank+8,bank+0x20);self.u.mem_write(bank+0x20,b'LayoutMsg\0')
         self.write(token,self.safe);self.write(token+8,token+0x20);self.u.mem_write(token+0x20,key+b'\0')
+        if key in (b'qol_pockets.drop_release',b'qol_pockets.hold_wear'):
+            regs=self.ram+0x44000
+            self.write(regs+16,bank);self.write(regs+24,token)
+            self.invoke(self.module.find('ResolveStorageHintCaption','Callback'),regs)
+            assert self.read(regs+16)==bank and self.read(regs+24)==token # Explicit INI override.
         self.write(binding+0x48,adapter);self.write(adapter+8,binding+0x900);self.write(adapter+0x18,methods)
         # Run REAL 03c7dd80: native notification must enqueue the dependent
         # binding used for background sizing. Only virtual engine calls are

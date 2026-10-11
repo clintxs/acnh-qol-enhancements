@@ -39,8 +39,9 @@ constexpr char EquipHintKey[] = "qol_pockets.hold_wear";
 const char16_t *PocketHintText(const char *key) {
     const bool drop = std::strcmp(key, DropHintKey) == 0;
     if (!drop && std::strcmp(key, EquipHintKey) != 0) return nullptr;
-    const auto *caption = PocketMessage(key);
-    return caption ? caption : drop ? u"Drop / Release" : u"Equip / Unequip";
+    // Optional user overrides use the custom text publication path. Otherwise
+    // ResolveStorageHintCaption selects the game's localized menu caption.
+    return PocketMessage(key);
 }
 
 template <typename T> T &Field(void *object, std::size_t offset) {
@@ -68,7 +69,7 @@ static_assert(offsetof(HintDescription, key) == 0x24);
 static_assert(offsetof(HintDescription, player) == 0x68);
 static_assert(offsetof(HintDescription, alternateButton) == 0x74);
 static_assert(sizeof(HintDescription) == 0x80);
-SafeString StorageBank, StorageCaption, WithdrawalCaption;
+SafeString StorageBank, StorageCaption, WithdrawalCaption, DropCaption, HoldCaption;
 
 HOOK_DEFINE_INLINE(RenameStorageSelectHint) {
     static void Callback(exl::hook::InlineCtx *registers) {
@@ -182,9 +183,15 @@ HOOK_DEFINE_INLINE(ResolveStorageHintCaption) {
         } else if (key && key->text && std::strcmp(key->text, WithdrawalHintKey) == 0) {
             registers->X[2] = reinterpret_cast<std::uintptr_t>(&StorageBank);
             registers->X[3] = reinterpret_cast<std::uintptr_t>(&WithdrawalCaption);
+        } else if (key && key->text &&
+                   (std::strcmp(key->text, DropHintKey) == 0 ||
+                    std::strcmp(key->text, EquipHintKey) == 0) && !PocketMessage(key->text)) {
+            registers->X[2] = reinterpret_cast<std::uintptr_t>(&StorageBank);
+            registers->X[3] = reinterpret_cast<std::uintptr_t>(
+                std::strcmp(key->text, DropHintKey) == 0 ? &DropCaption : &HoldCaption);
         }
-        // The displaced native call now loads CmnSubWin/0121 or /0202 in the active
-        // language. No LayoutMsg replacement, numeric-ID allocation or I/O.
+        // Native labels resolve from CmnSubWin in the active language. Explicit
+        // INI overrides keep their private token for the shared text provider.
     }
 };
 } // namespace
@@ -217,6 +224,8 @@ bool InstallStorageHint() {
     StorageBank = {vtable, "CmnSubWin"};
     StorageCaption = {vtable, "0121"};
     WithdrawalCaption = {vtable, "0202"};
+    DropCaption = {vtable, "0110"};
+    HoldCaption = {vtable, "0108"};
     if (!qol::core::RegisterHintText(PocketHintText)) return false;
     ResolveStorageHintCaption::InstallAtOffset(address::ResolveFooterCaptionCall);
     BuildPocketStorageHint::InstallAtOffset(address::BuildPocketFooter);

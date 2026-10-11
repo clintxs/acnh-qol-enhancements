@@ -1,4 +1,13 @@
-# Unified QoL validation — 0.4.3 hint sizing and ZR unequip
+# Unified QoL validation — 0.4.4 short Pockets hints
+
+## 0.4.4 Short hint captions
+
+User confirmed 0.4.3 fixed sizing and unequip. Use native CmnSubWin/0110 (Drop
+Item) and /0108 (Hold), with their existing translations, leaving all action
+selection and input behavior unchanged. Remove shipped custom overrides but
+retain the private INI keys for optional user wording. The footer resolver
+leaves an explicitly overridden token for the shared custom-text provider;
+otherwise it substitutes the native bank/key. No LayoutMsg replacement.
 
 ## 0.4.3 Native text-change publication and Put Away
 

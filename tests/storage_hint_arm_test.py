@@ -111,19 +111,23 @@ for base in (0x80000000, 0x1234500000):
     # the actual inline callback. Native/unknown labels must be untouched.
     bank, key, regs, source = [h.ram + o for o in (0x30000, 0x30100, 0x31000, 0x32000)]
     for name, text in (('StorageBank', b'CmnSubWin'), ('StorageCaption', b'0121'),
-                       ('WithdrawalCaption', b'0202')):
+                       ('WithdrawalCaption', b'0202'), ('DropCaption', b'0110'), ('HoldCaption', b'0108')):
         target = h.mod + symbol(name)
         h.write(target, base + u64(raw, 0x4ab2020) + 16)
         h.write(target + 8, source)
         h.u.mem_write(source, text + b'\0'); source += 0x100
     h.write(key + 8, source)
-    for text in (KEY, WITHDRAWAL_KEY, b'1101', b'1102', b'1201', KEY + b'_other', b''):
+    h.write(h.mod + symbol('CatalogAttempted'), 1, 1) # Empty catalog: native-language fallback.
+    h.stubs[base + 0x37cefc4] = lambda: 1
+    native_keys = {KEY:b'0121', WITHDRAWAL_KEY:b'0202',
+                   b'qol_pockets.drop_release':b'0110', b'qol_pockets.hold_wear':b'0108'}
+    for text in (*native_keys, b'1101', b'1102', b'1201', KEY + b'_other', b''):
         h.u.mem_write(source, text + b'\0')
         h.write(regs + 16, bank); h.write(regs + 24, key)
         h.put(0, regs); h.run(h.callback('ResolveStorageHintCaption'))
-        if text in (KEY, WITHDRAWAL_KEY):
+        if text in native_keys:
             assert cstr(h.read(h.read(regs + 16) + 8)) == b'CmnSubWin'
-            assert cstr(h.read(h.read(regs + 24) + 8)) == (b'0121' if text == KEY else b'0202')
+            assert cstr(h.read(h.read(regs + 24) + 8)) == native_keys[text]
         else:
             assert h.read(regs + 16) == bank and h.read(regs + 24) == key
         cases += 1
