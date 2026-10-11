@@ -33,7 +33,9 @@ constexpr std::size_t EntityResourceName = 0x3e8;
 constexpr std::size_t IsNpcType = 0x20;
 constexpr unsigned NpcEntity = 10, PlayerEntity = 0x4f, DialogWindow = 1, BalloonWindow = 2;
 constexpr std::uint16_t BoostButtons = 0x4002; // B/R; L is deliberately excluded.
-constexpr std::uint16_t HurryButton = 0x8; // Y, sampled without changing controller memory.
+// This is the game's controller format, not the platform HID bit layout.
+// Live SP_tkk/082 traces identify held Y as 0010 at controller+8.
+constexpr std::uint16_t HurryButton = 0x10;
 } // namespace layout
 Settings Preferences{};
 constexpr unsigned HurryFlag = 5, HurrySpeed = 30;
@@ -107,7 +109,11 @@ const char *AdvanceHurryBlock(std::uintptr_t manager, std::uintptr_t text) {
     const auto message = Read<std::uintptr_t>(context, layout::MessageController);
     if (!message) return "missing-message";
     const auto phase = Read<unsigned>(message, layout::ControllerState);
-    return phase == 0 || phase == 2 ? nullptr : "message-transition";
+    // The message wrapper does not share the choice controller's animation
+    // states: live NPC pages wait for input in phase 1. Allow that state in
+    // addition to the existing 0/2 paths; the separate choice guard still
+    // blocks opening, active and closing menus.
+    return phase <= 2 ? nullptr : "message-transition";
 }
 bool CopyMessageId(std::uintptr_t manager, std::size_t field, char *output) {
     output[0] = 0;

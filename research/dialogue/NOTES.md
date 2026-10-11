@@ -392,3 +392,28 @@ collecting logs; no claimed fix or version bump accompanies this instrumented
 0.4.7 build. Tests exercise blocked gates with shipping debug defaults off,
 protected input, press/release/fallback, native hurry behavior, budget isolation
 and long identifiers at two ASLR bases.
+
+
+## 0.4.10 live hurry input and waiting-page corrections
+
+The Oct 11 synced Eden log (Core 0.4.9, hurry-v1 diagnostic) captures SP_tkk/082.
+At Print=3, raw controller+8 is 0010 while the user holds Y, but the old
+mask 0008 reports y=0. Context phase moves from 1 to ready=2 during reveal.
+At Advance=5, completed reveal=3, context=2, choice=0, timer=-1 and matching
+owners, message-wrapper state 1 is rejected by the old message-transition
+guard. It remains 1 while waiting with raw 0000, 0010 and 0001, then becomes
+0 on manual advance. These are two independent blockers.
+
+Use native held bit 0010, not platform HID's Y bit. Accept message-wrapper
+state 1 alongside existing 0/2 paths; do not infer the message wrapper's
+meaning from the separate choice controller's opening/active/closing states.
+All ownership/context/window/text/timer/protection checks and the choice
+controller's idle-only guard remain. Unknown message states above 2 reject.
+
+ARM fixtures now default to live message state 1 and raw Y=0010. They replay
+both Print context phases, held/released completed pages, and native choice
+handoff. They also retain state-2 coverage and explicitly verify the old 0008
+bit does not activate hurry, including B/R combinations. Diagnostic checks
+expect buttons=0010 y=1, and still verify bounded logs with debug disabled.
+These checks verify the observed state sequence against compiled hooks and
+native advance instructions; Eden sound/emote/render validation is pending.

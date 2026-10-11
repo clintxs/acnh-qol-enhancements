@@ -18,8 +18,8 @@ class HurryMachine(DialogueMachine):
         self.check_adapter = False
         self.prepare()
 
-    def prepare(self, buttons=8, state=5, reveal=3, choice=False, timer=-1,
-                choice_phase=0, message_phase=2, window=0, context_phase=2):
+    def prepare(self, buttons=0x10, state=5, reveal=3, choice=False, timer=-1,
+                choice_phase=0, message_phase=1, window=0, context_phase=2):
         self.u.mem_write(self.meta, bytes(0x2700))
         self.u.mem_write(self.obj, bytes(0x3000))
         self.write(self.meta, self.meta)
@@ -102,8 +102,8 @@ def main():
     count = 0
     for base in (0x7100000000, 0x7200000000):
         m, native = HurryMachine(base), HurryMachine(base, enabled=False)
-        for window, reveal, choice, timer in itertools.product(range(3), (2, 3), (False, True), (-1, 0)):
-            m.prepare(window=window, reveal=reveal, choice=choice, timer=timer)
+        for window, reveal, choice, timer, message_phase in itertools.product(range(3), (2, 3), (False, True), (-1, 0), (1, 2)):
+            m.prepare(window=window, reveal=reveal, choice=choice, timer=timer, message_phase=message_phase)
             expected = 3 if reveal == 2 else 6 if choice else 7
             assert m.advance() == expected, (window, reveal, choice, timer)
             assert m.request == 1 and m.page_clears == (reveal == 2)
@@ -116,11 +116,11 @@ def main():
         m.prepare(); m.write(m.meta + 0xac, 1, 1)
         assert m.advance() == 9
         # No hurry across revealing text, embedded pauses, authored wait,
-        # choice opening/active/closing, UI opening/closing, or ownership loss.
+        # choice opening/active/closing, unknown message states, or ownership loss.
         cases = ([dict(reveal=r) for r in (0, 1, 4, 5)] +
                  [dict(timer=t) for t in (-2, 1, 2, 60)] +
                  [dict(choice_phase=p) for p in (1, 2, 3)] +
-                 [dict(message_phase=p) for p in (1, 3)] +
+                 [dict(message_phase=p) for p in (3, 4, 0xffffffff)] +
                  [dict(state=s) for s in (0, 3, 4, 6, 7, 9)] +
                  [dict(window=3), dict(context_phase=1)])
         for args in cases:
@@ -132,11 +132,11 @@ def main():
             m.prepare(); m.write(m.obj + field, value)
             assert m.advance() == 5 and m.request == 0
         for getter_null, fallback_null in ((False, False), (True, False), (True, True)):
-            for buttons in (0, 1, 2, 8, 0x4000, 0x4008, 0xffff, 0):
+            for buttons in (0, 1, 2, 8, 0x10, 0x4000, 0x4008, 0x4010, 0xffff, 0):
                 m.prepare(buttons=buttons)
                 m.getter_null = getter_null
                 m.write(m.app + 0xf5b20, 0 if fallback_null else m.controller)
-                hurry = bool(buttons & 8) and not (getter_null and fallback_null)
+                hurry = bool(buttons & 0x10) and not (getter_null and fallback_null)
                 assert m.advance() == (7 if hurry else 5)
                 assert m.request == int(hurry)
                 count += 1
@@ -152,7 +152,7 @@ def main():
 
         # Real reveal/renderer instructions consume the hurry tier. Release
         # Y returns to the configured tier on the very next print update.
-        for buttons, held, flag in ((8, 0, 5), (0, 0, 1), (0x4008, 1, 5), (2, 1, 3), (0, 0, 1)):
+        for buttons, held, flag in ((0x10, 0, 5), (0, 0, 1), (8, 0, 1), (0x4010, 1, 5), (2, 1, 3), (0, 0, 1)):
             m.prepare(buttons=buttons, state=3)
             result, calls = m.run((1, 0, 0, 0, 0, 1, 1, -1.), held)
             assert result[0x21b7] == flag and not calls
@@ -162,6 +162,22 @@ def main():
                 m.renderer(flag, override, 2.4, .5, complete)
             result, calls = m.run((1, 0, 0, 0, 0, 0, 0, -1.), held)
             assert result[0x168d] == result[0x1cfd] == flag and calls == [0x1488]
+            count += 1
+        # Replay live SP_tkk/082 fields from the Oct 11 Eden log. The initial
+        # context phase 1 becomes ready=2 while revealing; the completed page
+        # then waits in message phase 1. Release must leave that page waiting.
+        for phase, expected_flag in ((1, 1), (2, 5)):
+            m.prepare(state=3, reveal=1, context_phase=phase, message_phase=0)
+            result, _ = m.run((1, 0, 0, 0, 0, 1, 1, -1.), 0)
+            assert result[0x21b7] == expected_flag
+            count += 1
+        for buttons, choice, expected in ((0, False, 5), (0x10, False, 7), (0x10, True, 6)):
+            m.prepare(buttons=buttons, choice=choice)
+            m.u.mem_write(m.ram + 0x6d000, b'SP_tkk\0')
+            m.write(m.meta + 0x24f8, m.ram + 0x6d100)
+            m.u.mem_write(m.ram + 0x6d100, b'082\0')
+            assert m.advance() == expected and m.request == int(bool(buttons))
+            if choice: assert m.advance() == 6 and m.request == 0
             count += 1
         for state, mode, forced, disabled, override in itertools.product(
                 (0, 1, 2, 3, 4, 5), range(3), (0, 1), (0, 1), (-1., 0., .75)):

@@ -30,8 +30,8 @@ def diagnostic_files():
             'report input, speed and advance stages, raw held buttons, Y,\n'
             'ownership, native states and the exact rejecting guard. They log\n'
             'even with log_debug=false. Startup/unheld messages have a separate\n'
-            'budget from held Y. This diagnostic retains the 0.4.7 behavior;\n'
-            'it does not remove menu protection or claim to fix the failure.\n\n'
+            'budget from held Y. Includes the corrected Y bit and waiting-page\n'
+            'guard from 0.4.10, retaining choice-menu protection.\n\n'
             f'Restore the normal {package.release_version()} Core after collecting the log.\n'
             'Built with Exlaunch (GPL-2.0); see LICENSE and matching source ZIP.\n'
         ).encode(),

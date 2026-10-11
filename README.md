@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.4.9 release test build** for ACNH **3.0.3 on Eden**. One Core
+**0.4.10 release test build** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -79,14 +79,14 @@ ready. It never sends a synthetic A press or confirms a choice.
 Install **QoL Enhancements - Crafting** with Core. This replaces the former
 Faster Crafting package; remove the old folder and rename personal
 `faster-crafting.custom.ini` preferences to `crafting.custom.ini`. Remove any old
-`version` override from that personal file (or update it to 0.4.9). The retired
+`version` override from that personal file (or update it to 0.4.10). The retired
 regular/custom paths are no longer read. Core alone no longer enables DIY previews.
 
 `romfs/qol-enhancements/config/crafting.ini` supplies these defaults:
 
 ```ini
 enabled = true
-version = 0.4.9
+version = 0.4.10
 diy_app_preview = true
 workbench_preview_tilt = true
 crafting_quantity_wrap = true
@@ -313,7 +313,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.4.9
+version = 0.4.10
 base_speed = 2
 boost_speed = 4
 faster_ui = true
@@ -351,7 +351,10 @@ hurry those messages too. New/important-line exceptions and eventflow analysis
 are deferred. Live Eden validation of text, sound, emotes and choice handoff is
 still needed.
 
-The first live NPC test of 0.4.7 reported no Y effect. To investigate, build
+The first live NPC test of 0.4.7 reported no Y effect. The synced diagnostic
+identified the game's Y bit as `0x0010` and a completed NPC page waiting in
+message-wrapper state 1. Version 0.4.10 corrects both assumptions; choices
+retain their separate opening/active/closing guard. To investigate further, build
 `sh tools/build.sh --hurry-diagnostic` and package with
 `python3 tools/package_hurry_diagnostic.py`. This separate **hurry-diagnostic1**
 archive contains Core executables only, preserving settings and resources.
@@ -364,8 +367,7 @@ input, each rejecting guard, ownership, context/reveal/choice/message states,
 and the selected flag or advance request. They deliberately log even with
 `log_debug=false`; no INI edits are needed. Input-stage evidence appears before
 native protection gates. Held and unheld logs have separate budgets so startup
-messages cannot exhaust Y evidence. This preserves 0.4.7 behavior while its
-live blocking condition is unknown. Restore normal Core after collecting logs.
+messages cannot exhaust Y evidence. This includes the 0.4.10 input and waiting-page fixes. Restore normal Core after collecting logs.
 Diagnostic checks: `PYTHONPATH='../Grab 5/working/python:tests' python3 tests/dialogue_hurry_diagnostic_arm_test.py`.
 
 All five preferences below work in either Faster Dialogue INI. Personal
@@ -489,9 +491,9 @@ at `../vanilla-3.0.3/Layout`; builders verify their hashes and archive structure
 The package script checks that every INI matches the Core release, refuses to
 replace existing archives, and creates:
 
-- `dist/qol-enhancements-v0_4_9_for_acnh_v3_0_3.zip`
-- `dist/qol-enhancements-v0_4_9_for_acnh_v3_0_3_source.zip`
-- `dist/qol-enhancements-v0_4_9_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
+- `dist/qol-enhancements-v0_4_10_for_acnh_v3_0_3.zip`
+- `dist/qol-enhancements-v0_4_10_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v0_4_10_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
 
 The binary ZIP contains a conspicuous installation text file, README, Core and
 six independently selectable feature folders, plus a SHA-256 manifest. Source

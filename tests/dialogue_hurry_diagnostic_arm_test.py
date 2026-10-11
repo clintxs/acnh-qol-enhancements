@@ -20,33 +20,33 @@ for base in (0x7100000000, 0x7200000000):
         m.prepare(**({'state': 3} | args))
         result, _ = m.run((1, 0, 0, 0, 0, 1, 1, -1.), 0)
         row = lines(m, 'speed')[-1]
-        assert f'gate={gate} ' in row and 'buttons=0008 y=1 controller=1' in row, row
+        assert f'gate={gate} ' in row and 'buttons=0010 y=1 controller=1' in row, row
         assert result[0x21b7] != 5
     for args, gate in ((dict(state=3), 'manager-state'),
                        (dict(context_phase=1), 'context-phase'),
                        (dict(choice_phase=1), 'choice-active'),
                        (dict(reveal=1), 'text-not-ready'),
                        (dict(timer=60), 'scripted-timer'),
-                       (dict(message_phase=1), 'message-transition')):
+                       (dict(message_phase=3), 'message-transition')):
         m.prepare(**args); m.advance()
         row = lines(m, 'advance')[-1]
         assert f'gate={gate} ' in row and 'y=1' in row and 'result=0' in row, row
     # Input logs run before the native reveal gates, including protected text.
     m.prepare(state=3)
     m.write(m.obj + 0x21b5, 1, 1); m.write(m.obj + 0x21b6, 1, 1)
-    m.input(8)
+    m.input(0x10)
     row = lines(m, 'input')[-1]
-    assert 'buttons=0008 y=1' in row and 'forced=1 disabled=1' in row, row
+    assert 'buttons=0010 y=1' in row and 'forced=1 disabled=1' in row, row
     assert m.read(m.obj + 0x21b4, 1) == 0 # Native B/R input byte unchanged by Y.
     m.input(0)
     assert 'buttons=0000 y=0' in lines(m, 'input')[-1]
     for getter_null, fallback_null, present in ((True, False, 1), (True, True, 0)):
-        m.input(8, getter_null=getter_null, fallback_null=fallback_null)
+        m.input(0x10, getter_null=getter_null, fallback_null=fallback_null)
         row = lines(m, 'input')[-1]
         assert f'controller={present} ' in row and f'y={present} ' in row, row
     m.prepare()
     assert m.advance() == 7
-    assert 'gate=ready buttons=0008 y=1' in lines(m, 'advance')[-1]
+    assert 'gate=ready buttons=0010 y=1' in lines(m, 'advance')[-1]
     assert 'result=1' in lines(m, 'advance')[-1]
 
     # Duplicate frames are quiet, and an exhausted unheld budget cannot hide Y.
@@ -70,6 +70,6 @@ for base in (0x7100000000, 0x7200000000):
     long.write(long.meta + 0x24f8, long.ram + 0x6d100)
     long.u.mem_write(long.ram + 0x6d000, b'A' * 63 + b'\0')
     long.u.mem_write(long.ram + 0x6d100, b'B' * 63 + b'\0')
-    long.input(8)
+    long.input(0x10)
     assert re.search(r'bank=A{63} label=B{63}\n', long.text), long.text
     print(f'PASS {base:#x}: live Y evidence before rejected/protected gates; no INI edit, bounded held/unheld logs and intact long IDs')
