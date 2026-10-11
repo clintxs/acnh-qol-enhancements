@@ -1,0 +1,59 @@
+ACNH 3.0.3: placed ladder automatic climbing, prototype 1 (2026-10-11)
+
+User confirmed silent auto equip prototype 2 working. New request extends
+walking-against-cliff traversal to placed ladders, vines and ladder variants.
+Enabled with auto_ladder; no new setting or inventory dependency.
+
+Native path
+022D9BD8(player, flags) is the native placed-object ladder search. It rejects
+player+178, searches the current/ahead tiles and a diagonal candidate, decodes
+object categories 0x21/0x22 via 0113DB50, reads placement direction, checks the
+player's facing and copies native object coordinates using 015E49E4.
+Calls shared 0239630C with request+11=0 (non-handheld). Native preparation
+02396FB8 chooses action 0x110 rather than handheld 0x8A. No synthetic A,
+inventory request, tool swap, player transform write or guessed item-ID list.
+Which category represents vines versus each ladder variant remains unverified;
+coverage is inherited from the native manual-climb search, not an item whitelist.
+
+flags=1 uses the existing shared valid-landing observer at 02396BFC. Both
+native success AND this witness are required, avoiding DisableLadder dialogue
+as a false positive. Commit reruns the native search with flags=0, retaining
+reservation, obstruction, terrain/height, orientation and occupancy checks.
+
+Scheduling
+Unchanged ordinary hops run first. Only eligible straight automatic-hop intent
+can reach the extension. Existing ladder wall-contact retry is also enabled
+without a handheld ladder, allowing placed climbs with empty hands. Native
+strong-stick, low speed, contact facing/input alignment and delay still apply.
+Placed search precedes handheld probing/borrowing. A mod-only discriminator
+0x100 transfers one stable-phase proof to the movement timer check; it is never
+passed to inventory or equipment code. Exact bank, player/handle and held-tool
+identity must still match. No placed search occurs at transient movement position.
+Each stable phase validates again. Failure falls through to existing handheld
+selection. Native commit refusal returns failure. No equipment transaction is
+created for a placed climb; the normal native climb controls equipment itself.
+
+Compatibility
+Three extra fingerprints protect 022D9BD8, 0113DB50 and 015E49E4. Failure disables
+only placed climbing, preserving confirmed handheld pole/ladder paths. Existing
+ladder/shared geometry and observer fingerprints remain required. No new hook
+sites; auto_ladder=false preserves prior behavior. Diagnostic startup marker:
+auto placed ladder: READY; prototype 1; native object search.
+
+Validation and limits
+Compiled policy tests exercise real native hop guards/timer, one-use proof,
+all cardinal facing directions, empty hands/other tools, no inventory, priority,
+release/contact/facing/bank changes, failed probes/commits and fingerprints.
+A fixture executes the actual native diagonal placed-object selection for both
+categories and four odd placement directions, inspecting non-handheld mode,
+check-only propagation and object-coordinate bytes. Object resources/terrain and
+shared climb execution remain modeled. Live uphill/downhill collision, vines,
+ladder variants, held-tool behavior and multiplayer still need confirmation.
+
+The widened wall retry is explicitly climb-only: if placed recognition fails,
+it cannot authorize a pole probe/commit through a newly admitted solid wall.
+This restriction is covered by the inherited other-tool wall regression.
+
+Follow-up decompilation confirms 015E4D80 accepts category 0x22 and 015E4E3C
+accepts 0x21, after native resource availability checks. Other placed objects
+cannot enter the world-ladder search merely by being furniture near a cliff.

@@ -120,7 +120,10 @@ settings default to true. All Controls settings work in `controls.ini` and
 push firmly into a climbable cliff face or edge. After the native hop hold delay,
 the game requests its normal ladder action. This uses native climb validation
 and retains ordinary hop priority. Ladder prototype 2 was confirmed working
-uphill and downhill. It is independent of auto vault.
+uphill and downhill. It also enables automatic climbing of placed ladders and
+vines through the native world-object search, without needing a pocket ladder
+or auto equipping. Placed-object climbing is a new prototype awaiting live
+confirmation. It is independent of auto vault.
 
 `auto_vault = true` enables the equipped-pole prototype. Hold a vaulting pole
 and push firmly toward a valid crossing; after the native hop delay, Controls
@@ -137,8 +140,8 @@ It preserves facing while swapping. After the crossing, it restores the previous
 held tool, or puts the borrowed tool away if your hands were empty. Ordinary
 hops keep priority. Releasing/turning away while equipping restores the previous
 tool; manually choosing another tool cancels restoration. Restoration waits
-for a confirmed traversal action to finish, including when its start is queued. This prototype is
-unverified in-game and defaults to false. It requires `auto_vault` and/or
+for a confirmed traversal action to finish, including when its start is queued. Silent auto equip prototype 2 was
+confirmed working in-game and defaults to false. It requires `auto_vault` and/or
 `auto_ladder`; tools must be in your pockets.
 
 Set `hold_to_advance_dialogue = false` to disable dialogue hurry while keeping

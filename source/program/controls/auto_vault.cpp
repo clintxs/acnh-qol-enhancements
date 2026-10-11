@@ -17,6 +17,8 @@ constexpr std::uintptr_t ContactNormals = 0x015f3040;
 constexpr std::uintptr_t HopGeometry = 0x0230c470;
 constexpr std::uintptr_t HopEntry = 0x0230b8d0, HopDirection = 0x0230bf18;
 constexpr std::uintptr_t TryLadder = 0x02396154, LadderGeometry = 0x0239630c;
+constexpr std::uintptr_t TryPlacedLadder = 0x022d9bd8;
+constexpr std::uintptr_t PlacedObjectKind = 0x0113db50, PlacedObjectCoordinates = 0x015e49e4;
 constexpr std::uintptr_t ValidLadderLanding = 0x02396bfc;
 constexpr std::uintptr_t TryVault = 0x0239a340, PrepareVault = 0x0239aff4;
 constexpr std::uintptr_t EquippedToolKind = 0x015f5c40, PlayerParameters = 0x0241e98c;
@@ -36,7 +38,9 @@ constexpr std::size_t Resident = 0x1ee8, PlayerHandle = 0x230;
 constexpr std::size_t ParameterValueMethod = 0xf0;
 }
 constexpr unsigned VaultingPoleKind = 0x28, LadderKind = 0x11;
-bool VaultEnabled{}, LadderEnabled{}, AutoEquipEnabled{};
+// Proof discriminator only; never passed to inventory or equipment functions.
+constexpr unsigned PlacedLadderTraversal = 0x100;
+bool VaultEnabled{}, LadderEnabled{}, AutoEquipEnabled{}, PlacedLadderEnabled{};
 constexpr unsigned NoCrossing = 0, CrossingReady = 1, Waiting = 2;
 std::uintptr_t Main{};
 template<class T> T Read(const void *object, std::size_t offset = 0) {
@@ -193,7 +197,7 @@ HopAttempt *CurrentAttempt{};
 
 // Native automatic hops ask for contact classes 4 then 6. Class 1 includes
 // solid wall contacts (flags 0x84 without the excluded 0x40 bit), which a cliff
-// face may use. Retry only a failed equipped-ladder attempt with class 7, after
+// face may use. Retry only a failed ladder-enabled attempt with class 7, after
 // the unchanged native search. Keep the native facing filter and outputs. The
 // caller's request fields remain intact; only native output fields are copied.
 struct ContactRequest {
@@ -325,11 +329,11 @@ HOOK_DEFINE_INLINE(AutoLadderLanding) {
             CurrentLadderProbe->valid = true;
     }
 };
-VaultProbe ProbeCurrentPositionLadder(void *player) {
+VaultProbe ProbeCurrentPositionLadder(void *player, bool placed = false) {
     LadderProbe probe{player};
     auto previous = CurrentLadderProbe;
     CurrentLadderProbe = &probe;
-    const auto result = Native<unsigned (*)(void *, unsigned)>(address::TryLadder)(player, 1);
+    const auto result = Native<unsigned (*)(void *, unsigned)>(placed ? address::TryPlacedLadder : address::TryLadder)(player, 1);
     CurrentLadderProbe = previous;
     VaultProbe check{player};
     check.nativeResult = result & 1;
@@ -505,7 +509,7 @@ HOOK_DEFINE_TRAMPOLINE(AutoVaultEntry) {
         auto hop = Orig(player, probe, automatic);
         CurrentAttempt = previous;
         if (hop == NoCrossing && !attempt.eligible && LadderEnabled &&
-            (AutoEquipEnabled || Native<unsigned (*)(void *)>(address::EquippedToolKind)(player) == LadderKind)) {
+            (PlacedLadderEnabled || AutoEquipEnabled || Native<unsigned (*)(void *)>(address::EquippedToolKind)(player) == LadderKind)) {
             attempt.includeWalls = true;
 #if CAS_AUTO_VAULT_DIAGNOSTIC
             attempt.geometry |= 32u; // Ladder-only wall-contact retry.
@@ -521,6 +525,29 @@ HOOK_DEFINE_TRAMPOLINE(AutoVaultEntry) {
             TraceEntry(player, probe, automatic, hop, attempt.geometry);
             return hop;
         }
+        // World ladders have their own native object search (including its
+        // orientation and placement metadata), followed by the shared climb
+        // validator. Prefer that path before borrowing a handheld ladder.
+        // As with tools, only the stable phase searches; movement consumes a
+        // one-use proof to advance the existing native hold timer.
+        if (PlacedLadderEnabled) {
+            VaultProbe placed{player};
+            if (probe & 1) {
+                placed.transferred = MatchesMovementStart(movementProof, player, PlacedLadderTraversal);
+            } else {
+                placed = ProbeCurrentPositionLadder(player, true);
+            }
+            if (placed.transferred || (placed.nativeResult && placed.landingValidated)) {
+                if (!HoldComplete(player)) {
+                    if (!(probe & 1)) RememberBank(player, PlacedLadderTraversal);
+                    return Waiting;
+                }
+                if (probe & 1) return CrossingReady;
+                const auto result = Native<unsigned (*)(void *, unsigned)>(address::TryPlacedLadder)(player, 0) & 1;
+                Logging.Debug("[QoL Enhancements/Controls] auto placed ladder: native result=%u\n", result);
+                return result;
+            }
+        }
         const auto heldKind = Native<unsigned (*)(void *)>(address::EquippedToolKind)(player);
         unsigned tool = heldKind;
         bool ladder = LadderEnabled && tool == LadderKind;
@@ -533,7 +560,7 @@ HOOK_DEFINE_TRAMPOLINE(AutoVaultEntry) {
                 (AutoEquipEnabled || tool == heldKind);
         } else {
             if (ladder) check = ProbeCurrentPositionLadder(player);
-            else if (VaultEnabled && tool == VaultingPoleKind) check = ProbeCurrentPositionVault(player);
+            else if (!attempt.includeWalls && VaultEnabled && tool == VaultingPoleKind) check = ProbeCurrentPositionVault(player);
             if (AutoEquipEnabled && !(check.nativeResult && check.landingValidated)) {
                 ladder = false;
                 tool = 0;
@@ -544,12 +571,15 @@ HOOK_DEFINE_TRAMPOLINE(AutoVaultEntry) {
                         if (check.nativeResult && check.landingValidated) { tool = LadderKind; ladder = true; }
                     }
                 }
-                if (!ladder && VaultEnabled && heldKind != VaultingPoleKind) {
+                if (!ladder && !attempt.includeWalls && VaultEnabled && heldKind != VaultingPoleKind) {
                     selection = FindTool(player, VaultingPoleKind);
                     if (selection.slot >= 0) { tool = VaultingPoleKind; check = ProbeCurrentPositionVault(player); }
                 }
             }
         }
+        // The wider wall-contact retry is for climbing only. A failed placed
+        // climb must not grant pole traversal eligibility through a solid wall.
+        if (attempt.includeWalls && !ladder) return hop;
         if (!(ladder || (VaultEnabled && tool == VaultingPoleKind))) return hop;
         auto traverse = Native<unsigned (*)(void *, unsigned)>(ladder ? address::TryLadder : address::TryVault);
         const unsigned valid = check.transferred || (check.nativeResult && check.landingValidated);
@@ -672,6 +702,21 @@ bool InstallAutoTraversal(bool vault, bool ladder, bool autoEquip) {
     VaultEnabled = enabled & 1;
     LadderEnabled = enabled & 2;
     Main = main.m_Text.m_Start;
+    // A changed world-object dependency disables only this extension. Keep
+    // the already confirmed handheld ladder and pole paths available.
+    constexpr Fingerprint placedFingerprints[]{
+        {address::TryPlacedLadder, {0xb9417808,0x34000068,0x120003e0,0xd65f03c0,0xd10483ff}},
+        {address::PlacedObjectKind, {0xa9be7bfd,0xf9000bf3,0x910003fd,0xb4000481,0xb9400028}},
+        {address::PlacedObjectCoordinates, {0xd10143ff,0xa9027bfd,0xa90357f6,0xa9044ff4,0x910083fd}},
+    };
+    PlacedLadderEnabled = LadderEnabled;
+    if (LadderEnabled) for (const auto &f : placedFingerprints) {
+        if (f.offset + sizeof(f.words) > main.m_Text.m_Size ||
+            std::memcmp(reinterpret_cast<const void *>(Main + f.offset), f.words, sizeof(f.words))) {
+            PlacedLadderEnabled = false;
+            Logging.Error("[QoL Enhancements/Controls] auto placed ladder: DISABLED; instruction mismatch at main+0x%lx\n", f.offset);
+        }
+    }
     constexpr Fingerprint swapFingerprints[]{
         {address::ActionEntered, {0xd10303ff,0x6d0523e9,0xa9067bfd,0xa9076ffc,0xa90867fa}},
         {address::ToolChangeEntry, {0xd101c3ff,0xa9037bfd,0xa9045ff8,0xa90557f6,0xa9064ff4}},
@@ -714,6 +759,7 @@ bool InstallAutoTraversal(bool vault, bool ladder, bool autoEquip) {
     AutoVaultGeometry::InstallAtOffset(address::HopGeometry);
     AutoVaultEntry::InstallAtOffset(address::HopEntry);
     if (LadderEnabled) Logging.Log("[QoL Enhancements/Controls] auto ladder: READY; prototype 2; equipped ladder; native hop timer\n");
+    if (PlacedLadderEnabled) Logging.Log("[QoL Enhancements/Controls] auto placed ladder: READY; prototype 1; native object search\n");
     if (VaultEnabled) Logging.Debug("[QoL Enhancements/Controls] auto vault: READY; prototype 3; equipped pole; native hop timer\n");
     if (AutoEquipEnabled) Logging.Log("[QoL Enhancements/Controls] auto equip: READY; prototype 2; pocket tool and restore\n");
     return enabled == requested && (!autoEquip || AutoEquipEnabled);

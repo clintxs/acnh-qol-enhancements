@@ -91,3 +91,5 @@ cases at two ASLR bases, including north/south/east/west, both tools,
 queued-state gaps and actual native silent/animated branch instructions.
 The full Controls and host suites pass. Live silent equip/model refresh,
 traversal/restoration timing and multiplayer still require in-game testing.
+
+2026-10-11 live follow-up: user confirmed silent auto equip prototype 2 working.

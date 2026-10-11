@@ -378,6 +378,9 @@ AUTO LADDER PROTOTYPE: Set auto_ladder=true, hold a ladder, and push firmly
 into a climbable cliff face or edge. After the native hop hold delay, the game
 requests its normal ladder action. Native climb checks and ordinary hop priority
 remain in place. Ladder prototype 2 was confirmed working uphill and downhill.
+It also enables automatic climbing of placed ladders and vines using the
+native world-object search; no pocket ladder or auto equipping is required.
+Placed-object climbing is a new prototype awaiting live confirmation.
 This setting is independent of auto_vault.
 
 AUTO VAULT PROTOTYPE: Set auto_vault=true, hold a vaulting pole, and push
@@ -395,7 +398,7 @@ Controls borrows it without the turn-to-camera animation, preserves facing,
 and restores the previous held tool after a confirmed traversal finishes
 or returns to empty hands. Releasing/turning away while equipping restores
 the previous tool. Manually choosing another tool cancels restoration.
-This new prototype is unverified in-game and defaults to false.
+Silent auto equip prototype 2 was confirmed working in-game. Off by default.
 
 Y TO HURRY PROTOTYPE: With Controls enabled and hold_to_advance_dialogue=true,
 hold Y for nominal 30x text and automatic completed-page advancement. Choices open normally; Y never

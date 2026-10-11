@@ -2584,3 +2584,30 @@ four facing directions, queued equip/traversal gaps, restoration/cancellation,
 previous-tool/empty-hands cases and twelve borrowing fingerprints at two bases.
 Silent animation/model timing remains unverified live. A separate prototype 2
 ZIP and matching source preserve prototype 1 and earlier releases.
+
+
+## Controls placed ladder prototype 1 (2026-10-11)
+
+The user confirmed silent auto equip prototype 2 working. auto_ladder now also
+tries the native placed-object climb path before handheld tool selection. It
+uses native object recognition/orientation and the shared climb validation,
+then starts the normal non-handheld action after the existing hop hold delay.
+No pocket ladder, auto equipping or additional hook is needed. The wider wall
+contact retry remains limited to climbs and cannot grant pole-vault eligibility.
+Three new fingerprints disable only the placed-object extension on conflict.
+
+Pinned diagnostic build and all 11 host suites pass. Controls checks pass:
+pole 268, handheld ladder 144, placed ladder 180, silent swap 130, pickup 181,
+dialogue 1,024, hurry 712 and catch 772, with ARM checks at two ASLR bases.
+The new suite executes the native hop guards/timer and real wall-contact
+classifier, checking empty hands/held tools, all cardinal facing directions,
+no-pocket/auto-equip-disabled operation, ordinary-hop priority, cancellation,
+validation witness, commit failure and isolated fingerprints. A separate
+fixture executes the actual native placed-object selection branch for both
+recognized categories and four odd placement directions, verifying native
+object coordinates, non-handheld mode and check-only flag propagation.
+
+World resources/terrain and full climb animations remain modeled. Live vines,
+ladder variants, uphill/downhill collision, held-tool behavior and multiplayer
+remain unverified. A separate diagnostic ZIP and matching source preserve
+all earlier prototypes. The module defaults remain false.

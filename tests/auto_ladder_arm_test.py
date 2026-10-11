@@ -9,6 +9,7 @@ from core_arm_test import Machine, DEFAULT, RAW
 from unicorn.arm64_const import *
 
 LADDER = 0x2396154
+PLACED_LADDER = 0x22d9bd8
 LANDING = 0x2396bfc
 CONFIG = DEFAULT + b'hold_to_hoover=false\nhold_to_advance_dialogue=false\nauto_vault=true\nauto_ladder=true\n'
 
@@ -23,6 +24,9 @@ class LadderMachine(VaultMachine):
         self.tool = 0x11
         self.ladder_calls = []
         self.ladder_valid = self.ladder_result = self.ladder_commit = True
+        self.placed_calls = []
+        self.placed_valid = self.placed_result = False
+        self.placed_commit = True
         self.inline_ctx = self.ram + 0x14000
         self.ladder_return = self.ram + 0xd080
         self.u.mem_write(self.inline_ctx, bytes([0x5a])*0x100)
@@ -55,21 +59,24 @@ class LadderMachine(VaultMachine):
                 u.reg_write(UC_ARM64_REG_X0, int(self.terrain_allowed))
                 u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
                 return
-        if hasattr(self, 'ladder_calls') and pc == self.base + LADDER:
+        if hasattr(self, 'ladder_calls') and pc in (self.base + LADDER, self.base + PLACED_LADDER):
             assert self.reg(0) == self.player and self.reg(1) in (0, 1)
             probe = self.reg(1)
-            self.ladder_calls.append(probe)
-            if probe and self.ladder_valid:
+            placed = pc == self.base + PLACED_LADDER
+            (self.placed_calls if placed else self.ladder_calls).append(probe)
+            self.ladder_probe_result = self.placed_result if placed else self.ladder_result
+            if probe and (self.placed_valid if placed else self.ladder_valid):
                 self.ladder_outer_return = u.reg_read(UC_ARM64_REG_LR)
                 u.reg_write(UC_ARM64_REG_X0, self.inline_ctx)
                 u.reg_write(UC_ARM64_REG_LR, self.ladder_return)
                 u.reg_write(UC_ARM64_REG_PC, self.module.find('AutoLadderLanding', 'Callback'))
                 return
-            u.reg_write(UC_ARM64_REG_X0, int(self.ladder_result if probe else self.ladder_commit))
+            result = self.ladder_probe_result if probe else (self.placed_commit if placed else self.ladder_commit)
+            u.reg_write(UC_ARM64_REG_X0, int(result))
             u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
             return
         if hasattr(self, 'ladder_calls') and pc == self.ladder_return:
-            u.reg_write(UC_ARM64_REG_X0, int(self.ladder_result))
+            u.reg_write(UC_ARM64_REG_X0, int(self.ladder_probe_result))
             u.reg_write(UC_ARM64_REG_PC, self.ladder_outer_return)
             return
         return super().service(u, pc, size, context)
@@ -208,8 +215,10 @@ def main():
                 assert n.contact_classes == []
             else:
                 assert n.automatic(0, prime=False) == 0
-            if change in ('other_tool','manual','release','weak','speed'):
+            if change in ('manual','release','weak','speed'):
                 assert 7 not in n.contact_classes
+            if change == 'other_tool':
+                assert 7 in n.contact_classes and n.placed_calls == [1]
             assert n.vault_calls == []
             cases += 1
         # Independent settings and compatibility failures preserve the other tool.
