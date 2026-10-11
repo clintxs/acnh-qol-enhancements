@@ -351,6 +351,23 @@ hurry those messages too. New/important-line exceptions and eventflow analysis
 are deferred. Live Eden validation of text, sound, emotes and choice handoff is
 still needed.
 
+The first live NPC test of 0.4.7 reported no Y effect. To investigate, build
+`sh tools/build.sh --hurry-diagnostic` and package with
+`python3 tools/package_hurry_diagnostic.py`. This separate **hurry-diagnostic1**
+archive contains Core executables only, preserving settings and resources.
+Copy those executables into the existing Core folder and fully restart. Hold
+and release Y during NPC text and again while waiting to advance; try B/R too.
+Close the game and save the Eden log before starting another session.
+
+`DIAGNOSTIC: hurry-v1` identifies the build. Bounded `HURRY` lines report raw
+input, each rejecting guard, ownership, context/reveal/choice/message states,
+and the selected flag or advance request. They deliberately log even with
+`log_debug=false`; no INI edits are needed. Input-stage evidence appears before
+native protection gates. Held and unheld logs have separate budgets so startup
+messages cannot exhaust Y evidence. This preserves 0.4.7 behavior while its
+live blocking condition is unknown. Restore normal Core after collecting logs.
+Diagnostic checks: `PYTHONPATH='../Grab 5/working/python:tests' python3 tests/dialogue_hurry_diagnostic_arm_test.py`.
+
 All five preferences below work in either Faster Dialogue INI. Personal
 preferences are best kept in a separate mod so suite updates cannot replace them.
 The main ZIP contains only an `.example` file at its root; it never supplies the

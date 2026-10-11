@@ -15,11 +15,11 @@ GP = [globals()[f'UC_ARM64_REG_X{i}'] for i in range(31)]
 Q = [globals()[f'UC_ARM64_REG_Q{i}'] for i in range(32)]
 
 class DialogueMachine(Machine):
-    def __init__(self, base, custom=None, enabled=True, regular=DEFAULT):
+    def __init__(self, base, custom=None, enabled=True, regular=DEFAULT, verbose=True):
         self.native = False
         files = {'faster-dialogue': regular} if enabled else {}
         if custom is not None: files['faster-dialogue.custom'] = custom
-        super().__init__(base, files)
+        super().__init__(base, files, verbose=verbose)
         self.boot(); self.activate()
         self.callbacks = {base + offset: self.hooks[base + offset] for offset in HOOKS} if enabled else {}
         # Model trampoline relocation by executing pristine displaced code after

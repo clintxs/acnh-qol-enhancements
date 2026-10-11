@@ -364,3 +364,31 @@ manual A preservation, authored waits, protected text, renderer forwarding,
 scripted overrides and GP/SIMD/stack preservation. This does not substitute
 for live audio/emote/render/controller testing. No important/new-catch filter
 or eventflow compiler is part of this prototype; all eligible messages hurry.
+
+## 0.4.7 hurry-v1 diagnostic after live NPC failure
+
+User reports no effect during NPC dialogue. The ARM fixtures validate the
+hook mechanics against modeled manager/context/controller state; they do not
+prove those gate values match a live conversation. Static review has not
+established the rejecting condition. Keep the guard behavior unchanged until
+live evidence identifies it; do not infer success from modeled fixtures.
+
+CAS_VERBOSE_HURRY_TRACE is separate from the old broad dialogue trace, adding
+no hook sites or Catalog tracing. Build --hurry-diagnostic. Input stage uses
+the controller already selected by native Print, before reveal restrictions.
+Speed/Advance sample active-controller input even when the common gate fails,
+which the initial short-circuit omitted. Trace owner/context agreement, FSM,
+context phase, window, reveal, choice/message states, timer and exact rejection
+reason. The diagnostic does not write controller or persistent advance state.
+Normal builds still sample the extra getter only for eligible hurry contexts.
+
+The marker and HURRY lines intentionally bypass log_debug only in this explicit
+diagnostic build. Three independent stage caches suppress repeated frames,
+with 96-record budgets per stage per Y-held/unheld category (576 total), so
+startup cannot consume held-Y evidence. Bounded message IDs stay within the
+512-byte logger buffer, including unknown-state sentinels. No configuration
+files or resources ship in the diagnostic Core ZIP. Restore normal Core after
+collecting logs; no claimed fix or version bump accompanies this instrumented
+0.4.7 build. Tests exercise blocked gates with shipping debug defaults off,
+protected input, press/release/fallback, native hurry behavior, budget isolation
+and long identifiers at two ASLR bases.

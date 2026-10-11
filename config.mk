@@ -22,7 +22,8 @@ NPDM_JSON := application.json
 C_FLAGS := 
 # Broad dialogue tracing is optional; capped support logs remain enabled.
 CAS_VERBOSE_DIALOGUE_TRACE ?= 0
-CXX_FLAGS := -DCAS_VERBOSE_DIALOGUE_TRACE=$(CAS_VERBOSE_DIALOGUE_TRACE)
+CAS_VERBOSE_HURRY_TRACE ?= 0
+CXX_FLAGS := -DCAS_VERBOSE_DIALOGUE_TRACE=$(CAS_VERBOSE_DIALOGUE_TRACE) -DCAS_VERBOSE_HURRY_TRACE=$(CAS_VERBOSE_HURRY_TRACE)
 
 # AsRtld settings
 #------------------------

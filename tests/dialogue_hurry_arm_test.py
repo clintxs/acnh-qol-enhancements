@@ -11,8 +11,8 @@ from unicorn.arm64_const import *
 
 
 class HurryMachine(DialogueMachine):
-    def __init__(self, base, enabled=True):
-        super().__init__(base, enabled=enabled)
+    def __init__(self, base, enabled=True, verbose=True):
+        super().__init__(base, enabled=enabled, verbose=verbose)
         self.message_ui, self.choice_ui = self.ram + 0x6c000, self.ram + 0x6c100
         self.state_table = self.ram + 0x6e000
         self.check_adapter = False
