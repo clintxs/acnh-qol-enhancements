@@ -9,9 +9,9 @@ from package_auto_vault import prototype_files
 def main():
     root = package.ROOT
     elf = (root / 'project.elf').read_bytes()
-    if b'auto ladder: READY; prototype 1;' not in elf or b'DIAGNOSTIC: auto-vault-v4' not in elf:
+    if b'auto ladder: READY; prototype 2;' not in elf or b'DIAGNOSTIC: auto-vault-v4' not in elf:
         raise ValueError('Build first: sh tools/build.sh --auto-vault-diagnostic')
-    stem = f'qol-enhancements-v{package.release_version().replace(".", "_")}_auto-ladder-prototype1_for_acnh_v3_0_3'
+    stem = f'qol-enhancements-v{package.release_version().replace(".", "_")}_auto-ladder-prototype2_for_acnh_v3_0_3'
     output = root / 'dist'
     output.mkdir(exist_ok=True)
     binary, source = output / f'{stem}.zip', output / f'{stem}_source.zip'
@@ -22,9 +22,9 @@ def main():
     assert files[key].count(b'auto_ladder = false\n') == 1
     files[key] = files[key].replace(b'auto_ladder = false\n', b'auto_ladder = true\n')
     files['README.txt'] = (
-        'AUTO LADDER - EQUIPPED LADDER PROTOTYPE 1 - ACNH 3.0.3\n\n'
+        'AUTO LADDER - EQUIPPED LADDER PROTOTYPE 2 - ACNH 3.0.3\n\n'
         f'Based on QoL Enhancements {package.release_version()}. Includes the working pole prototype 3.\n'
-        'The ladder extension still needs live uphill and downhill testing.\n\n'
+        'Downhill worked in prototype 1. This adds a ladder-only wall contact retry.\n\n'
         'Fully close ACNH. Copy the included Core and Controls folders into\n'
         'your existing mod folders, replacing their matching files. Enable\n'
         'one Core copy and Controls, then restart. Keep other modules and\n'
@@ -41,7 +41,7 @@ def main():
         'This diagnostic build records bounded VAULT movement/entry/search\n'
         'lines for both tools, even with log_debug=false. Tool 0x11 is a\n'
         'ladder; 0x28 is the pole. The startup marker is auto ladder: READY;\n'
-        'prototype 1. Preserve the Eden log after testing if it fails.\n'
+        'prototype 2. Preserve the Eden log after testing if it fails.\n'
         'The normal build excludes these extra diagnostic observers.\n\n'
         'To disable only the new feature, set auto_ladder=false and restart.\n'
         f'To restore the previous executable, reinstall the normal {package.release_version()} Core\n'

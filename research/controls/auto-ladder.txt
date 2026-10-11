@@ -1,3 +1,40 @@
+Prototype 2 update (2026-10-11)
+User confirms descent works, ascent does not. Latest logs show uphill strong
+stick/low-speed attempts remaining geometry=0, timer=0; no ladder validation
+runs. Manual uphill enters states 138/139/140, while downhill reaches the shared
+geometry and commits the ladder action. This rules out equipping/state entry as
+the uphill blocker; contact filtering is the next candidate.
+
+Native 015F3040 reads collision count player+A0 -> +2EF4 and records +2EF8,
+stride 0x80, horizontal normals +38/+40, flags +4C. HopEntry asks masks 4 then 6.
+Mask bit 1 (value 1) additionally includes flags & 0x84, unless flag 0x40 is set.
+Those wall classes are excluded by the normal automatic-hop mask 6. The exact
+live cliff flag is not yet logged; this is a targeted hypothesis, not a confirmed
+live fix.
+
+After an unchanged native automatic search fails before geometry, only an
+equipped ladder retries HopEntry with scoped contact mask 6 widened to 7.
+The first mask-4 query is unchanged. The hook uses a local request, returning
+only native output fields, preserving the caller's class and facing pointer.
+Native stick strength, stage resource, speed, contact facing, input alignment,
+ordinary hop priority and complete ladder validation remain required. No contact
+is fabricated. Pole/manual/unscoped/disabled-ladder paths retain original masks.
+The movement timer and one-use validation proof are unchanged.
+
+Prototype 2 adds a ladder-specific fingerprint/hook at 015F3040. A conflict
+still preserves pole. Diagnostic geometry bit 0x20 means wall retry attempted;
+0x3F means the retry reached eligible hop geometry. Bounded LADDER contact lines
+include native return/count/accepted and the first four raw contact flags to
+resolve any remaining live mismatch. Native contact output count fields are
+unsigned integers (the decompiler incorrectly represents them as floats).
+
+New ARM cases execute the real contact classifier for flags 0x04, 0x80, 0x44,
+0x100 and zero, checking the exact 4/6 -> 4/7 sequence, unscoped original mask,
+native timer progression and scope restoration. Negative cases cover weak or
+released stick, speed, facing, input alignment, blocked landings, another tool
+and manual actions. Native collision records are supplied; the live cliff's
+actual flag and ladder geometry/reservation still require in-game confirmation.
+
 ACNH 3.0.3: equipped-ladder automatic traversal, prototype 1
 
 Scope and live evidence

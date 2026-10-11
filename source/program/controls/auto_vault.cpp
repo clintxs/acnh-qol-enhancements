@@ -6,6 +6,7 @@
 namespace qol::controls {
 namespace {
 namespace address {
+constexpr std::uintptr_t ContactNormals = 0x015f3040;
 constexpr std::uintptr_t HopGeometry = 0x0230c470;
 constexpr std::uintptr_t HopEntry = 0x0230b8d0, HopDirection = 0x0230bf18;
 constexpr std::uintptr_t TryLadder = 0x02396154, LadderGeometry = 0x0239630c;
@@ -59,8 +60,54 @@ static_assert(offsetof(HopRequest, alternate) == 0x10);
 // guards without copying them, while letting ALL native landing alternatives
 // finish before we consider a tool traversal. Like the existing pickup scope,
 // this relies on the player dispatcher running synchronously on the game thread.
-struct HopAttempt { void *player; bool eligible = false; unsigned geometry = 0; };
+struct HopAttempt { void *player; bool eligible = false; bool includeWalls = false; unsigned geometry = 0; };
 HopAttempt *CurrentAttempt{};
+
+// Native automatic hops ask for contact classes 4 then 6. Class 1 includes
+// solid wall contacts (flags 0x84 without the excluded 0x40 bit), which a cliff
+// face may use. Retry only a failed equipped-ladder attempt with class 7, after
+// the unchanged native search. Keep the native facing filter and outputs. The
+// caller's request fields remain intact; only native output fields are copied.
+struct ContactRequest {
+    float normals[6];
+    unsigned total, accepted;
+    unsigned classes, padding;
+    const unsigned *facing;
+};
+static_assert(offsetof(ContactRequest, classes) == 0x20);
+static_assert(offsetof(ContactRequest, facing) == 0x28);
+static_assert(sizeof(ContactRequest) == 0x30);
+HOOK_DEFINE_TRAMPOLINE(AutoLadderContact) {
+    static unsigned Callback(void *player, ContactRequest *request) {
+        const auto attempt = CurrentAttempt;
+        if (!attempt || attempt->player != player || !attempt->includeWalls || request->classes != 6)
+            return Orig(player, request);
+        auto extended = *request;
+        extended.classes |= 1;
+        const auto result = Orig(player, &extended);
+        std::memcpy(request, &extended, offsetof(ContactRequest, classes));
+#if CAS_AUTO_VAULT_DIAGNOSTIC
+        // Bounded evidence if the live cliff uses a different contact class.
+        constexpr std::size_t Collision = 0xa0, Count = 0x2ef4, Records = 0x2ef8;
+        constexpr std::size_t Stride = 0x80, Flags = 0x4c;
+        std::array<unsigned, 7> now{result, extended.total, extended.accepted};
+        if (auto collision = Read<void *>(player, Collision)) {
+            const auto count = Read<unsigned>(collision, Count);
+            for (unsigned i = 0; i < 4 && i < count; ++i)
+                now[3+i] = Read<unsigned>(collision, Records + i*Stride + Flags);
+        }
+        static std::array<unsigned, 7> last{};
+        static unsigned budget = 32;
+        if (budget && now != last) {
+            last = now;
+            --budget;
+            Logging.Log("[QoL Enhancements/Controls] LADDER contact: classes=6->7 result=%u total=%u accepted=%u flags=%x,%x,%x,%x\n",
+                        now[0], now[1], now[2], now[3], now[4], now[5], now[6]);
+        }
+#endif
+        return result;
+    }
+};
 
 // Movement tests a tentative transform before collision correction. Transfer
 // one stable-phase validation to the following movement timer check, requiring
@@ -321,8 +368,18 @@ HOOK_DEFINE_TRAMPOLINE(AutoVaultEntry) {
         HopAttempt attempt{player};
         auto previous = CurrentAttempt;
         CurrentAttempt = &attempt;
-        const auto hop = Orig(player, probe, automatic);
+        auto hop = Orig(player, probe, automatic);
         CurrentAttempt = previous;
+        if (hop == NoCrossing && !attempt.eligible && LadderEnabled &&
+            Native<unsigned (*)(void *)>(address::EquippedToolKind)(player) == LadderKind) {
+            attempt.includeWalls = true;
+#if CAS_AUTO_VAULT_DIAGNOSTIC
+            attempt.geometry |= 32u; // Ladder-only wall-contact retry.
+#endif
+            CurrentAttempt = &attempt;
+            hop = Orig(player, probe, automatic);
+            CurrentAttempt = previous;
+        }
         // Keep the complete ordinary-hop search, including adjusted landings
         // and its pending hold, first. Eligibility was observed only AFTER
         // native stick strength, low speed, contact and direction checks.
@@ -375,6 +432,7 @@ bool InstallAutoTraversal(bool vault, bool ladder) {
         {address::VaultSearchExit, {0x6d4a23e9,0x6d492beb,0x6d4833ed,0x6d473bef,0xa9504ff4}, 1},
         {address::MovementGuards, {0xb00144e8,0xf9414d08,0x79800108,0xb100051f,0x54000740}},
 #endif
+        {address::ContactNormals, {0xd2e7f009,0x52a7f008,0xf900003f,0xa900a428,0xf9405008}, 2},
         {address::TryLadder, {0xb9417808,0x34000068,0x120003e0,0xd65f03c0,0xd101c3ff}, 2},
         {address::LadderGeometry, {0xfc170fee,0x6d0133ed,0x6d022beb,0x6d0323e9,0xa9047bfd}, 2},
         {address::ValidLadderLanding, {0x36000075,0x52800028,0x17fffff2,0x528e1488,0x72a7efa8}, 2},
@@ -416,10 +474,13 @@ bool InstallAutoTraversal(bool vault, bool ladder) {
     Logging.Log("[QoL Enhancements/Controls] DIAGNOSTIC: auto-vault-v4; bounded movement and entry traces\n");
 #endif
     if (VaultEnabled) AutoVaultPrepare::InstallAtOffset(address::PrepareVault);
-    if (LadderEnabled) AutoLadderLanding::InstallAtOffset(address::ValidLadderLanding);
+    if (LadderEnabled) {
+        AutoLadderContact::InstallAtOffset(address::ContactNormals);
+        AutoLadderLanding::InstallAtOffset(address::ValidLadderLanding);
+    }
     AutoVaultGeometry::InstallAtOffset(address::HopGeometry);
     AutoVaultEntry::InstallAtOffset(address::HopEntry);
-    if (LadderEnabled) Logging.Log("[QoL Enhancements/Controls] auto ladder: READY; prototype 1; equipped ladder; native hop timer\n");
+    if (LadderEnabled) Logging.Log("[QoL Enhancements/Controls] auto ladder: READY; prototype 2; equipped ladder; native hop timer\n");
     if (VaultEnabled) Logging.Debug("[QoL Enhancements/Controls] auto vault: READY; prototype 3; equipped pole; native hop timer\n");
     return enabled == requested;
 }

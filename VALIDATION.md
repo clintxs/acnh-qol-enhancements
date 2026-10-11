@@ -17,6 +17,24 @@ disabled, text overrides, missing-text fallback, and existing Pockets behavior.
 Native consumption animation/inventory engine callbacks are mocked; live Eden
 food/drink, full-energy and equipment regression checks remain necessary.
 
+## Equipped-ladder prototype 2 (2026-10-11)
+
+Live prototype 1 climbs down, but not up. The updated log shows uphill attempts
+never reaching hop geometry (geometry=0, timer=0), while manual uphill and
+automatic downhill enter normal ladder states. Prototype 2 retains the original
+native hop search, then retries only failed, ineligible equipped-ladder attempts
+with contact mask 6 extended to 7. The additional class admits solid wall
+contacts; native input/speed/stage/facing guards and full ladder validation remain
+in place. Pole, manual and unrelated contact queries keep their original masks.
+
+The focused ladder suite passes 144 cases at two load bases, including actual
+native contact filtering for included/excluded wall and original-hop classes,
+request/scope preservation, timer progression and uphill negative guards.
+Full Controls regressions and the pinned offline build also pass. This establishes
+the fallback behavior with supplied collision records; the live uphill cliff's
+contact flags and traversal remain unconfirmed. New bounded LADDER contact traces
+record native results and raw flags. Previous ZIPs remain preserved.
+
 ## Equipped-ladder prototype 1 (2026-10-11)
 
 The user confirmed pole prototype 3 / diagnostic4 works live. This extension
