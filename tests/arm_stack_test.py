@@ -696,7 +696,7 @@ for base in (0x80000000,0x1234500000):
         h.write(pointer,saved,width);cases+=1
     # Trigger shortcuts use only matching, enabled native rows, outside home
     # too. Execute real command dispatch with world/equipment callbacks mocked.
-    action_map = {5:7, 6:8, 30:10, 41:26}
+    action_map = {5:7, 6:8, 30:10, 35:32, 41:26}
     offered, row_flags, row_extra, callback_fields = [30], 0, 0, 0
     dispatched, trigger_feedback = [], []
     def shortcut_menu():
@@ -720,9 +720,9 @@ for base in (0x80000000,0x1234500000):
     h.stubs[base+0x307d490]=lambda:action_map[h.reg(0)]
     h.stubs[base+0x3c66950]=lambda:trigger_feedback.append(selected_slot)
     own_home=False
-    for button,action in ((0x400,30),(0x400,41),(0x800,5),(0x800,6)):
+    for button,action in ((0x400,30),(0x400,41),(0x800,5),(0x800,6),(0x800,35)):
         for native_updates in (0,5):
-            offered=[35,action,46]; reset_pocket(); dispatched.clear(); trigger_feedback.clear()
+            offered=[23,action,46]; reset_pocket(); dispatched.clear(); trigger_feedback.clear()
             y_input(); y_input(button); assert h.read(pocket+0x1f0,4)==7
             transition()
             for i in range(native_updates+1):
@@ -750,6 +750,27 @@ for base in (0x80000000,0x1234500000):
         row_flags=row_extra=callback_fields=0
         reset_pocket(); y_input(); y_input(button); transition(); offered=[]; update()
         assert h.read(pocket+0x1f4,4)==3; cases+=1
+    # Real Put Away callback: request native empty-hand equipment, clear the
+    # equipped marker, and leave the selected inventory item untouched.
+    offered=[35]; reset_pocket(); trigger_feedback.clear(); unequips=[]
+    h.write(pocket+0x1c516,selected_slot,1)
+    empty_item=h.ram+0x7f000;h.write(empty_item,0xfffe)
+    h.write(base+0x4ab37e0,empty_item)
+    del h.stubs[base+0x30773ac]
+    def unequip():
+        assert h.reg(0)==pocket+0x1f8 and h.reg(1)==empty_item
+        assert (h.reg(2),h.reg(3),h.reg(4))==(0,1,0)
+        unequips.append('equipment');return 1
+    def clear_equipped_marker():
+        assert h.reg(0)==widgets+selected_slot*0x230 and h.reg(1)==0
+        unequips.append('marker')
+    h.stubs[base+0x2436850]=unequip
+    h.stubs[base+0x2fbffe0]=clear_equipped_marker
+    y_input(); y_input(0x800); transition(); update()
+    assert unequips==['equipment','marker'] and h.read(pocket+0x1c516,1)==255
+    assert bytes(h.u.mem_read(item,8))==item_bytes and trigger_feedback==[selected_slot]
+    assert h.read(pocket+0x1f4,4)==14
+    cases+=1
     # Execute the actual Drop Item callback, including its six-update delay.
     # Only world placement services are replaced, not the callback/dispatcher.
     offered=[30]; native_updates=0; reset_pocket(); trigger_feedback.clear()

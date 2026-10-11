@@ -1,4 +1,31 @@
-# Unified QoL validation — 0.4.2 Pockets trigger shortcuts
+# Unified QoL validation — 0.4.3 hint sizing and ZR unequip
+
+## 0.4.3 Native text-change publication and Put Away
+
+User confirmed 0.4.2 shortcuts work, but the custom captions overflow their
+backgrounds. L2/R2 also appears in the camera app with their controller font;
+native ZL/ZR IDs and glyph selection remain unchanged.
+
+The shared custom-caption path previously called only the text setter. Native
+publication at 01aeb27c..01aeb2c0 also prepares adapter operation 9 and calls
+03c7dd80 on the binding afterward. Follow this sequence to notify dependent
+layout bindings, rather than guessing background widths. Extend the compiled
+caption fixture to execute the real notification routine and assert that its
+dependent event is queued, in prepare/set/notify order, for both providers.
+Rendering/measurement itself remains an Eden check.
+
+ZR now accepts the native Put Away row 35 (Exclude, CmnSubWin/0127), callback
+index 32 / 030773ac. The hint defaults to Equip / Unequip, retaining the
+existing configurable qol_pockets.hold_wear key. Extend native command tests
+to dispatch Put Away and run its original callback with equipment/UI services
+mocked: it requests empty-hand equipment, clears the equipped marker, and
+does not remove the item from Pockets.
+
+Passed: 794 compiled ARM Pockets cases at two bases, 190 footer cases,
+Fitting Room checkout/feedback/caption regressions, host policy/catalog tests,
+and all 64 Core module combinations for the new notification fingerprint.
+Eden verification is still needed for visible background width and ZR unequip.
+
 
 ## 0.4.2 Pockets trigger shortcuts
 

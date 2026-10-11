@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.4.2 release test build** for ACNH **3.0.3 on Eden**. One Core
+**0.4.3 release test build** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates six optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -72,14 +72,14 @@ fingerprints only, checked before each feature's first hook.
 Install **QoL Enhancements - Crafting** with Core. This replaces the former
 Faster Crafting package; remove the old folder and rename personal
 `faster-crafting.custom.ini` preferences to `crafting.custom.ini`. Remove any old
-`version` override from that personal file (or update it to 0.4.2). The retired
+`version` override from that personal file (or update it to 0.4.3). The retired
 regular/custom paths are no longer read. Core alone no longer enables DIY previews.
 
 `romfs/qol-enhancements/config/crafting.ini` supplies these defaults:
 
 ```ini
 enabled = true
-version = 0.4.2
+version = 0.4.3
 diy_app_preview = true
 workbench_preview_tilt = true
 crafting_quantity_wrap = true
@@ -306,7 +306,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.4.2
+version = 0.4.3
 base_speed = 2
 boost_speed = 4
 faster_ui = true
@@ -451,9 +451,9 @@ at `../vanilla-3.0.3/Layout`; builders verify their hashes and archive structure
 The package script checks that every INI matches the Core release, refuses to
 replace existing archives, and creates:
 
-- `dist/qol-enhancements-v0_4_2_for_acnh_v3_0_3.zip`
-- `dist/qol-enhancements-v0_4_2_for_acnh_v3_0_3_source.zip`
-- `dist/qol-enhancements-v0_4_2_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
+- `dist/qol-enhancements-v0_4_3_for_acnh_v3_0_3.zip`
+- `dist/qol-enhancements-v0_4_3_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v0_4_3_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
 
 The binary ZIP contains a conspicuous installation text file, README, Core and
 six independently selectable feature folders, plus a SHA-256 manifest. Source
@@ -474,7 +474,7 @@ compatibility with that mod's future hooks or NPDM.
 ## Pockets trigger shortcuts (0.4.2)
 
 In normal Pockets, **ZL** selects **Release** or **Drop Item**, and **ZR**
-selects **Hold** or **Wear**, without opening the item menu. A shortcut does
+selects **Hold**, **Wear**, or **Put Away**, without opening the item menu. A shortcut does
 nothing if its native menu action is absent or disabled. It does not substitute
 Place Item, Show Off, Eat, or other actions. If both matching actions were
 present, the first native menu row wins. The selected action and item are
@@ -486,7 +486,7 @@ selling/donation modes and drag states are excluded. Releasing a critter is
 still destructive, just as selecting Release normally is; ZL intentionally
 skips the item menu, not any downstream native dialogs.
 
-Hints read **Drop / Release** and **Hold / Wear**. Alongside A/B and the existing
+Hints read **Drop / Release** and **Equip / Unequip**. Alongside A/B and the existing
 home-only Y storage hint, these fill the native footer's five available slots.
 These are fixed labels, not per-item availability indicators. Customize
 `qol_pockets.drop_release` and `qol_pockets.hold_wear` in the Pockets messages

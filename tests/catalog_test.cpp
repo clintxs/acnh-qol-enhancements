@@ -14,7 +14,7 @@ int main(int argc,char** argv) {
     Catalog catalog;
     assert(catalog.Load(content) && catalog.Size()==30);
     assert(std::u16string_view(catalog.Text("qol_pockets.drop_release",1))==u"Drop / Release");
-    assert(std::u16string_view(catalog.Text("qol_pockets.hold_wear",7))==u"Hold / Wear");
+    assert(std::u16string_view(catalog.Text("qol_pockets.hold_wear",7))==u"Equip / Unequip");
     for (unsigned locale=0;locale<16;++locale) {
         assert(catalog.Text(GrabFiveKey,locale));
         assert(catalog.Text(GrabTenKey,locale));

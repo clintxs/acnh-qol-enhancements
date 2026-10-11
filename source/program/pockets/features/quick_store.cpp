@@ -681,7 +681,7 @@ bool InstallQuickStore() {
     }
     QuickStoreCommand::InstallAtOffset(address::Command);
     QuickStorePlay::InstallAtOffset(address::Play);
-    Logging.Debug("[QoL Enhancements/Pockets] QUICK_STORE_READY Y storage; ZL drop/release; ZR hold/wear\n");
+    Logging.Debug("[QoL Enhancements/Pockets] QUICK_STORE_READY Y storage; ZL drop/release; ZR hold/wear/put-away\n");
     return true;
 }
 } // namespace qol_pockets::features

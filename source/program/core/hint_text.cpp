@@ -7,6 +7,8 @@ namespace qol::core {
 namespace {
 constexpr std::uintptr_t InitializeMessage = 0x01aea210;
 constexpr std::uintptr_t SetPaneText = 0x03c1b588, SetGroupText = 0x03c47b90;
+constexpr std::uintptr_t NotifyTextChanged = 0x03c7dd80;
+constexpr std::uintptr_t TextOperationVtableGot = 0x04ac0878;
 struct SafeString { std::uintptr_t vtable; const char *text; };
 std::array<HintTextProvider, 4> HintProviders{};
 bool Installed{};
@@ -32,9 +34,22 @@ HOOK_DEFINE_TRAMPOLINE(InitializeHintCaption) {
         const auto setter = methods ? Field<std::uintptr_t>(methods, 0x5e0) : 0;
         const auto base = exl::util::modules::GetTargetStart();
         if (!payload || (setter != base + SetPaneText && setter != base + SetGroupText)) return;
+        const auto interface = Field<std::uintptr_t>(adapter, 0);
+        if (!interface) return;
+        // Match native message publication at 01aeb27c..01aeb2c0: prepare
+        // text operation 9, set text, then notify the binding. Setting the pane
+        // alone renders letters but leaves the footer background at its old
+        // width. The notification schedules its existing dependent bindings;
+        // never guess a pixel width or resize the footer globally.
+        struct TextOperation { std::uintptr_t vtable; int operation, padding; };
+        const TextOperation operation{Field<std::uintptr_t>(base, TextOperationVtableGot) + 16, 9, 0};
+        const auto prepare = Field<void (*)(std::uintptr_t, const TextOperation *)>(interface, 0x18);
+        if (!prepare) return;
+        prepare(adapter, &operation);
         unsigned length = 0;
         while (caption[length]) ++length;
         reinterpret_cast<void (*)(std::uintptr_t, const char16_t *, unsigned)>(setter)(payload, caption, length);
+        reinterpret_cast<void (*)(std::uintptr_t)>(base + NotifyTextChanged)(binding);
     }
 };
 }
@@ -49,6 +64,11 @@ bool RegisterHintText(HintTextProvider provider) {
             if (InitializeMessage + sizeof(words) > main.m_Text.m_Size ||
                 std::memcmp(reinterpret_cast<const void *>(main.m_Text.m_Start + InitializeMessage),
                             words.data(), sizeof(words))) return false;
+            constexpr std::array<std::uint32_t, 5> notifyWords{
+                0xd10103ff, 0xa9017bfd, 0xf90013f5, 0xa9034ff4, 0x910043fd};
+            if (NotifyTextChanged + sizeof(notifyWords) > main.m_Text.m_Size ||
+                std::memcmp(reinterpret_cast<const void *>(main.m_Text.m_Start + NotifyTextChanged),
+                            notifyWords.data(), sizeof(notifyWords))) return false;
             InitializeHintCaption::InstallAtOffset(InitializeMessage);
             Installed = true;
         }

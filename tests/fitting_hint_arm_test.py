@@ -14,7 +14,7 @@ class HintMachine(Machine):
     def __init__(self,base,content=None,locale=1):
         super().__init__(base,{})
         if content is not None: self.files[PATH]=content
-        self.locale=locale;self.texts=[]
+        self.locale=locale;self.texts=[];self.text_events=[]
         self.owner=self.ram+0x1000;self.page=self.ram+0x30000
         self.footer=self.ram+0x31000;self.entries=self.ram+0x32000;self.pool=self.ram+0x33000
         self.app=self.ram+0x34000;self.global_=self.ram+0x35000;self.vtable=self.ram+0x36000
@@ -48,7 +48,16 @@ class HintMachine(Machine):
             u.mem_write(self.reg(0),bytes(u.mem_read(self.reg(1),self.reg(2))));result=self.reg(0)
         elif pc==self.base+0x2de2de0: result=self.reg(0)
         elif pc==self.base+0x37cefc4: result=self.locale
+        elif pc==self.typefn+0x100:
+            assert self.read(self.reg(1)+8,4)==9
+            assert self.read(self.reg(1))==self.safe
+            self.text_events.append('prepare');result=0
+        elif pc==self.typefn+0x110:
+            assert self.text_events[-1]=='set'
+            self.text_events.append('notify');result=0
         elif pc in (self.base+0x3c1b588,self.base+0x3c47b90):
+            assert self.text_events[-1]=='prepare'
+            self.text_events.append('set')
             self.texts.append(bytes(u.mem_read(self.reg(1),self.reg(2)*2)).decode('utf-16-le'));result=0
         if result is not None:
             u.reg_write(UC_ARM64_REG_X0,result);u.reg_write(UC_ARM64_REG_PC,u.reg_read(UC_ARM64_REG_LR));return
@@ -89,12 +98,29 @@ class HintMachine(Machine):
         self.write(bank,self.safe);self.write(bank+8,bank+0x20);self.u.mem_write(bank+0x20,b'LayoutMsg\0')
         self.write(token,self.safe);self.write(token+8,token+0x20);self.u.mem_write(token+0x20,key+b'\0')
         self.write(binding+0x48,adapter);self.write(adapter+8,binding+0x900);self.write(adapter+0x18,methods)
+        # Run REAL 03c7dd80: native notification must enqueue the dependent
+        # binding used for background sizing. Only virtual engine calls are
+        # stubs, so omitting NotifyTextChanged reproduces the 0.4.2 failure.
+        interface=binding+0xa00;binding_vtable=interface+0x100
+        event=binding+0xc00;queue=binding+0xd00
+        self.write(adapter,interface);self.write(interface+0x18,self.typefn+0x100)
+        self.write(binding,binding_vtable);self.write(binding_vtable+0x20,self.typefn+0x110)
+        self.write(binding+0x50,event);self.write(binding+0x58,0,2)
+        self.u.mem_write(event,bytes(0x60));self.u.mem_write(queue,bytes(0x60))
+        self.write(event+0x38,queue);self.write(queue+0x54,0x10,4)
+        self.write(self.base+0x4ac0878,self.safe-16)
+        self.text_events.clear()
         self.write(methods+0x5e0,self.base+(0 if bad_adapter else 0x3c47b90 if group else 0x3c1b588))
         self.invoke(self.module.find('InitializeHintCaption','Callback'),msg,binding,bank,token)
         if key in (KEY, b'qol_pockets.drop_release', b'qol_pockets.hold_wear'):
             assert self.read(msg+0xc,4)==12
+            if not bad_adapter:
+                assert self.text_events==['prepare','set','notify']
+                assert self.read(queue+0x40)==event+0x10 and self.read(queue+0x50,4)==1
             self.invoke(self.base+0x1aea9c8,msg) # Must not attempt MSBT lookup.
         else: assert self.read(msg+0xc,4)==1
+        if bad_adapter or key not in (KEY,b'qol_pockets.drop_release',b'qol_pockets.hold_wear'):
+            assert self.text_events==[] and self.read(queue+0x50,4)==0
         # Native cleanup sees zero allocation ownership; mod owns no parser buffers.
         self.invoke(self.base+0x1ae9eb8,msg)
 

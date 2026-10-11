@@ -40,7 +40,7 @@ const char16_t *PocketHintText(const char *key) {
     const bool drop = std::strcmp(key, DropHintKey) == 0;
     if (!drop && std::strcmp(key, EquipHintKey) != 0) return nullptr;
     const auto *caption = PocketMessage(key);
-    return caption ? caption : drop ? u"Drop / Release" : u"Hold / Wear";
+    return caption ? caption : drop ? u"Drop / Release" : u"Equip / Unequip";
 }
 
 template <typename T> T &Field(void *object, std::size_t offset) {
