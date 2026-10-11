@@ -111,7 +111,7 @@ for base in (0x80000000, 0x1234500000):
     # the actual inline callback. Native/unknown labels must be untouched.
     bank, key, regs, source = [h.ram + o for o in (0x30000, 0x30100, 0x31000, 0x32000)]
     for name, text in (('StorageBank', b'CmnSubWin'), ('StorageCaption', b'0121'),
-                       ('WithdrawalCaption', b'0202'), ('DropCaption', b'0110'), ('HoldCaption', b'0108')):
+                       ('WithdrawalCaption', b'0202'), ('DropCaption', b'0110')):
         target = h.mod + symbol(name)
         h.write(target, base + u64(raw, 0x4ab2020) + 16)
         h.write(target + 8, source)
@@ -120,8 +120,8 @@ for base in (0x80000000, 0x1234500000):
     h.write(h.mod + symbol('CatalogAttempted'), 1, 1) # Empty catalog: native-language fallback.
     h.stubs[base + 0x37cefc4] = lambda: 1
     native_keys = {KEY:b'0121', WITHDRAWAL_KEY:b'0202',
-                   b'qol_pockets.drop_release':b'0110', b'qol_pockets.hold_wear':b'0108'}
-    for text in (*native_keys, b'1101', b'1102', b'1201', KEY + b'_other', b''):
+                   b'qol_pockets.drop_release':b'0110'}
+    for text in (*native_keys, b'qol_pockets.hold_wear', b'1101', b'1102', b'1201', KEY + b'_other', b''):
         h.u.mem_write(source, text + b'\0')
         h.write(regs + 16, bank); h.write(regs + 24, key)
         h.put(0, regs); h.run(h.callback('ResolveStorageHintCaption'))
@@ -131,6 +131,10 @@ for base in (0x80000000, 0x1234500000):
         else:
             assert h.read(regs + 16) == bank and h.read(regs + 24) == key
         cases += 1
+    h.u.mem_write(source, b'qol_pockets.hold_wear\0')
+    h.put(0, source); h.run(h.mod + symbol('PocketHintText'))
+    assert bytes(h.u.mem_read(h.reg(0), 18)).decode('utf-16-le') == 'Use Item\0'
+    cases += 1
     # Run the real storage footer builder through its patched A append call.
     # B reuses the descriptor, so this also checks that our longer token does
     # not replace its writable pointer or leak into the subsequent Close row.

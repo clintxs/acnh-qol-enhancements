@@ -703,14 +703,16 @@ for base in (0x80000000,0x1234500000):
         h.write(pointer,saved,width);cases+=1
     # Trigger shortcuts use only matching, enabled native rows, outside home
     # too. Execute real command dispatch with world/equipment callbacks mocked.
-    action_map = {5:7, 6:8, 30:10, 35:32, 41:26}
+    # Native 0307d490 mapping: Eat -> 20, EatOne -> 21, Drink -> 53.
+    action_map = {5:7, 6:8, 30:10, 35:32, 37:20, 38:21, 40:53, 41:26}
     offered, row_flags, row_extra, callback_fields = [30], 0, 0, 0
+    action_flags = {}
     dispatched, trigger_feedback = [], []
     def shortcut_menu():
         desc=h.reg(1); h.write(desc+0x44,len(offered),4)
         for i,a in enumerate(offered):
             h.write(desc+0x48+i*32+16,a,4)
-            h.write(desc+0x48+i*32+20,row_flags,4)
+            h.write(desc+0x48+i*32+20,action_flags.get(a,row_flags),4)
             h.write(desc+0x48+i*32+24,row_extra,4)
             h.write(desc+0x128+i*32+8,callback_fields)
     native_updates=0
@@ -727,7 +729,8 @@ for base in (0x80000000,0x1234500000):
     h.stubs[base+0x307d490]=lambda:action_map[h.reg(0)]
     h.stubs[base+0x3c66950]=lambda:trigger_feedback.append(selected_slot)
     own_home=False
-    for button,action in ((0x400,30),(0x400,41),(0x800,5),(0x800,6),(0x800,35)):
+    for button,action in ((0x400,30),(0x400,41),(0x800,5),(0x800,6),(0x800,35),
+                          (0x800,37),(0x800,38),(0x800,40)):
         for native_updates in (0,5):
             offered=[23,action,46]; reset_pocket(); dispatched.clear(); trigger_feedback.clear()
             y_input(); y_input(button); assert h.read(pocket+0x1f0,4)==7
@@ -741,7 +744,7 @@ for base in (0x80000000,0x1234500000):
             assert h.read(pocket+0x1f4,4)==14
             update(); assert len(dispatched)==native_updates+1
             cases+=1
-        for offered in ([],[23],[49],[5 if button==0x400 else 30]):
+        for offered in ([],[23],[49],[39],[5 if button==0x400 else 30]):
             reset_pocket(); y_input(); y_input(button)
             assert h.read(pocket+0x1f0,4)==0xffffffff; cases+=1
         offered=[action]
@@ -757,6 +760,21 @@ for base in (0x80000000,0x1234500000):
         row_flags=row_extra=callback_fields=0
         reset_pocket(); y_input(); y_input(button); transition(); offered=[]; update()
         assert h.read(pocket+0x1f4,4)==3; cases+=1
+    for offered,expected in (([6,40,35],6),([35,38],35),([37,6],6),([40,35],35),
+                             ([38,5],5),([6,5,35],6),([38,37,40],38)):
+        native_updates=0;reset_pocket();dispatched.clear();trigger_feedback.clear()
+        y_input();y_input(0x800);transition();update()
+        assert dispatched==[expected];cases+=1
+    for offered,action_flags,expected in (([37,6],{6:1},37),([40,35],{40:1},35),
+                                          ([6,38],{6:1,38:1},None)):
+        reset_pocket();dispatched.clear();trigger_feedback.clear()
+        y_input();y_input(0x800)
+        if expected is None:
+            assert h.read(pocket+0x1f0,4)==0xffffffff
+        else:
+            transition();update();assert dispatched==[expected]
+        cases+=1
+    action_flags={}
     # Real Put Away callback: request native empty-hand equipment, clear the
     # equipped marker, and leave the selected inventory item untouched.
     offered=[35]; reset_pocket(); trigger_feedback.clear(); unequips=[]

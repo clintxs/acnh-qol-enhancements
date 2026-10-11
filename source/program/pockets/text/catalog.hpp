@@ -172,6 +172,10 @@ class Catalog {
         if (key == GrabTenKey) {
             return u"Grab 10";
         }
+        // Retain the existing override key for compatibility with personal INIs.
+        if (key == "qol_pockets.hold_wear") {
+            return u"Use Item";
+        }
         return nullptr;
     }
 };

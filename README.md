@@ -631,11 +631,21 @@ this is not a general bypass of every single-option menu.
 
 ## Pockets trigger shortcuts (0.4.2)
 
+The focused `pockets-consume1` update extends ZR to **Eat**, **Eat 1** and
+**Drink**, preferring a valid Hold/Wear/Put Away action over consumption when
+both are present. Consumption is the fallback. Eat 10 Turnips remains
+excluded. The hint now reads **Use Item**, with an English fallback and an
+editable `qol_pockets.hold_wear` caption in the Pockets messages INI. That legacy
+key is retained so existing personal translations still work. No LayoutMsg edits.
+Build normally and run `python3 tools/package_pockets_consume.py` for the focused
+Core/Pockets update and matching source archive. Live Eden testing is pending.
+
 In normal Pockets, **ZL** selects **Release** or **Drop Item**, and **ZR**
-selects **Hold**, **Wear**, or **Put Away**, without opening the item menu. A shortcut does
+selects **Hold**, **Wear**, **Put Away**, or (as a fallback) **Eat**, **Eat 1**, or
+**Drink**, without opening the item menu. A shortcut does
 nothing if its native menu action is absent or disabled. It does not substitute
-Place Item, Show Off, Eat, or other actions. If both matching actions were
-present, the first native menu row wins. The selected action and item are
+Place Item, Show Off, Eat 10 Turnips, or other actions. Within the equipment
+or consume group, the first valid native menu row wins. The selected action and item are
 revalidated before dispatch; native placement/equipment restrictions remain.
 
 Press once per item. Holding a trigger does not repeat, and simultaneous
@@ -644,13 +654,13 @@ selling/donation modes and drag states are excluded. Releasing a critter is
 still destructive, just as selecting Release normally is; ZL intentionally
 skips the item menu, not any downstream native dialogs.
 
-Hints use the game's localized **Drop Item** and **Hold** labels. These do not limit the actions:
-ZL still releases critters and ZR still wears or puts away items when offered.
+Hints use the game's localized **Drop Item** and the editable **Use Item** label.
+ZL still releases critters; ZR supports all the equipment/consume actions above.
 Alongside A/B and the existing
 home-only Y storage hint, these fill the native footer's five available slots.
 These are fixed labels, not per-item availability indicators. Customize
 `qol_pockets.drop_release` and `qol_pockets.hold_wear` in the Pockets messages
-INI. With no override, the game's own translations are used; native button glyphs retain
+INI. Drop uses native translations; Use Item falls back to English. Native button glyphs retain
 compatibility with controller-font replacements. No LayoutMsg override is added.
 
 Pockets and Fitting Room share one Core caption-initialization hook, with

@@ -1,5 +1,22 @@
 # Unified QoL validation
 
+## Pockets consume shortcut test (2026-10-11)
+
+Verified ItemUIContextMenu.bcsv rows 37/38/40 and CmnSubWin USen captions
+0133/0134/0133_01 as Eat/Eat 1/Drink. Native 0307d490 maps those rows to
+dispatch entries 20/21/53. Row 39 (Eat 10 Turnips, 0151) remains excluded.
+The existing validated native menu builder, pending-action recheck, and command
+UPDATE lifecycle are reused. Equipment rows win over consuming regardless of
+row order, but flagged/custom-callback rows remain ineligible. No new hooks.
+
+Use Item uses the existing mod-owned caption provider and legacy hold_wear
+translation key, with a built-in English fallback. No LayoutMsg replacement.
+Tests cover all three dispatches, multi-frame completion, disabled/absent rows,
+held buttons/chords, equipment-first priority, fallback when equipment is
+disabled, text overrides, missing-text fallback, and existing Pockets behavior.
+Native consumption animation/inventory engine callbacks are mocked; live Eden
+food/drink, full-energy and equipment regression checks remain necessary.
+
 ## Equipped-ladder prototype 1 (2026-10-11)
 
 The user confirmed pole prototype 3 / diagnostic4 works live. This extension

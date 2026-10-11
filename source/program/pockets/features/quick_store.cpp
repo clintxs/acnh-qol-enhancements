@@ -311,6 +311,7 @@ bool FindNativeShortcut(void *pocket, int slot, unsigned button, int &action, bo
         return false;
     }
     eligibilityReason = "no-unflagged-native-shortcut-row";
+    bool found = false;
     for (int i = 0; i < description.count; ++i) {
         const auto &row = description.rows[i];
         if (trace) {
@@ -332,11 +333,14 @@ bool FindNativeShortcut(void *pocket, int slot, unsigned button, int &action, bo
             description.callbacks[i].fields[0] == 0 && description.callbacks[i].fields[1] == 0 &&
             description.callbacks[i].fields[2] == 0) {
             eligibilityReason = "eligible";
-            action = row.action;
-            return true;
+            // Equipment actions are less destructive: prefer them over eating
+            // or drinking. Keep the first valid consume row only as fallback.
+            if (!found || !shortcuts::IsConsume(row.action)) action = row.action;
+            found = true;
+            if (button != shortcuts::Equip || !shortcuts::IsConsume(row.action)) return true;
         }
     }
-    return false;
+    return found;
 }
 bool CanUseShortcut(void *pocket, int slot, int state, unsigned button, int &action,
                     std::uint64_t &itemIdentity, bool trace = false, bool enteringMenu = false) {

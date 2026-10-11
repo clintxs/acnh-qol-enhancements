@@ -40,8 +40,8 @@ constexpr char EquipHintKey[] = "qol_pockets.hold_wear";
 const char16_t *PocketHintText(const char *key) {
     const bool drop = std::strcmp(key, DropHintKey) == 0;
     if (!drop && std::strcmp(key, EquipHintKey) != 0) return nullptr;
-    // Optional user overrides use the custom text publication path. Otherwise
-    // ResolveStorageHintCaption selects the game's localized menu caption.
+    // Use Item has an editable caption and English fallback. Drop still uses
+    // the native localized caption unless the user supplies an override.
     return PocketMessage(key);
 }
 
@@ -70,7 +70,7 @@ static_assert(offsetof(HintDescription, key) == 0x24);
 static_assert(offsetof(HintDescription, player) == 0x68);
 static_assert(offsetof(HintDescription, alternateButton) == 0x74);
 static_assert(sizeof(HintDescription) == 0x80);
-SafeString StorageBank, StorageCaption, WithdrawalCaption, DropCaption, HoldCaption;
+SafeString StorageBank, StorageCaption, WithdrawalCaption, DropCaption;
 
 HOOK_DEFINE_INLINE(RenameStorageSelectHint) {
     static void Callback(exl::hook::InlineCtx *registers) {
@@ -186,11 +186,9 @@ HOOK_DEFINE_INLINE(ResolveStorageHintCaption) {
             registers->X[2] = reinterpret_cast<std::uintptr_t>(&StorageBank);
             registers->X[3] = reinterpret_cast<std::uintptr_t>(&WithdrawalCaption);
         } else if (key && key->text &&
-                   (std::strcmp(key->text, DropHintKey) == 0 ||
-                    std::strcmp(key->text, EquipHintKey) == 0) && !PocketMessage(key->text)) {
+                   std::strcmp(key->text, DropHintKey) == 0 && !PocketMessage(key->text)) {
             registers->X[2] = reinterpret_cast<std::uintptr_t>(&StorageBank);
-            registers->X[3] = reinterpret_cast<std::uintptr_t>(
-                std::strcmp(key->text, DropHintKey) == 0 ? &DropCaption : &HoldCaption);
+            registers->X[3] = reinterpret_cast<std::uintptr_t>(&DropCaption);
         }
         // Native labels resolve from CmnSubWin in the active language. Explicit
         // INI overrides keep their private token for the shared text provider.
@@ -227,7 +225,6 @@ bool InstallStorageHint() {
     StorageCaption = {vtable, "0121"};
     WithdrawalCaption = {vtable, "0202"};
     DropCaption = {vtable, "0110"};
-    HoldCaption = {vtable, "0108"};
     if (!qol::core::RegisterHintText(PocketHintText)) return false;
     ResolveStorageHintCaption::InstallAtOffset(address::ResolveFooterCaptionCall);
     BuildPocketStorageHint::InstallAtOffset(address::BuildPocketFooter);

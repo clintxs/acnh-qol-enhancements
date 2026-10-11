@@ -12,9 +12,9 @@ int main(int argc,char** argv) {
     assert(file);
     std::string content{std::istreambuf_iterator<char>(file),{}};
     Catalog catalog;
-    assert(catalog.Load(content) && catalog.Size()==28);
+    assert(catalog.Load(content) && catalog.Size()==29);
     assert(catalog.Text("qol_pockets.drop_release",1)==nullptr); // Native caption fallback.
-    assert(catalog.Text("qol_pockets.hold_wear",7)==nullptr);
+    assert(std::u16string(catalog.Text("qol_pockets.hold_wear",7))==u"Use Item");
     for (unsigned locale=0;locale<16;++locale) {
         assert(catalog.Text(GrabFiveKey,locale));
         assert(catalog.Text(GrabTenKey,locale));
@@ -24,6 +24,9 @@ int main(int argc,char** argv) {
     assert(std::u16string(catalog.Text(GrabFiveKey,12))==u"Взять 5");
     assert(std::u16string(catalog.Text(GrabFiveKey,4))==u"Grab 5");
     assert(catalog.Text("unowned.key",1)==nullptr);
+    assert(catalog.Load("[USen]\nqol_pockets.hold_wear=Use\n[EUde]\nqol_pockets.hold_wear=Benutzen\n"));
+    assert(std::u16string(catalog.Text("qol_pockets.hold_wear",8))==u"Benutzen");
+    assert(std::u16string(catalog.Text("qol_pockets.hold_wear",0))==u"Use");
     assert(catalog.Load("\xef\xbb\xbf[USen]\r\noptimized_ui.grab_five= Pick 5 \r\n"));
     assert(std::u16string(catalog.Text(GrabFiveKey,999))==u"Pick 5");
     assert(std::u16string(catalog.Text(GrabTenKey,999))==u"Grab 10");
@@ -32,6 +35,7 @@ int main(int argc,char** argv) {
                         "[USen]\nx=\xe2\x82", "[USen]\nx=\x0e", "[USen]\nUpper=hello"}) {
         assert(!catalog.Load(invalid) && catalog.Size()==0);
         assert(std::u16string(catalog.Text(GrabFiveKey,1))==u"Grab 5");
+        assert(std::u16string(catalog.Text("qol_pockets.hold_wear",1))==u"Use Item");
     }
     assert(!catalog.Load(std::string("[USen]\nx=a\0b",13)));
     assert(!catalog.Load("[USen]\nx="+std::string(128,'a')));

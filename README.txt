@@ -2,6 +2,11 @@ QoL Enhancements 0.4.18 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
+
+Pockets consume test: ZR also supports Eat, Eat 1 and Drink. Hold/Wear/Put Away
+take priority when available; consuming is the fallback. Eat 10 Turnips is not
+included. The hint is now Use Item, editable via qol_pockets.hold_wear in the
+Pockets messages INI (English fallback). Restart after editing captions.
 Shopping Card: combined funds, Savings -> Pockets (Bell bags) -> Wallet.
 Native 16:9 placement; display caps at 999,999,999 without limiting spending.
 
