@@ -13,7 +13,7 @@ DEPENDENCIES = (GEOMETRY, 0x230b8d0, 0x230bf18, 0x239a340, 0x239aff4,
                 0x15f5c40, 0x241e98c, 0x239a398, 0x221a094, 0x2223454)
 DIAGNOSTIC = b"DIAGNOSTIC: auto-vault-v4" in (Path(__file__).resolve().parents[1] / "project.elf").read_bytes()
 EXTRA = 3 * int(DIAGNOSTIC)
-CONFIG = DEFAULT + b'hold_to_hoover=false\nhold_to_advance_dialogue=false\nauto_vault=true\n'
+CONFIG = DEFAULT + b'hold_to_hoover=false\nhold_to_advance_dialogue=false\nauto_vault=true\nauto_ladder=false\nauto_equip_traversal=false\n'
 
 
 class VaultMachine(Machine):
@@ -487,14 +487,14 @@ def main():
             conflict.boot(); conflict.activate()
             assert len(conflict.hooks) == 2 and 'auto vault: DISABLED' in conflict.text
             cases += 1
-        for setting in (b'', b'auto_vault=false\n'):
-            disabled = Machine(base, {'controls': DEFAULT + b'hold_to_hoover=false\nhold_to_advance_dialogue=false\n' + setting})
+        for setting in (b'auto_vault=false\n',):
+            disabled = Machine(base, {'controls': DEFAULT + b'hold_to_hoover=false\nhold_to_advance_dialogue=false\nauto_ladder=false\nauto_equip_traversal=false\n' + setting})
             disabled.boot(); disabled.activate()
             assert len(disabled.hooks) == 2
         overlay = Machine(base, {'controls': CONFIG, 'controls.custom': b'auto_vault=false'})
         overlay.boot(); overlay.activate()
         assert len(overlay.hooks) == 2
-        enabled = Machine(base, {'controls': DEFAULT, 'controls.custom': b'auto_vault=true'})
+        enabled = Machine(base, {'controls': DEFAULT + b'auto_ladder=false\nauto_equip_traversal=false\n', 'controls.custom': b'auto_vault=true'})
         enabled.boot(); enabled.activate()
         assert base + GEOMETRY in enabled.hooks and len(enabled.hooks) == 16 + EXTRA
         absent = Machine(base, {'controls.custom': b'auto_vault=true'})

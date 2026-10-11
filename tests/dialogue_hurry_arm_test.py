@@ -6,7 +6,8 @@ No game, controller, save or live installation is modified.
 """
 import itertools
 import struct
-from dialogue_arm_test import DialogueMachine, GP, Q, DEFAULT
+from dialogue_arm_test import DialogueMachine, GP, Q
+from core_arm_test import CONTROLS_MANUAL as DEFAULT
 from unicorn.arm64_const import *
 
 

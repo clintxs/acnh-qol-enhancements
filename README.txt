@@ -1,4 +1,4 @@
-QoL Enhancements 0.4.18 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.4.19 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -23,6 +23,9 @@ Core uses subsdk6, leaving subsdk9 available for Jubbsticks Additions.
 This avoids that executable-slot collision; compatibility with its eventual
 ACNH v3 release still needs testing. Other mods must also avoid subsdk6 and
 our hook/layout files. Core supplies the suite's only main.npdm.
+
+0.4.19: Controls automatic vaulting, handheld/placed climbing (including vines),
+and silent tool borrowing/restoration are now enabled by default.
 
 0.4.18: Catalog adds a star to undonated fish, bugs and sea creatures in catch
 and item-name dialogue, pocket tooltips, home storage and ground item balloons.
@@ -269,7 +272,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.4.18
+  version = 0.4.19
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.
@@ -302,7 +305,7 @@ CRAFTING MODULE / SETTINGS (0.3.63)
 Install Core plus “QoL Enhancements - Crafting”. This replaces the former
 “QoL Enhancements - Faster Crafting” folder; remove that old folder when updating.
 Move any personal faster-crafting.custom.ini preferences to crafting.custom.ini.
-Remove old version overrides in that custom file, or update them to 0.4.18.
+Remove old version overrides in that custom file, or update them to 0.4.19.
 Old faster-crafting.ini/custom paths are no longer read.
 DIY app previews are now optional Crafting behavior, not always-on Core behavior.
 
@@ -310,7 +313,7 @@ Regular settings: romfs/qol-enhancements/config/crafting.ini
 Personal overlay: romfs/qol-enhancements/config/crafting.custom.ini
 Defaults in the regular file:
   enabled = true
-  version = 0.4.18
+  version = 0.4.19
   diy_app_preview = true
   workbench_preview_tilt = true
   crafting_quantity_wrap = true
@@ -361,12 +364,12 @@ CONTROLS SETTINGS
 The Controls module includes both hold-Y pickups and dialogue hurry.
 romfs/qol-enhancements/config/controls.ini:
   enabled = true
-  version = 0.4.18
+  version = 0.4.19
   hold_to_advance_dialogue = true
   hold_to_hoover = true
-  auto_vault = false
-  auto_ladder = false
-  auto_equip_traversal = false
+  auto_vault = true
+  auto_ladder = true
+  auto_equip_traversal = true
 
 Set hold_to_hoover=false for ordinary field Y behavior. The two hold-Y settings
 default to true. All Controls settings support controls.custom.ini overrides.
@@ -374,31 +377,18 @@ Restart after editing.
 Set hold_to_advance_dialogue=false to disable only dialogue hurry.
 The same key works in controls.custom.ini, overriding the regular setting.
 
-AUTO LADDER PROTOTYPE: Set auto_ladder=true, hold a ladder, and push firmly
-into a climbable cliff face or edge. After the native hop hold delay, the game
-requests its normal ladder action. Native climb checks and ordinary hop priority
-remain in place. Ladder prototype 2 was confirmed working uphill and downhill.
-It also enables automatic climbing of placed ladders and vines using the
-native world-object search; no pocket ladder or auto equipping is required.
-Placed-object climbing is a new prototype awaiting live confirmation.
-This setting is independent of auto_vault.
+AUTOMATIC TRAVERSAL: Enabled by default. Push firmly into a vaultable river
+or a climbable cliff face/edge through the normal hop delay. Controls silently
+borrows a pocket pole/ladder, traverses, then restores your previous tool or
+returns to empty hands. Placed ladders and vines need no pocket ladder.
+Ordinary narrow hops keep priority. Pole, uphill/downhill ladder, silent tool
+restoration and placed climbing were confirmed working in Eden.
 
-AUTO VAULT PROTOTYPE: Set auto_vault=true, hold a vaulting pole, and push
-firmly toward a valid crossing. After the native hop delay, Controls requests
-a native vault without pressing A. Ordinary narrow hops retain priority.
-Off by default as an opt-in feature; pole prototype 3
-was confirmed working in Eden. The separate traversal test ZIPs enable it.
-The key also works in controls.custom.ini. Restart after changing it.
-A custom file alone cannot activate an absent Controls module. Removing or
-setting enabled=false disables all Controls features. Restart after edits.
-
-AUTO EQUIP TRAVERSAL PROTOTYPE: Set auto_equip_traversal=true alongside
-auto_vault and/or auto_ladder. The needed tool must be in your pockets.
-Controls borrows it without the turn-to-camera animation, preserves facing,
-and restores the previous held tool after a confirmed traversal finishes
-or returns to empty hands. Releasing/turning away while equipping restores
-the previous tool. Manually choosing another tool cancels restoration.
-Silent auto equip prototype 2 was confirmed working in-game. Off by default.
+Set auto_vault=false to disable automatic pole vaulting. Set auto_ladder=false
+to disable automatic handheld and placed climbing. Set auto_equip_traversal=false
+to require an already equipped tool; placed ladders and vines still work.
+Manual tool selection cancels restoration. Existing controls.custom.ini values
+still override the defaults. Restart after editing.
 
 Y TO HURRY PROTOTYPE: With Controls enabled and hold_to_advance_dialogue=true,
 hold Y for nominal 30x text and automatic completed-page advancement. Choices open normally; Y never

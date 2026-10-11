@@ -5,13 +5,15 @@
 using namespace qol::controls;
 int main() {
     Settings settings{};
-    assert(!settings.autoEquipTraversal);
+    assert(settings.autoEquipTraversal && settings.autoVault && settings.autoLadder);
+    assert(!ApplySettings("# inherit defaults", settings));
+    assert(settings.autoEquipTraversal && settings.autoVault && settings.autoLadder);
     assert(!ApplySettings("auto_equip_traversal=true", settings) && settings.autoEquipTraversal);
     assert(ApplySettings("auto_equip_traversal=false\nauto_equip_traversal=true", settings) == 1);
     assert(settings.autoEquipTraversal);
     assert(ApplySettings("auto_equip_traversal=yes", settings) == 1 && settings.autoEquipTraversal);
     assert(!ApplySettings("auto_equip_traversal=false", settings) && !settings.autoEquipTraversal);
-    assert(!settings.autoVault);
+    assert(settings.autoVault);
     assert(!ApplySettings("auto_vault=true", settings) && settings.autoVault);
     assert(!ApplySettings("# inherit", settings) && settings.autoVault);
     assert(!ApplySettings("auto_vault=false", settings) && !settings.autoVault);
@@ -27,7 +29,7 @@ int main() {
         assert(ApplySettings(std::string("auto_vault=false\n") + std::string(4096, ' '), settings) == 1);
         assert(settings.autoVault == prior);
     }
-    assert(!settings.autoLadder);
+    assert(settings.autoLadder);
     assert(!ApplySettings("auto_ladder=true", settings) && settings.autoLadder);
     assert(!ApplySettings("# inherit", settings) && settings.autoLadder);
     for (bool prior : {false, true}) {

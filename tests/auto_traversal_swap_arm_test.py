@@ -2,7 +2,7 @@
 
 Inventory lookup, animation transitions and terrain are modeled. The native
 RequestAction body is executed, including its complete 0x7a-byte request copy.
-Live equipment/animation timing still needs the prototype test.
+The user confirmed silent equipment/restoration working in game.
 """
 import struct
 from auto_ladder_arm_test import LadderMachine, CONFIG
@@ -10,7 +10,7 @@ from auto_vault_arm_test import EXTRA
 from core_arm_test import Machine, DEFAULT, RAW
 from unicorn.arm64_const import *
 
-SWAP_CONFIG = CONFIG + b'auto_equip_traversal=true\n'
+SWAP_CONFIG = CONFIG.replace(b'auto_equip_traversal=false', b'auto_equip_traversal=true')
 EMPTY, NET, POLE, LADDER, AXE = 0xfffe, 0x1234567800001001, 0x1002, 0x1003, 0x999900001004
 KINDS = {EMPTY: 0, NET: 1, POLE: 0x28, LADDER: 0x11, AXE: 3}
 DEPENDENCIES = (0x2222950, 0x2272704, 0x2572e00, 0x2577ea0, 0x242d8f0, 0x19d5d04, 0x19d78cc, 0x256a0c0, 0x2275730, 0x23758a0, 0x2375ed0, 0x2376018)
@@ -104,6 +104,18 @@ class SwapMachine(LadderMachine):
 def main():
     cases = 0
     for base in (0x7100000000, 0x7200000000):
+        # Omitted keys now activate all traversal paths; explicit custom false
+        # still disables them without disabling other Controls features.
+        for custom, expected in ((None, 20 + EXTRA),
+                                 (b'auto_vault=false\nauto_ladder=false\nauto_equip_traversal=false', 13)):
+            files = {'controls': DEFAULT}
+            if custom is not None: files['controls.custom'] = custom
+            defaults = Machine(base, files)
+            defaults.boot(); defaults.activate()
+            assert len(defaults.hooks) == expected, defaults.text
+            assert ('auto placed ladder: READY;' in defaults.text) == (custom is None)
+            assert ('auto equip: READY;' in defaults.text) == (custom is None)
+            cases += 1
         for ladder in (False, True):
             for prior in (NET, AXE, EMPTY):
                 m = SwapMachine(base)

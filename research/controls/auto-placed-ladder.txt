@@ -57,3 +57,9 @@ This restriction is covered by the inherited other-tool wall regression.
 Follow-up decompilation confirms 015E4D80 accepts category 0x22 and 015E4E3C
 accepts 0x21, after native resource availability checks. Other placed objects
 cannot enter the world-ladder search merely by being furniture near a cliff.
+
+2026-10-11 live follow-up: user confirmed placed climbing working and requested
+it enabled by default. Release 0.4.19 enables auto_ladder, auto_vault and
+silent auto_equip_traversal in compiled defaults and the distributed config.
+Explicit custom false values remain respected; no settings migration overwrites
+personal files. Diagnostic observers remain excluded from the normal release.

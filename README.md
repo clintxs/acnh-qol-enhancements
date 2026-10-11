@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.4.18 release test build** for ACNH **3.0.3 on Eden**. One Core
+**0.4.19 release test build** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates seven optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -13,6 +13,9 @@ always visible. Live Eden testing is still required before public release.
 The DIY Recipes app now shows **A / Select** while browsing recipes with
 Crafting’s DIY preview enabled. It uses the existing localized caption and
 hides the hint while a preview is open.
+
+Controls also enables automatic pole vaulting, handheld/placed ladder climbing
+(including vines), and silent tool borrowing/restoration by default.
 
 With Controls enabled, hold **Y** during dialogue for the text-only **Hurry** prototype:
 nominal 30x reveal and automatic page advancement, stopping at choices or the
@@ -35,7 +38,7 @@ Missing runtime data leaves the name unchanged. Live Eden verification is pendin
 | Fitting Room | Able Sisters Bag prototype 0.3.7 | Fitting row badge and original counter layout |
 | Crafting | DIY/workbench previews, quantity wrap + configurable crafting/cooking speed | Configuration only |
 | Shopping Card | Combined savings/cash routing prototype | Configuration + card currency layout |
-| Controls | Hold Y to repeat pickup/harvest/weed actions and optionally advance dialogue | Configuration only |
+| Controls | Automatic traversal, tool restoration, hold Y pickups and dialogue hurry | Configuration only |
 
 Faster tool-wheel animations and other workspace mods are not bundled in this
 seven-feature suite. Historical source notes under `docs/` describe each
@@ -104,45 +107,32 @@ produce and weeds. It adds no animation speed multiplier or pickup radius.
 
 ```ini
 enabled = true
-version = 0.4.18
+version = 0.4.19
 hold_to_advance_dialogue = true
 hold_to_hoover = true
-auto_vault = false
-auto_ladder = false
-auto_equip_traversal = false
+auto_vault = true
+auto_ladder = true
+auto_equip_traversal = true
 ```
 
 Set `hold_to_hoover = false` for ordinary field Y behavior. The two hold-Y
 settings default to true. All Controls settings work in `controls.ini` and
 `controls.custom.ini`. Restart after editing.
 
-`auto_ladder = true` enables the equipped-ladder prototype. Hold a ladder and
-push firmly into a climbable cliff face or edge. After the native hop hold delay,
-the game requests its normal ladder action. This uses native climb validation
-and retains ordinary hop priority. Ladder prototype 2 was confirmed working
-uphill and downhill. It also enables automatic climbing of placed ladders and
-vines through the native world-object search, without needing a pocket ladder
-or auto equipping. Placed-object climbing is a new prototype awaiting live
-confirmation. It is independent of auto vault.
+Automatic traversal is enabled by default. Push firmly toward a vaultable river
+or a climbable cliff face/edge and keep pushing through the normal hop delay.
+Controls uses a ladder or pole from your pockets without the turn-to-camera
+animation, then restores your previous tool or returns to empty hands. Placed
+ladders and vines work without a pocket ladder. Ordinary narrow hops keep priority.
+The pole, uphill/downhill ladder, silent tool restoration and placed climbing
+features were confirmed working in Eden.
 
-`auto_vault = true` enables the equipped-pole prototype. Hold a vaulting pole
-and push firmly toward a valid crossing; after the native hop delay, Controls
-requests a native vault without pressing A. Ordinary narrow hops retain
-priority. The feature is off by default
-as an opt-in feature; the user confirmed pole prototype 3 working in Eden.
-The separate traversal test ZIPs enable it.
-The key also works in `controls.custom.ini`. See the
-[traversal investigation and test limits](research/controls/auto-vault.txt).
-
-`auto_equip_traversal = true` extends the enabled traversal features to use a
-ladder or pole from your pockets using the native no-animation equip path.
-It preserves facing while swapping. After the crossing, it restores the previous
-held tool, or puts the borrowed tool away if your hands were empty. Ordinary
-hops keep priority. Releasing/turning away while equipping restores the previous
-tool; manually choosing another tool cancels restoration. Restoration waits
-for a confirmed traversal action to finish, including when its start is queued. Silent auto equip prototype 2 was
-confirmed working in-game and defaults to false. It requires `auto_vault` and/or
-`auto_ladder`; tools must be in your pockets.
+Set `auto_vault = false` to disable automatic pole vaulting, or
+`auto_ladder = false` to disable automatic handheld/placed climbing. Set
+`auto_equip_traversal = false` to require the appropriate tool already equipped;
+placed ladders and vines still work. Manually choosing another tool cancels
+restoration. All three keys work in `controls.custom.ini`; explicit values in
+an existing custom file still override these defaults. Restart after editing.
 
 Set `hold_to_advance_dialogue = false` to disable dialogue hurry while keeping
 hold-Y pickup enabled. This key works in both `controls.ini` and the optional
@@ -206,14 +196,14 @@ Diagnostic checks: `PYTHONPATH='../Grab 5/working/python:tests' python3 tests/di
 Install **QoL Enhancements - Crafting** with Core. This replaces the former
 Faster Crafting package; remove the old folder and rename personal
 `faster-crafting.custom.ini` preferences to `crafting.custom.ini`. Remove any old
-`version` override from that personal file (or update it to 0.4.18). The retired
+`version` override from that personal file (or update it to 0.4.19). The retired
 regular/custom paths are no longer read. Core alone no longer enables DIY previews.
 
 `romfs/qol-enhancements/config/crafting.ini` supplies these defaults:
 
 ```ini
 enabled = true
-version = 0.4.18
+version = 0.4.19
 diy_app_preview = true
 workbench_preview_tilt = true
 crafting_quantity_wrap = true
@@ -441,7 +431,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.4.18
+version = 0.4.19
 base_speed = 2
 boost_speed = 4
 faster_ui = true

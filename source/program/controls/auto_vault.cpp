@@ -758,10 +758,10 @@ bool InstallAutoTraversal(bool vault, bool ladder, bool autoEquip) {
     }
     AutoVaultGeometry::InstallAtOffset(address::HopGeometry);
     AutoVaultEntry::InstallAtOffset(address::HopEntry);
-    if (LadderEnabled) Logging.Log("[QoL Enhancements/Controls] auto ladder: READY; prototype 2; equipped ladder; native hop timer\n");
-    if (PlacedLadderEnabled) Logging.Log("[QoL Enhancements/Controls] auto placed ladder: READY; prototype 1; native object search\n");
+    if (LadderEnabled) Logging.Debug("[QoL Enhancements/Controls] auto ladder: READY; prototype 2; equipped ladder; native hop timer\n");
+    if (PlacedLadderEnabled) Logging.Debug("[QoL Enhancements/Controls] auto placed ladder: READY; prototype 1; native object search\n");
     if (VaultEnabled) Logging.Debug("[QoL Enhancements/Controls] auto vault: READY; prototype 3; equipped pole; native hop timer\n");
-    if (AutoEquipEnabled) Logging.Log("[QoL Enhancements/Controls] auto equip: READY; prototype 2; pocket tool and restore\n");
+    if (AutoEquipEnabled) Logging.Debug("[QoL Enhancements/Controls] auto equip: READY; prototype 2; pocket tool and restore\n");
     return enabled == requested && (!autoEquip || AutoEquipEnabled);
 }
 }

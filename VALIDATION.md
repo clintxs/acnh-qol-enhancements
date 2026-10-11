@@ -2611,3 +2611,27 @@ World resources/terrain and full climb animations remain modeled. Live vines,
 ladder variants, uphill/downhill collision, held-tool behavior and multiplayer
 remain unverified. A separate diagnostic ZIP and matching source preserve
 all earlier prototypes. The module defaults remain false.
+
+
+## Controls traversal defaults, release 0.4.19 (2026-10-11)
+
+The user confirmed placed ladder climbing working and requested default
+activation. Compiled Settings and the distributed Controls config now enable
+auto_vault, auto_ladder and auto_equip_traversal. Explicit regular/custom false
+values still disable individual behaviors; personal overrides are not migrated
+or overwritten. All feature config versions and Core advance to 0.4.19.
+The confirmed traversal implementation remains intact. Routine traversal READY
+messages now respect log_debug, preserving quiet shipping startup output.
+
+The normal pinned build and all host/Controls checks pass: pole 246, ladder
+144, placed ladder 180, swap/defaults/overrides 134, pickup 181, dialogue 1,024,
+hurry 712 and catch 772. Default/override checks execute compiled activation at
+two ASLR bases, including omitted traversal keys and custom false values.
+Unrelated pickup/dialogue fixtures explicitly disable traversal; Core integration
+uses the actual new defaults. Diagnostic observers are absent from this build.
+The final logging-only adjustment is checked separately below. Earlier release
+and prototype archives remain preserved.
+
+After the logging-only adjustment, quiet startup and all logging combinations
+pass, as do Core activation across all 128 module subsets at two ASLR bases,
+configuration/version/error cases and the final 134 swap/default/override cases.

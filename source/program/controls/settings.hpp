@@ -4,9 +4,9 @@ namespace qol::controls {
 struct Settings {
     bool holdToHoover = true;
     bool holdToAdvanceDialogue = true;
-    bool autoVault = false;
-    bool autoEquipTraversal = false; // Borrow a pocket tool and restore the prior held item.
-    bool autoLadder = false; // Equipped-ladder prototype; opt in for live testing.
+    bool autoVault = true;
+    bool autoEquipTraversal = true; // Borrow a pocket tool and restore the prior held item.
+    bool autoLadder = true; // Handheld and placed ladders, including vines.
 };
 inline unsigned ApplySettings(std::string_view input, Settings &output) {
     if (input.size() > core::MaxConfigBytes || !core::ValidUtf8(input, true)) return 1;

@@ -1,7 +1,7 @@
 """Independent Controls activation, native-speed parity and layered settings."""
 import itertools
 import struct
-from core_arm_test import Machine, DEFAULT
+from core_arm_test import Machine, CONTROLS_MANUAL as DEFAULT
 from dialogue_hurry_arm_test import HurryMachine
 
 REVEAL = (0x1afa00c, 0x1afdec0, 0x1afded4, 0x1afdefc, 0x1a969e0)

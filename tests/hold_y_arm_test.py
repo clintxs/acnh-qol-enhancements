@@ -5,7 +5,7 @@ execute. Picker scheduling/reservation, loaded parameter tables and animations
 are modeled; this does not establish Eden's live scheduler or save behavior.
 """
 import struct
-from core_arm_test import Machine, DEFAULT, RAW
+from core_arm_test import Machine, CONTROLS_MANUAL as DEFAULT, RAW
 from unicorn.arm64_const import *
 
 Y = 1 << 38

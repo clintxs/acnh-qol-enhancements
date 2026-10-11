@@ -12,6 +12,11 @@ def prototype_files():
     core = package.CORE_FOLDER
     controls = 'QoL Enhancements - Controls'
     config = (root / 'modules/Controls/romfs/qol-enhancements/config/controls.ini').read_bytes()
+    # Preserve historical prototype presets now that shipping defaults are on.
+    for setting in (b'auto_vault', b'auto_ladder', b'auto_equip_traversal'):
+        on, off = setting + b' = true\n', setting + b' = false\n'
+        assert config.count(on) + config.count(off) == 1
+        config = config.replace(on, off)
     assert config.count(b'auto_vault = false\n') == 1
     files = {
         f'{core}/exefs/subsdk6': (root / 'deploy/subsdk6').read_bytes(),

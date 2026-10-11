@@ -10,10 +10,12 @@ from unicorn.arm64_const import *
 from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
 SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'shopping-card', 'crafting', 'controls')
-COUNTS = (19, 19, 7, 12, 11, 19, 11)  # Controls and Faster Dialogue share five reveal sites.
+COUNTS = (19, 19, 7, 12, 11, 19, 18)  # Controls and Faster Dialogue share five reveal sites.
 RELEASE_VERSION = re.search(r'ReleaseVersion\[\] = "(\d+\.\d+\.\d+)"',
                             (ROOT / 'qol-enhancements/source/program/core/release.hpp').read_text())[1]
 DEFAULT = f'enabled=true\nversion={RELEASE_VERSION}\n'.encode()
+# Explicitly isolate pickup/dialogue checks from traversal; Core tests use real defaults.
+CONTROLS_MANUAL = DEFAULT + b'auto_vault=false\nauto_ladder=false\nauto_equip_traversal=false\n'
 
 def expected_hook_count(machine, enabled):
     # The existing verbose-dialogue build adds a Catalog message trace hook.
