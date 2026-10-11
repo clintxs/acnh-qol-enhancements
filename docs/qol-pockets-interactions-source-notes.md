@@ -208,3 +208,9 @@ development build temporarily logs changed input/focus/gate snapshots (at most
 configuration. This distinguishes a wrong eligibility/focus assumption from
 cursor changes occurring outside the observed native dispatch. Remove this
 temporary trace once the live failure is resolved.
+
+Test 2 confirmed native movement occurs inside the hook: focus 10 -> 11 -> 12
+while A remains held. The cancellation was the incorrect 0x303e0 conflict mask:
+live UI rows carry 0x10000 alongside A/directions, while actual ZL/ZR are IDs
+10/11. Test 3 uses only IDs 5..11 for conflicting actions. Replaying 0x10010 /
+0x10018 through the compiled observers reproduces the failure before the fix.

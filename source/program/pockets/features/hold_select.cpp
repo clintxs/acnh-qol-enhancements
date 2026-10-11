@@ -23,7 +23,11 @@ constexpr std::size_t GlobalInputMasks = 0x418, GlobalInputMask = 0x10;
 constexpr std::size_t ItemWidgets = 0x590, ItemFlags = 0x2c3;
 }
 constexpr unsigned NativeA = 1u << 4;
-constexpr unsigned OtherActionButtons = 0x303e0; // B/X/Y, shoulders and triggers; allow navigation.
+constexpr unsigned OtherActionButtons = (1u << 5) | (1u << 6) | (1u << 7) | // B/X/Y
+                                        (1u << 8) | (1u << 9) |          // L/R
+                                        (1u << 10) | (1u << 11);         // ZL/ZR
+// UI rows use the footer's button IDs, not HID bit positions. Live input also
+// carries bit 16 alongside ordinary A/navigation; it is not a trigger action.
 constexpr std::uint16_t SelectItem = 1u << 2;
 constexpr int Browsing = 3, ItemSelectMode = 1, PutInStorageMode = 9;
 template <typename T> T &Field(void *object, std::size_t offset) {
@@ -41,7 +45,7 @@ struct InputCapture {
 };
 InputCapture capture{};
 
-// Temporary, bounded diagnostics for the second development build. These use
+// Temporary, bounded diagnostics while verifying the live fix. These use
 // the base logger so a user's log_debug=false does not hide the failed gate.
 void TraceHoldInput(void *page, void *snapshot, unsigned blocked, bool after) {
     static unsigned records{};
@@ -211,7 +215,7 @@ bool InstallHoldSelect() {
         Logging.Error("[QoL Enhancements/Pockets] HOLD_SELECT_DISABLED shared input unavailable\n");
         return false;
     }
-    Logging.Log("[QoL Enhancements/Pockets] HOLD_SELECT_READY test2 input trace; selling / put in storage\n");
+    Logging.Log("[QoL Enhancements/Pockets] HOLD_SELECT_READY test3 corrected UI action mask; selling / put in storage\n");
     return true;
 }
 }

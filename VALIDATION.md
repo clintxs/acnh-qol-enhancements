@@ -2273,3 +2273,17 @@ an installation error. Its log_debug=false setting hid the feature's ready/debug
 messages. Test 2 adds bounded, automatic HOLD_SELECT_TRACE records for live
 picker mode, gates, held input and focus before/after native dispatch. It is a
 diagnostic build; no behavioral fix is claimed from the modeled navigation test.
+
+Test 2's synced Eden trace identifies the failure: shed mode 9, limit -1,
+browsing state 3, and focus changes all match the implementation, but held A
+arrives as 0x10010 (A+right as 0x10018). The incorrect conflict mask 0x303e0
+includes bit 16 and cancels the gesture on every A press. Adding this observed
+bit to the ARM fixture reproduces test 1/2's failure. Test 3 corrects the mask
+to UI action IDs 5..11 (B/X/Y/L/R/ZL/ZR), retaining navigation bits 0..3 and
+ignoring the extra bit 16. The diagnostic trace remains bounded for live
+confirmation; it is not yet a user-confirmed in-game fix.
+
+Test 3's pinned build passes. 72 compiled/native ARM cases pass at two bases,
+including the observed slot-10-through-14 input sequence, all four directions,
+all seven conflicting action buttons, release/re-arm behavior, and the prior
+selection/limit/capacity cases. The imported 842 Pockets cases also pass.

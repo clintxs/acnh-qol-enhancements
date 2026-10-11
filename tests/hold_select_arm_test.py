@@ -69,7 +69,10 @@ for base in (0x80000000, 0x1234500000):
         if move is not None: target = move
         native_click = click
         h.write(rows, other_row, 4); h.write(rows + 0x3c, 0, 4)
-        h.write(rows + 0x48, buttons, 4); h.write(rows + 0x48 + 0x3c, consumed, 4)
+        # Live Eden UI rows include bit 16 alongside A and navigation. This is
+        # not a shoulder/trigger action and must not cancel sweep selection.
+        live_buttons = buttons | (0x10000 if buttons else 0)
+        h.write(rows + 0x48, live_buttons, 4); h.write(rows + 0x48 + 0x3c, consumed, 4)
         h.put(0, page); h.put(1, snapshot); h.put(2, blocked)
         before = len(native_calls)
         h.run(h.callback('SharedPageInput'))
@@ -158,7 +161,29 @@ for base in (0x80000000, 0x1234500000):
     assert h.read(pocket + 0x1c4e8) == 1
     assert h.read(pocket + 0x1c50c, 4) == 0x69 and h.read(pocket + 0x1f0, 4) == 12
     cases += 1
-    assert any('HOLD_SELECT_READY test2' in line for line in diagnostic_logs)
+    # Reproduce the observed shed trace: A=10010, A+right=10018, slots 10..14.
+    free_storage = 40
+    reset(mode=9); frame(0, 10); frame(0x10010, click=10); native_select()
+    for slot in range(11, 15):
+        frame(0x10018, slot); native_select()
+    assert h.read(pocket + 0x1c4e8) == 0x7c00
+    frame(0x10014, 13); assert h.read(pocket + 0x1c51a, 2) == 0
+    frame(0); frame(0x10010, click=12); native_select()
+    assert h.read(pocket + 0x1c4e8) == 0x6c00
+    cases += 1
+    for direction in range(4):
+        reset(); frame(16); frame(16 | (1 << direction), 1)
+        assert h.read(pocket + 0x1c51a, 2) == 4
+        cases += 1
+    # UI actions occupy bits 5..11, including actual ZL/ZR at 10/11.
+    for button in range(5, 12):
+        reset(); frame(16); frame(16 | (1 << button), 1)
+        assert h.read(pocket + 0x1c51a, 2) == 0
+        frame(16, 2); assert h.read(pocket + 0x1c51a, 2) == 0
+        frame(0); frame(16); frame(16, 3)
+        assert h.read(pocket + 0x1c51a, 2) == 4
+        cases += 1
+    assert any('HOLD_SELECT_READY test3' in line for line in diagnostic_logs)
     assert any('HOLD_SELECT_TRACE before owner=1 mode=9 state=3' in line for line in diagnostic_logs)
     assert any('HOLD_SELECT_TRACE after' in line and 'focus=4 ' in line for line in diagnostic_logs)
     assert sum('HOLD_SELECT_TRACE' in line for line in diagnostic_logs) <= 168
