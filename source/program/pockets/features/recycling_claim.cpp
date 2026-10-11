@@ -11,12 +11,15 @@ constexpr std::uintptr_t BuildMenu = 0x02defbfc;
 constexpr std::uintptr_t ControllerVtable = 0x049df828, BuilderVtable = 0x049dfba8;
 constexpr std::uintptr_t DescriptionVtable = 0x049c7208, EmptyCallbackVtable = 0x049c7230;
 constexpr std::uintptr_t NameWindowVtable = 0x04a01130, DisappearNameWindow = 0x030127b8;
+constexpr std::uintptr_t SetGridState = 0x03dbb160, ChangeGridPauseMode = 0x03764b90;
 }
 namespace layout {
 constexpr std::size_t State = 0x1b0, Queues = 0x1f0, Phase = 0x200;
 constexpr std::size_t SelectedSlot = 0x218, Menu = 0x228;
 constexpr std::size_t NameWindow = 0x220;
 constexpr std::size_t CloseRequested = 0x201;
+constexpr std::size_t Page = 0x210, ItemGrid = 0x578;
+constexpr std::size_t GridStateMachine = 0x290, GridState = 0x298, GridPauseMode = 0x2e4;
 constexpr std::size_t ItemsCount = 0x1c1d8, Items = 0x1c1e0, AvailableSlots = 0x1c1e8;
 constexpr std::size_t Builder = 0x218, BuilderOwner = 0x220, BuilderFunction = 0x228, Adjustment = 0x230;
 constexpr std::size_t RowCount = 0x26d8, Selection = 0x26c9, FirstAction = 0x3a0;
@@ -47,6 +50,22 @@ struct ClaimRequest {
 };
 ClaimRequest pending{};
 
+void PauseClaimGrid(void *owner) {
+    auto *grid = Field<void *>(Field<void *>(owner, layout::Page), layout::ItemGrid);
+    // Preserve native CommandSelect entry (02df1c74..02df1cbc), excluding only
+    // the popup. Native Claim resumes via 03764fe0, which does NOTHING unless
+    // the grid is paused in state 3. Its resume re-establishes cursor focus even
+    // when the selected item widget has just become empty/disabled.
+    if (Field<int>(grid, layout::GridState) == 3) {
+        if (Field<int>(grid, layout::GridPauseMode) != 0)
+            game::FunctionAt<void (*)(void *, int)>(address::ChangeGridPauseMode)(grid, 0);
+    } else {
+        Field<int>(grid, layout::GridPauseMode) = 0;
+        game::FunctionAt<void (*)(void *, int)>(address::SetGridState)(
+            static_cast<std::byte *>(grid) + layout::GridStateMachine, 3);
+    }
+}
+
 void DismissClaimedItemName(void *owner, int slot) {
     // Native Claim clears this availability bit only after insertion/removal.
     // Its ordinary popup moves focus away and dismisses the name window; our
@@ -66,6 +85,10 @@ void DismissClaimedItemName(void *owner, int slot) {
 bool ProbeClaim(void *owner, ClaimRequest &request, bool entering = false) {
     if (Field<std::uintptr_t>(owner, 0) != game::MainAddress(address::ControllerVtable) ||
         Field<int>(owner, layout::State) != SelectingCommand) return false;
+    auto *page = Field<void *>(owner, layout::Page);
+    auto *grid = page ? Field<void *>(page, layout::ItemGrid) : nullptr;
+    if (!grid || (Field<int>(grid, layout::GridState) != 2 &&
+                  Field<int>(grid, layout::GridState) != 3)) return false;
     const unsigned phase = Field<std::uint8_t>(owner, layout::Phase);
     if (phase > 1 || Field<int>(owner, layout::Queues + phase * 4) != -1) return false;
     const int other = Field<int>(owner, layout::Queues + (1 - phase) * 4);
@@ -107,6 +130,7 @@ HOOK_DEFINE_TRAMPOLINE(EnterRecyclingMenu) {
     static void Callback(void *owner) {
         pending = {};
         if (!ProbeClaim(owner, pending, true)) Orig(owner);
+        else PauseClaimGrid(owner);
         // Never transfer during ENTRY: native transition cleanup would discard
         // the next state. A already supplied the ordinary click feedback.
     }
@@ -148,6 +172,8 @@ bool InstallRecyclingClaim() {
         Check{address::EnterMenu, {0xd10103ff, 0xa9027bfd, 0xa9034ff4, 0x910083fd, 0xf9410808}},
         Check{address::ProcessSelection, {0xd10183ff, 0xa9027bfd, 0xf9001bf7, 0xa90457f6, 0xa9054ff4}},
         Check{address::BuildMenu, {0xa9be7bfd, 0xa9014ff4, 0x910003fd, 0xf9400028, 0xaa0103e0}},
+        Check{address::SetGridState, {0xa9be7bfd, 0xa9014ff4, 0x910003fd, 0xb9400808, 0x2a0103f3}},
+        Check{address::ChangeGridPauseMode, {0xd101c3ff, 0xa9017bfd, 0xf90013fb, 0xa90367fa, 0xa9045ff8}},
         Check{address::DisappearNameWindow, {0x39480008, 0x52800089, 0x8b080808, 0xb901f109, 0xd65f03c0}}};
     for (const auto &check : checks) {
         if (std::memcmp(reinterpret_cast<const void *>(game::MainAddress(check.offset)),

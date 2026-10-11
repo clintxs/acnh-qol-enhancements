@@ -1,4 +1,32 @@
-# Unified QoL validation — 0.4.8 recycling cursor preservation
+# Unified QoL validation — 0.4.9 recycling grid lifecycle
+
+## 0.4.9 Preserve native Claim grid pause/resume
+
+User reports the cursor still disappears with 0.4.8. That fix removed the
+general name-window close side effect, but our bypass also skipped native
+CommandSelect's grid pause (02df1c74..02df1cbc). Native Claim disables the
+claimed widget, then calls ResumeGrid 03764fe0. ResumeGrid immediately returns
+unless grid state is 3; our grid had remained in browsing state 2. Therefore
+its native state-2 entry/focus restoration never ran after item invalidation.
+
+Preserve the original grid pause sequence (mode 0 / state 3), but still skip
+the child popup. Native Claim now resumes the grid itself. Limit bypass to
+ready grid states 2/3; missing/not-ready grids use the ordinary menu path.
+Keep the name-only disappearance fix from 0.4.8. No new hooks.
+
+The expanded fixture no longer stubs ResumeGrid: original Claim, widget-mode
+update, ResumeGrid and state transitions run. Rendered widget enable/focus
+entry effects remain modeled. A negative case skips grid pause and reproduces
+the missing resume; the fixed flow executes resume and returns focus to the
+same pane after marking the item unavailable. This does not prove Eden rendering.
+
+Passed: clean build, 842 compiled Pockets cases, 102 recycling cases, and all
+64 Core module combinations at two relocated bases.
+
+Pending Eden: claim without moving the stick, repeated claims, navigation to
+another item, and full-pockets error/recovery. Previous local tests did not
+cover the grid lifecycle sufficiently; the 0.4.8 in-game cursor fix was not
+confirmed.
 
 ## 0.4.8 Name-only disappearance preserves grid focus
 

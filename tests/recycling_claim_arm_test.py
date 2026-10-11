@@ -43,6 +43,16 @@ for base in (0x80000000,0x1234500000):
     h.write(owner,base+0x49df828);h.write(owner+0x210,page);h.write(owner+0x228,menu)
     h.write(owner+0x1c1d8,60,4);h.write(owner+0x1c1e0,items)
     h.write(page+0x578,grid)
+    grid_states=h.ram+0x38000;widget=h.ram+0x39000;widget_vt=h.ram+0x3a000
+    widget_array=h.ram+0x3b000
+    h.write(grid+0x2b8,4,4);h.write(grid+0x2c0,grid_states)
+    h.write(grid+0x208,60,4);h.write(grid+0x210,widget_array)
+    h.write(grid+0x2e8,10,4);h.write(grid+0x3d4,60,4)
+    h.write(widget,widget_vt);h.write(widget_vt+0x140,h.ram+0x3c000)
+    for i in range(60):h.write(widget_array+i*8,widget)
+    for state,entry in ((2,h.ram+0x3c010),(3,h.ram+0x3c020)):
+        record=grid_states+state*0x40
+        h.write(record,base+0x4a16510);h.write(record+8,grid);h.write(record+0x10,entry)
     h.write(menu+0x218,base+0x49dfba8);h.write(menu+0x220,owner)
     h.write(menu+0x228,base+0x2defbfc);h.write(menu+0x1f0,0xffffffffffffffff)
     h.write(owner+0x1d0,6,4);h.write(owner+0x1d8,states)
@@ -68,10 +78,19 @@ for base in (0x80000000,0x1234500000):
     def refresh():
         assert h.reg(0)==grid and h.reg(1)==slot
         events.append('refresh')
-        return 0 # No rendered widget in this fixture.
+        return widget
+    def disable_widget():
+        h.write(widget+0x2c3,h.reg(1)&1,1)
+        if not h.reg(1):
+            h.write(cursor+0x26c,1,1);h.write(focus_controller+0x10,0)
+    def resume_grid():
+        events.append('focus-restored')
+        h.write(cursor+0x26c,0,1);h.write(focus_controller+0x10,pane)
+    def pause_grid():
+        h.write(cursor+0x26c,1,1);h.write(focus_controller+0x10,0)
     h.stubs={safe_prepare:lambda:None,base+0x2df1c58:lambda:events.append('menu'),
         base+0x2577890:can_claim,base+0x25738b0:insert,base+0x3765104:refresh,
-        base+0x3764fe0:lambda:events.append('focus-restored'),
+        h.ram+0x3c000:disable_widget,h.ram+0x3c010:resume_grid,h.ram+0x3c020:pause_grid,
         h.ram+0x29000:lambda:events.append('browse'),h.ram+0x29010:lambda:events.append('full-message'),
         h.ram+0x29020:lambda:save,
         base+0x3759380:lambda:None, # UI manager only; native close/queue runs.
@@ -83,6 +102,9 @@ for base in (0x80000000,0x1234500000):
     def reset():
         events.clear()
         h.write(cursor+0x26c,0,1);h.write(focus_controller+0x10,pane)
+        h.write(grid+0x298,2,4);h.write(grid+0x2e4,0,4)
+        h.write(grid+0x440,slot//10,4);h.write(grid+0x444,slot%10,4)
+        h.write(widget+0x2c3,1,1)
         h.write(name_window+0x1f0,0xffffffffffffffff);h.write(name_window+0x201,0,1)
         h.write(owner+0x1b0,3,4);h.write(owner+0x1f0,0xffffffff,4);h.write(owner+0x1f4,4,4)
         h.write(owner+0x200,0,1);h.write(owner+0x218,slot,4)
@@ -95,11 +117,20 @@ for base in (0x80000000,0x1234500000):
         assert h.read(owner+0x1f0)==0xffffffffffffffff
     def update():
         h.write(owner+0x200,1,1);h.put(0,owner+0x1a8);h.run(base+0x3dbb268)
+    # Reproduce the second omission: native transfer disables the item widget,
+    # but ResumeGrid returns immediately if CommandSelect never paused it.
+    reset();h.write(menu+0x1b0,1,4);h.write(menu+0x26d8,1,4)
+    h.write(menu+0x3a0,0,4);h.write(menu+0x26c9,0,1)
+    h.put(0,owner);h.run(base+0x2df1d68)
+    assert events==['capacity','insert','refresh'] and h.read(grid+0x298,4)==2
+    assert h.read(cursor+0x26c,1)==1 and h.read(focus_controller+0x10)==0
+    cases+=1
     for slot in (0,19,59):
         for child_state in (0,1):
             for room,insert_ok in ((False,True),(True,False),(True,True)):
                 h.write(menu+0x1b0,child_state,4);reset();transition()
                 assert events==[] and h.read(owner+0x1b0,4)==4
+                assert h.read(grid+0x298,4)==3
                 update();success=room and insert_ok
                 assert events==(['capacity','insert','refresh','focus-restored'] if success else
                                 ['capacity','insert'] if room else ['capacity'])
@@ -111,7 +142,9 @@ for base in (0x80000000,0x1234500000):
                 assert h.read(menu+0x26d8,4)==3 and h.read(menu+0x3a0,4)==99
                 assert h.read(name_window+0x201,1)==int(success)
                 assert h.read(name_window+0x1f0,4)==(4 if success else 0xffffffff)
-                assert h.read(cursor+0x26c,1)==0 and h.read(focus_controller+0x10)==pane
+                if success:
+                    assert h.read(grid+0x298,4)==2
+                    assert h.read(cursor+0x26c,1)==0 and h.read(focus_controller+0x10)==pane
                 transition();assert events[-1]==('browse' if success else 'full-message')
                 cases+=1
     room=insert_ok=True;slot=0
@@ -127,6 +160,8 @@ for base in (0x80000000,0x1234500000):
         h.write(owner+0x220,name_window);h.write(name_window,base+0x4a01130)
         h.write(name_window+0x200,0,1);cases+=1
     for ptr,width,bad in ((owner,8,0),(owner+0x218,4,60),(owner+0x1c1d8,4,0),
+        (owner+0x210,8,0),(page+0x578,8,0),(grid+0x298,4,0),
+        (grid+0x298,4,1),(grid+0x298,4,4),
         (owner+0x1c1e0,8,0),(owner+0x1c1e8,1,0),(items,2,0xfffe),
         (menu+0x218,8,0),(menu+0x220,8,0),(menu+0x228,8,0),(menu+0x230,8,1),
         (menu+0x1b0,4,2),(menu+0x1f0,4,2)):
