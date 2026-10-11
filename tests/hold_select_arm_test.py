@@ -16,6 +16,10 @@ for base in (0x80000000, 0x1234500000):
     marker_ptr = h.ram + 0x44000
     prepare, animate, suppress = [h.ram + o for o in (0x85000, 0x85010, 0x85020)]
     h.u.mem_write(h.mod + symbol('InputHandlers'), bytes(5 * 8))
+    diagnostic_logs = []
+    def record_log():
+        diagnostic_logs.append(bytes(h.u.mem_read(h.reg(2), h.reg(1))).decode())
+    h.stubs[h.mod + symbol('SvcLogger', 'LogRaw')] = record_log
     # Shared trampoline is already installed by the harness. Use real feature
     # registration, including its producer/consumer fingerprint checks.
     h.write(h.mod + symbol('3qol4core', '9Installed'), 1, 1)
@@ -57,6 +61,7 @@ for base in (0x80000000, 0x1234500000):
     refreshes = []
     h.stubs = {base + 0x3c58d24: native_input, prepare: lambda: None,
                animate: lambda: None, suppress: lambda: 1,
+               h.mod + symbol('SvcLogger', 'LogRaw'): record_log,
                base + 0x257c230: lambda: free_storage,
                base + 0x3093d24: lambda: refreshes.append(h.read(pocket + 0x1c4e8))}
     def frame(buttons=0, move=None, blocked=0, consumed=0, click=None, other_row=0):
@@ -153,4 +158,8 @@ for base in (0x80000000, 0x1234500000):
     assert h.read(pocket + 0x1c4e8) == 1
     assert h.read(pocket + 0x1c50c, 4) == 0x69 and h.read(pocket + 0x1f0, 4) == 12
     cases += 1
+    assert any('HOLD_SELECT_READY test2' in line for line in diagnostic_logs)
+    assert any('HOLD_SELECT_TRACE before owner=1 mode=9 state=3' in line for line in diagnostic_logs)
+    assert any('HOLD_SELECT_TRACE after' in line and 'focus=4 ' in line for line in diagnostic_logs)
+    assert sum('HOLD_SELECT_TRACE' in line for line in diagnostic_logs) <= 168
 print(f'hold select: {cases} compiled/native ARM scenarios passed at two bases')

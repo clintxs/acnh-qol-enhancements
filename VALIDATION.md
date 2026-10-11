@@ -2266,3 +2266,10 @@ are produced separately; older releases remain intact.
 - Feature registration validates native producer/consumer fingerprints. The
   Exlaunch installer, actual navigation, rendering and live frame timing remain
   outside the emulator fixture and require an Eden playtest.
+
+Test 1 failed in the user's shed put-away playtest: only the initial A-selected
+item was selected. Eden loaded the replacement Core and enabled Pockets without
+an installation error. Its log_debug=false setting hid the feature's ready/debug
+messages. Test 2 adds bounded, automatic HOLD_SELECT_TRACE records for live
+picker mode, gates, held input and focus before/after native dispatch. It is a
+diagnostic build; no behavioral fix is claimed from the modeled navigation test.

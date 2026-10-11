@@ -201,3 +201,10 @@ installation. No global button-repeat or navigation behavior is changed.
 original selection code through mask/limit/capacity/refresh handling at two
 ASLR bases. Navigation and rendering are modeled. Live Eden testing must still
 confirm input/update timing, cursor feedback and storage-full behavior.
+
+The first live shed put-away test selected only the initial item. The second
+development build temporarily logs changed input/focus/gate snapshots (at most
+160 pocket records plus eight distinct page types) without requiring debug
+configuration. This distinguishes a wrong eligibility/focus assumption from
+cursor changes occurring outside the observed native dispatch. Remove this
+temporary trace once the live failure is resolved.

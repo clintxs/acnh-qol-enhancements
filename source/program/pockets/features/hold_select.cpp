@@ -41,6 +41,66 @@ struct InputCapture {
 };
 InputCapture capture{};
 
+// Temporary, bounded diagnostics for the second development build. These use
+// the base logger so a user's log_debug=false does not hide the failed gate.
+void TraceHoldInput(void *page, void *snapshot, unsigned blocked, bool after) {
+    static unsigned records{};
+    static std::array<std::uintptr_t, 8> seenPages{};
+    if (!page || !snapshot || records >= 160) return;
+    const auto vtable = Field<std::uintptr_t>(page, 0);
+    if (vtable != game::MainAddress(address::PocketPageVtable)) {
+        if (after) return;
+        for (auto &seen : seenPages) {
+            if (seen == vtable) return;
+            if (!seen) {
+                seen = vtable;
+                Logging.Log("[QoL Enhancements/Pockets] HOLD_SELECT_TRACE dispatch page_vt=%lx\n",
+                            vtable - game::MainAddress(0));
+                return;
+            }
+        }
+        return;
+    }
+    auto *owner = pocket_input::FindPocketController(page);
+    auto *hint = Field<void *>(page, layout::BackHint);
+    auto *unit = hint ? Field<void *>(hint, layout::HintInput) : nullptr;
+    const int row = unit ? Field<int>(unit, layout::InputRow) : -1;
+    const int count = Field<int>(snapshot, layout::RowCount);
+    auto *rows = Field<std::byte *>(snapshot, layout::Rows);
+    auto *input = rows && count > 0 && count <= 8 && row >= 0 && row < count ?
+        rows + row * layout::RowBytes : nullptr;
+    auto *context = Field<void *>(page, layout::InputContext);
+    auto *app = *reinterpret_cast<void **>(game::MainAddress(address::ApplicationGlobal));
+    auto *masks = app ? Field<void *>(app, layout::GlobalInputMasks) : nullptr;
+    const std::array<long, 20> values{
+        owner != nullptr, owner ? Field<int>(owner, layout::Mode) : -1,
+        owner ? Field<int>(owner, layout::State) : -1,
+        owner ? Field<int>(owner, layout::SelectionLimit) : -2,
+        owner ? Field<int>(owner, layout::TransitionA) : -2,
+        owner ? Field<int>(owner, layout::TransitionB) : -2,
+        unit ? Field<int>(unit, layout::ButtonId) : -1, row, count,
+        input ? Field<unsigned>(input, 0) : 0,
+        input ? Field<unsigned>(input, layout::Consumed) : 0, blocked,
+        context ? Field<std::uint8_t>(context, layout::InputBlocked) : -1,
+        context ? Field<unsigned>(context, layout::InputMask) : 0,
+        masks ? Field<unsigned>(masks, layout::GlobalInputMask) : 0,
+        row >= 0 && row < 8 ? pocket_input::FindFocusedItemSlot(page, row) : -1,
+        owner ? Field<std::uint16_t>(owner, layout::LogicalInput) : -1,
+        owner ? Field<std::int8_t>(owner, layout::ClickSlot) : -1,
+        gesture.released, gesture.holding};
+    static std::array<std::array<long, 20>, 2> previous{};
+    if (values == previous[after]) return;
+    previous[after] = values;
+    ++records;
+    Logging.Log("[QoL Enhancements/Pockets] HOLD_SELECT_TRACE %s owner=%ld mode=%ld state=%ld "
+                "limit=%ld queues=%ld,%ld hint=%ld row=%ld/%ld buttons=%lx consumed=%lx "
+                "blocked=%ld local=%ld mask=%lx global=%lx focus=%ld logical=%lx click=%ld "
+                "released=%ld holding=%ld\n", after ? "after" : "before",
+                values[0], values[1], values[2], values[3], values[4], values[5], values[6],
+                values[7], values[8], values[9], values[10], values[11], values[12], values[13],
+                values[14], values[15], values[16], values[17], values[18], values[19]);
+}
+
 bool IsMultiSelection(void *owner) {
     const int mode = Field<int>(owner, layout::Mode);
     const int limit = Field<int>(owner, layout::SelectionLimit);
@@ -53,6 +113,7 @@ bool IsMultiSelection(void *owner) {
 }
 
 void BeforeHoldSelectInput(void *page, void *snapshot, unsigned blocked) {
+    TraceHoldInput(page, snapshot, blocked, false);
     capture = {};
     if (!page || !snapshot ||
         Field<std::uintptr_t>(page, 0) != game::MainAddress(address::PocketPageVtable)) {
@@ -100,7 +161,8 @@ void BeforeHoldSelectInput(void *page, void *snapshot, unsigned blocked) {
     capture = {owner, row, slot};
 }
 
-void AfterHoldSelectInput(void *page, void *, unsigned) {
+void AfterHoldSelectInput(void *page, void *snapshot, unsigned blocked) {
+    TraceHoldInput(page, snapshot, blocked, true);
     const auto input = capture;
     capture = {};
     if (!input.owner || !gesture.holding) return;
@@ -149,7 +211,7 @@ bool InstallHoldSelect() {
         Logging.Error("[QoL Enhancements/Pockets] HOLD_SELECT_DISABLED shared input unavailable\n");
         return false;
     }
-    Logging.Debug("[QoL Enhancements/Pockets] HOLD_SELECT_READY selling / put in storage\n");
+    Logging.Log("[QoL Enhancements/Pockets] HOLD_SELECT_READY test2 input trace; selling / put in storage\n");
     return true;
 }
 }
