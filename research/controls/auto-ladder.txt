@@ -106,3 +106,7 @@ from normal builds.
 Validation
 See VALIDATION.md and tests/auto_ladder_arm_test.py. Terrain/collision responses
 and native reservation are modeled, not evidence that live cliffs work.
+
+2026-10-11 live follow-up: user confirmed prototype 2 working after the uphill
+wall-contact retry. Next prototype adds pocket-tool borrowing/restoration; see
+auto-equip-traversal.txt.

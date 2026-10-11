@@ -5,6 +5,12 @@
 using namespace qol::controls;
 int main() {
     Settings settings{};
+    assert(!settings.autoEquipTraversal);
+    assert(!ApplySettings("auto_equip_traversal=true", settings) && settings.autoEquipTraversal);
+    assert(ApplySettings("auto_equip_traversal=false\nauto_equip_traversal=true", settings) == 1);
+    assert(settings.autoEquipTraversal);
+    assert(ApplySettings("auto_equip_traversal=yes", settings) == 1 && settings.autoEquipTraversal);
+    assert(!ApplySettings("auto_equip_traversal=false", settings) && !settings.autoEquipTraversal);
     assert(!settings.autoVault);
     assert(!ApplySettings("auto_vault=true", settings) && settings.autoVault);
     assert(!ApplySettings("# inherit", settings) && settings.autoVault);

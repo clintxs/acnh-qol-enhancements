@@ -366,6 +366,7 @@ romfs/qol-enhancements/config/controls.ini:
   hold_to_hoover = true
   auto_vault = false
   auto_ladder = false
+  auto_equip_traversal = false
 
 Set hold_to_hoover=false for ordinary field Y behavior. The two hold-Y settings
 default to true. All Controls settings support controls.custom.ini overrides.
@@ -376,17 +377,24 @@ The same key works in controls.custom.ini, overriding the regular setting.
 AUTO LADDER PROTOTYPE: Set auto_ladder=true, hold a ladder, and push firmly
 into a climbable cliff face or edge. After the native hop hold delay, the game
 requests its normal ladder action. Native climb checks and ordinary hop priority
-remain in place. Live uphill/downhill testing is pending. No auto equip/unequip.
+remain in place. Ladder prototype 2 was confirmed working uphill and downhill.
 This setting is independent of auto_vault.
 
 AUTO VAULT PROTOTYPE: Set auto_vault=true, hold a vaulting pole, and push
 firmly toward a valid crossing. After the native hop delay, Controls requests
 a native vault without pressing A. Ordinary narrow hops retain priority.
-No automatic tool switching is included. Off by default as an opt-in feature; pole prototype 3
+Off by default as an opt-in feature; pole prototype 3
 was confirmed working in Eden. The separate traversal test ZIPs enable it.
 The key also works in controls.custom.ini. Restart after changing it.
 A custom file alone cannot activate an absent Controls module. Removing or
 setting enabled=false disables all Controls features. Restart after edits.
+
+AUTO EQUIP TRAVERSAL PROTOTYPE: Set auto_equip_traversal=true alongside
+auto_vault and/or auto_ladder. The needed tool must be in your pockets.
+Controls borrows it for the crossing, then restores the previous held tool
+or returns to empty hands. Releasing/turning away while equipping restores
+the previous tool. Manually choosing another tool cancels restoration.
+This new prototype is unverified in-game and defaults to false.
 
 Y TO HURRY PROTOTYPE: With Controls enabled and hold_to_advance_dialogue=true,
 hold Y for nominal 30x text and automatic completed-page advancement. Choices open normally; Y never

@@ -1,0 +1,61 @@
+ACNH 3.0.3 - Controls automatic pocket-tool traversal, prototype 1
+
+User confirmed pole prototype 3 and ladder prototype 2 (both directions).
+New goal: use those same traversals with any tool held or empty hands, borrow
+only an owned pocket tool, then restore the exact prior item or empty hands.
+No new D-pad behavior or slingshot/context-tool selection is included.
+
+Native equipment investigation
+02272704(player, state, actionData): native generic action request; copies
+  0x7a bytes of action data into player+1860 and calls 03DBB160(controller+278,
+  state). With null data it preserves the current shared header and zeros
+  state-specific bytes. Local requests use the existing 0x20-byte header.
+04983AD8: action-name pointer table; index 0x0C="Move", 0x29="ToolChange".
+023758A0: ToolChange entry; actual item is current actionData+20 (player+1900),
+  +28 variant (0/1), +29 signed pocket slot, +2A shortcut, +2E animate.
+  Plays PlayerToolChangeOn/Off, sets HandToolAfterToolChange and invokes
+  02371F38(resident*,item*,variant,slot). No direct save/inventory writes in mod.
+0242D8F0(resident*) -> native Item: returns eight bytes via hidden X8 because
+  native Item is nontrivial. A local nontrivial return wrapper preserves ABI.
+02572E00(resident*): pocket capacity, capped by native code at 40.
+02577EA0(resident*,slot): pointer to eight-byte pocket item; copied immediately.
+0256A0C0(resident*,item*,slot): compares equipped item AND equipped pocket slot.
+  Used to distinguish identical duplicate items and reject temporary/event items.
+019D5D04(parameter*,item*): constructs native 24-byte item parameter wrapper.
+019D78CC(parameter*): native tool kind, 0x11 ladder / 0x28 vaulting pole.
+
+Implementation
+New auto_equip_traversal boolean defaults false, requires auto_vault and/or
+ auto_ladder. No extra hooks when disabled. All eight extra native dependencies
+have five-instruction compatibility fingerprints; a mismatch disables only
+borrowing, leaving confirmed equipped-tool traversal available.
+
+Retain ordinary hop priority and all existing native hop/contact guards. Stable
+checks may select a pocket traversal tool without equipping it. The movement
+phase uses an exact one-use stable-bank proof and verifies the original held
+kind, even when the target tool differs. After the hold completes, record the
+player/handle, target item/slot, exact prior item/slot, position and facing.
+Request native ToolChange(0x29) with shortcut/animation enabled.
+
+A new trampoline wraps the stable Move dispatcher 02222950. Native actions and
+manual input retain priority. While a swap is pending, the automatic extension
+is suppressed. When Move resumes after equipping, require the borrowed item,
+same bank/facing and strong stick input, then revalidate the native traversal
+before requesting it. Invalid/released intent restores immediately. Once Move
+resumes after traversal (including a cancelled traversal), restore the previous
+item through ToolChange or put the borrowed tool away. Re-resolve a moved prior
+item; keep its original slot if still matching. If it disappeared, use empty
+hands. Manual equipment changes and player identity changes cancel ownership.
+
+Tests and limits
+Compiled ARM harness executes the actual native RequestAction copy and native
+hop guards/direction/timer, with modeled inventory, animation transitions and
+terrain/reservations. Checks cover both tools, empty hands, prior net/axe,
+already-held traversal tools, blocked landings, release/turn/move, manual
+changes, player replacement, moved/removed/duplicate items, failed requests,
+missing tools, ordinary hop priority, proof invalidation and each fingerprint.
+Native pointer reads/classification and animation timing remain live-test
+assumptions. Begin with single-player; multiplayer timing is unverified.
+
+Diagnostic builds retain bounded SWAP events in addition to traversal traces.
+Normal builds omit the extra diagnostic messages/observers. Older ZIPs remain.

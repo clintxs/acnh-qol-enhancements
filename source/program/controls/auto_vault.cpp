@@ -6,6 +6,10 @@
 namespace qol::controls {
 namespace {
 namespace address {
+constexpr std::uintptr_t StableActions = 0x02222950, RequestAction = 0x02272704;
+constexpr std::uintptr_t PocketCapacity = 0x02572e00, PocketItem = 0x02577ea0;
+constexpr std::uintptr_t IsEquippedSlot = 0x0256a0c0;
+constexpr std::uintptr_t HeldItem = 0x0242d8f0, ItemParameter = 0x019d5d04, ItemToolKind = 0x019d78cc;
 constexpr std::uintptr_t ContactNormals = 0x015f3040;
 constexpr std::uintptr_t HopGeometry = 0x0230c470;
 constexpr std::uintptr_t HopEntry = 0x0230b8d0, HopDirection = 0x0230bf18;
@@ -24,11 +28,12 @@ constexpr std::size_t Position = 0x278, AlternatePosition = 0x284, Facing = 0x2b
 constexpr std::size_t Action = 0x280, MovementState = 0x1810, InputValid = 0x12f8;
 constexpr std::size_t StickX = 0xeec, StickY = 0xef0, Speed = 0x2e0;
 constexpr std::size_t HopTimer = 0x6a0, JudgeTimerParameter = 0xed0;
+constexpr std::size_t CurrentActionData = 0x18e0;
 constexpr std::size_t Resident = 0x1ee8, PlayerHandle = 0x230;
 constexpr std::size_t ParameterValueMethod = 0xf0;
 }
 constexpr unsigned VaultingPoleKind = 0x28, LadderKind = 0x11;
-bool VaultEnabled{}, LadderEnabled{};
+bool VaultEnabled{}, LadderEnabled{}, AutoEquipEnabled{};
 constexpr unsigned NoCrossing = 0, CrossingReady = 1, Waiting = 2;
 std::uintptr_t Main{};
 template<class T> T Read(const void *object, std::size_t offset = 0) {
@@ -37,6 +42,121 @@ template<class T> T Read(const void *object, std::size_t offset = 0) {
     return value;
 }
 template<class F> F Native(std::uintptr_t offset) { return reinterpret_cast<F>(Main + offset); }
+
+// Item values are eight bytes, including customization/durability data. Native
+// pocket accessors own their read locks; never keep their returned pointers.
+using Item = std::uint64_t;
+constexpr Item EmptyItem = 0xfffe;
+constexpr unsigned MoveAction = 0xc, ToolChangeAction = 0x29;
+struct ToolSelection { Item item = EmptyItem; int slot = -1; };
+Item Held(void *player) {
+    // The native nontrivial Item return uses AArch64's hidden X8 result,
+    // rather than X0. A nontrivial local wrapper preserves that calling ABI.
+    struct NativeItem { Item value; ~NativeItem() {} };
+    auto resident = Read<unsigned char>(player, field::Resident);
+    return Native<NativeItem (*)(const unsigned char *)>(address::HeldItem)(&resident).value;
+}
+unsigned Kind(Item item) {
+    if (static_cast<unsigned short>(item) >= 0xfffd) return 0;
+    std::array<std::uintptr_t, 3> parameter{};
+    Native<void (*)(void *, const Item *)>(address::ItemParameter)(parameter.data(), &item);
+    return Native<unsigned (*)(const void *)>(address::ItemToolKind)(parameter.data());
+}
+ToolSelection FindTool(void *player, unsigned kind, Item exact = EmptyItem, bool requireEquipped = false) {
+    auto resident = Read<unsigned char>(player, field::Resident);
+    const auto capacity = Native<unsigned (*)(const unsigned char *)>(address::PocketCapacity)(&resident);
+    if (capacity > 40) return {};
+    for (unsigned i = 0; i < capacity; ++i) {
+        auto pointer = Native<const Item *(*)(const unsigned char *, unsigned)>(address::PocketItem)(&resident, i);
+        if (!pointer) continue;
+        const Item item = Read<Item>(pointer);
+        if (!((exact != EmptyItem && item == exact) || (exact == EmptyItem && Kind(item) == kind))) continue;
+        if (requireEquipped && !Native<bool (*)(const unsigned char *, const Item *, unsigned)>(address::IsEquippedSlot)(&resident, &item, i)) continue;
+        return {item, static_cast<int>(i)};
+    }
+    return {};
+}
+// Generic native action data is 0x7a bytes: a 0x20-byte shared header followed
+// by state-specific data. ToolChange entry consumes item, variant, pocket slot,
+// shortcut and animation bytes. RequestAction copies the local data before
+// scheduling the action, just like native callers; inventory is not edited here.
+bool ChangeTool(void *player, ToolSelection selection) {
+    struct Request {
+        std::array<std::byte, 0x20> header{};
+        Item item{};
+        unsigned char variant{};
+        signed char slot{};
+        unsigned char shortcut{};
+        unsigned char animationState{};
+        unsigned short animationFlags{};
+        unsigned char animate{};
+        std::array<std::byte, 0x51> unused{};
+    } request{};
+    static_assert(sizeof(Request) == 0x80);
+    static_assert(offsetof(Request, slot) == 0x29 && offsetof(Request, animate) == 0x2e);
+    std::memcpy(request.header.data(), static_cast<const std::byte *>(player) + field::CurrentActionData, request.header.size());
+    request.item = selection.item;
+    request.slot = static_cast<signed char>(selection.slot);
+    request.shortcut = request.animate = 1;
+    return Native<bool (*)(void *, unsigned, const void *)>(address::RequestAction)(player, ToolChangeAction, &request);
+}
+enum class SwapStage { None, Equipping, Traversing };
+struct BorrowedTool {
+    SwapStage stage{};
+    void *player{};
+    unsigned handle{}, kind{}, facing{};
+    ToolSelection borrowed{}, previous{};
+    std::array<float, 3> bank{};
+};
+std::array<BorrowedTool, 8> BorrowedTools{};
+BorrowedTool *SwapFor(void *player) {
+    const auto resident = Read<unsigned char>(player, field::Resident);
+    if (resident >= BorrowedTools.size()) return nullptr;
+    auto &swap = BorrowedTools[resident];
+    if (swap.player != player || swap.handle != Read<unsigned>(player, field::PlayerHandle)) swap = {};
+    return &swap;
+}
+void TraceSwap(const char *event, unsigned kind, int slot, unsigned detail = 0) {
+#if CAS_AUTO_VAULT_DIAGNOSTIC
+    static unsigned budget = 64;
+    if (budget) {
+        --budget;
+        Logging.Log("[QoL Enhancements/Controls] SWAP %s: kind=0x%x slot=%d detail=0x%x\n", event, kind, slot, detail);
+    }
+#else
+    (void)event; (void)kind; (void)slot; (void)detail;
+#endif
+}
+bool BorrowTool(void *player, unsigned kind, ToolSelection selection, unsigned heldKind) {
+    auto swap = SwapFor(player);
+    if (!swap || swap->stage != SwapStage::None || selection.slot < 0) return false;
+    ToolSelection previous{};
+    if (heldKind) {
+        previous = FindTool(player, 0, Held(player), true);
+        // A temporary/event item with no pocket association is not ours to swap.
+        if (previous.slot < 0) return false;
+    }
+    auto actor = Read<void *>(player, field::Actor);
+    *swap = {SwapStage::Equipping, player, Read<unsigned>(player, field::PlayerHandle), kind,
+             Read<unsigned>(actor, field::Facing), selection, previous,
+             Read<std::array<float, 3>>(actor, field::Position)};
+    if (!ChangeTool(player, selection)) { *swap = {}; return false; }
+    TraceSwap("borrowed", kind, selection.slot);
+    return true;
+}
+void RestoreTool(void *player, BorrowedTool &swap) {
+    auto previous = swap.previous;
+    // Resolve the exact item again in case pockets were reordered. If it was
+    // removed, return to empty hands instead of recreating a stale item value.
+    if (previous.slot >= 0) {
+        auto resident = Read<unsigned char>(player, field::Resident);
+        auto pointer = Native<const Item *(*)(const unsigned char *, unsigned)>(address::PocketItem)(&resident, previous.slot);
+        if (!pointer || Read<Item>(pointer) != previous.item) previous = FindTool(player, 0, previous.item);
+    }
+    swap = {};
+    ChangeTool(player, previous);
+    TraceSwap("restored", 0, previous.slot);
+}
 
 // Shared native hop geometry request, constructed by HopDirection. The first
 // byte selects a check at the predicted position; automatic distinguishes the
@@ -115,7 +235,7 @@ HOOK_DEFINE_TRAMPOLINE(AutoLadderContact) {
 // guards still run in both phases, and every actual jump is validated afresh.
 struct MovementProof {
     void *player{};
-    unsigned handle{}, tool{};
+    unsigned handle{}, tool{}, heldKind{};
     std::array<float, 3> bank{};
     bool valid = false;
 };
@@ -135,7 +255,8 @@ MovementProof ConsumeProof(void *player) {
 bool MatchesMovementStart(const MovementProof &proof, void *player, unsigned tool) {
     auto actor = Read<void *>(player, field::Actor);
     if (!proof.valid || proof.player != player || proof.tool != tool || !actor ||
-        proof.handle != Read<unsigned>(player, field::PlayerHandle)) return false;
+        proof.handle != Read<unsigned>(player, field::PlayerHandle) ||
+        proof.heldKind != Native<unsigned (*)(void *)>(address::EquippedToolKind)(player)) return false;
     for (unsigned i = 0; i < proof.bank.size(); ++i)
         if (proof.bank[i] != Read<float>(actor, field::AlternatePosition + i*sizeof(float))) return false;
     return true;
@@ -144,6 +265,7 @@ void RememberBank(void *player, unsigned tool) {
     if (auto proof = ProofFor(player)) {
         proof->player = player;
         proof->tool = tool;
+        proof->heldKind = Native<unsigned (*)(void *)>(address::EquippedToolKind)(player);
         proof->handle = Read<unsigned>(player, field::PlayerHandle);
         auto actor = Read<void *>(player, field::Actor);
         for (unsigned i = 0; i < proof->bank.size(); ++i)
@@ -365,13 +487,17 @@ HOOK_DEFINE_TRAMPOLINE(AutoVaultEntry) {
             return result;
         }
         const auto movementProof = ConsumeProof(player);
+        if (AutoEquipEnabled) {
+            const auto swap = SwapFor(player);
+            if (swap && swap->stage != SwapStage::None) return Orig(player, probe, automatic);
+        }
         HopAttempt attempt{player};
         auto previous = CurrentAttempt;
         CurrentAttempt = &attempt;
         auto hop = Orig(player, probe, automatic);
         CurrentAttempt = previous;
         if (hop == NoCrossing && !attempt.eligible && LadderEnabled &&
-            Native<unsigned (*)(void *)>(address::EquippedToolKind)(player) == LadderKind) {
+            (AutoEquipEnabled || Native<unsigned (*)(void *)>(address::EquippedToolKind)(player) == LadderKind)) {
             attempt.includeWalls = true;
 #if CAS_AUTO_VAULT_DIAGNOSTIC
             attempt.geometry |= 32u; // Ladder-only wall-contact retry.
@@ -387,22 +513,37 @@ HOOK_DEFINE_TRAMPOLINE(AutoVaultEntry) {
             TraceEntry(player, probe, automatic, hop, attempt.geometry);
             return hop;
         }
-        const auto tool = Native<unsigned (*)(void *)>(address::EquippedToolKind)(player);
-        const bool ladder = LadderEnabled && tool == LadderKind;
-        if (!(ladder || (VaultEnabled && tool == VaultingPoleKind))) {
-            TraceEntry(player, probe, automatic, hop, attempt.geometry);
-            return hop;
-        }
-
-        auto traverse = Native<unsigned (*)(void *, unsigned)>(ladder ? address::TryLadder : address::TryVault);
+        const auto heldKind = Native<unsigned (*)(void *)>(address::EquippedToolKind)(player);
+        unsigned tool = heldKind;
+        bool ladder = LadderEnabled && tool == LadderKind;
+        ToolSelection selection{};
         VaultProbe check{player};
         if (probe & 1) {
-            // The full vault search reads tentative actor+0x278 even with
-            // probe=1. Its transient river height fails the landing check.
-            check.transferred = MatchesMovementStart(movementProof, player, tool);
+            tool = movementProof.tool;
+            ladder = tool == LadderKind;
+            check.transferred = MatchesMovementStart(movementProof, player, tool) &&
+                (AutoEquipEnabled || tool == heldKind);
         } else {
-            check = ladder ? ProbeCurrentPositionLadder(player) : ProbeCurrentPositionVault(player);
+            if (ladder) check = ProbeCurrentPositionLadder(player);
+            else if (VaultEnabled && tool == VaultingPoleKind) check = ProbeCurrentPositionVault(player);
+            if (AutoEquipEnabled && !(check.nativeResult && check.landingValidated)) {
+                ladder = false;
+                tool = 0;
+                if (LadderEnabled && heldKind != LadderKind) {
+                    selection = FindTool(player, LadderKind);
+                    if (selection.slot >= 0) {
+                        check = ProbeCurrentPositionLadder(player);
+                        if (check.nativeResult && check.landingValidated) { tool = LadderKind; ladder = true; }
+                    }
+                }
+                if (!ladder && VaultEnabled && heldKind != VaultingPoleKind) {
+                    selection = FindTool(player, VaultingPoleKind);
+                    if (selection.slot >= 0) { tool = VaultingPoleKind; check = ProbeCurrentPositionVault(player); }
+                }
+            }
         }
+        if (!(ladder || (VaultEnabled && tool == VaultingPoleKind))) return hop;
+        auto traverse = Native<unsigned (*)(void *, unsigned)>(ladder ? address::TryLadder : address::TryVault);
         const unsigned valid = check.transferred || (check.nativeResult && check.landingValidated);
         const bool complete = valid && HoldComplete(player);
         if (!valid || !complete || (probe & 1)) {
@@ -412,6 +553,9 @@ HOOK_DEFINE_TRAMPOLINE(AutoVaultEntry) {
             return result;
         }
 
+        if (tool != heldKind) {
+            return AutoEquipEnabled && BorrowTool(player, tool, selection, heldKind) ? CrossingReady : NoCrossing;
+        }
         // Re-run native validation against the current position and let the
         // game reserve landing space and enter its normal tool-ready state.
         const auto result = traverse(player, 0) & 1;
@@ -421,9 +565,45 @@ HOOK_DEFINE_TRAMPOLINE(AutoVaultEntry) {
         return result;
     }
 };
+HOOK_DEFINE_TRAMPOLINE(AutoTraversalSwap) {
+    static unsigned Callback(void *player) {
+        const auto result = Orig(player);
+        auto swap = SwapFor(player);
+        if (!swap || swap->stage == SwapStage::None || result) return result;
+        auto controller = Read<void *>(player, field::ActionController);
+        auto actor = Read<void *>(player, field::Actor);
+        if (!controller || !actor || Read<unsigned>(controller, field::Action) != MoveAction ||
+            !Read<unsigned char>(player, field::InputValid)) return result;
+        // Manual tool changes take ownership away from this transaction.
+        if (Held(player) != swap->borrowed.item) { TraceSwap("ownership lost", swap->kind, swap->borrowed.slot); *swap = {}; return result; }
+        if (swap->stage == SwapStage::Traversing) {
+            // This is the stable Move action dispatcher, reached again only
+            // after the native ready/climb/jump action yields back to Move.
+            // Also restore on a cancelled traversal that never left its bank.
+            RestoreTool(player, *swap);
+            return CrossingReady;
+        }
+        const auto x = Read<float>(player, field::StickX), y = Read<float>(player, field::StickY);
+        const bool intent = x*x+y*y >= .81f && Read<unsigned>(actor, field::Facing) == swap->facing &&
+            Read<std::array<float, 3>>(actor, field::Position) == swap->bank;
+        const auto check = swap->kind == LadderKind ? ProbeCurrentPositionLadder(player) : ProbeCurrentPositionVault(player);
+        if (!intent || !check.nativeResult || !check.landingValidated) {
+            TraceSwap("cancelled", swap->kind, swap->borrowed.slot,
+                      unsigned(intent) | (check.nativeResult << 1) | (unsigned(check.landingValidated) << 2));
+            RestoreTool(player, *swap);
+            return CrossingReady;
+        }
+        TraceSwap("traversing", swap->kind, swap->borrowed.slot);
+        swap->stage = SwapStage::Traversing;
+        const auto address = swap->kind == LadderKind ? address::TryLadder : address::TryVault;
+        if (!(Native<unsigned (*)(void *, unsigned)>(address)(player, 0) & 1)) RestoreTool(player, *swap);
+        return CrossingReady;
+    }
+};
+
 }
 
-bool InstallAutoTraversal(bool vault, bool ladder) {
+bool InstallAutoTraversal(bool vault, bool ladder, bool autoEquip) {
     // Feature bits: 1 pole, 2 ladder, 3 shared dependency.
     struct Fingerprint { std::uintptr_t offset; std::uint32_t words[5]; unsigned features = 3; };
     constexpr Fingerprint fingerprints[]{
@@ -465,6 +645,25 @@ bool InstallAutoTraversal(bool vault, bool ladder) {
     VaultEnabled = enabled & 1;
     LadderEnabled = enabled & 2;
     Main = main.m_Text.m_Start;
+    constexpr Fingerprint swapFingerprints[]{
+        {address::StableActions, {0xd103c3ff,0xfd003bea,0x6d0823e9,0xa9097bfd,0xa90a6ffc}},
+        {address::RequestAction, {0xa9be7bfd,0xf9000bf3,0x910003fd,0xb9001fa1,0xb9401fb3}},
+        {address::PocketCapacity, {0xd100c3ff,0xa9017bfd,0xa9024ff4,0x910043fd,0x39400008}},
+        {address::PocketItem, {0xa9bc7bfd,0xf9000bf7,0xa90257f6,0xa9034ff4,0x910003fd}},
+        {address::IsEquippedSlot, {0xd10103ff,0xa9017bfd,0xa90257f6,0xa9034ff4,0x910043fd}},
+        {address::HeldItem, {0xa9bd7bfd,0xf9000bf5,0xa9024ff4,0x910003fd,0xaa0803f3}},
+        {address::ItemParameter, {0xa9bd7bfd,0xa90157f6,0xa9024ff4,0x910003fd,0xb0017b08}},
+        {address::ItemToolKind, {0xf9400808,0xb4000488,0xb9400109,0x7100013f,0xfa491104}},
+    };
+    AutoEquipEnabled = autoEquip;
+    if (autoEquip) for (const auto &f : swapFingerprints) {
+        if (f.offset + sizeof(f.words) > main.m_Text.m_Size ||
+            std::memcmp(reinterpret_cast<const void *>(Main + f.offset), f.words, sizeof(f.words))) {
+            AutoEquipEnabled = false;
+            Logging.Error("[QoL Enhancements/Controls] auto equip: DISABLED; instruction mismatch at main+0x%lx\n", f.offset);
+        }
+    }
+    if (AutoEquipEnabled) AutoTraversalSwap::InstallAtOffset(address::StableActions);
 #if CAS_AUTO_VAULT_DIAGNOSTIC
     if (VaultEnabled) {
         AutoVaultRejectedTrace::InstallAtOffset(address::VaultCandidateRejected);
@@ -482,6 +681,7 @@ bool InstallAutoTraversal(bool vault, bool ladder) {
     AutoVaultEntry::InstallAtOffset(address::HopEntry);
     if (LadderEnabled) Logging.Log("[QoL Enhancements/Controls] auto ladder: READY; prototype 2; equipped ladder; native hop timer\n");
     if (VaultEnabled) Logging.Debug("[QoL Enhancements/Controls] auto vault: READY; prototype 3; equipped pole; native hop timer\n");
-    return enabled == requested;
+    if (AutoEquipEnabled) Logging.Log("[QoL Enhancements/Controls] auto equip: READY; prototype 1; pocket tool and restore\n");
+    return enabled == requested && (!autoEquip || AutoEquipEnabled);
 }
 }

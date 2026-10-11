@@ -2541,3 +2541,27 @@ family, first and repeat catches, pocket refresh after donation (including by
 another resident), localization, storage/ground display and Catalog disabled.
 The 0.4.18 suite is an integration test build; no emulator deployment or
 in-game success is claimed. Older release archives are preserved.
+
+
+## Controls automatic tool borrowing prototype 1 (2026-10-11)
+
+The user confirmed equipped pole prototype 3 and ladder prototype 2 working,
+including ladder ascent and descent. New opt-in auto_equip_traversal borrows an
+owned pocket pole/ladder through native ToolChange, revalidates and traverses,
+then restores the exact previous item/slot or empty hands when Move resumes.
+Manual changes cancel ownership; unavailable/removed tools are never recreated.
+Ordinary short hops retain priority. All new native dependencies are checked
+before installing the additional stable-action hook. Defaults remain false.
+
+The pinned diagnostic build and all 11 host suites pass. Controls regressions
+pass: pole 268, ladder 144, new swap 100, pickup 181, dialogue 1,024, hurry 712,
+and catch 772 cases, each ARM group at two ASLR bases. The swap harness runs the
+actual native 0x7a-byte action-data copy, with modeled inventory and animation
+transitions. It covers both tools, empty hands, prior tools, original slots for
+identical duplicates, reordered/removed items, cancellation, manual changes,
+player replacement, missing tools, ordinary hops and all eight fingerprints.
+
+Live automatic equipping, animation timing, restoration and multiplayer remain
+unverified. The diagnostic prototype enables all three traversal settings and
+includes bounded SWAP events alongside the existing traversal traces. Older
+archives remain untouched; matching source accompanies the new binary ZIP.

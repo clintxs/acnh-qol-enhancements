@@ -1,7 +1,7 @@
 """Compiled ladder extension, native hop guards/timer and shared pole regression.
 
-Ladder terrain and reservation are modeled; descent was confirmed live, while
-the uphill fallback remains unverified. The valid-landing observer is exercised with real inline contexts.
+Ladder terrain and reservation are modeled; the user confirmed prototype 2
+working uphill and downhill. The valid-landing observer is exercised with real inline contexts.
 """
 import struct
 from auto_vault_arm_test import VaultMachine, DIAGNOSTIC, EXTRA
@@ -13,8 +13,8 @@ LANDING = 0x2396bfc
 CONFIG = DEFAULT + b'hold_to_hoover=false\nhold_to_advance_dialogue=false\nauto_vault=true\nauto_ladder=true\n'
 
 class LadderMachine(VaultMachine):
-    def __init__(self, base):
-        super().__init__(base, config=CONFIG, expected_hooks=7 + EXTRA)
+    def __init__(self, base, config=CONFIG, expected_hooks=None):
+        super().__init__(base, config=config, expected_hooks=7 + EXTRA if expected_hooks is None else expected_hooks)
         self.contact_original = self.ram + 0xd0a0
         self.write(self.module.find('AutoLadderContact', 'OrigRef'), self.contact_original)
         self.u.mem_write(base + 0x15f3040, RAW[0x15f3040:0x15f3040+20])
