@@ -1,5 +1,7 @@
 #include "lib.hpp"
 #include "settings.hpp"
+#include "reveal_hooks.hpp"
+#include "program/controls/dialogue_hurry.hpp"
 #include <atomic>
 #include <cstring>
 
@@ -10,17 +12,11 @@ constexpr std::uintptr_t HeldInput = 0x01afa00c, EligibleFast = 0x01afdec0;
 constexpr std::uintptr_t ForwardFast = 0x01afded4;
 constexpr std::uintptr_t MainRate = 0x01afdefc, RendererRate = 0x01a969e0;
 constexpr std::uintptr_t NameBegin = 0x01b04824, NameReady = 0x01b04b80;
-constexpr std::uintptr_t AdvanceInput = 0x01afa530, ActiveController = 0x02435188;
-constexpr std::uintptr_t ApplicationGot = 0x04ab3960;
 constexpr std::uintptr_t EntityRegistryGot = 0x04ab27c0;
 constexpr std::uintptr_t NpcTypeGot = 0x04ab37d0, NpcTypeGuardGot = 0x04ab37d8;
 } // namespace address
 namespace layout {
 constexpr std::size_t TextManager = 0x208, ManagerText = 0x28, TalkContext = 0x20;
-constexpr std::size_t TextContext = 0x210, RevealState = 0x21ac;
-constexpr std::size_t ManagerState = 0x48, AdvanceTimer = 0x2464;
-constexpr std::size_t ContextPhase = 0x28, MessageController = 8, ChoiceController = 0x18;
-constexpr std::size_t ControllerState = 8, ApplicationController = 0xf5b20;
 constexpr std::size_t WindowKind = 0x2c, ActiveSpeaker = 0xc0;
 constexpr std::size_t ActiveMessageBank = 0x2488;
 constexpr std::size_t ActiveMessageLabel = 0x24f8;
@@ -33,17 +29,15 @@ constexpr std::size_t EntityResourceName = 0x3e8;
 constexpr std::size_t IsNpcType = 0x20;
 constexpr unsigned NpcEntity = 10, PlayerEntity = 0x4f, DialogWindow = 1, BalloonWindow = 2;
 constexpr std::uint16_t BoostButtons = 0x4002; // B/R; L is deliberately excluded.
-// This is the game's controller format, not the platform HID bit layout.
-// Live SP_tkk/082 traces identify held Y as 0010 at controller+8.
-constexpr std::uint16_t HurryButton = 0x10;
 } // namespace layout
 Settings Preferences{};
-constexpr unsigned HurryFlag = 5, HurrySpeed = 30;
+bool FasterDialogueEnabled = false, RevealHooksInstalled = false;
 // Odd flags retain native fast mode. Bits 1/2 select configured boost / hurry;
 // native renderer gates test nonzero and forward the whole byte. Nominal 2x
 // is the native fast rate, so scale both text paths by the desired tier / 2.
 float RateScale(unsigned flag) {
-    if (flag & 4) return float(HurrySpeed) * 0.5f;
+    if (flag & 4) return float(controls::DialogueHurrySpeed) * 0.5f;
+    if (!FasterDialogueEnabled) return 1.0f;
     return float(flag & 2 ? Preferences.boostSpeed : Preferences.baseSpeed) * 0.5f;
 }
 enum class NameTag { Unknown, Named, Unnamed };
@@ -65,40 +59,6 @@ template <class T> T Read(std::uintptr_t object, std::size_t offset = 0) {
 std::uintptr_t Main(std::uintptr_t offset) {
     return exl::util::GetMainModuleInfo().m_Text.m_Start + offset;
 }
-struct HurryInput {
-    std::uintptr_t controller{};
-    unsigned buttons{};
-    bool Held() const { return buttons & layout::HurryButton; }
-};
-HurryInput ReadHurryInput() {
-    // Match Print's active-player getter and application fallback. Read live
-    // input in Advance as well: Print's cached B/R byte is stale while waiting.
-    auto controller = reinterpret_cast<std::uintptr_t (*)()>(Main(address::ActiveController))();
-    if (!controller) {
-        const auto slot = Read<std::uintptr_t>(Main(address::ApplicationGot));
-        const auto application = slot ? Read<std::uintptr_t>(slot) : 0;
-        controller = application ? Read<std::uintptr_t>(application, layout::ApplicationController) : 0;
-    }
-    return {controller, controller ? Read<std::uint16_t>(controller, layout::HeldButtons) : 0u};
-}
-// A null reason means eligible. Log rejected frames too, rather than only
-// successful hurry frames (the first build's diagnostic blind spot).
-const char *HurryContextBlock(std::uintptr_t manager, std::uintptr_t text, unsigned state) {
-    if (!manager || !text) return "missing-owner";
-    if (Read<std::uintptr_t>(manager, layout::ManagerText) != text) return "manager-text";
-    if (Read<std::uintptr_t>(text, layout::TextManager) != manager) return "text-manager";
-    if (Read<unsigned>(manager, layout::ManagerState) != state) return "manager-state";
-    const auto context = Read<std::uintptr_t>(manager, layout::TalkContext);
-    if (!context) return "missing-context";
-    if (Read<std::uintptr_t>(text, layout::TextContext) != context) return "text-context";
-    if (Read<unsigned>(context, layout::ContextPhase) != 2) return "context-phase";
-    if (Read<unsigned>(context, layout::WindowKind) > layout::BalloonWindow) return "window";
-    const auto choices = Read<std::uintptr_t>(context, layout::ChoiceController);
-    // A choice can open on the final advance, but never advance while its
-    // controller is opening, active or closing. No synthetic confirm input.
-    if (!choices) return "missing-choices";
-    return Read<unsigned>(choices, layout::ControllerState) == 0 ? nullptr : "choice-active";
-}
 bool CopyMessageId(std::uintptr_t manager, std::size_t field, char *output) {
     output[0] = 0;
     const auto data = Read<std::uintptr_t>(manager, field);
@@ -111,100 +71,6 @@ bool CopyMessageId(std::uintptr_t manager, std::size_t field, char *output) {
     output[0] = 0;
     return false;
 }
-bool IsNewCatchAnnouncement(std::uintptr_t manager) {
-    // Player_GetDemo's cFirstGet branches open label 001 in these banks.
-    // All 14 supplied locale packs share the IDs, even when the localized
-    // announcement is not "Yes!". Read the active pair each time so the stop
-    // cannot leak into the species message or a later conversation.
-    char bank[layout::MessageBankBytes]{}, label[layout::MessageBankBytes]{};
-    if (!CopyMessageId(manager, layout::ActiveMessageBank, bank) ||
-        !CopyMessageId(manager, layout::ActiveMessageLabel, label) ||
-        std::strcmp(label, "001")) return false;
-    return !std::strcmp(bank, "SYS_Get_Fish") ||
-           !std::strcmp(bank, "SYS_Get_Insect") ||
-           !std::strcmp(bank, "SYS_Get_DiveFish");
-}
-const char *AdvanceHurryBlock(std::uintptr_t manager, std::uintptr_t text) {
-    if (const auto block = HurryContextBlock(manager, text, 5)) return block;
-    const auto reveal = Read<unsigned>(text, layout::RevealState);
-    // Reveal 4 is the explicit input pause (<10:4>), e.g. the Sunday turnip
-    // message. Native Advance resumes Print without clearing the page, and
-    // Print entry changes 4 back to revealing=1. Held Y can supply that local
-    // advance request just as it does for a page break or completed message.
-    if (reveal != 2 && reveal != 3 && reveal != 4) return "text-not-ready";
-    const auto timer = Read<int>(manager, layout::AdvanceTimer);
-    if (timer != -1 && timer != 0) return "scripted-timer";
-    const auto context = Read<std::uintptr_t>(manager, layout::TalkContext);
-    const auto message = Read<std::uintptr_t>(context, layout::MessageController);
-    if (!message) return "missing-message";
-    const auto phase = Read<unsigned>(message, layout::ControllerState);
-    // The message wrapper does not share the choice controller's animation
-    // states: live NPC pages wait for input in phase 1. Allow that state in
-    // addition to the existing 0/2 paths; the separate choice guard still
-    // blocks opening, active and closing menus.
-    if (phase > 2) return "message-transition";
-    // Only suppress our synthetic advance request. Native manual input and
-    // text speed remain unchanged, including localized pages within label 001.
-    return IsNewCatchAnnouncement(manager) ? "new-catch" : nullptr;
-}
-#if CAS_VERBOSE_HURRY_TRACE
-enum class HurryStage { Input, Speed, Advance };
-void TraceHurry(HurryStage stage, std::uintptr_t manager, std::uintptr_t text,
-                HurryInput input, const char *block, unsigned result) {
-    struct Snapshot {
-        std::uintptr_t manager{}, text{}, context{}, textContext{}, textManager{}, managerText{}, controller{};
-        unsigned buttons{}, state = ~0u, phase = ~0u, window = ~0u, reveal = ~0u;
-        unsigned choices = ~0u, message = ~0u, forced{}, disabled{}, result{};
-        int timer{};
-        const char *block{};
-        char bank[layout::MessageBankBytes]{}, label[layout::MessageBankBytes]{};
-        bool operator==(const Snapshot &) const = default;
-    } current;
-    current.manager = manager; current.text = text;
-    current.controller = input.controller; current.buttons = input.buttons;
-    current.block = block; current.result = result;
-    if (manager) {
-        current.context = Read<std::uintptr_t>(manager, layout::TalkContext);
-        current.managerText = Read<std::uintptr_t>(manager, layout::ManagerText);
-        current.state = Read<unsigned>(manager, layout::ManagerState);
-        current.timer = Read<int>(manager, layout::AdvanceTimer);
-        CopyMessageId(manager, layout::ActiveMessageBank, current.bank);
-        CopyMessageId(manager, layout::ActiveMessageLabel, current.label);
-    }
-    if (text) {
-        current.textContext = Read<std::uintptr_t>(text, layout::TextContext);
-        current.textManager = Read<std::uintptr_t>(text, layout::TextManager);
-        current.reveal = Read<unsigned>(text, layout::RevealState);
-        current.forced = Read<std::uint8_t>(text, 0x21b5);
-        current.disabled = Read<std::uint8_t>(text, 0x21b6);
-    }
-    if (current.context) {
-        current.phase = Read<unsigned>(current.context, layout::ContextPhase);
-        current.window = Read<unsigned>(current.context, layout::WindowKind);
-        const auto choices = Read<std::uintptr_t>(current.context, layout::ChoiceController);
-        const auto message = Read<std::uintptr_t>(current.context, layout::MessageController);
-        if (choices) current.choices = Read<unsigned>(choices, layout::ControllerState);
-        if (message) current.message = Read<unsigned>(message, layout::ControllerState);
-    }
-    const auto index = static_cast<unsigned>(stage);
-    static Snapshot previous[3]{};
-    // Separate held/unheld budgets: startup UI must not consume Y evidence.
-    static unsigned reports[3][2]{};
-    auto &count = reports[index][input.Held()];
-    if (count >= 96 || (current == previous[index] && count)) return;
-    previous[index] = current; ++count;
-    constexpr const char *stages[]{"input", "speed", "advance"};
-    // This explicit diagnostic build logs bounded evidence even if the user's
-    // normal log_debug setting is false. No INI edits or extra hooks required.
-    Logging.Log("[QoL Enhancements/Faster Dialogue] HURRY stage=%s gate=%s buttons=%04x y=%u controller=%u state=%u context_phase=%u window=%u reveal=%u choices=%u message=%u timer=%d owner_match=%u context_match=%u forced=%u disabled=%u result=%u bank=%s label=%s\n",
-                stages[index], block ? block : "ready", input.buttons, unsigned(input.Held()), unsigned(input.controller != 0),
-                current.state, current.phase, current.window, current.reveal,
-                current.choices, current.message, current.timer,
-                unsigned(manager && text && current.textManager == manager && current.managerText == text),
-                unsigned(current.context && current.textContext == current.context),
-                current.forced, current.disabled, result, current.bank, current.label);
-}
-#endif
 bool NameOwnerMatches(std::uintptr_t manager, std::uintptr_t context, std::uintptr_t source) {
     return Name.manager == manager && Name.context == context && Name.source == source &&
            (!source || Name.handle == Read<unsigned>(source, layout::SpeakerEntityHandle));
@@ -442,42 +308,31 @@ HOOK_DEFINE_INLINE(DialogueHeldInput) {
         if (!text) return;
         const std::uint8_t held = controller &&
             (Read<std::uint16_t>(controller, layout::HeldButtons) & layout::BoostButtons);
-        std::memcpy(reinterpret_cast<void *>(text + layout::HeldFast), &held, sizeof(held));
-#if CAS_VERBOSE_HURRY_TRACE
-        TraceHurry(HurryStage::Input, registers->X[19], text,
-                   {controller, controller ? Read<std::uint16_t>(controller, layout::HeldButtons) : 0u},
-                   HurryContextBlock(registers->X[19], text, 3), held);
-#endif
+        if (FasterDialogueEnabled)
+            std::memcpy(reinterpret_cast<void *>(text + layout::HeldFast), &held, sizeof(held));
+        controls::TraceDialogueInput(registers->X[19], text, controller,
+                                    Read<std::uint8_t>(text, layout::HeldFast));
 #if CAS_VERBOSE_DIALOGUE_TRACE
-        TraceMessage(registers->X[19], text);
+        if (FasterDialogueEnabled) TraceMessage(registers->X[19], text);
 #endif
     }
 };
 HOOK_DEFINE_INLINE(DialogueSelectSpeed) {
     static void Callback(exl::hook::InlineFloatCtx *registers) {
         const auto text = registers->X[19];
-        const auto speaker = CurrentSpeaker(text);
-        auto speed = SelectSpeed(Preferences, speaker.kind, speaker.id,
-                                      Read<std::uint8_t>(text, layout::HeldFast) != 0, speaker.localizedName);
-        // Reached only AFTER native forced/protected/acceleration-disabled
-        // checks. Native stores this flag and forwards it to both renderers.
-        // Store the selected tier, not the numeric multiplier. All flags
-        // retain native fast mode; the two rate hooks apply its actual speed.
-        registers->W[9] = speed > Preferences.baseSpeed ? 3 : 1;
-        const auto manager = Read<std::uintptr_t>(text, layout::TextManager);
-        const auto block = HurryContextBlock(manager, text, 3);
-#if CAS_VERBOSE_HURRY_TRACE
-        const auto input = ReadHurryInput(); // Sample even when a gate rejects Y.
-#else
-        const auto input = block ? HurryInput{} : ReadHurryInput();
-#endif
-        if (!block && input.Held()) {
-            speed = HurrySpeed;
-            registers->W[9] = HurryFlag;
+        Speaker speaker{};
+        unsigned speed = 0;
+        // Without Faster Dialogue leave the native held-speed flag alone.
+        // Controls may still select its temporary hurry tier independently.
+        if (FasterDialogueEnabled) {
+            speaker = CurrentSpeaker(text);
+            speed = SelectSpeed(Preferences, speaker.kind, speaker.id,
+                                Read<std::uint8_t>(text, layout::HeldFast) != 0, speaker.localizedName);
+            registers->W[9] = speed > Preferences.baseSpeed ? 3 : 1;
         }
-#if CAS_VERBOSE_HURRY_TRACE
-        TraceHurry(HurryStage::Speed, manager, text, input, block, registers->W[9]);
-#endif
+        registers->W[9] = controls::SelectDialogueHurry(text, registers->W[9]);
+        if (registers->W[9] == controls::DialogueHurryFlag) speed = controls::DialogueHurrySpeed;
+        (void)speaker; (void)speed;
 #if CAS_VERBOSE_DIALOGUE_TRACE
         // Log transitions, not the first frames: title/save dialogs must not
         // consume the entire trace before the user reaches an NPC.
@@ -504,25 +359,6 @@ HOOK_DEFINE_INLINE(DialogueSelectSpeed) {
                         static_cast<unsigned>(speaker.tag));
         }
 #endif
-    }
-};
-HOOK_DEFINE_INLINE(DialogueAdvanceInput) {
-    static void Callback(exl::hook::InlineFloatCtx *registers) {
-        const auto manager = registers->X[19];
-        const auto text = Read<std::uintptr_t>(manager, layout::ManagerText);
-        const auto block = AdvanceHurryBlock(manager, text);
-#if CAS_VERBOSE_HURRY_TRACE
-        const auto input = ReadHurryInput();
-#else
-        const auto input = block ? HurryInput{} : ReadHurryInput();
-#endif
-        if (!block && input.Held()) registers->W[22] = 1;
-#if CAS_VERBOSE_HURRY_TRACE
-        TraceHurry(HurryStage::Advance, manager, text, input, block, registers->W[22]);
-#endif
-        // Only the local advance request changes. The native function still
-        // clears a page (state 2), opens choices (manager+2475), or closes the
-        // message (state 3). Y never writes a persistent latch or controller.
     }
 };
 HOOK_DEFINE_INLINE(DialogueMainRate) {
@@ -559,21 +395,43 @@ void ReportSettings() {
         Logging.Settings("[QoL Enhancements/Faster Dialogue] faster_npc_list[%u]=%s\n", i, Preferences.npcs[i].data());
 }
 
-bool Install() {
-    // Original instructions are fingerprints only, never replacement payloads.
-    // Check all sites/dependencies before installing the first C++ hook. Also
-    // reject earlier Faster Interactions releases that change these paths.
-    struct Fingerprint { std::uintptr_t offset; std::uint32_t words[5]; };
+namespace {
+struct Fingerprint { std::uintptr_t offset; std::uint32_t words[5]; };
+bool Matches(const Fingerprint &expected, const char *owner) {
+    const auto &main = exl::util::GetMainModuleInfo();
+    if (expected.offset + sizeof(expected.words) <= main.m_Text.m_Size &&
+        !std::memcmp(reinterpret_cast<const void *>(Main(expected.offset)), expected.words, sizeof(expected.words))) return true;
+    Logging.Error("[QoL Enhancements/%s] DISABLED: instruction mismatch at main+0x%lx\n", owner, expected.offset);
+    return false;
+}
+}
+bool InstallRevealHooks() {
+    // Shared reveal sites install once, whether Controls or Faster Dialogue
+    // requests them first. Their policies remain separately enabled.
+    if (RevealHooksInstalled) return true;
     constexpr Fingerprint fingerprints[]{
         {address::HeldInput, {0xa9422269, 0x8b140275, 0x911be114, 0xf9401128, 0xb4000308}},
         {address::EligibleFast, {0x52843508, 0x8b080268, 0x3934dec9, 0x340006e9, 0x52800034}},
         {address::ForwardFast, {0xb900011f, 0x394832c8, 0x340007c8, 0x3961f2c8, 0x340008c8}},
         {address::MainRate, {0x14000054, 0x52829108, 0x52a7f017, 0x3934dedf, 0x8b080274}},
         {address::RendererRate, {0x14000002, 0xbd421400, 0xbd420801, 0xbd420c02, 0x5e21d821}},
+        {0x01afdd20, {0xd10183ff, 0xa9027bfd, 0xf9001bf7, 0xa90457f6, 0xa9054ff4}},
+        {0x01af9fec, {0x79401008, 0x528c0049, 0x6a09011f, 0x540000a0, 0xf9401668}},
+        {0x01afdeac, {0x350002a9, 0x35000768, 0x3974dac8, 0x35000728, 0x3974d2c9}},
+    };
+    for (const auto &expected : fingerprints) if (!Matches(expected, "Dialogue reveal")) return false;
+    DialogueHeldInput::InstallAtOffset(address::HeldInput);
+    DialogueSelectSpeed::InstallAtOffset(address::EligibleFast);
+    DialogueForwardSpeed::InstallAtOffset(address::ForwardFast);
+    DialogueMainRate::InstallAtOffset(address::MainRate);
+    DialogueRendererRate::InstallAtOffset(address::RendererRate);
+    RevealHooksInstalled = true;
+    return true;
+}
+bool Install() {
+    constexpr Fingerprint fingerprints[]{
         {address::NameBegin, {0xf9400008, 0x9105e3f4, 0xf9406118, 0xf9401008, 0xf9410d16}},
         {address::NameReady, {0xb4001153, 0x34001120, 0x79400268, 0x340010e8, 0xf94186c8}},
-        {address::AdvanceInput, {0xb964666b, 0x37f801ab, 0x3400024b, 0x5100096c, 0x7100057f}},
-        {address::ActiveController, {0xd10083ff, 0xa9017bfd, 0x910043fd, 0x90013ce8, 0x91276108}},
         {0x01b048ec, {0xf9409708, 0x9104a313, 0xaa1303e0, 0xf9400908, 0xd63f0100}},
         {0x01b04b5c, {0xf94007e8, 0x910023e0, 0xf9400d08, 0xd63f0100, 0xf94007e8}},
         {0x005f5b28, {0xf9400400, 0xd65f03c0, 0xb9401000, 0xd65f03c0, 0xa9bd7bfd}},
@@ -582,34 +440,16 @@ bool Install() {
         {0x01d9e11c, {0xa97de7b4, 0x910042ea, 0xeb08029f, 0xf93cca74, 0x3900fe9f}},
         {0x01d9e224, {0x528fec08, 0x8b08026a, 0xb94232c8, 0xf9461d29, 0x39174295}},
         {0x01d9e244, {0xb905ce88, 0x91004128, 0xb00168a9, 0x52800814, 0xf93fb268}},
-        {0x01afdd20, {0xd10183ff, 0xa9027bfd, 0xf9001bf7, 0xa90457f6, 0xa9054ff4}},
-        {0x01af9fec, {0x79401008, 0x528c0049, 0x6a09011f, 0x540000a0, 0xf9401668}},
-        {0x01afdeac, {0x350002a9, 0x35000768, 0x3974dac8, 0x35000728, 0x3974d2c9}},
     };
-    const auto &main = exl::util::GetMainModuleInfo();
-    for (const auto &expected : fingerprints) {
-        if (expected.offset + sizeof(expected.words) > main.m_Text.m_Size ||
-            std::memcmp(reinterpret_cast<const void *>(Main(expected.offset)), expected.words,
-                        sizeof(expected.words))) {
-            Logging.Error("[QoL Enhancements/Faster Dialogue] DISABLED: instruction mismatch at main+0x%lx\n", expected.offset);
-            return false;
-        }
-    }
+    for (const auto &expected : fingerprints) if (!Matches(expected, "Faster Dialogue")) return false;
+    if (!InstallRevealHooks()) return false;
 #if CAS_VERBOSE_DIALOGUE_TRACE
     Logging.Debug("[QoL Enhancements/Faster Dialogue] DIAGNOSTIC: unnamed-v1; current-message native name-tag classification\n");
 #endif
     DialogueNameBegin::InstallAtOffset(address::NameBegin);
     DialogueNameReady::InstallAtOffset(address::NameReady);
-    DialogueHeldInput::InstallAtOffset(address::HeldInput);
-    DialogueSelectSpeed::InstallAtOffset(address::EligibleFast);
-    DialogueForwardSpeed::InstallAtOffset(address::ForwardFast);
-    DialogueMainRate::InstallAtOffset(address::MainRate);
-    DialogueRendererRate::InstallAtOffset(address::RendererRate);
-    DialogueAdvanceInput::InstallAtOffset(address::AdvanceInput);
-#if CAS_VERBOSE_HURRY_TRACE
-    Logging.Log("[QoL Enhancements/Faster Dialogue] DIAGNOSTIC: hurry-v1; raw held input and every hurry gate; log_debug override not required\n");
-#endif
-    Logging.Debug("[QoL Enhancements/Faster Dialogue] READY: C++ hooks; hold Y to hurry at %ux until choices/end\n", HurrySpeed);
+    FasterDialogueEnabled = true;
+    Logging.Debug("[QoL Enhancements/Faster Dialogue] READY: C++ hooks; configured dialogue speed\n");
     return true;
 }
 } // namespace qol::dialogue

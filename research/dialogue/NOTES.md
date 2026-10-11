@@ -475,3 +475,21 @@ IDs, disabled behavior and native automatic readiness. Fixtures now initialize
 both active ID buffers every preparation to prevent stale modeled metadata.
 Diagnostic coverage verifies the new reason with held Y and logging disabled.
 In-game confirmation of the new stop remains pending.
+
+## 0.4.15 Controls ownership and shared reveal hooks
+
+Hold-to-advance moved to Controls (`controls/dialogue_hurry.cpp`), toggled by
+`hold_to_advance_dialogue=true` in controls.ini or controls.custom.ini. Faster
+Dialogue owns only configured base/boost/category behavior and name capture.
+It no longer installs the native advance hook or independently enables hurry.
+
+Five native reveal sites form a once-only shared installer. Configured policy
+is activated only after Faster Dialogue dependencies validate; Controls can
+request the shared sites without speaker/name dependencies. If Faster Dialogue
+is absent, ordinary native W9 speed selection, B/L/R held-input behavior and
+rate multipliers pass through unchanged. Controls temporarily selects flag 5
+for 30x text while eligible Y is held. Release restores native behavior or the
+configured Faster Dialogue tier. Exact first-catch IDs, choice protection and
+explicit input-pause handling remain Controls policy. The Controls-only ARM
+suite compares compiled callbacks against unmodified native output, including
+native restrictions and overrides, across both ASLR bases.

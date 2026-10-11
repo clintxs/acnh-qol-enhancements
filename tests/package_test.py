@@ -27,6 +27,8 @@ for name in configs:
     label = name.split('/')[0].removeprefix('QoL Enhancements - ')
     relative = name.split('/',1)[1]
     assert files[name] == (package.ROOT / 'modules' / label / relative).read_bytes()
+assert b'hold_to_advance_dialogue = true\n' in files['QoL Enhancements - Controls/romfs/qol-enhancements/config/controls.ini']
+assert b'hold_to_advance_dialogue' not in files['QoL Enhancements - Faster Dialogue/romfs/qol-enhancements/config/faster-dialogue.ini']
 assert sum('/Layout/' in name for name in files) == 7
 reference = json.loads((Path(__file__).parent / 'baseline_hashes.json').read_text())
 assert hashlib.sha256(files[f'{core}/exefs/main.npdm']).hexdigest() == reference['npdm_sha256']
@@ -59,6 +61,8 @@ if archive.exists():
         assert not any('/.git/' in name or '/build/' in name or '/dist/' in name for name in source.namelist())
         assert any(name.endswith('/source/program/dialogue/faster_dialogue.cpp') for name in source.namelist())
         assert any(name.endswith('/source/program/controls/hold_y.cpp') for name in source.namelist())
+        assert any(name.endswith('/source/program/controls/dialogue_hurry.cpp') for name in source.namelist())
+        assert any(name.endswith('/source/program/controls/controls_module.cpp') for name in source.namelist())
         assert any(name.endswith('/modules/Controls/romfs/qol-enhancements/config/controls.ini') for name in source.namelist())
         assert not any(name.endswith('/core/patches.hpp') for name in source.namelist())
     with ZipFile(package.ROOT / 'dist' / f'{stem}_faster-dialogue-custom-example.zip') as result:

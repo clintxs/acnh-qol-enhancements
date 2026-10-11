@@ -86,6 +86,37 @@ multiplayer scheduling or persistence in Eden.
   stacks. Confirm native capacity refusal and no lost or duplicated objects.
 - Walk/run, move between close targets, use tools, enter buildings, open/close
   menus, disconnect/reconnect a controller, change residents and reload.
-- Combine with Pockets Y shortcuts, Faster Dialogue Hurry and Crafting quantity
+- Combine with Pockets Y shortcuts, Controls dialogue hurry and Crafting quantity
   Y. Check local co-op and online play separately; neither is established here.
 - Save/reload after successful actions and verify inventory/field state.
+
+## 0.4.15 hold-to-advance dialogue
+
+Controls now owns the fixed 30x Y text tier and native page-advance policy,
+independently of Faster Dialogue. `hold_to_advance_dialogue` defaults true and
+uses the same regular-then-custom overlay rules as the other configurable
+modules. False skips all dialogue installation but retains hold-Y pickup.
+Missing/disabled Controls cannot activate hurry; missing Faster Dialogue
+preserves ordinary native reveal rates and B/L/R input.
+
+`dialogue_hurry.cpp` retains the verified controller getter/fallback, ownership,
+context, choice and readiness guards. The advance hook at 01AFA530 changes only
+W22, preserving manual input, explicit input-pause resume and the exact three
+locale-independent first-catch stops. No animation or save-state logic changes.
+Five reveal hooks install once through dialogue::InstallRevealHooks, whichever
+module requests them first. Without Faster Dialogue, callbacks preserve native
+speed selection, rates and held-input latch unless eligible Y selects flag 5.
+Faster Dialogue alone installs its seven hooks without an advance hook. With
+both installed, shared sites are never patched twice. Each feature validates
+its own dependencies before installation; pickup and dialogue can independently
+fail fingerprint checks without suppressing the other Controls feature.
+
+`controls_settings_test.cpp` covers layered defaults, strict booleans, duplicate
+rollback and whole-file UTF-8/size rejection. `controls_dialogue_arm_test.py`
+executes native reveal parity, Y/release, page/pause/choice/new-catch guards,
+regular/custom activation and independent fingerprint rejection at two ASLR
+bases (1,024 scenarios). Existing hurry, localized catch and pickup regressions
+remain in the Controls check group. Live follow-up: install Core + Controls
+without Faster Dialogue, verify vanilla text on release and 30x while held,
+then disable the key and confirm pickup repeats still work. Repeat with Faster
+Dialogue installed and customized speeds.

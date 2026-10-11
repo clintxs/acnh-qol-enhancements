@@ -10,7 +10,7 @@ from unicorn.arm64_const import *
 from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
 SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'shopping-card', 'crafting', 'controls')
-COUNTS = (16, 19, 8, 12, 11, 19, 5)  # Input and hint-text hooks belong to Core.
+COUNTS = (16, 19, 7, 12, 11, 19, 11)  # Controls and Faster Dialogue share five reveal sites.
 RELEASE_VERSION = re.search(r'ReleaseVersion\[\] = "(\d+\.\d+\.\d+)"',
                             (ROOT / 'qol-enhancements/source/program/core/release.hpp').read_text())[1]
 DEFAULT = f'enabled=true\nversion={RELEASE_VERSION}\n'.encode()
@@ -25,7 +25,8 @@ def expected_hook_count(machine, enabled):
     active = dict(zip(SLUGS, enabled))
     shared_input = active.get('pockets', False) or active.get('crafting', False)
     shared_hints = active.get('pockets', False) or active.get('fitting-room', False)
-    return 2 + int(resources) + int(shared_input) + int(shared_hints) + sum(count for count, on in zip(COUNTS, enabled) if on) + (trace_enabled and enabled[0])
+    shared_reveal = active.get('faster-dialogue', False) and active.get('controls', False)
+    return 2 + int(resources) + int(shared_input) + int(shared_hints) + sum(count for count, on in zip(COUNTS, enabled) if on) - 5 * shared_reveal + (trace_enabled and enabled[0])
 
 class Machine:
     def __init__(self, base, files, verbose=True):
@@ -192,12 +193,11 @@ def check_errors():
     # Dialogue hook sites and legacy paths must remain pristine; validate before installing.
     for offset in (0x1af9ff0, 0x1afdd20, 0x1afdebc, 0x1afded4,
                    0x1d9dc3c, 0x1d9e11c, 0x1d9e224, 0x1d9e244,
-                   0x1b04824, 0x1b04b80, 0x1b048ec, 0x1b04b5c, 0x5f5b28,
-                   0x1afa530, 0x2435188):
+                   0x1b04824, 0x1b04b80, 0x1b048ec, 0x1b04b5c, 0x5f5b28):
         m = Machine(0x7100000000, {'faster-dialogue': DEFAULT, 'amiibo': DEFAULT})
         m.write(m.base + offset, 0xdeadbeef, 4)
         m.boot(); m.activate()
-        assert 'Faster Dialogue] DISABLED' in m.text and 'Amiibo timeout: READY' in m.text
+        assert 'DISABLED: instruction mismatch' in m.text and 'Amiibo timeout: READY' in m.text
         assert not any(m.base + offset in m.hooks for offset in (0x1afa00c, 0x1afdec0))
     m = Machine(0x7100000000, {slug: b'enabled=true\nversion=0.1.0' for slug in SLUGS[:4]})
     m.boot(); m.activate()

@@ -9,9 +9,9 @@ ROOT = Path(__file__).resolve().parents[1]
 GROUPS = {
     'core': ['logging_arm_test.py', 'core_arm_test.py', 'recipe_preview_arm_test.py'],
     'shopping': ['shopping_layout_test.py', 'shopping_resource_arm_test.py', 'shopping_texture_arm_test.py', 'shopping_display_arm_test.py', 'shopping_cash_arm_test.py'],
-    'dialogue': ['dialogue_arm_test.py', 'dialogue_names_arm_test.py', 'dialogue_hurry_arm_test.py', 'dialogue_catch_hurry_arm_test.py'],
+    'dialogue': ['dialogue_arm_test.py', 'dialogue_names_arm_test.py'],
     'crafting': ['crafting_arm_test.py', 'quantity_shortcut_arm_test.py'],
-    'controls': ['hold_y_arm_test.py'],
+    'controls': ['hold_y_arm_test.py', 'controls_dialogue_arm_test.py', 'dialogue_hurry_arm_test.py', 'dialogue_catch_hurry_arm_test.py'],
     'pockets': ['storage_hint_arm_test.py', 'recycling_claim_arm_test.py', 'hold_select_arm_test.py'],  # Both include arm_stack_test.
     'fitting': ['purchase_arm_test.py', 'feedback_arm_test.py', 'fitting_hint_arm_test.py'],
     'catalog': ['restaurant_recipe_dialogue_arm_test.py', 'villager_recipe_dialogue_arm_test.py', 'dialogue_ui_sources_arm_test.py', 'catalog_variation_labels_arm_test.py',
@@ -26,7 +26,7 @@ def main():
     env = dict(os.environ)
     env['PYTHONPATH'] = str(ROOT.parent / 'Grab 5/working/python')
     with tempfile.TemporaryDirectory(prefix='qol-check-') as temporary:
-        for name in ('config_test', 'core_settings_test', 'dialogue_settings_test', 'crafting_settings_test', 'stack_menu_test', 'storage_policy_test', 'catalog_test', 'bag_policy_test', 'shopping_payment_test'):
+        for name in ('config_test', 'core_settings_test', 'controls_settings_test', 'dialogue_settings_test', 'crafting_settings_test', 'stack_menu_test', 'storage_policy_test', 'catalog_test', 'bag_policy_test', 'shopping_payment_test'):
             exe = Path(temporary) / name
             subprocess.run(['c++', '-std=c++20', '-Wall', '-Wextra', '-Werror', '-I', str(ROOT / 'source'),
                             str(ROOT / 'tests' / f'{name}.cpp'), '-o', str(exe)], check=True)

@@ -15,13 +15,15 @@ GP = [globals()[f'UC_ARM64_REG_X{i}'] for i in range(31)]
 Q = [globals()[f'UC_ARM64_REG_Q{i}'] for i in range(32)]
 
 class DialogueMachine(Machine):
-    def __init__(self, base, custom=None, enabled=True, regular=DEFAULT, verbose=True):
+    def __init__(self, base, custom=None, enabled=True, regular=DEFAULT, verbose=True, extra_files=None):
         self.native = False
+        self.faster_dialogue = enabled
         files = {'faster-dialogue': regular} if enabled else {}
         if custom is not None: files['faster-dialogue.custom'] = custom
+        if extra_files: files.update(extra_files)
         super().__init__(base, files, verbose=verbose)
         self.boot(); self.activate()
-        self.callbacks = {base + offset: self.hooks[base + offset] for offset in HOOKS} if enabled else {}
+        self.callbacks = {base + offset: self.hooks[base + offset] for offset in HOOKS if base + offset in self.hooks}
         # Model trampoline relocation by executing pristine displaced code after
         # the actual compiled adapter/callback. The hook allocator is modeled.
         for offset in HOOKS: self.u.mem_write(base + offset, RAW[offset:offset + 20])
@@ -207,7 +209,13 @@ class DialogueMachine(Machine):
         self.u.reg_write(UC_ARM64_REG_X0, self.meta)
         self.u.reg_write(UC_ARM64_REG_SP, self.stack + 0x3000)
         self.execute(0x1af9fb0, (0x1afa010,))
-        assert self.read(self.obj + 0x21b4, 1) == (bool(buttons & 0x4002) and not (getter_null and fallback_null))
+        present = not (getter_null and fallback_null)
+        if self.faster_dialogue:
+            expected = bool(buttons & 0x4002) and present
+        else:
+            # Native sets the held byte on B/L/R; the caller owns its reset.
+            expected = 1 if buttons & 0x6002 and present else previous
+        assert self.read(self.obj + 0x21b4, 1) == expected
         assert bytes(self.u.mem_read(self.controller, 0x100)) == before
 
     def renderer(self, flags, override, fast, scale, complete, speeds=(2, 4)):

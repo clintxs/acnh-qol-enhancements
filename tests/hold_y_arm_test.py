@@ -13,7 +13,7 @@ Y = 1 << 38
 class HooverMachine(Machine):
     def __init__(self, base):
         self.callbacks = {}
-        super().__init__(base, {'controls': DEFAULT})
+        super().__init__(base, {'controls': DEFAULT + b'hold_to_advance_dialogue=false\n'})
         self.boot(); self.activate()
         assert 'Controls: ENABLED' in self.text and len(self.hooks) == 7, self.text
         self.next_stub = self.ram + 0x180000
@@ -181,7 +181,7 @@ for base in (0x7100000000, 0x7200000000):
     cases += 12
 # Installation is atomic: every fingerprint is checked before the first hook.
 for offset in (0x2461f30, 0x2222a34, 0x2326e2c, 0x21baf28, 0x23282d0, 0x267d6c4, 0x113db50):
-    m = Machine(0x7100000000, {'controls': DEFAULT})
+    m = Machine(0x7100000000, {'controls': DEFAULT + b'hold_to_advance_dialogue=false\n'})
     m.write(m.base + offset, 0xdeadbeef, 4)
     m.boot(); m.activate()
     assert len(m.hooks) == 2 and 'Controls] hold Y: DISABLED' in m.text

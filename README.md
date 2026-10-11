@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.4.14 release test build** for ACNH **3.0.3 on Eden**. One Core
+**0.4.15 release test build** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates seven optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -14,9 +14,10 @@ The DIY Recipes app now shows **A / Select** while browsing recipes with
 Crafting’s DIY preview enabled. It uses the existing localized caption and
 hides the hint while a preview is open.
 
-Hold **Y** during dialogue to try the new text-only **Hurry** prototype:
+With Controls enabled, hold **Y** during dialogue for the text-only **Hurry** prototype:
 nominal 30x reveal and automatic page advancement, stopping at choices or the
-end of the conversation. Release Y to return to your configured dialogue speed.
+end of the conversation. Release Y to return to normal dialogue speed, or your
+Faster Dialogue preferences when that module is installed.
 
 ## Included implementations
 
@@ -28,7 +29,7 @@ end of the conversation. Release Y to return to your configured dialogue speed.
 | Fitting Room | Able Sisters Bag prototype 0.3.7 | Fitting row badge and original counter layout |
 | Crafting | DIY/workbench previews, quantity wrap + configurable crafting/cooking speed | Configuration only |
 | Shopping Card | Combined savings/cash routing prototype | Configuration + card currency layout |
-| Controls | Hold Y to repeat item pickup, crop harvest or weed pulling | Configuration only |
+| Controls | Hold Y to repeat pickup/harvest/weed actions and optionally advance dialogue | Configuration only |
 
 Faster tool-wheel animations and other workspace mods are not bundled in this
 seven-feature suite. Historical source notes under `docs/` describe each
@@ -61,7 +62,7 @@ hook pools (32 KiB trampoline / 16 KiB inline; fake heap remains 20 KiB).
 Detailed feature logs identify the suite and feature. Pockets reads translations
 at `content:/qol-enhancements/messages/pockets.ini`.
 
-Faster Dialogue now lives in `source/program/dialogue/`: eight SIMD-preserving
+Faster Dialogue lives in `source/program/dialogue/`: seven SIMD-preserving
 C++ hooks implement current B/R input, eligible speed selection/forwarding, and
 main/renderer multipliers. The active speaker is resolved through its owned
 entity handle, validated against the live registry. NPC resource IDs and the
@@ -72,8 +73,12 @@ code-cave helper remains. Amiibo's existing 9,000-update timeout is likewise a
 C++ hook; its behavior is unchanged. Expected instruction words are validation
 fingerprints only, checked before each feature's first hook.
 
-The eighth hook requests a native page advance while Y is held and a page is
-ready. It never sends a synthetic A press or confirms a choice.
+Controls owns hold-to-advance policy and its native page-advance hook in
+`source/program/controls/dialogue_hurry.cpp`. Five reveal hooks are shared and
+installed once when either dialogue feature needs them. Controls alone preserves
+native text speed and B/L/R behavior whenever Y is released; Faster Dialogue
+adds configured speed and its two speaker-name hooks. No synthetic A press or
+choice confirmation is sent.
 
 ## Controls module
 
@@ -89,25 +94,84 @@ furniture, flowers, trees, vines, fences, ladders and ground designs are outside
 the repeat categories. Dropped items remain item pickups, including dropped
 produce and weeds. It adds no animation speed multiplier or pickup radius.
 
-`romfs/qol-enhancements/config/controls.ini` contains `enabled = true` and
-`version = 0.4.14`. Disable or remove Controls to restore ordinary field Y
-handling. It is independent of Pockets and Faster Dialogue. Restart after
-changing modules. Live Eden validation of movement, targeting and capacity
-handling is still required; see [the implementation notes](research/controls/NOTES.md).
+`romfs/qol-enhancements/config/controls.ini` supplies these defaults:
+
+```ini
+enabled = true
+version = 0.4.15
+hold_to_advance_dialogue = true
+```
+
+Set `hold_to_advance_dialogue = false` to disable dialogue hurry while keeping
+hold-Y pickup enabled. This key works in both `controls.ini` and the optional
+`controls.custom.ini` overlay; omitted custom values inherit the regular file.
+A custom file cannot activate an absent Controls module. Disable or remove
+Controls to restore ordinary field Y handling and disable dialogue hurry.
+It is independent of Pockets and Faster Dialogue. Restart after changing
+modules. Live Eden validation of movement, targeting and capacity handling is
+still required; see [the implementation notes](research/controls/NOTES.md).
+
+### Hold to advance dialogue
+
+With Controls enabled and `hold_to_advance_dialogue = true`, holding **Y**
+selects a fixed nominal **30x** text tier independently of `base_speed`, `boost_speed`, and automatic categories.
+It advances completed pages through the game's normal message handling,
+including fish/bug catch bubbles, and opens the next choice without selecting
+an answer. Keep holding Y after manually choosing to hurry the next message;
+release it to stop automatic advancement. Explicit mid-message input pauses
+also resume while Y remains held (for example, the Sunday turnip-price message).
+Faster Dialogue is optional. Releasing Y restores vanilla dialogue speed when
+it is absent, or its configured speed when installed.
+Timed waits, native text protection and explicit rate overrides still apply.
+
+Automatic advancement stops on the first-catch announcement (English "Yes!")
+for fish, bugs and sea creatures. The exact active IDs are `SYS_Get_Fish:001`,
+`SYS_Get_Insect:001`, and `SYS_Get_DiveFish:001`, verified in all 14 supplied
+locale packs. Text still reveals at the selected speed, but held Y waits for
+you to advance manually. Further localized pages within that same ID also
+wait; subsequent species/pun messages can hurry normally. No translated-text
+matching, saved catch flags or additional INI setting is used.
+
+This prototype does **not** accelerate character animations or identify
+renovation announcements, collection-completion speeches, or other important
+dialogue. Those messages still hurry. Further exceptions and eventflow
+analysis are deferred. The first-catch stop has been confirmed in game; the
+Controls migration still needs live confirmation.
+
+The first live NPC test of 0.4.7 reported no Y effect. The synced diagnostic
+identified the game's Y bit as `0x0010` and a completed NPC page waiting in
+message-wrapper state 1. Version 0.4.10 corrects both assumptions; choices
+retain their separate opening/active/closing guard. To investigate further, build
+`sh tools/build.sh --hurry-diagnostic` and package with
+`python3 tools/package_hurry_diagnostic.py`. This separate **hurry-diagnostic1**
+archive contains Core executables only, preserving settings and resources.
+Copy those executables into the existing Core folder, keep Controls enabled
+with `hold_to_advance_dialogue = true`, and fully restart. Hold
+and release Y during NPC text and again while waiting to advance; try B/R too.
+Close the game and save the Eden log before starting another session.
+
+`[QoL Enhancements/Controls] DIAGNOSTIC: hurry-v1` identifies the build.
+Bounded `HURRY` lines report raw input, each rejecting guard, ownership, context/reveal/choice/message states,
+and the selected flag or advance request. They deliberately log even with
+`log_debug=false`; no INI edits are needed. Input-stage evidence appears before
+native protection gates. Held and unheld logs have separate budgets so startup
+messages cannot exhaust Y evidence. This includes the input, waiting-page and
+mid-message input-pause fixes. Restore normal Core after collecting logs.
+Diagnostic checks: `PYTHONPATH='../Grab 5/working/python:tests' python3 tests/dialogue_hurry_diagnostic_arm_test.py`.
 
 ## Crafting module
 
 Install **QoL Enhancements - Crafting** with Core. This replaces the former
 Faster Crafting package; remove the old folder and rename personal
 `faster-crafting.custom.ini` preferences to `crafting.custom.ini`. Remove any old
-`version` override from that personal file (or update it to 0.4.14). The retired
+`version` override from that personal file (or update it to 0.4.15). The retired
 regular/custom paths are no longer read. Core alone no longer enables DIY previews.
 
 `romfs/qol-enhancements/config/crafting.ini` supplies these defaults:
 
 ```ini
 enabled = true
-version = 0.4.14
+version = 0.4.15
 diy_app_preview = true
 workbench_preview_tilt = true
 crafting_quantity_wrap = true
@@ -335,7 +399,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.4.14
+version = 0.4.15
 base_speed = 2
 boost_speed = 4
 faster_ui = true
@@ -354,53 +418,10 @@ comments, CRLF and an optional UTF-8 BOM.
 Catalog, Pockets, Fitting Room and Shopping Card expose just `enabled` and
 `version`. Their overlays are `catalog.custom.ini`, `pockets.custom.ini`,
 `fitting-room.custom.ini` and `shopping-card.custom.ini`. Crafting preferences
-use `crafting.custom.ini`; Core uses the optional settings files described above.
+use `crafting.custom.ini`; Controls uses `controls.custom.ini`; Core uses the optional settings files described above.
 Pockets and Fitting Room caption files are separate translation resources.
 
 ## Conditional Faster Dialogue
-
-With Faster Dialogue enabled, holding **Y** selects a fixed nominal **30x**
-text tier independently of `base_speed`, `boost_speed`, and automatic categories.
-It advances completed pages through the game's normal message handling,
-including fish/bug catch bubbles, and opens the next choice without selecting
-an answer. Keep holding Y after manually choosing to hurry the next message;
-release it to stop automatic advancement. Explicit mid-message input pauses
-also resume while Y remains held (for example, the Sunday turnip-price message).
-No additional INI setting is needed.
-Timed waits, native text protection and explicit rate overrides still apply.
-
-Automatic advancement stops on the first-catch announcement (English "Yes!")
-for fish, bugs and sea creatures. The exact active IDs are `SYS_Get_Fish:001`,
-`SYS_Get_Insect:001`, and `SYS_Get_DiveFish:001`, verified in all 14 supplied
-locale packs. Text still reveals at the selected speed, but held Y waits for
-you to advance manually. Further localized pages within that same ID also
-wait; subsequent species/pun messages can hurry normally. No translated-text
-matching, saved catch flags or additional INI setting is used.
-
-This prototype does **not** accelerate character animations or identify
-renovation announcements, collection-completion speeches, or other important
-dialogue. Those messages still hurry. Further exceptions and eventflow
-analysis are deferred; live confirmation of the new first-catch stop is pending.
-
-The first live NPC test of 0.4.7 reported no Y effect. The synced diagnostic
-identified the game's Y bit as `0x0010` and a completed NPC page waiting in
-message-wrapper state 1. Version 0.4.10 corrects both assumptions; choices
-retain their separate opening/active/closing guard. To investigate further, build
-`sh tools/build.sh --hurry-diagnostic` and package with
-`python3 tools/package_hurry_diagnostic.py`. This separate **hurry-diagnostic1**
-archive contains Core executables only, preserving settings and resources.
-Copy those executables into the existing Core folder and fully restart. Hold
-and release Y during NPC text and again while waiting to advance; try B/R too.
-Close the game and save the Eden log before starting another session.
-
-`DIAGNOSTIC: hurry-v1` identifies the build. Bounded `HURRY` lines report raw
-input, each rejecting guard, ownership, context/reveal/choice/message states,
-and the selected flag or advance request. They deliberately log even with
-`log_debug=false`; no INI edits are needed. Input-stage evidence appears before
-native protection gates. Held and unheld logs have separate budgets so startup
-messages cannot exhaust Y evidence. This includes the input, waiting-page and
-mid-message input-pause fixes. Restore normal Core after collecting logs.
-Diagnostic checks: `PYTHONPATH='../Grab 5/working/python:tests' python3 tests/dialogue_hurry_diagnostic_arm_test.py`.
 
 All five preferences below work in either Faster Dialogue INI. Personal
 preferences are best kept in a separate mod so suite updates cannot replace them.
@@ -523,9 +544,9 @@ at `../vanilla-3.0.3/Layout`; builders verify their hashes and archive structure
 The package script checks that every INI matches the Core release, refuses to
 replace existing archives, and creates:
 
-- `dist/qol-enhancements-v0_4_14_for_acnh_v3_0_3.zip`
-- `dist/qol-enhancements-v0_4_14_for_acnh_v3_0_3_source.zip`
-- `dist/qol-enhancements-v0_4_14_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
+- `dist/qol-enhancements-v0_4_15_for_acnh_v3_0_3.zip`
+- `dist/qol-enhancements-v0_4_15_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v0_4_15_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
 
 The binary ZIP contains a conspicuous installation text file, README, Core and
 seven independently selectable feature folders, plus a SHA-256 manifest. Source

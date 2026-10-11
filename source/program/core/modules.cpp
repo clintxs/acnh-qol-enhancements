@@ -1,7 +1,7 @@
 #include "lib.hpp"
 #include "modules.hpp"
 #include "release.hpp"
-#include "program/controls/hold_y.hpp"
+#include "program/controls/settings.hpp"
 #include "resource_budget.hpp"
 #include "settings.hpp"
 #include "program/crafting/settings.hpp"
@@ -114,7 +114,7 @@ const std::array<ModuleDescription, 7> Modules{{
     {"Fitting Room", "fitting-room", {0, 1, 0}, able_bag::Install, nullptr, PrepareFittingResources},
     {"Shopping Card", "shopping-card", {0, 3, 2}, shopping::Install, nullptr, shopping::PrepareResources},
     {"Crafting", "crafting", {0, 3, 46}, crafting::Install, crafting::Configure, nullptr, crafting::ReportSettings},
-    {"Controls", "controls", {0, 4, 14}, controls::Install},
+    {"Controls", "controls", {0, 4, 14}, controls::Install, controls::Configure, nullptr, controls::ReportSettings},
 }};
 
 void ActivateModules() {

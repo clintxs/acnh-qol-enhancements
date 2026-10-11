@@ -6,13 +6,17 @@ No game, controller, save or live installation is modified.
 """
 import itertools
 import struct
-from dialogue_arm_test import DialogueMachine, GP, Q
+from dialogue_arm_test import DialogueMachine, GP, Q, DEFAULT
 from unicorn.arm64_const import *
 
 
 class HurryMachine(DialogueMachine):
-    def __init__(self, base, enabled=True, verbose=True):
-        super().__init__(base, enabled=enabled, verbose=verbose)
+    def __init__(self, base, enabled=True, verbose=True, faster_dialogue=True,
+                 controls=DEFAULT, controls_custom=None, dialogue_custom=None):
+        files = {'controls': controls} if enabled and controls is not None else {}
+        if controls_custom is not None: files['controls.custom'] = controls_custom
+        super().__init__(base, enabled=enabled and faster_dialogue, verbose=verbose,
+                         custom=dialogue_custom, extra_files=files)
         self.message_ui, self.choice_ui = self.ram + 0x6c000, self.ram + 0x6c100
         self.state_table = self.ram + 0x6e000
         self.check_adapter = False

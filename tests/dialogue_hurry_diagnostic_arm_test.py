@@ -1,6 +1,6 @@
 """Diagnostic logs must expose blocked Y with shipping logging defaults off."""
 import re
-from dialogue_hurry_arm_test import HurryMachine
+from dialogue_hurry_arm_test import HurryMachine, DEFAULT
 from unicorn.arm64_const import *
 
 
@@ -10,8 +10,15 @@ def lines(m, stage):
 
 for base in (0x7100000000, 0x7200000000):
     m = HurryMachine(base, verbose=False)
-    assert 'DIAGNOSTIC: hurry-v1' in m.text
+    assert '[QoL Enhancements/Controls] DIAGNOSTIC: hurry-v1' in m.text
     assert 'log_debug=false' in m.text and 'BOOT_OK' not in m.text
+    independent = HurryMachine(base, verbose=False, faster_dialogue=False)
+    assert '[QoL Enhancements/Controls] DIAGNOSTIC: hurry-v1' in independent.text
+    independent.prepare()
+    assert independent.advance() == 7
+    assert '[QoL Enhancements/Controls] HURRY stage=advance gate=ready' in independent.text
+    disabled = HurryMachine(base, verbose=False, controls=DEFAULT + b'hold_to_advance_dialogue=false\n')
+    assert 'DIAGNOSTIC: hurry-v1' not in disabled.text
     # Every shared gate must report Y even though ordinary speed is retained.
     for args, gate in ((dict(state=4), 'manager-state'),
                        (dict(context_phase=1), 'context-phase'),

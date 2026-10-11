@@ -1,4 +1,4 @@
-QoL Enhancements 0.4.14 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.4.15 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -18,6 +18,13 @@ Core uses subsdk6, leaving subsdk9 available for Jubbsticks Additions.
 This avoids that executable-slot collision; compatibility with its eventual
 ACNH v3 release still needs testing. Other mods must also avoid subsdk6 and
 our hook/layout files. Core supplies the suite's only main.npdm.
+
+0.4.15: Hold-to-advance dialogue now belongs to Controls, with
+hold_to_advance_dialogue=true by default. Install updated Core and Controls.
+Faster Dialogue is optional: without it, releasing Y restores vanilla text
+speed. Set the new key to false to keep hold-Y pickups without dialogue hurry.
+Regular controls.ini settings load first, then controls.custom.ini overrides.
+Choices, explicit input pauses and first-catch announcement stops are retained.
 
 0.4.14: New optional Controls module: hold Y after picking up an item,
 harvesting a crop or pulling a weed to repeat that action while moving.
@@ -120,6 +127,8 @@ keeps catalog ownership checks. This needs an in-game test.
 
 MODULES
 Controls: Hold Y to repeat the first item pickup, crop harvest or weed pull.
+Optional hold-to-advance dialogue is enabled by default and works independently
+of Faster Dialogue.
 Crafting: DIY app 3D previews and configurable crafting/cooking speed ramp.
 Catalog: catalog/recipe stars, catalog badges and furniture-variation markers.
 Pockets: Grab 5/10, direct storage withdrawal, Y-to-storage and footer hints.
@@ -246,7 +255,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.4.14
+  version = 0.4.15
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.
@@ -271,7 +280,7 @@ CRAFTING MODULE / SETTINGS (0.3.63)
 Install Core plus “QoL Enhancements - Crafting”. This replaces the former
 “QoL Enhancements - Faster Crafting” folder; remove that old folder when updating.
 Move any personal faster-crafting.custom.ini preferences to crafting.custom.ini.
-Remove old version overrides in that custom file, or update them to 0.4.14.
+Remove old version overrides in that custom file, or update them to 0.4.15.
 Old faster-crafting.ini/custom paths are no longer read.
 DIY app previews are now optional Crafting behavior, not always-on Core behavior.
 
@@ -279,7 +288,7 @@ Regular settings: romfs/qol-enhancements/config/crafting.ini
 Personal overlay: romfs/qol-enhancements/config/crafting.custom.ini
 Defaults in the regular file:
   enabled = true
-  version = 0.4.14
+  version = 0.4.15
   diy_app_preview = true
   workbench_preview_tilt = true
   crafting_quantity_wrap = true
@@ -326,20 +335,33 @@ NPC animations retain native behavior. Fully restart after updating or editing
 settings. Local ARM/config checks cover the new module and settings; live Deck
 confirmation of this reorganization is still required.
 
-PERSONAL FASTER DIALOGUE SETTINGS
-Y TO HURRY PROTOTYPE: With Faster Dialogue enabled, hold Y for nominal 30x
-text and automatic completed-page advancement. Choices open normally; Y never
+CONTROLS SETTINGS
+The Controls module includes both hold-Y pickups and dialogue hurry.
+romfs/qol-enhancements/config/controls.ini:
+  enabled = true
+  version = 0.4.15
+  hold_to_advance_dialogue = true
+
+Set hold_to_advance_dialogue=false to disable only dialogue hurry.
+The same key works in controls.custom.ini, overriding the regular setting.
+A custom file alone cannot activate an absent Controls module. Removing or
+setting enabled=false disables both Controls features. Restart after edits.
+
+Y TO HURRY PROTOTYPE: With Controls enabled and hold_to_advance_dialogue=true,
+hold Y for nominal 30x text and automatic completed-page advancement. Choices open normally; Y never
 selects an answer. Release Y to stop; keep holding after making a choice to
-hurry the next message. Fish/bug catch bubbles are included. No INI key needed.
-Your normal base/boost/category preferences resume when Y is released.
+hurry the next message. Fish/bug catch bubbles are included.
+Vanilla dialogue speed resumes when Y is released, or your Faster Dialogue
+base/boost/category preferences if that optional module is installed.
 Native timed waits, text protection and explicit speed overrides remain.
 First-catch announcements wait for manual advancement, even while Y remains
 held: SYS_Get_Fish:001, SYS_Get_Insect:001, SYS_Get_DiveFish:001. These IDs are
 shared by all 14 supplied locales; their translated text is not matched.
 Animations are unchanged. Other important/renovation/collection-completion
 announcements are not detected and will still hurry. Live Eden testing of the
-new first-catch stop is required.
+Controls migration is required; the first-catch stop is confirmed in game.
 
+PERSONAL FASTER DIALOGUE SETTINGS
 Install the optional separate faster-dialogue-custom-example ZIP alongside
 Core and Faster Dialogue to try the requested preset: base 2x, B/R 4x, automatic
 4x for Timmy, Tommy, Orville, Wilbur, Kapp'n and UI dialogs and unnamed gameplay messages.

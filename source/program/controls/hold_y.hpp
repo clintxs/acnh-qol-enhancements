@@ -1,5 +1,5 @@
 #pragma once
 
 namespace qol::controls {
-bool Install();
+bool InstallHoldYPickup();
 }

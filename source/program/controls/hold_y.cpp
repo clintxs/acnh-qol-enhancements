@@ -158,7 +158,7 @@ HOOK_DEFINE_TRAMPOLINE(HooverPickup) {
     }
 };
 }
-bool Install() {
+bool InstallHoldYPickup() {
     struct Fingerprint { std::uintptr_t offset; std::uint32_t words[5]; };
     constexpr Fingerprint fingerprints[]{
         {address::InputUpdate, {0xd10343ff,0xfd002bea,0x6d0623e9,0xa9077bfd,0xa9086ffc}},
