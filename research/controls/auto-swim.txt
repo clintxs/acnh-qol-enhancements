@@ -44,3 +44,43 @@ Tests retain native underwater branch/request construction with physical A,
 verify tilted sticks cannot synthesize underwater strokes, and confirm that
 an underwater gate conflict does not disable the independent surface hook.
 The preceding underwater hook details document prototype 1 only.
+
+Prototype 3: strong stick, held A and smooth diving
+
+Live feedback requested automatic underwater swimming again, with strong stick
+intent and fewer audible arm strokes. The previous press-gate hooks are replaced
+by scoped C++ trampolines on surface wait/stride updates (0236B77C/0236BEA0),
+underwater wait/stride updates (0236CF20/0236DB00) and their stride entries
+(0236BBB8/0236D6A0). The input-enable, local update mode, input-lock and eight
+resident bounds checks are retained. Physical A bypasses automatic policy.
+
+At >=.85 stick magnitude, borrow logical held A bit 0 within the synchronous
+swimming update/entry, and press A once every 38,400,000 Horizon system ticks
+(two seconds). Restore the borrowed input bits and held-frame count afterwards,
+without overwriting other native input writes. Identity is tied to player
+pointer, generation handle and surface/underwater mode. Light tilt clears the
+automatic run so the next strong push starts with an arm stroke.
+
+Native stride entry selects PlayerSwimStride_FlapFoot/PlayerDiveStride_FlapFoot
+when action-0's held counter at player+13D8 exceeds 30. Scoped counter 31 enables
+that quiet selection, except within 200ms of the periodic pulse (counter 0) so
+the next native entry can choose the normal arm stroke. This is animation
+selection, not global sound suppression or playback-rate modification.
+
+Movement helpers 02364B10/02365878 are wrapped but changed only inside the
+current swim scope. Native direction calculation executes unchanged. For a
+light tilt, current speed at 1820 and target speed at 1844 are zeroed so native
+slow drift or residual stroke speed does not defeat turning in place. During
+automatic diving, StrideMovement's first float gives the native slow cruise
+speed, including the FlapFoot scale. Retain this as a minimum for current and
+target speed through subsequent wait/stride frames. Preserve faster native
+arm acceleration, collisions, reservations and state transitions. This targets
+the reported deceleration pause; actual perceived smoothness needs live testing.
+
+Tests run compiled scopes/restoration/movement policy at two ASLR bases with
+modeled native updates and speed parameters. The real native held-A branch and
+arm-vs-FlapFoot selector fragments execute. Check strong/light cardinal and
+diagonal input, invalid analog input, two-second pulses, pending-pulse entry,
+cruise across wait frames, release, unchanged manual A, blocked/remote input,
+shared movement outside swimming, config and all eight dependency conflicts.
+Actual audio, transition cadence, collision response and catching need Eden.

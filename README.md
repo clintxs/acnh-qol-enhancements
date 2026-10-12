@@ -120,12 +120,14 @@ Set `hold_to_hoover = false` for ordinary field Y behavior. The two hold-Y
 settings default to true. All Controls settings work in `controls.ini` and
 `controls.custom.ini`. Restart after editing.
 
-Automatic swimming is enabled by default. Move the left stick to swim at the
-surface without pressing A; release the stick to stop requesting
-strokes. Underwater uses normal A controls so you can turn in place while
-chasing creatures. Y still dives/surfaces normally. Set `auto_swim = false` in
-`controls.ini` or `controls.custom.ini` to restore ordinary swimming. Restart
-after editing. Native stroke timing is preserved; live Eden validation is pending.
+Automatic swimming is enabled by default at the surface and underwater. Push
+roughly 85% of the left stick's travel to propel yourself; lighter tilt turns
+in place. Automatic movement uses held A with an arm stroke about every two
+seconds and quieter foot kicking between strokes. Underwater, a native cruise
+speed floor is intended to smooth the pause between animation pulses. Physical
+A retains normal controls, and Y still dives/surfaces normally. Set
+`auto_swim = false` in `controls.ini` or `controls.custom.ini` and restart to
+restore ordinary swimming. Live Eden validation of this prototype is pending.
 
 Automatic traversal is enabled by default. Push firmly toward a vaultable river
 or a climbable cliff face/edge and keep pushing through the normal hop delay.

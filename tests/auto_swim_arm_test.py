@@ -1,112 +1,150 @@
-"""Compiled swim hooks plus native stroke branches at two relocated bases.
+"""Compiled scoped swim input and native held gates/animation selectors.
 
-Loaded parameter resources are modeled. Native animation/collision scheduling
-and continuous stroke cadence require a live Eden playtest.
+Native world updates, loaded speed parameters and animation timing are modeled;
+real sound, collision, creature catches and perceived smoothness need Eden.
 """
 import struct
 from core_arm_test import Machine, DEFAULT, RAW
 from unicorn.arm64_const import *
 
-SURFACE, UNDERWATER, PARAMETERS = 0x2367e3c, 0x236d558, 0x241e98c
+BINDINGS = (0x236b77c,0x236bea0,0x236bbb8,0x236cf20,0x236db00,0x236d6a0,0x2364b10,0x2365878)
 CONFIG = DEFAULT + b'hold_to_hoover=false\nhold_to_advance_dialogue=false\nauto_vault=false\nauto_ladder=false\n'
+TICKS = 19_200_000
 
 class SwimMachine(Machine):
-    def __init__(self, base, **kwargs):
+    def __init__(self, base):
         self.ready = False
-        super().__init__(base, {'controls': CONFIG}, **kwargs)
+        super().__init__(base, {'controls':CONFIG})
         self.boot(); self.activate()
-        assert len(self.hooks) == 3 and 'auto swim: READY' in self.text, self.text
+        assert len(self.hooks) == 10 and all(base+a in self.hooks for a in BINDINGS), self.text
         self.player = self.ram + 0x1000
-        self.context = self.ram + 0x4000
         self.parameters = self.ram + 0x5000
-        self.vtable = self.ram + 0x6000
-        self.getter = self.ram + 0x7000
-        self.value = self.ram + 0x8000
-        self.write(self.parameters + 0x120, self.vtable)
-        self.write(self.vtable + 0xf0, self.getter)
-        self.u.mem_write(self.value, struct.pack('<f', .2))
+        self.tick = 100*TICKS
+        self.now = self.module.find('svcGetSystemTick')
+        self.stubs = {}
+        self.samples = []
+        for i, name in enumerate(('SurfaceWait','SurfaceStride','SurfaceEntry','DiveWait','DiveStride','DiveEntry','WaitMovement','StrideMovement')):
+            stub = self.ram + 0x10000 + i*16
+            self.stubs[stub] = name
+            self.write(self.module.find('AutoSwim'+name,'OrigRef'),stub)
+        self.write(self.player+0x230,123,4)
+        self.write(self.player+0x12f8,1,1)
+        self.u.mem_write(self.parameters,struct.pack('<f',.8))
         self.ready = True
-    def service(self, u, pc, size, context):
-        if self.ready and pc in (self.base + PARAMETERS, self.getter):
-            assert self.reg(0) == (1 if pc == self.base + PARAMETERS else self.parameters + 0x120)
-            u.reg_write(UC_ARM64_REG_X0, self.parameters if pc == self.base + PARAMETERS else self.value)
-            u.reg_write(UC_ARM64_REG_PC, u.reg_read(UC_ARM64_REG_LR))
-            return
-        return super().service(u, pc, size, context)
-    def stroke(self, underwater, x, y, physical=0, enabled=1, mode=0):
-        self.write(self.player + 0x178, mode, 4)
-        self.write(self.player + 0x12f8, enabled, 1)
-        self.u.mem_write(self.player + 0xeec, struct.pack('<ff', x, y))
-        # Prove the entire player/input snapshot is untouched by the hook.
-        before = bytes(self.u.mem_read(self.player, 0x3000))
-        self.u.mem_write(self.context, bytes(0x100))
-        self.write(self.context + 19 * 8, self.player)
-        register = 8 if underwater else 9
-        self.write(self.context + register * 8, physical)
-        self.u.reg_write(UC_ARM64_REG_X0, self.context)
-        if not underwater:
-            self.call(self.module.find('AutoSwimSurface', 'Callback'))
-        else:
-            assert self.base + UNDERWATER not in self.hooks
-            assert bytes(self.u.mem_read(self.base + UNDERWATER, 20)) == RAW[UNDERWATER:UNDERWATER+20]
-        result = self.read(self.context + register * 8)
-        assert bytes(self.u.mem_read(self.player, 0x3000)) == before
-        # Execute the game's actual A branch. A taken branch lands at the
-        # native stroke request construction; idle continues the original path.
-        gate = UNDERWATER if underwater else SURFACE
-        self.u.mem_write(self.base + gate, RAW[gate:gate+4])
-        self.u.reg_write(UC_ARM64_REG_X8 if underwater else UC_ARM64_REG_X9, result)
-        self.u.emu_start(self.base + gate, self.base + gate + 4, count=1)
-        target = 0x236d584 if underwater else 0x2367ee8
-        assert (self.u.reg_read(UC_ARM64_REG_PC) == self.base + target) == bool(result & 1)
-        if result & 1:
-            self.u.reg_write(UC_ARM64_REG_X19, self.player)
-            self.u.reg_write(UC_ARM64_REG_X29, self.ram + 0xa000)
-            self.u.reg_write(UC_ARM64_REG_X23, self.player + 0x1980)
-            if not underwater:
-                self.u.reg_write(UC_ARM64_REG_X8, self.player + 0x1980)
-                self.u.reg_write(UC_ARM64_REG_X1, 1)
-            self.u.emu_start(self.base + target, self.base + 0x3dbb160, count=200)
-            assert self.u.reg_read(UC_ARM64_REG_PC) == self.base + 0x3dbb160
-            assert self.reg(1) == (0xfb if underwater else 0xf7)
-            assert self.read(self.player + 0x1880, 1) == 1
-            assert bytes(self.u.mem_read(self.player + 0xec0, 0x50)) == before[0xec0:0xf10]
-        return result
+        self.native_return = self.ram + 0x11000
+    def float(self, offset):
+        return struct.unpack('<f',self.u.mem_read(self.player+offset,4))[0]
+    def service(self,u,pc,size,context):
+        if self.ready and pc == self.now:
+            u.reg_write(UC_ARM64_REG_X0,self.tick)
+            u.reg_write(UC_ARM64_REG_PC,u.reg_read(UC_ARM64_REG_LR)); return
+        if self.ready and pc == self.native_return:
+            u.reg_write(UC_ARM64_REG_PC,self.outer_return); return
+        if not self.ready or pc not in self.stubs:
+            return super().service(u,pc,size,context)
+        name=self.stubs[pc]
+        if name.endswith('Movement'):
+            # Model the native animation decelerating to zero. Compiled scoped
+            # policy must preserve physical-A motion, turn-only, or cruise.
+            for offset in (0x1820,0x1844): self.u.mem_write(self.player+offset,struct.pack('<f',.1))
+            self.write(self.player+0x1854,0x12345678,4)  # Native steering result.
+            u.reg_write(UC_ARM64_REG_X0,3)
+            u.reg_write(UC_ARM64_REG_PC,u.reg_read(UC_ARM64_REG_LR)); return
+        self.samples.append((name,self.read(self.player+0xec8),self.read(self.player+0xed0),self.read(self.player+0x13d8,4)))
+        self.outer_return=u.reg_read(UC_ARM64_REG_LR)
+        u.reg_write(UC_ARM64_REG_X1,self.parameters)
+        u.reg_write(UC_ARM64_REG_LR,self.native_return)
+        u.reg_write(UC_ARM64_REG_PC,self.module.find('AutoSwim'+('StrideMovement' if 'Stride' in name else 'WaitMovement'),'Callback'))
+    def update(self,name,x=1.,y=0.,held=0,pressed=0,mode=0,enabled=1,locked=0,resident=0):
+        self.write(self.player+0x178,mode,4)
+        self.write(self.player+0x12f8,enabled,1)
+        self.write(self.player+0x17ac,locked,1)
+        self.write(self.player+0x1ee8,resident,1)
+        self.u.mem_write(self.player+0xeec,struct.pack('<ff',x,y))
+        self.write(self.player+0xec8,held)
+        self.write(self.player+0xed0,pressed)
+        self.write(self.player+0x13d8,7,4)
+        before=bytes(self.u.mem_read(self.player+0xec0,0x50))
+        self.u.reg_write(UC_ARM64_REG_X0,self.player)
+        self.call(self.module.find('AutoSwim'+name,'Callback'))
+        assert bytes(self.u.mem_read(self.player+0xec0,0x50)) == before
+        assert self.read(self.player+0x13d8,4) == 7
+        assert self.read(self.player+0x1854,4) == 0x12345678  # Steering preserved.
+        return self.samples[-1][1:]
+    def animation(self,underwater,frames):
+        self.write(self.player+0x13d8,frames,4)
+        self.u.reg_write(UC_ARM64_REG_X19,self.player)
+        self.u.reg_write(UC_ARM64_REG_SP,self.ram+0x1f0000)
+        start,end=(0x236d780,0x236d7b8) if underwater else (0x236bc90,0x236bcc8)
+        self.u.emu_start(self.base+start,self.base+end,count=50)
+        expected=(0x3f92b12 if underwater else 0x3f8d6b9) if frames>30 else (0x3fbbf29 if underwater else 0x3ff028a)
+        assert self.u.reg_read(UC_ARM64_REG_X8) == self.base+expected
+    def held_gate(self,underwater,held):
+        gate=0x236e198 if underwater else 0x2367e64
+        self.u.reg_write(UC_ARM64_REG_X8 if underwater else UC_ARM64_REG_X9,held)
+        self.u.emu_start(self.base+gate,self.base+gate+4,count=1)
+        target=0x236dfe8 if underwater else 0x2367e74
+        assert (self.u.reg_read(UC_ARM64_REG_PC)==self.base+target) == (not bool(held&1))
 
 
 def main():
-    cases = 0
-    for base in (0x7100000000, 0x7200000000):
-        m = SwimMachine(base)
-        for underwater in (False, True):
-            for x, y, moving in ((0,0,False), (.1,.1,False), (.2,0,False), (.21,0,True),
-                                  (1,0,True), (-1,0,True), (0,1,True), (0,-1,True),
-                                  (.15,.15,True), (1,1,True), (float('nan'),0,False), (float('inf'),0,False)):
-                for enabled, mode in ((1,0), (0,0), (1,1)):
-                    for physical in (0, 1, 0x80):
-                        assert m.stroke(underwater,x,y,physical,enabled,mode) == (physical | int(not underwater and moving and enabled and mode != 1))
-                        cases += 1
-            for _ in range(30):
-                assert m.stroke(underwater,1,0) == int(not underwater)
-                assert m.stroke(underwater,0,0) == 0
-        for settings, custom, expected in ((CONFIG,None,True), (CONFIG,b'auto_swim=false',False),
-                                           (CONFIG+b'auto_swim=false\n',b'auto_swim=true',True),
-                                           (CONFIG+b'auto_swim=false\n',None,False)):
-            files={'controls':settings}
-            if custom is not None: files['controls.custom']=custom
+    cases=0
+    for base in (0x7100000000,0x7200000000):
+        m=SwimMachine(base)
+        for underwater in (False,True):
+            prefix='Dive' if underwater else 'Surface'
+            for x,y,strong in ((0,0,False),(.2,0,False),(.84,0,False),(.86,0,True),
+                               (1,0,True),(-1,0,True),(0,1,True),(0,-1,True),(.5,.5,False),(.61,.61,True),
+                               (float('nan'),0,False),(float('inf'),0,False)):
+                m.update(prefix+'Wait',0,0)
+                held,pressed,frames=m.update(prefix+'Stride',x,y,held=0x80,pressed=0x40)
+                assert held == (0x80|strong) and pressed == (0x40|strong)
+                expected_speed = (.8 if underwater else .1) if strong else 0.
+                assert abs(m.float(0x1820)-expected_speed)<1e-6
+                m.animation(underwater,frames)
+                m.held_gate(underwater,held)
+                cases+=1
+            # First arm stroke, sustained foot kick, timed arm stroke. Entry
+            # observes the pending pulse without producing a second A press.
+            m.update(prefix+'Wait',0,0)
+            assert m.update(prefix+'Stride') == (1,1,0)
+            m.tick+=TICKS//30
+            assert m.update(prefix+'Entry') == (1,0,0)
+            for frame in range(1,60):
+                m.tick+=TICKS//30
+                held,pressed,frames=m.update(prefix+'Stride')
+                assert held==1 and pressed==(frame==59)
+                if frame>6 and frame<59: assert frames==31
+                m.animation(underwater,frames)
+                if underwater: assert abs(m.float(0x1820)-.8)<1e-6
+                cases+=1
+            # A wait frame between pulses retains the recorded native cruise.
+            m.update(prefix+'Wait')
+            if underwater: assert abs(m.float(0x1820)-.8)<1e-6
+            m.update(prefix+'Stride',.5,0)
+            assert m.float(0x1820)==m.float(0x1844)==0
+            assert m.update(prefix+'Stride') == (1,1,0)
+            for kwargs in ({'mode':1},{'enabled':0},{'locked':1},{'resident':8},{'held':1},{'pressed':1}):
+                held,pressed,frames=m.update(prefix+'Stride',.5,0,**kwargs)
+                assert held==kwargs.get('held',0) and pressed==kwargs.get('pressed',0) and frames==7
+                assert abs(m.float(0x1820)-.1)<1e-6
+                cases+=1
+        # No scope: other callers of shared movement keep native speeds.
+        m.u.reg_write(UC_ARM64_REG_X0,m.player)
+        m.u.reg_write(UC_ARM64_REG_X1,m.parameters)
+        m.call(m.module.find('AutoSwimWaitMovement','Callback'))
+        assert abs(m.float(0x1820)-.1)<1e-6
+        for regular,custom,expected in ((CONFIG,None,True),(CONFIG,b'auto_swim=false',False),
+                                        (CONFIG+b'auto_swim=false\n',b'auto_swim=true',True)):
+            files={'controls':regular}
+            if custom: files['controls.custom']=custom
             n=Machine(base,files); n.boot(); n.activate()
-            assert (base+SURFACE in n.hooks) == expected
-            assert base+UNDERWATER not in n.hooks
-        for offset in (SURFACE, PARAMETERS):
+            assert all((base+a in n.hooks)==expected for a in BINDINGS)
+        for offset in BINDINGS:
             n=Machine(base,{'controls':DEFAULT})
             n.write(base+offset,0xdeadbeef,4); n.boot(); n.activate()
-            assert 'auto swim: DISABLED' in n.text
-            assert all(base+a not in n.hooks for a in (SURFACE,UNDERWATER))
-            assert base+0x2222a34 in n.hooks  # Independent pickup still installs.
-        n=Machine(base,{'controls':CONFIG})
-        n.write(base+UNDERWATER,0xdeadbeef,4); n.boot(); n.activate()
-        assert base+SURFACE in n.hooks and 'auto swim: READY' in n.text
-        assert base+UNDERWATER not in n.hooks
-    print(f'PASS: {cases} surface auto strokes/underwater manual strokes, deadzone, release, physical A, input guards, overrides and conflicts')
+            assert 'auto swim: DISABLED' in n.text and all(base+a not in n.hooks for a in BINDINGS)
+            assert base+0x2222a34 in n.hooks
+    print(f'PASS: {cases} strong/light stick, scoped input restoration, native held gates and quiet animation selection, 2s cadence, dive cruise, manual A, locks, remote, config and conflicts')
 
-if __name__ == '__main__': main()
+if __name__=='__main__': main()
