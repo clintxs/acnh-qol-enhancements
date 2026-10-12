@@ -123,7 +123,8 @@ settings default to true. All Controls settings work in `controls.ini` and
 Automatic swimming is enabled by default at the surface and underwater. Push
 roughly 85% of the left stick's travel to propel yourself; lighter tilt turns
 in place. Automatic movement uses held A with an arm stroke about every two
-seconds and quieter foot kicking between strokes. Underwater, a native cruise
+seconds and quieter foot kicking between strokes. Stroke requests remain
+pending until the next native animation entry. Underwater, a native cruise
 speed floor is intended to smooth the pause between animation pulses. Physical
 A retains normal controls, and Y still dives/surfaces normally. Set
 `auto_swim = false` in `controls.ini` or `controls.custom.ini` and restart to

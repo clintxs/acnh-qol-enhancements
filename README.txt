@@ -530,10 +530,11 @@ Early startup errors still log. Special dialogue MESSAGE/SELECT tracing needs
 the diagnostic build and log_debug=true in core.custom.ini. Trace limits remain.
 Invalid values inherit; duplicate keys restore the value from before that file.
 
-Controls auto_swim (prototype 3): enabled by default at the surface and
+Controls auto_swim (prototype 4): enabled by default at the surface and
 underwater. Push about 85% of the left stick's travel to move; lighter tilt
 turns in place. Automatic held A provides quiet kicking between arm strokes
-about every two seconds. An underwater cruise speed floor is intended to
+about every two seconds; requests stay pending until a stroke starts.
+An underwater cruise speed floor is intended to
 smooth the pause between animation pulses. Physical A and Y retain normal
 controls. Set auto_swim = false in controls.ini or controls.custom.ini and
 restart to restore ordinary swimming. Live Eden validation is pending.

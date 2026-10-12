@@ -24,13 +24,12 @@ constexpr std::size_t Speed = 0x1820, TargetSpeed = 0x1844;
 constexpr float StrongStick = .85f;
 // Horizon system ticks are 19.2 MHz. Cadence does not depend on frame rate.
 constexpr std::uint64_t StrokeInterval = 19'200'000ull * 2;
-constexpr std::uint64_t ArmEntryWindow = 19'200'000ull / 5;
 struct SwimState {
     const void *player{};
     unsigned handle{};
     std::uint64_t lastStroke{};
     float cruiseSpeed{};
-    bool moving{}, underwater{};
+    bool moving{}, underwater{}, armPending{};
 };
 std::array<SwimState, 8> Swimmers{};
 struct MovementScope { void *player{}; SwimState *state{}; bool strong{}, underwater{}; };
@@ -57,9 +56,10 @@ void Update(void *player, void (*original)(void *), bool underwater, bool entry)
         state = {player, handle, 0, 0.f, false, underwater};
     const auto held = Read<std::uint64_t>(player, field::HeldActions);
     const auto pressed = Read<std::uint64_t>(player, field::PressedActions);
-    if ((held | pressed) & 1) {
+    if (Scope.player != player && ((held | pressed) & 1)) {
         state.moving = false;
         state.cruiseSpeed = 0.f;
+        state.armPending = false;
         original(player);
         return;
     }
@@ -68,22 +68,34 @@ void Update(void *player, void (*original)(void *), bool underwater, bool entry)
     const float magnitudeSquared = x*x + y*y;
     const bool strong = magnitudeSquared >= StrongStick*StrongStick && magnitudeSquared <= 2.f;
     const auto now = svcGetSystemTick();
-    const bool pulse = strong && !entry && (!state.moving || now - state.lastStroke >= StrokeInterval);
-    if (pulse) state.lastStroke = now;
-    if (!entry) state.moving = strong;
-    if (!strong) state.cruiseSpeed = 0.f;
+    // A native stride may reject A until its current animation reaches the
+    // next transition. Keep the stroke requested until stride entry consumes
+    // it; a single-frame press / short animation window can miss that gate.
+    if (!strong) {
+        state.armPending = false;
+        state.cruiseSpeed = 0.f;
+    } else if (!state.moving || now - state.lastStroke >= StrokeInterval) {
+        state.armPending = true;
+    }
+    state.moving = strong;
+    const bool armEntry = entry && state.armPending;
+    const bool pulse = strong && !entry && state.armPending;
     const auto frames = Read<unsigned>(player, field::HeldAFrames);
     if (strong) {
         Write(player, field::HeldActions, held | 1);
         Write(player, field::PressedActions, pressed | std::uint64_t(pulse));
-        // Native stride entry chooses FlapFoot after >30 held updates. Allow
-        // the normal arm animation only around the two-second stroke pulse.
-        Write(player, field::HeldAFrames, now - state.lastStroke < ArmEntryWindow ? 0u : 31u);
+        // Native stride entry chooses FlapFoot after >30 held updates. A
+        // pending stroke must select arms even when entry arrives much later.
+        Write(player, field::HeldAFrames, state.armPending ? 0u : 31u);
     }
     const auto previous = Scope;
     Scope = {player, &state, strong, underwater};
     original(player);
     Scope = previous;
+    if (armEntry) {
+        state.armPending = false;
+        state.lastStroke = now;
+    }
     // Restore only the borrowed A bits, preserving other native input writes.
     Write(player, field::HeldActions, (Read<std::uint64_t>(player, field::HeldActions) & ~1ull) | (held & 1));
     Write(player, field::PressedActions, (Read<std::uint64_t>(player, field::PressedActions) & ~1ull) | (pressed & 1));
@@ -169,7 +181,7 @@ bool InstallAutoSwim() {
     AutoSwimDiveEntry::InstallAtOffset(address::DiveEntry);
     AutoSwimWaitMovement::InstallAtOffset(address::WaitMovement);
     AutoSwimStrideMovement::InstallAtOffset(address::StrideMovement);
-    Logging.Debug("[QoL Enhancements/Controls] auto swim: READY; prototype 3; strong stick; 2s strokes; smooth diving\n");
+    Logging.Debug("[QoL Enhancements/Controls] auto swim: READY; prototype 4; strong stick; 2s strokes; smooth diving\n");
     return true;
 }
 }

@@ -23,6 +23,8 @@ class SwimMachine(Machine):
         self.now = self.module.find('svcGetSystemTick')
         self.stubs = {}
         self.samples = []
+        self.outer_returns = []
+        self.nest_entry = False
         for i, name in enumerate(('SurfaceWait','SurfaceStride','SurfaceEntry','DiveWait','DiveStride','DiveEntry','WaitMovement','StrideMovement')):
             stub = self.ram + 0x10000 + i*16
             self.stubs[stub] = name
@@ -39,7 +41,7 @@ class SwimMachine(Machine):
             u.reg_write(UC_ARM64_REG_X0,self.tick)
             u.reg_write(UC_ARM64_REG_PC,u.reg_read(UC_ARM64_REG_LR)); return
         if self.ready and pc == self.native_return:
-            u.reg_write(UC_ARM64_REG_PC,self.outer_return); return
+            u.reg_write(UC_ARM64_REG_PC,self.outer_returns.pop()); return
         if not self.ready or pc not in self.stubs:
             return super().service(u,pc,size,context)
         name=self.stubs[pc]
@@ -51,10 +53,15 @@ class SwimMachine(Machine):
             u.reg_write(UC_ARM64_REG_X0,3)
             u.reg_write(UC_ARM64_REG_PC,u.reg_read(UC_ARM64_REG_LR)); return
         self.samples.append((name,self.read(self.player+0xec8),self.read(self.player+0xed0),self.read(self.player+0x13d8,4)))
-        self.outer_return=u.reg_read(UC_ARM64_REG_LR)
+        self.outer_returns.append(u.reg_read(UC_ARM64_REG_LR))
         u.reg_write(UC_ARM64_REG_X1,self.parameters)
         u.reg_write(UC_ARM64_REG_LR,self.native_return)
-        u.reg_write(UC_ARM64_REG_PC,self.module.find('AutoSwim'+('StrideMovement' if 'Stride' in name else 'WaitMovement'),'Callback'))
+        if self.nest_entry and name.endswith('Stride'):
+            self.nest_entry=False
+            target=name.replace('Stride','Entry')
+        else:
+            target='StrideMovement' if 'Stride' in name else 'WaitMovement'
+        u.reg_write(UC_ARM64_REG_PC,self.module.find('AutoSwim'+target,'Callback'))
     def update(self,name,x=1.,y=0.,held=0,pressed=0,mode=0,enabled=1,locked=0,resident=0):
         self.write(self.player+0x178,mode,4)
         self.write(self.player+0x12f8,enabled,1)
@@ -104,20 +111,40 @@ def main():
                 m.animation(underwater,frames)
                 m.held_gate(underwater,held)
                 cases+=1
-            # First arm stroke, sustained foot kick, timed arm stroke. Entry
-            # observes the pending pulse without producing a second A press.
+            # A press rejected by the native animation gate must stay pending
+            # until entry. Model a delay longer than the old 200 ms window.
             m.update(prefix+'Wait',0,0)
             assert m.update(prefix+'Stride') == (1,1,0)
-            m.tick+=TICKS//30
-            assert m.update(prefix+'Entry') == (1,0,0)
-            for frame in range(1,60):
+            for frame in range(20):
                 m.tick+=TICKS//30
-                held,pressed,frames=m.update(prefix+'Stride')
-                assert held==1 and pressed==(frame==59)
-                if frame>6 and frame<59: assert frames==31
-                m.animation(underwater,frames)
-                if underwater: assert abs(m.float(0x1820)-.8)<1e-6
-                cases+=1
+                assert m.update(prefix+'Stride') == (1,1,0)
+            assert m.update(prefix+'Entry') == (1,0,0)
+            m.animation(underwater,0)
+            assert m.update(prefix+'Stride') == (1,0,31)
+            # Several cycles: cadence is measured from accepted arm entry,
+            # even if the next native transition is delayed by half a second.
+            for cycle in range(3):
+                for frame in range(1,61):
+                    m.tick+=TICKS//30
+                    held,pressed,frames=m.update(prefix+'Stride')
+                    assert (held,pressed,frames)==((1,1,0) if frame==60 else (1,0,31))
+                    m.animation(underwater,frames)
+                    if underwater: assert abs(m.float(0x1820)-.8)<1e-6
+                    cases+=1
+                for frame in range(15):
+                    m.tick+=TICKS//30
+                    assert m.update(prefix+'Stride') == (1,1,0)
+                assert m.update(prefix+'Entry') == (1,0,0)
+                assert m.update(prefix+'Stride') == (1,0,31)
+                # Ordinary entries between timed strokes remain quiet.
+                assert m.update(prefix+'Entry') == (1,0,31)
+            # A synchronous entry sees our borrowed A, not physical A, and
+            # must still consume the pending stroke once.
+            m.update(prefix+'Wait',0,0)
+            m.nest_entry=True
+            m.update(prefix+'Stride')
+            assert m.samples[-1][0]==prefix+'Entry'
+            assert m.update(prefix+'Stride') == (1,0,31)
             # A wait frame between pulses retains the recorded native cruise.
             m.update(prefix+'Wait')
             if underwater: assert abs(m.float(0x1820)-.8)<1e-6
@@ -145,6 +172,6 @@ def main():
             n.write(base+offset,0xdeadbeef,4); n.boot(); n.activate()
             assert 'auto swim: DISABLED' in n.text and all(base+a not in n.hooks for a in BINDINGS)
             assert base+0x2222a34 in n.hooks
-    print(f'PASS: {cases} strong/light stick, scoped input restoration, native held gates and quiet animation selection, 2s cadence, dive cruise, manual A, locks, remote, config and conflicts')
+    print(f'PASS: {cases} strong/light stick, scoped input restoration, native held gates and quiet animation selection, acknowledged 2s cadence and delayed recurring entries, dive cruise, manual A, locks, remote, config and conflicts')
 
 if __name__=='__main__': main()

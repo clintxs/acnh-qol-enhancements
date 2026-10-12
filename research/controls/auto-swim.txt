@@ -84,3 +84,27 @@ diagonal input, invalid analog input, two-second pulses, pending-pulse entry,
 cruise across wait frames, release, unchanged manual A, blocked/remote input,
 shared movement outside swimming, config and all eight dependency conflicts.
 Actual audio, transition cadence, collision response and catching need Eden.
+
+
+Prototype 4: acknowledge arm strokes at native stride entry
+
+Live feedback confirms improved underwater smoothness but only the initial arm
+stroke. Prototype 3 expired the arm selector override after 200ms and emitted
+just one fresh A press at each timer deadline. Native surface/dive stride code
+only considers another A-driven stride while StrideMovement returns <=1 (see
+0236C214 / 0236DEF4). A pulse during the remaining animation can be skipped;
+even a later held-A transition would then select FlapFoot after that window.
+
+Latch an arm request, repeat the scoped fresh A bit while it is pending, and
+keep counter 0 until SurfaceEntry/DiveEntry actually runs. Consume the request
+only after native entry, starting the next two-second interval at that entry.
+Ordinary entries between deadlines use counter 31. Light tilt and physical A
+cancel pending automatic strokes. Recognize an already active synthetic scope
+so a synchronous nested entry does not mistake borrowed A for physical input.
+The strong-stick threshold and underwater cruise floor remain unchanged.
+
+Compiled regression exercises three recurring strokes per swim mode at two
+ASLR bases, including delays of 500ms before entry (longer than the old window),
+quiet intermediate entries, input restoration and continuous underwater cruise.
+Native update/animation timing is modeled and the actual animation selectors
+execute. Live validation of recurring arm animation and sound remains pending.
