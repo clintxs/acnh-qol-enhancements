@@ -5,7 +5,7 @@
 using namespace qol::dialogue;
 int main() {
     Settings settings{};
-    assert(settings.fasterUi && settings.fasterUnnamed);
+    assert(settings.boostUiMessages && settings.boostUnnamedMessages);
     for (unsigned base = MinSpeed; base <= MaxSpeed; ++base) {
         for (unsigned boost = MinSpeed; boost <= MaxSpeed; ++boost) {
             const auto config = "base_speed=" + std::to_string(base) + "\nboost_speed=" + std::to_string(boost);
@@ -31,7 +31,7 @@ int main() {
         assert(SelectSpeed(settings, kind, "rcm", true) == 4);
     }
     assert(!ParseSettings("\xef\xbb\xbf# Personal settings\r\nbase_speed = 2\r\n"
-                          "boost_speed = 4\nfaster_ui = true\nfaster_unnamed = true\nfaster_npc_list = Timmy, Tommy, Orville, Wilbur, Kapp'n, rcm, cat00\n", settings));
+                          "boost_speed = 4\nboost_ui_messages = true\nboost_unnamed_messages = true\nboost_npc_list = Timmy, Tommy, Orville, Wilbur, Kapp'n, rcm, cat00\n", settings));
     assert(settings.npcCount == 7);
     for (auto id : {"rcm", "rct", "dod", "doc", "kpp", "kppB", "cat00", "RCM"}) {
         assert(SelectSpeed(settings, MessageKind::Npc, id, false) == 4);
@@ -40,55 +40,55 @@ int main() {
     assert(SelectSpeed(settings, MessageKind::Npc, "rco", false) == 2);
     assert(SelectSpeed(settings, MessageKind::Ui, "", false) == 4);
     assert(SelectSpeed(settings, MessageKind::Unknown, "rcm", false) == 2);
-    assert(ParseSettings("base_speed=0\nboost_speed=nan\nfaster_ui=yes\n"
-                         "faster_npc_list=Timmy,Not An NPC,,Orville,\nunknown=true\nmalformed\n", settings) == 7);
-    assert(settings.baseSpeed == 2 && settings.boostSpeed == 4 && settings.fasterUi && settings.npcCount == 3);
+    assert(ParseSettings("base_speed=0\nboost_speed=nan\nboost_ui_messages=yes\n"
+                         "boost_npc_list=Timmy,Not An NPC,,Orville,\nunknown=true\nmalformed\n", settings) == 7);
+    assert(settings.baseSpeed == 2 && settings.boostSpeed == 4 && settings.boostUiMessages && settings.npcCount == 3);
     assert(ParseSettings("base_speed=4\nbase_speed=4\nboost_speed=2\nboost_speed=2\n"
-                         "faster_ui=true\nfaster_ui=true\nfaster_npc_list=doc\nfaster_npc_list=rcm", settings) == 4);
-    assert(settings.baseSpeed == 2 && settings.boostSpeed == 4 && settings.fasterUi && !settings.npcCount);
+                         "boost_ui_messages=true\nboost_ui_messages=true\nboost_npc_list=doc\nboost_npc_list=rcm", settings) == 4);
+    assert(settings.baseSpeed == 2 && settings.boostSpeed == 4 && settings.boostUiMessages && !settings.npcCount);
     assert(ParseSettings("base_speed=4\nboost_speed=2", settings) == 1);
     assert(settings.baseSpeed == 4 && settings.boostSpeed == 4);
-    assert(!ParseSettings("faster_npc_list=", settings) && !settings.npcCount);
+    assert(!ParseSettings("boost_npc_list=", settings) && !settings.npcCount);
     assert(ParseSettings(std::string(4097, 'x'), settings) && settings.baseSpeed == 2);
-    std::string list = "faster_npc_list=";
+    std::string list = "boost_npc_list=";
     for (unsigned i = 0; i < 65; ++i) list += (i ? ",npc" : "npc") + std::to_string(i);
     assert(ParseSettings(list, settings) == 1 && settings.npcCount == MaxNpcs);
-    assert(!ParseSettings("faster_ui=true\nfaster_unnamed=false", settings));
+    assert(!ParseSettings("boost_ui_messages=true\nboost_unnamed_messages=false", settings));
     assert(SelectSpeed(settings, MessageKind::Ui, "", false) == 4);
     assert(SelectSpeed(settings, MessageKind::Unnamed, "", false) == 2);
-    assert(!ParseSettings("faster_ui=false\nfaster_unnamed=true", settings));
+    assert(!ParseSettings("boost_ui_messages=false\nboost_unnamed_messages=true", settings));
     assert(SelectSpeed(settings, MessageKind::Unnamed, "", false) == 4);
     assert(SelectSpeed(settings, MessageKind::Ui, "", false) == 2);
     assert(SelectSpeed(settings, MessageKind::Npc, "rcm", false) == 2);
     assert(SelectSpeed(settings, MessageKind::Unknown, "", false) == 2);
-    assert(ParseSettings("faster_unnamed=yes", settings) == 1 && settings.fasterUnnamed);
-    assert(ParseSettings("faster_unnamed=false\nfaster_unnamed=true", settings) == 1 && settings.fasterUnnamed);
-    assert(!ApplySettings("faster_unnamed=false", settings) && !settings.fasterUnnamed);
-    assert(ApplySettings("faster_unnamed=true\nfaster_unnamed=false", settings) == 1 && !settings.fasterUnnamed);
+    assert(ParseSettings("boost_unnamed_messages=yes", settings) == 1 && settings.boostUnnamedMessages);
+    assert(ParseSettings("boost_unnamed_messages=false\nboost_unnamed_messages=true", settings) == 1 && settings.boostUnnamedMessages);
+    assert(!ApplySettings("boost_unnamed_messages=false", settings) && !settings.boostUnnamedMessages);
+    assert(ApplySettings("boost_unnamed_messages=true\nboost_unnamed_messages=false", settings) == 1 && !settings.boostUnnamedMessages);
     // Removed legacy key is unknown and cannot change the supported preference.
-    assert(ApplySettings("faster_player=true", settings) == 1 && !settings.fasterUnnamed);
-    assert(ParseSettings("faster_player=false", settings) == 1 && settings.fasterUnnamed);
+    assert(ApplySettings("faster_player=true", settings) == 1 && !settings.boostUnnamedMessages);
+    assert(ParseSettings("faster_player=false", settings) == 1 && settings.boostUnnamedMessages);
     // Layer inheritance, valid false overrides, list replacement/clearing, and
     // invalid/duplicate custom values preserving their regular-file values.
     settings = {};
     assert(!ApplySettings("enabled=true\nversion=0.2.4\nbase_speed=4\nboost_speed=2\n"
-                          "faster_ui=true\nfaster_unnamed=true\nfaster_npc_list=Timmy,Tommy", settings));
-    assert(!ApplySettings("base_speed=2\nfaster_ui=false\nfaster_npc_list=Wilbur", settings));
+                          "boost_ui_messages=true\nboost_unnamed_messages=true\nboost_npc_list=Timmy,Tommy", settings));
+    assert(!ApplySettings("base_speed=2\nboost_ui_messages=false\nboost_npc_list=Wilbur", settings));
     assert(!NormalizeSettings(settings));
-    assert(settings.baseSpeed == 2 && settings.boostSpeed == 2 && !settings.fasterUi && settings.fasterUnnamed);
+    assert(settings.baseSpeed == 2 && settings.boostSpeed == 2 && !settings.boostUiMessages && settings.boostUnnamedMessages);
     assert(settings.npcCount == 1 && Equal(settings.npcs[0].data(), "doc"));
-    assert(ApplySettings("boost_speed=bad\nfaster_unnamed=bad\nfaster_npc_list=Timmy\nfaster_npc_list=Tommy", settings) == 3);
-    assert(settings.boostSpeed == 2 && settings.fasterUnnamed && settings.npcCount == 1);
+    assert(ApplySettings("boost_speed=bad\nboost_unnamed_messages=bad\nboost_npc_list=Timmy\nboost_npc_list=Tommy", settings) == 3);
+    assert(settings.boostSpeed == 2 && settings.boostUnnamedMessages && settings.npcCount == 1);
     assert(Equal(settings.npcs[0].data(), "doc"));
-    assert(!ApplySettings("faster_npc_list=", settings) && settings.npcCount == 0);
-    assert(!ParseSettings("faster_npc_list=Blathers,Sócrates,フータ,傅达,Блезерс,Mr. Resetti", settings));
+    assert(!ApplySettings("boost_npc_list=", settings) && settings.npcCount == 0);
+    assert(!ParseSettings("boost_npc_list=Blathers,Sócrates,フータ,傅达,Блезерс,Mr. Resetti", settings));
     assert(settings.npcCount == 6);
     for (auto name : {"Blathers", "blathers", "Sócrates", "フータ", "傅达", "Блезерс", "Mr. Resetti"}) {
         assert(SelectSpeed(settings, MessageKind::Npc, "owl", false, name) == 4);
         assert(SelectSpeed(settings, MessageKind::Unknown, "owl", false, name) == 2);
     }
     assert(SelectSpeed(settings, MessageKind::Npc, "owl", false, "Thibou") == 2);
-    assert(!ParseSettings("faster_npc_list=owl", settings));
+    assert(!ParseSettings("boost_npc_list=owl", settings));
     assert(SelectSpeed(settings, MessageKind::Npc, "owl", false, "Thibou") == 4);
     assert(!AddNpc(settings, std::string(NpcNameBytes, 'a')));
     assert(!AddNpc(settings, "bad\x01name"));
@@ -121,5 +121,9 @@ int main() {
     for (auto bank : {"", "SYS_Get_Fish_Extra", "NotSYS_Player", "SP_rcm_00_common", "SYS_Door",
                       "OBJ_RcoMachine", "TalkSys/SYS_Player.msbt/Unknown", "FTR_WorkingTableExtra"})
         assert(!IsUnnamedMessageBank(bank));
+    // Retired setting names are rejected rather than silently changing new preferences.
+    settings = {};
+    assert(ApplySettings("faster_ui=false\nfaster_unnamed=false\nfaster_npc_list=owl", settings) == 3);
+    assert(settings.boostUiMessages && settings.boostUnnamedMessages && !settings.npcCount);
     puts("PASS: dialogue defaults, aliases/IDs, independent UI/unnamed/NPC policy, exact self-message banks, non-stacking boost, invalid keys/values, duplicates and bounded lists");
 }

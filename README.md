@@ -1,12 +1,16 @@
 # QoL Enhancements
 
-**0.4.31 release test build** for ACNH **3.0.3 on Eden**. One Core
+**0.4.32 release test build** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates seven optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
 
 This build includes the revised defaults: automatic UI/unnamed dialogue boost
 is on, crafting speed defaults to 6, and dialogue speed settings accept 1..30.
+Version 0.4.32 adds `enable_multiselect`, native crafting speed with
+`crafting_speed=0`, renamed `boost_*` dialogue keys, and localized Use Item
+captions for all 16 locales. Rename old custom dialogue keys and
+`optimized_ui.grab_five/grab_ten` caption keys; no legacy aliases are read.
 Core logging defaults to version/settings summaries with warnings and errors
 always visible. Live Eden testing is still required before public release.
 
@@ -141,7 +145,7 @@ produce and weeds. It adds no animation speed multiplier or pickup radius.
 
 ```ini
 enabled = true
-version = 0.4.31
+version = 0.4.32
 hold_to_advance_dialogue = true
 hold_to_hoover = true
 auto_vault = true
@@ -231,14 +235,14 @@ Diagnostic checks: `PYTHONPATH='../Grab 5/working/python:tests' python3 tests/di
 Install **QoL Enhancements - Crafting** with Core. This replaces the former
 Faster Crafting package; remove the old folder and rename personal
 `faster-crafting.custom.ini` preferences to `crafting.custom.ini`. Remove any old
-`version` override from that personal file (or update it to 0.4.31). The retired
+`version` override from that personal file (or update it to 0.4.32). The retired
 regular/custom paths are no longer read. Core alone no longer enables DIY previews.
 
 `romfs/qol-enhancements/config/crafting.ini` supplies these defaults:
 
 ```ini
 enabled = true
-version = 0.4.31
+version = 0.4.32
 diy_app_preview = true
 workbench_preview_tilt = true
 crafting_quantity_wrap = true
@@ -251,7 +255,9 @@ crafting_speed = 6
 to 30. The default is 6; a setting of 3 preserves the previous curve exactly.
 A setting of 30 gives a peak ten times vanilla’s 3x peak, and 1 keeps it at 1x. This scales the working animation;
 fixed dialogue and transition time remain. A short action may end before the ramp
-reaches its peak. Zero and malformed values retain the prior setting.
+reaches its peak. Set `crafting_speed = 0` to leave native speed and manual A
+mashing unchanged while retaining other Crafting features. Malformed values
+retain the prior setting.
 Crafting, customization and cooking share this setting. Native readiness,
 suspension and exit/reset behavior remains intact.
 
@@ -471,14 +477,14 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.4.31
+version = 0.4.32
 base_speed = 2
 boost_speed = 4
-faster_ui = true
-faster_unnamed = true
+boost_ui_messages = true
+boost_unnamed_messages = true
 ```
 
-A `faster-dialogue.custom.ini` containing just `faster_ui = false` keeps all the
+A `faster-dialogue.custom.ini` containing just `boost_ui_messages = false` keeps all the
 other values and overrides that one setting. An NPC list replaces the previous
 list; an empty list clears it. Custom files are read once per restart, even if
 regular `enabled` is false, so a custom `enabled=true` can re-enable installed
@@ -487,25 +493,28 @@ configuration intact. Neither malformed metadata nor duplicate metadata is
 partially applied. Each file is limited to 4 KiB of valid UTF-8 text, with whole-line
 comments, CRLF and an optional UTF-8 BOM.
 
-Catalog, Fitting Room and Shopping Card expose just `enabled` and
-`version`. Their overlays are `catalog.custom.ini`, `pockets.custom.ini`,
+Fitting Room and Shopping Card expose just `enabled` and `version`. Catalog
+also supports `art_donation_stars`. Their overlays are `catalog.custom.ini`, `pockets.custom.ini`,
 `fitting-room.custom.ini` and `shopping-card.custom.ini`. Crafting preferences
 use `crafting.custom.ini`; Controls (including swimming) uses `controls.custom.ini`; Core uses the optional settings files described above.
 Pockets and Fitting Room caption files are separate translation resources.
 
-Pockets supports three independent settings in `pockets.ini` or
+Pockets supports four independent settings in `pockets.ini` or
 `pockets.custom.ini`, all defaulting to `true`:
 
 ```ini
 bypass_menu_open_containers = true
 bypass_menu_claim_recycle_box = true
 bypass_menu_withdraw_home_storage = true
+enable_multiselect = true
 ```
 
-Set one to `false` to restore its normal menu. The first applies only to a sole
+Set a bypass setting to `false` to restore its normal menu. The first applies only to a sole
 Open action (presents, deliveries, message bottles); the second to a sole Claim
 action in the recycling box; the third to home-storage withdrawal. Disabling
 withdrawal also restores the Select hint. Other shortcuts are unaffected.
+Set `enable_multiselect = false` to disable hold-A selection/deselection in selling
+and shed put-away screens, preserving native selection and navigation feedback.
 Restart the game after changing settings.
 
 ## Conditional Faster Dialogue
@@ -523,9 +532,9 @@ My Custom Faster Dialogue Settings/
 ```ini
 base_speed = 2
 boost_speed = 4
-faster_ui = true
-faster_unnamed = true
-faster_npc_list = Timmy, Tommy, Orville, Wilbur, Kapp'n
+boost_ui_messages = true
+boost_unnamed_messages = true
+boost_npc_list = Timmy, Tommy, Orville, Wilbur, Kapp'n
 ```
 
 Enable that personal mod alongside Core and Faster Dialogue. Keep it when
@@ -552,7 +561,7 @@ The list now accepts **the localized name shown above the dialogue bubble**, or
 an internal resource ID, for special NPCs and villagers. For example, in English:
 
 ```ini
-faster_npc_list = Timmy, Tommy, Orville, Wilbur, Kapp'n, Blathers
+boost_npc_list = Timmy, Tommy, Orville, Wilbur, Kapp'n, Blathers
 ```
 
 `Blathers` follows the current language: use `Thibou` in French, `Sócrates` in
@@ -572,8 +581,8 @@ invalid list entries are ignored. Duplicate preference keys revert that setting
 to its value before the file. A supplied list replaces the earlier one. The
 boost/base relationship is normalized after both files have loaded.
 
-`faster_ui` covers native system dialog windows (the blue dialogs). Independent
-`faster_unnamed` covers regular gameplay bubbles whose current native name
+`boost_ui_messages` covers native system dialog windows (the blue dialogs). Independent
+`boost_unnamed_messages` covers regular gameplay bubbles whose current native name
 preparation confirms that no name is displayed. This includes player thoughts
 and other unnamed messages, regardless of wording, language or inserted item
 names. Storage sheds, mirrors/dressers, Niko's notes, amiibo-device thoughts,
@@ -587,7 +596,7 @@ player-speaker and five reviewed bank fallbacks remain: `FTR_WorkingTable`,
 `SYS_Player`, `SYS_Get_Fish`, `SYS_Get_Insect`, and `SYS_Get_DiveFish`. Confirmed
 names override those guesses. Unknown names alone never trigger a boost.
 
-`faster_ui` and `faster_unnamed` default to true. Set either to false in your
+`boost_ui_messages` and `boost_unnamed_messages` default to true. Set either to false in your
 personal INI to disable that automatic category. Automatic categories select
 the same `boost_speed`; holding B/R never stacks another boost. The broader classifier is new in
 0.3.22 and needs live confirmation with the reported interactions. See
@@ -604,7 +613,7 @@ python3 tools/package_dialogue_diagnostic.py
 
 Set `log_debug = true` in `core.custom.ini` to enable diagnostic traces.
 The diagnostic ZIP replaces Core only. Keep the Faster Dialogue module and your
-personal settings, including `faster_unnamed = true`, then fully restart. Test a
+personal settings, including `boost_unnamed_messages = true`, then fully restart. Test a
 mirror, storage shed, DIY notes, amiibo-device, stretching or drop-off prompt,
 plus a listed NPC, briefly holding B/R for comparison.
 Collect Eden's `QoL Enhancements/Faster Dialogue` lines before another session

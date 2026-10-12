@@ -7,7 +7,7 @@ inline constexpr unsigned MaximumCraftingSpeed = 30;
 inline bool ParseCraftingSpeed(std::string_view value, unsigned &output) {
     // Saturate while parsing so even a very large decimal cannot overflow.
     // Validate every character before publishing; malformed values inherit.
-    if (value.empty() || value.front() == '0') return false;
+    if (value.empty() || (value.size() > 1 && value.front() == '0')) return false;
     unsigned speed = 0;
     for (const char digit : value) {
         if (digit < '0' || digit > '9') return false;

@@ -5,8 +5,8 @@
 #include <string_view>
 
 namespace qol_pockets::text {
-inline constexpr std::string_view GrabFiveKey = "optimized_ui.grab_five";
-inline constexpr std::string_view GrabTenKey = "optimized_ui.grab_ten";
+inline constexpr std::string_view GrabFiveKey = "qol_pockets.grab_five";
+inline constexpr std::string_view GrabTenKey = "qol_pockets.grab_ten";
 inline constexpr std::array<std::string_view, 16> Locales{
     "JPja", "USen", "USes", "USfr", "USpt", "EUen", "EUes", "EUfr",
     "EUde", "EUit", "EUpt", "EUnl", "EUru", "KRko", "CNzh", "TWzh"};

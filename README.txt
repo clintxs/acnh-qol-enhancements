@@ -1,4 +1,4 @@
-QoL Enhancements 0.4.31 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.4.32 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -9,6 +9,11 @@ included. The hint is now Use Item, editable via qol_pockets.hold_wear in the
 Pockets messages INI (English fallback). Restart after editing captions.
 Shopping Card: combined funds, Savings -> Pockets (Bell bags) -> Wallet.
 Native 16:9 placement; display caps at 999,999,999 without limiting spending.
+
+0.4.32: Add enable_multiselect (default true); crafting_speed=0 preserves native
+speed and manual A mashing. Rename Faster Dialogue keys to boost_ui_messages,
+boost_unnamed_messages and boost_npc_list; update personal files (no aliases).
+Rename Grab captions to qol_pockets and translate Use Item for all 16 locales.
 
 0.4.31: Move swimming back into Controls. auto_swim and swim_stroke_boost
 both default to true. Disable the boost for cosmetic strokes with the same
@@ -312,14 +317,16 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.4.28
+  version = 0.4.32
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.
 
 Replace entire suite folders when updating. Preserve any customized Pockets
 captions from romfs/qol-enhancements/messages/pockets.ini before replacement.
-The legacy optimized_ui.grab_five/grab_ten translation keys are retained.
+Grab captions use qol_pockets.grab_five and qol_pockets.grab_ten.
+Rename old optimized_ui caption keys; no legacy aliases are read.
+Use Item captions are provided for all 16 supported locales.
 Every module loads <feature>.ini first, then optional <feature>.custom.ini in
 romfs/qol-enhancements/config/. Both files accept the same module settings.
 Only keys included in the custom file override regular values; omitted keys
@@ -327,7 +334,8 @@ inherit them. This includes enabled and version. Both are required in the
 regular file, optional in the custom file. Invalid/duplicate metadata rejects
 that entire file; an invalid custom file retains the regular configuration.
 An absent/invalid regular marker cannot be activated by a custom file.
-Catalog, Fitting Room and Shopping Card have only enabled/version settings.
+Fitting Room and Shopping Card have only enabled/version settings.
+Catalog also supports art_donation_stars.
 Pockets captions
 remain a separate translation resource, outside module configuration layering.
 Whole-line #/; comments, a UTF-8 BOM, CRLF and valid UTF-8 text up to 4 KiB per file
@@ -337,15 +345,18 @@ Pockets settings (pockets.ini or pockets.custom.ini), all default true:
   bypass_menu_open_containers = true
   bypass_menu_claim_recycle_box = true
   bypass_menu_withdraw_home_storage = true
+  enable_multiselect = true
 Set false to restore the normal menu for sole Open actions, recycling-box Claim,
 or home-storage withdrawal respectively. Disabling withdrawal also restores the
-Select hint. Other shortcuts are unaffected. Restart after changing settings.
+Select hint. Set enable_multiselect=false to disable hold-A selection/deselection
+in selling and shed put-away screens; native selection and feedback remain.
+Other shortcuts are unaffected. Restart after changing settings.
 
 CRAFTING MODULE / SETTINGS (0.3.63)
 Install Core plus “QoL Enhancements - Crafting”. This replaces the former
 “QoL Enhancements - Faster Crafting” folder; remove that old folder when updating.
 Move any personal faster-crafting.custom.ini preferences to crafting.custom.ini.
-Remove old version overrides in that custom file, or update them to 0.4.28.
+Remove old version overrides in that custom file, or update them to 0.4.32.
 Old faster-crafting.ini/custom paths are no longer read.
 DIY app previews are now optional Crafting behavior, not always-on Core behavior.
 
@@ -353,7 +364,7 @@ Regular settings: romfs/qol-enhancements/config/crafting.ini
 Personal overlay: romfs/qol-enhancements/config/crafting.custom.ini
 Defaults in the regular file:
   enabled = true
-  version = 0.4.28
+  version = 0.4.32
   diy_app_preview = true
   workbench_preview_tilt = true
   crafting_quantity_wrap = true
@@ -369,7 +380,8 @@ Active settings:
   ramp over 60 state updates. Starts at 1x and restarts for each crafting,
   customization or cooking action. Default is 6; a setting of 3 preserves the
   confirmed curve. A setting of 30 is ten times vanilla’s 3x peak, and 1 holds at 1x. Values above 30 clamp to 30.
-  Zero and malformed values retain the prior setting and report a warning.
+  Zero leaves native speed and manual A mashing unchanged, while keeping
+  other Crafting features. Malformed values retain the prior setting and warn.
   This scales the working animation; dialogue/transitions retain native timing.
   Short actions may finish before the ramp reaches its peak.
 
@@ -404,7 +416,7 @@ CONTROLS SETTINGS
 The Controls module includes both hold-Y pickups and dialogue hurry.
 romfs/qol-enhancements/config/controls.ini:
   enabled = true
-  version = 0.4.28
+  version = 0.4.32
   hold_to_advance_dialogue = true
   hold_to_hoover = true
   auto_vault = true
@@ -454,9 +466,9 @@ The personal mod contains:
 Edit this file to customize:
   base_speed = 2
   boost_speed = 4
-  faster_ui = true
-  faster_unnamed = true
-  faster_npc_list = Timmy, Tommy, Orville, Wilbur, Kapp'n
+  boost_ui_messages = true
+  boost_unnamed_messages = true
+  boost_npc_list = Timmy, Tommy, Orville, Wilbur, Kapp'n
 
 NPC lists accept localized names shown above the dialogue bubble and internal
 IDs, for special NPCs and villagers. Add Blathers in English, Thibou in French,
@@ -491,7 +503,7 @@ is raised to base after both files are loaded. Up to 64 entries of 95 UTF-8 byte
 All five dialogue preferences also work in the regular faster-dialogue.ini;
 keep personal edits in the custom file to preserve them across suite updates.
 
-faster_ui covers blue system dialog windows. Independent faster_unnamed covers
+boost_ui_messages covers blue system dialog windows. Independent boost_unnamed_messages covers
 regular gameplay bubbles whose current native name preparation confirms there
 is no displayed name. This includes player thoughts and other unnamed messages,
 regardless of their English wording, inserted item names or message group.
@@ -502,7 +514,7 @@ legacy fallback applies: valid player speakers or the reviewed FTR_WorkingTable,
 SYS_Player, SYS_Get_Fish, SYS_Get_Insect and SYS_Get_DiveFish banks.
 A confirmed name overrides those fallbacks. With unknown name metadata,
 reviewed self banks retain their previous priority over window color.
-faster_ui and faster_unnamed default to true. Set either to false in your
+boost_ui_messages and boost_unnamed_messages default to true. Set either to false in your
 personal INI to disable that automatic category. The broader unnamed classifier
 needs a live test with the reported storage/mirror/Niko/amiibo/stretching/drop-off messages.
 Kapp'n songs/travel retain native scripting; no skip is added.

@@ -12,9 +12,9 @@ int main(int argc,char** argv) {
     assert(file);
     std::string content{std::istreambuf_iterator<char>(file),{}};
     Catalog catalog;
-    assert(catalog.Load(content) && catalog.Size()==29);
+    assert(catalog.Load(content) && catalog.Size()==48);
     assert(catalog.Text("qol_pockets.drop_release",1)==nullptr); // Native caption fallback.
-    assert(std::u16string(catalog.Text("qol_pockets.hold_wear",7))==u"Use Item");
+    assert(std::u16string(catalog.Text("qol_pockets.hold_wear",7))==u"Utiliser");
     for (unsigned locale=0;locale<16;++locale) {
         assert(catalog.Text(GrabFiveKey,locale));
         assert(catalog.Text(GrabTenKey,locale));
@@ -22,14 +22,22 @@ int main(int argc,char** argv) {
     assert(std::u16string(catalog.Text(GrabFiveKey,0))==u"5コわける");
     assert(std::u16string(catalog.Text(GrabTenKey,14))==u"分出10个");
     assert(std::u16string(catalog.Text(GrabFiveKey,12))==u"Взять 5");
-    assert(std::u16string(catalog.Text(GrabFiveKey,4))==u"Grab 5");
+    assert(std::u16string(catalog.Text(GrabFiveKey,4))==u"Pegar 5");
+    assert(content.find("optimized_ui.") == std::string::npos);
+    const char16_t *useItem[] = {u"つかう", u"Use Item", u"Usar objeto", u"Utiliser", u"Usar item",
+        u"Use Item", u"Usar objeto", u"Utiliser", u"Benutzen", u"Usa oggetto",
+        u"Usar objeto", u"Gebruiken", u"Использовать", u"사용하기", u"使用物品", u"使用物品"};
+    for (unsigned locale=0; locale<Locales.size(); ++locale)
+        assert(std::u16string(catalog.Text("qol_pockets.hold_wear", locale)) == useItem[locale]);
     assert(catalog.Text("unowned.key",1)==nullptr);
     assert(catalog.Load("[USen]\nqol_pockets.hold_wear=Use\n[EUde]\nqol_pockets.hold_wear=Benutzen\n"));
     assert(std::u16string(catalog.Text("qol_pockets.hold_wear",8))==u"Benutzen");
     assert(std::u16string(catalog.Text("qol_pockets.hold_wear",0))==u"Use");
-    assert(catalog.Load("\xef\xbb\xbf[USen]\r\noptimized_ui.grab_five= Pick 5 \r\n"));
+    assert(catalog.Load("\xef\xbb\xbf[USen]\r\nqol_pockets.grab_five= Pick 5 \r\n"));
     assert(std::u16string(catalog.Text(GrabFiveKey,999))==u"Pick 5");
     assert(std::u16string(catalog.Text(GrabTenKey,999))==u"Grab 10");
+    assert(catalog.Load("[USen]\noptimized_ui.grab_five=Old caption\n"));
+    assert(std::u16string(catalog.Text(GrabFiveKey,1))==u"Grab 5");
     for (auto invalid: {"", "[Bad]\nx=y", "x=y", "[USen]\nx=y\nx=z", "[USen]\nx=",
                         "[USen]\nx=\xc0\x80", "[USen]\nx=\xed\xa0\x80", "[USen]\nx=\xf4\x90\x80\x80",
                         "[USen]\nx=\xe2\x82", "[USen]\nx=\x0e", "[USen]\nUpper=hello"}) {
@@ -51,5 +59,5 @@ int main(int argc,char** argv) {
     assert(std::u16string(buffer)==u"\U0001f333");
     assert(CopyCaption(buffer,8,u"Grab 5") && buffer[7]==u'x');
     assert(!CopyCaption(nullptr,8,u"Grab 5"));
-    std::cout << "PASS catalog: 14 locales, fallbacks, malformed input, UTF-8, bounds, atomic rejection\n";
+    std::cout << "PASS catalog: 16 locales, fallbacks, malformed input, UTF-8, bounds, atomic rejection\n";
 }

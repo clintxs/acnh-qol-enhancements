@@ -29,7 +29,7 @@ int main() {
         assert(ApplySettings(std::string(key) + "=false\n" + key + "=true", parsed) == 1);
         assert(parsed.diyAppPreview && parsed.workbenchPreviewTilt && parsed.craftingQuantityWrap);
     }
-    for (unsigned speed = 1; speed <= 30; ++speed) {
+    for (unsigned speed = 0; speed <= 30; ++speed) {
         Settings parsed{};
         assert(!ApplySettings("crafting_speed=" + std::to_string(speed), parsed));
         assert(parsed.craftingSpeed == speed);
@@ -45,7 +45,7 @@ int main() {
         assert(ApplySettings("crafting_speed=" + clamped + "\ncrafting_speed=1", parsed) == 1);
         assert(parsed.craftingSpeed == settings.craftingSpeed);
     }
-    for (auto invalid : {"", "0", "-1", "1.5", "03", "NaN", "inf", "999999999999999999x", "6x", "+6"}) {
+    for (auto invalid : {"", "00", "-1", "1.5", "03", "NaN", "inf", "999999999999999999x", "6x", "+6"}) {
         Settings parsed = settings;
         assert(ApplySettings(std::string("crafting_speed=") + invalid, parsed) == 1);
         assert(parsed.craftingSpeed == settings.craftingSpeed);
@@ -60,5 +60,5 @@ int main() {
         assert(ApplySettings(invalid, parsed) == 1);
         assert(parsed.craftingSpeed == settings.craftingSpeed && parsed.diyAppPreview == settings.diyAppPreview);
     }
-    std::cout << "PASS: Crafting defaults, independent feature settings, 1..30 speed range, overflow-safe maximum clamping, layered inheritance, duplicates, invalid values and atomic encoding/size errors\n";
+    std::cout << "PASS: Crafting defaults, independent feature settings, 0..30 speed range (zero preserves native speed), overflow-safe maximum clamping, layered inheritance, duplicates, invalid values and atomic encoding/size errors\n";
 }

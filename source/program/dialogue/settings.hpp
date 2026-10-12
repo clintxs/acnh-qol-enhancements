@@ -8,7 +8,7 @@ inline constexpr unsigned MaxNpcs = 64, NpcIdBytes = 16;
 inline constexpr unsigned MinSpeed = 1, MaxSpeed = 30;
 struct Settings {
     unsigned baseSpeed = 2, boostSpeed = 4;
-    bool fasterUi = true, fasterUnnamed = true;
+    bool boostUiMessages = true, boostUnnamedMessages = true;
     unsigned npcCount = 0;
     std::array<std::array<char, NpcNameBytes>, MaxNpcs> npcs{};
 };
@@ -58,8 +58,8 @@ inline bool AddNpc(Settings &settings, std::string_view name) {
 }
 inline unsigned SelectSpeed(const Settings &settings, MessageKind kind,
                             std::string_view npc, bool held, std::string_view localizedName = {}) {
-    bool automatic = (kind == MessageKind::Ui && settings.fasterUi) ||
-                     (kind == MessageKind::Unnamed && settings.fasterUnnamed);
+    bool automatic = (kind == MessageKind::Ui && settings.boostUiMessages) ||
+                     (kind == MessageKind::Unnamed && settings.boostUnnamedMessages);
     if (kind == MessageKind::Npc)
         for (unsigned i = 0; i < settings.npcCount; ++i)
             automatic |= Equal(npc, settings.npcs[i].data()) ||
@@ -98,7 +98,7 @@ inline unsigned ApplySettings(std::string_view input, Settings &output) {
         const auto value = core::Trim(line.substr(equals + 1));
         if (key == "enabled" || key == "version") continue; // Validated by Core.
         const unsigned bit = key == "base_speed" ? 1 : key == "boost_speed" ? 2 :
-                             key == "faster_ui" ? 4 : key == "faster_npc_list" ? 8 : key == "faster_unnamed" ? 16 : 0;
+                             key == "boost_ui_messages" ? 4 : key == "boost_npc_list" ? 8 : key == "boost_unnamed_messages" ? 16 : 0;
         if (!bit) { ++warnings; continue; }
         if (seen & bit) { duplicate |= bit; ++warnings; continue; }
         seen |= bit;
@@ -106,7 +106,7 @@ inline unsigned ApplySettings(std::string_view input, Settings &output) {
             if (!ParseSpeed(value, bit == 1 ? output.baseSpeed : output.boostSpeed)) ++warnings;
         } else if (bit == 4 || bit == 16) {
             if (value == "true" || value == "false")
-                (bit == 4 ? output.fasterUi : output.fasterUnnamed) = value == "true";
+                (bit == 4 ? output.boostUiMessages : output.boostUnnamedMessages) = value == "true";
             else ++warnings;
         } else {
             output.npcCount = 0;
@@ -123,8 +123,8 @@ inline unsigned ApplySettings(std::string_view input, Settings &output) {
     }
     if (duplicate & 1) output.baseSpeed = previous.baseSpeed;
     if (duplicate & 2) output.boostSpeed = previous.boostSpeed;
-    if (duplicate & 4) output.fasterUi = previous.fasterUi;
-    if (duplicate & 16) output.fasterUnnamed = previous.fasterUnnamed;
+    if (duplicate & 4) output.boostUiMessages = previous.boostUiMessages;
+    if (duplicate & 16) output.boostUnnamedMessages = previous.boostUnnamedMessages;
     if (duplicate & 8) { output.npcCount = previous.npcCount; output.npcs = previous.npcs; }
     return warnings;
 }

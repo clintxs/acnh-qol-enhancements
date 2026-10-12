@@ -97,9 +97,9 @@ def check_unnamed(base):
     banks = ('FTR_Storeroom', 'FTR_DressingTable', 'FTR_Chest', 'OBJ_WherearenMncBox',
              'OBJ_WherearenAmiiboDevice', 'OBJ_HotelAmiiboDevice',
              'OBJ_Radio_RadioGymnastics', 'OBJ_PurchaseBox', 'UnlistedFutureMessage')
-    for preferences, enabled in ((b'', True), (b'faster_unnamed=true', True),
-                                 (b'faster_unnamed=false', False)):
-        m = NameMachine(base, preferences + b'\nfaster_ui=false')
+    for preferences, enabled in ((b'', True), (b'boost_unnamed_messages=true', True),
+                                 (b'boost_unnamed_messages=false', False)):
+        m = NameMachine(base, preferences + b'\nboost_ui_messages=false')
         for window in (0, 2):
             m.speaker('owl', window=window)
             for bank in banks:
@@ -135,11 +135,11 @@ def check_unnamed(base):
         assert m.tier() == 1 # A known name overrides the legacy self-bank guess.
         m.speaker('owl', window=1)
         m.label('')
-        assert m.tier() == 1 # Confirmed blue dialogs use faster_ui.
+        assert m.tier() == 1 # Confirmed blue dialogs use boost_ui_messages.
         m.speaker('owl', window=3)
         m.label('')
         assert m.tier() == 1 # Unknown window kind stays excluded.
-    ui = NameMachine(base, b'faster_ui=true')
+    ui = NameMachine(base, b'boost_ui_messages=true')
     ui.speaker('owl', window=1)
     ui.message('OBJ_PurchaseBox')
     ui.label('')
@@ -151,7 +151,7 @@ def main():
     count = 0
     for base in (0x7100000000, 0x7200000000):
         check_unnamed(base)
-        m = NameMachine(base, 'faster_ui=false\nfaster_unnamed=false\nfaster_npc_list=Blathers,Sócrates,フータ,Блезерс,傅达,🦉'.encode(), regular=base == 0x7200000000)
+        m = NameMachine(base, 'boost_ui_messages=false\nboost_unnamed_messages=false\nboost_npc_list=Blathers,Sócrates,フータ,Блезерс,傅达,🦉'.encode(), regular=base == 0x7200000000)
         m.speaker('owl')
         for name in ('Blathers', 'blathers', 'Sócrates', 'フータ', 'Блезерс', '傅达', '🦉'):
             assert m.label(name) == name
@@ -188,7 +188,7 @@ def main():
         m.write(m.meta + 0xc0, m.source + 0x200)
         m.write(m.source + 0x208, m.handle, 4)
         assert m.tier() == 1 # A different source cannot inherit the name.
-        ids = NameMachine(base, b'faster_npc_list=owl')
+        ids = NameMachine(base, b'boost_npc_list=owl')
         ids.speaker('owl')
         ids.label('Thibou')
         assert ids.tier() == 3 # Internal IDs are language independent.
@@ -199,7 +199,7 @@ def main():
 
     # All 14 supplied language sets, both villagers and special NPCs, including
     # Russian grammar tags with embedded zeros. No generated game data is saved.
-    m = NameMachine(0x7100000000, b'faster_npc_list=owl')
+    m = NameMachine(0x7100000000, b'boost_npc_list=owl')
     m.speaker('owl')
     locales = 0
     with tempfile.TemporaryDirectory(prefix='qol-npc-names-') as temporary:

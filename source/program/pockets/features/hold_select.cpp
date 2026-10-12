@@ -1,4 +1,5 @@
 #include "hold_select.hpp"
+#include "program/pockets/settings.hpp"
 #include "pocket_input.hpp"
 #include "program/core/page_input.hpp"
 #include "program/pockets/game/stack_bindings.hpp"
@@ -214,6 +215,8 @@ void ResetHoldSelect(void *owner) {
 }
 
 bool InstallHoldSelect() {
+    // Skip both the input observer and feedback hook when native selection is requested.
+    if (!GetSettings().enableMultiselect) return true;
     // Besides the shared input hook, verify the native request producer and
     // consumer whose field semantics this feature relies on.
     struct Check { std::uintptr_t offset; std::array<std::uint32_t, 5> words; };

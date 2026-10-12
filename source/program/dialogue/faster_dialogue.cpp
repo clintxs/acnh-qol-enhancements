@@ -388,11 +388,11 @@ unsigned Configure(std::string_view input) {
 void ReportSettings() {
     if (NormalizeSettings(Preferences))
         Logging.Warning("[QoL Enhancements/Faster Dialogue] WARNING: boost_speed below base_speed; using base speed for both\n");
-    Logging.Settings("[QoL Enhancements/Faster Dialogue] settings: base=%u boost=%u faster_ui=%s faster_unnamed=%s npc_count=%u\n",
-                Preferences.baseSpeed, Preferences.boostSpeed, Preferences.fasterUi ? "true" : "false",
-                Preferences.fasterUnnamed ? "true" : "false", Preferences.npcCount);
+    Logging.Settings("[QoL Enhancements/Faster Dialogue] settings: base=%u boost=%u boost_ui_messages=%s boost_unnamed_messages=%s npc_count=%u\n",
+                Preferences.baseSpeed, Preferences.boostSpeed, Preferences.boostUiMessages ? "true" : "false",
+                Preferences.boostUnnamedMessages ? "true" : "false", Preferences.npcCount);
     for (unsigned i = 0; i < Preferences.npcCount; ++i)
-        Logging.Settings("[QoL Enhancements/Faster Dialogue] faster_npc_list[%u]=%s\n", i, Preferences.npcs[i].data());
+        Logging.Settings("[QoL Enhancements/Faster Dialogue] boost_npc_list[%u]=%s\n", i, Preferences.npcs[i].data());
 }
 
 namespace {

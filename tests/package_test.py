@@ -15,7 +15,7 @@ assert not any(name.endswith('.ips') for name in files)
 assert {name.split('/')[0] for name in files if '/' in name} == {
     core, *(f'QoL Enhancements - {label}' for label in package.LABELS)}
 configs = [name for name in files if '/config/' in name]
-assert len(configs) == 9
+assert len(configs) == 8
 assert not any(name.endswith('/faster-dialogue.custom.ini') for name in files)
 core_config = f'{core}/romfs/qol-enhancements/config/core.ini'
 assert files[core_config] == (package.ROOT / 'modules/Core/romfs/qol-enhancements/config/core.ini').read_bytes()
@@ -29,6 +29,12 @@ for name in configs:
     assert files[name] == (package.ROOT / 'modules' / label / relative).read_bytes()
 assert b'hold_to_advance_dialogue = true\n' in files['QoL Enhancements - Controls/romfs/qol-enhancements/config/controls.ini']
 assert b'hold_to_advance_dialogue' not in files['QoL Enhancements - Faster Dialogue/romfs/qol-enhancements/config/faster-dialogue.ini']
+pockets_config = files['QoL Enhancements - Pockets/romfs/qol-enhancements/config/pockets.ini']
+assert b'enable_multiselect = true\n' in pockets_config
+captions = files['QoL Enhancements - Pockets/romfs/qol-enhancements/messages/pockets.ini']
+assert b'optimized_ui.' not in captions
+assert captions.count(b'qol_pockets.hold_wear=') == 16
+assert b'boost_ui_messages = true\n' in files['QoL Enhancements - Faster Dialogue/romfs/qol-enhancements/config/faster-dialogue.ini']
 assert sum('/Layout/' in name for name in files) == 7
 reference = json.loads((Path(__file__).parent / 'baseline_hashes.json').read_text())
 assert hashlib.sha256(files[f'{core}/exefs/main.npdm']).hexdigest() == reference['npdm_sha256']
@@ -39,12 +45,12 @@ for name, digest in manifest.items(): assert hashlib.sha256(files[name]).hexdige
 # Resource generation must reproduce the reviewed module baselines exactly.
 for name, digest in reference['assets'].items():
     assert hashlib.sha256(files[name]).hexdigest() == digest, name
-print('PASS: nine mod folders, subsdk6 only, eight versioned feature configs and default Core settings, five inherited resources, revised basket and green Shopping Card layout and SHA-256 manifest')
+print('PASS: eight mod folders, subsdk6 only, seven versioned feature configs and default Core settings, seven layout resources, revised basket and green Shopping Card layout and SHA-256 manifest')
 custom = package.custom_files()
 personal = [name for name in custom if '/config/' in name]
 assert len(personal) == 1 and personal[0].endswith('/faster-dialogue.custom.ini')
 assert custom[personal[0]] == files['faster-dialogue.custom.ini.example']
-assert b'faster_unnamed = true\n' in custom[personal[0]]
+assert b'boost_unnamed_messages = true\n' in custom[personal[0]]
 assert not any('/exefs/' in name or name.endswith('/faster-dialogue.ini') for name in custom)
 print('PASS: separate personal preset, no module marker or executable, suite updates cannot replace custom INI')
 

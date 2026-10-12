@@ -10,7 +10,7 @@ from core_arm_test import Machine, RAW, DEFAULT, SLUGS
 from unicorn.arm64_const import *
 
 HOOKS = (0x1afa00c, 0x1afdec0, 0x1afded4, 0x1afdefc, 0x1a969e0, 0x1b04824, 0x1b04b80, 0x1afa530)
-CUSTOM = b"base_speed=2\nboost_speed=4\nfaster_ui=true\nfaster_unnamed=true\nfaster_npc_list=Timmy,Tommy,Orville,Wilbur,Kapp'n\n"
+CUSTOM = b"base_speed=2\nboost_speed=4\nboost_ui_messages=true\nboost_unnamed_messages=true\nboost_npc_list=Timmy,Tommy,Orville,Wilbur,Kapp'n\n"
 GP = [globals()[f'UC_ARM64_REG_X{i}'] for i in range(31)]
 Q = [globals()[f'UC_ARM64_REG_Q{i}'] for i in range(32)]
 
@@ -270,7 +270,7 @@ def check_extended_speeds(base):
             assert calls == [0x1488]
             count += 1
     # Automatic NPC/UI/unnamed boosts use the configured tier, without stacking.
-    automatic = DialogueMachine(base, b'base_speed=4\nboost_speed=8\nfaster_ui=true\nfaster_unnamed=true\nfaster_npc_list=owl')
+    automatic = DialogueMachine(base, b'base_speed=4\nboost_speed=8\nboost_ui_messages=true\nboost_unnamed_messages=true\nboost_npc_list=owl')
     for name, kind, window in (('owl', 10, 0), ('', 0x4f, 0), ('', 10, 1), ('rcm', 10, 0)):
         automatic.speaker(name, kind=kind, window=window)
         for held in (0, 1, 0):
@@ -355,7 +355,7 @@ def main():
         # Timmy and Tommy share a message bank in the live log. Actor identity
         # must come from the current source, and moving voice coordinates must
         # never change classification or invoke the position callback.
-        timmy_only = DialogueMachine(base, b'faster_npc_list=Timmy')
+        timmy_only = DialogueMachine(base, b'boost_npc_list=Timmy')
         timmy_only.bank('SP_rcm_00_common')
         for name, expected in (('rcm', 3), ('rct', 1), ('rcm', 3), ('owl', 1)):
             timmy_only.speaker(name)
@@ -377,9 +377,9 @@ def main():
         # The self category must work with no entity, and be independent of UI
         # and NPC settings. Pending next-message IDs must not change this one.
         for prefs, player_boost, ui_boost in ((b'', True, True),
-                (b'faster_unnamed=true\nfaster_ui=false', True, False),
-                (b'faster_unnamed=false\nfaster_ui=false', False, False),
-                (b'faster_unnamed=false\nfaster_ui=true', False, True)):
+                (b'boost_unnamed_messages=true\nboost_ui_messages=false', True, False),
+                (b'boost_unnamed_messages=false\nboost_ui_messages=false', False, False),
+                (b'boost_unnamed_messages=false\nboost_ui_messages=true', False, True)):
             player = DialogueMachine(base, prefs)
             for window, bank in itertools.product((0, 1, 2), ('FTR_WorkingTable', 'SYS_Get_Fish', 'SYS_Get_Insect', 'SYS_Get_DiveFish',
                          'SYS_Player', 'TalkSys/SYS_Player.msbt', 'SP_rcm_00_common',
@@ -442,7 +442,7 @@ def main():
                 expected, expected_calls = m.run(case, int(player_boost))
                 assert result == expected and calls == expected_calls, (prefs, case)
                 total += 1
-        assert 'base=2 boost=4 faster_ui=true faster_unnamed=true npc_count=6' in custom.text
+        assert 'base=2 boost=4 boost_ui_messages=true boost_unnamed_messages=true npc_count=6' in custom.text
         if 'SELECT reason=' in custom.text:
             # Opening UI often lasts hundreds of eligible frames. Repeated UI
             # must not exhaust diagnostics before the first NPC conversation.

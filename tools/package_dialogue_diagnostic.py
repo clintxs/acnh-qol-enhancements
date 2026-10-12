@@ -27,7 +27,7 @@ def main():
             'Fully close ACNH. Replace the existing QoL Enhancements - Core\n'
             '(REQUIRED) folder with this Core. Enable only one Core copy.\n'
             'Keep your Faster Dialogue module and personal settings mod enabled.\n'
-            'In the personal file, confirm faster_unnamed = true.\n'
+            'In the personal file, confirm boost_unnamed_messages = true.\n'
             'Do not reinstall the personal preset over your edited settings.\n\n'
             'Restart ACNH and try a mirror, dresser, storage shed, DIY notes box,\n'
             'amiibo device, stretching tape deck, or shop drop-off box without B/R.\n'

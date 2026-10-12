@@ -54,7 +54,10 @@ HOOK_DEFINE_INLINE(AutomaticMashBoost) {
 } // namespace
 
 bool InstallFasterCrafting(unsigned maximumSpeed) {
-    if (maximumSpeed < 1 || maximumSpeed > MaximumCraftingSpeed) return false;
+    // Zero preserves the native rate calculation, including manual A mashing.
+    // Do not validate or install speed hooks when this feature is disabled.
+    if (maximumSpeed == 0) return true;
+    if (maximumSpeed > MaximumCraftingSpeed) return false;
     struct Fingerprint { std::uintptr_t offset; std::uint32_t words[5]; };
     // Original instructions only; behavior is implemented by the C++ callback.
     constexpr Fingerprint fingerprints[]{

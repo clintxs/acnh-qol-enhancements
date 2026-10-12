@@ -2962,3 +2962,41 @@ new cosmetic-stroke option and merged release still need in-game testing.
 Archives retain earlier releases; 0.4.31 contains Core plus seven feature folders
 and no separate Swimming folder. Move personal swimming preferences into
 `controls.custom.ini` and remove the retired folder when upgrading.
+
+
+## 0.4.32 settings clarity and independent feature switches (2026-10-12)
+
+- Pockets captions now use `qol_pockets.grab_five/grab_ten`; no old-key aliases.
+  Use Item has a short action caption in all 16 supported locale sections,
+  including Portuguese sections with Grab captions. The UTF-8 catalog remains
+  within its existing 64-entry bound (48 shipped entries). These are generated
+  translations; native-speaker wording and live footer fit still need review.
+- Pockets adds default-true `enable_multiselect`. False skips its input observer
+  and feedback hook, preserving native selection/navigation. Host tests cover
+  all 16 Pockets settings combinations, inheritance and invalid/duplicate keys.
+  Compiled Core checks cover the same regular/custom combinations at two bases,
+  no feedback hook when disabled, and a conflicting multiselect-only consumer
+  fingerprint while disabled. Shared feedback code remains required by quick-store.
+- Faster Dialogue keys are now `boost_ui_messages`, `boost_unnamed_messages`,
+  and `boost_npc_list` throughout parsing, logging, defaults, examples and docs.
+  Retired keys have no aliases. The shipped INI explicitly explains base/boost
+  selection, non-stacking categories and an empty NPC list. Existing speed,
+  native name/classification and Controls Y-hurry behavior is unchanged.
+- `crafting_speed=0` skips speed validation/hooks entirely. Native crafting and
+  cooking rate calculations, including manual A mashing, remain intact; previews,
+  quantity wrapping and shortcuts stay independently available. Tests execute
+  the original native updates with regular/custom zero, positive re-enable,
+  controller input, and disabled speed-site fingerprint conflicts.
+
+The pinned offline Docker build and all 12 host config/policy suites passed.
+Compiled core, dialogue, crafting and Pockets groups passed, including all 128
+module subsets at two ASLR bases, all 900 dialogue speed pairs at both bases,
+recipe previews, quantity shortcuts, caption/stack/storage/recycling behavior
+and 96 hold-selection scenarios. The separate 1,024-case Controls dialogue
+regression and focused multiselect conflict-isolation checks also passed.
+Package checks validate updated defaults, all 16 Use Item translations, renamed
+keys, unchanged layout/NPDM baselines and manifests. Controls features are unchanged.
+
+This verifies compiled policy and modeled native paths, not live Eden rendering,
+input timing or animation playback. Live 0.4.32 checks remain necessary for the
+new off switches and localized footer captions. Previous releases are retained.

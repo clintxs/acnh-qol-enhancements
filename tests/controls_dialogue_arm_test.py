@@ -68,7 +68,7 @@ def main():
         )
         for speed_enabled, (regular, custom, hurry) in itertools.product((False, True), cases):
             x = HurryMachine(base, faster_dialogue=speed_enabled, controls=regular, controls_custom=custom,
-                             dialogue_custom=b'base_speed=6\nboost_speed=8\nfaster_ui=false\nfaster_unnamed=false')
+                             dialogue_custom=b'base_speed=6\nboost_speed=8\nboost_ui_messages=false\nboost_unnamed_messages=false')
             assert (base + ADVANCE in x.hooks) == hurry
             assert all((base + a in x.hooks) == (hurry or speed_enabled) for a in REVEAL)
             assert all((base + a in x.hooks) == speed_enabled for a in NAMES)

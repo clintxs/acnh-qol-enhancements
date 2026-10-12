@@ -164,6 +164,9 @@ def check():
         # Default true, regular false, custom false, custom re-enable, absent.
         configs = (
             ({'crafting': DEFAULT}, True),
+            ({'crafting': DEFAULT+b'crafting_speed=0'}, False),
+            ({'crafting': DEFAULT, 'crafting.custom': b'crafting_speed=0'}, False),
+            ({'crafting': DEFAULT+b'crafting_speed=0', 'crafting.custom': b'crafting_speed=6'}, True),
             ({'crafting': DEFAULT.replace(b'true', b'false')}, False),
             ({'crafting': DEFAULT, 'crafting.custom': b'enabled=false'}, False),
             ({'crafting': DEFAULT.replace(b'true', b'false'), 'crafting.custom': b'enabled=true'}, True),
@@ -234,6 +237,15 @@ def check():
                     cases+=1
                 m.run(cooking=cooking,elapsed=60,ready=False)
                 m.run(cooking=cooking,elapsed=60,remote=True)
+        # Disabling speed skips compatibility checks and leaves unrelated crafting features active.
+        m=CraftingMachine(base, {'crafting': DEFAULT+b'crafting_speed=0'})
+        assert not m.callbacks and 'DIY preview: READY' in m.text and 'BOOT_OK' in m.text
+        for offset in (*HOOKS, *GUARDS):
+            m=Machine(base, {'crafting': DEFAULT+b'crafting_speed=0'})
+            m.write(base+offset, 0xdeadbeef, 4)
+            m.boot(); m.activate()
+            assert 'BOOT_OK' in m.text
+            assert not any(base+site in m.hooks for site in HOOKS)
         # The retired marker cannot activate the renamed package.
         m=CraftingMachine(base,{'faster-crafting':DEFAULT,'faster-crafting.custom':b'enabled=true'})
         assert not m.callbacks and 'Crafting: not installed' in m.text

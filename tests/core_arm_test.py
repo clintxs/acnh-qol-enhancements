@@ -286,7 +286,7 @@ def check_amiibo_hook():
     print('PASS: Core-only default amiibo hook; regular/custom precedence, absent Core config, 0 untouched native behavior, 1/450/9000/65535 native stores/countdown/expiry, invalid-file fallback, ignored legacy Amiibo files and once-only activation at two bases')
 
 def check_custom_preferences():
-    for custom, summary in ((b'', 'base=2 boost=4 faster_ui=true faster_unnamed=true npc_count=0'),
+    for custom, summary in ((b'', 'base=2 boost=4 boost_ui_messages=true boost_unnamed_messages=true npc_count=0'),
                             (b'base_speed=4\nboost_speed=2', 'base=4 boost=4'),
                             (b'base_speed=2\nboost_speed=2', 'base=2 boost=2'),
                             (b'base_speed=4\nboost_speed=8', 'base=4 boost=8'),
@@ -294,8 +294,8 @@ def check_custom_preferences():
                             (b'base_speed=1\nboost_speed=10', 'base=1 boost=10'),
                             (b'base_speed=10\nboost_speed=3', 'base=10 boost=10'),
                             (b'base_speed=31\nboost_speed=4294967296', 'base=2 boost=4'),
-                            (b'base_speed=0\nfaster_ui=yes', 'base=2 boost=4 faster_ui=true'),
-                            (b'x' * 4097, 'base=2 boost=4 faster_ui=true')):
+                            (b'base_speed=0\nboost_ui_messages=yes', 'base=2 boost=4 boost_ui_messages=true'),
+                            (b'x' * 4097, 'base=2 boost=4 boost_ui_messages=true')):
         m = Machine(0x7100000000, {'faster-dialogue': DEFAULT, 'faster-dialogue.custom': custom})
         m.boot(); m.activate()
         assert summary in m.text and 'BOOT_OK' in m.text, m.text
@@ -305,7 +305,7 @@ def check_custom_preferences():
         m.custom_fault = fault
         m.boot(); m.activate()
         assert 'WARNING:' in m.text and 'custom config' in m.text and 'BOOT_OK' in m.text
-        assert 'base=2 boost=4 faster_ui=true' in m.text
+        assert 'base=2 boost=4 boost_ui_messages=true' in m.text
         assert len(m.closed) == (1 if fault == 'open' else 2)
     for marker in (None, b'enabled=false\nversion=0.2.0'):
         files = {'faster-dialogue.custom': b'base_speed=4'}
@@ -349,25 +349,25 @@ def check_config_layers():
                 m.boot(); m.activate()
                 assert len(m.hooks) == expected_hook_count(m, [name == slug for name in SLUGS]), m.text
                 assert 'WARNING:' in m.text and 'BOOT_OK' in m.text
-        regular = DEFAULT + b'base_speed=4\nboost_speed=2\nfaster_ui=true\nfaster_unnamed=true\nfaster_npc_list=Timmy,Tommy'
+        regular = DEFAULT + b'base_speed=4\nboost_speed=2\nboost_ui_messages=true\nboost_unnamed_messages=true\nboost_npc_list=Timmy,Tommy'
         cases = (
-            (b'base_speed=2\nfaster_ui=false\nfaster_npc_list=Wilbur', 'base=2 boost=2 faster_ui=false faster_unnamed=true npc_count=1'),
-            (b'base_speed=bad\nfaster_ui=bad', 'base=4 boost=4 faster_ui=true faster_unnamed=true npc_count=2'),
-            (b'faster_npc_list=', 'base=4 boost=4 faster_ui=true faster_unnamed=true npc_count=0'),
-            (b'base_speed=2\nversion=bad', 'base=4 boost=4 faster_ui=true faster_unnamed=true npc_count=2'),
-            (b'base_speed=2\nbase_speed=2', 'base=4 boost=4 faster_ui=true faster_unnamed=true npc_count=2'),
+            (b'base_speed=2\nboost_ui_messages=false\nboost_npc_list=Wilbur', 'base=2 boost=2 boost_ui_messages=false boost_unnamed_messages=true npc_count=1'),
+            (b'base_speed=bad\nboost_ui_messages=bad', 'base=4 boost=4 boost_ui_messages=true boost_unnamed_messages=true npc_count=2'),
+            (b'boost_npc_list=', 'base=4 boost=4 boost_ui_messages=true boost_unnamed_messages=true npc_count=0'),
+            (b'base_speed=2\nversion=bad', 'base=4 boost=4 boost_ui_messages=true boost_unnamed_messages=true npc_count=2'),
+            (b'base_speed=2\nbase_speed=2', 'base=4 boost=4 boost_ui_messages=true boost_unnamed_messages=true npc_count=2'),
         )
         for custom, summary in cases:
             m = Machine(base, {'faster-dialogue': regular, 'faster-dialogue.custom': custom})
             m.boot(); m.activate()
             assert summary in m.text and 'BOOT_OK' in m.text, m.text
         # All preference keys work equally in either file.
-        preferences = b"base_speed=2\nboost_speed=4\nfaster_ui=true\nfaster_unnamed=true\nfaster_npc_list=Timmy,Tommy,Orville,Wilbur,Kapp'n"
+        preferences = b"base_speed=2\nboost_speed=4\nboost_ui_messages=true\nboost_unnamed_messages=true\nboost_npc_list=Timmy,Tommy,Orville,Wilbur,Kapp'n"
         for files in ({'faster-dialogue': DEFAULT + preferences},
                       {'faster-dialogue': DEFAULT, 'faster-dialogue.custom': preferences}):
             m = Machine(base, files)
             m.boot(); m.activate()
-            assert 'base=2 boost=4 faster_ui=true faster_unnamed=true npc_count=6' in m.text, m.text
+            assert 'base=2 boost=4 boost_ui_messages=true boost_unnamed_messages=true npc_count=6' in m.text, m.text
     print('PASS: shared regular/custom order, enabled/version overrides for all seven modules, atomic metadata, failure fallback, inheritance and settings parity at two bases')
 
 def check_crafting_settings():
@@ -468,19 +468,27 @@ def check_crafting_settings():
     print('PASS: Crafting marker/rename, independent DIY toggle, workbench toggle, layered defaults and failures, untouched disabled preview, isolated hook conflicts and shared Pockets input at two bases')
 
 def check_pockets_settings():
-    keys=('bypass_menu_open_containers','bypass_menu_claim_recycle_box','bypass_menu_withdraw_home_storage')
+    keys=('bypass_menu_open_containers','bypass_menu_claim_recycle_box','bypass_menu_withdraw_home_storage','enable_multiselect')
     for base in (0x80000000,0x1234500000):
-        for values in product((False,True),repeat=3):
-            # Read all three regular keys, then independently override each.
+        for values in product((False,True),repeat=4):
+            # Read all four regular keys, then independently override each.
             regular=DEFAULT+b''.join(f'{key}=true\n'.encode() for key in keys)
             custom=b''.join(f'{key}={str(value).lower()}\n'.encode() for key,value in zip(keys,values))
             m=Machine(base,{'pockets':regular,'pockets.custom':custom})
             m.boot();m.activate()
             assert 'BOOT_OK' in m.text and 'Pockets: ENABLED' in m.text
             ptr=m.module.find('qol_pockets','Preferences')
-            assert tuple(bool(m.read(ptr+i,1)) for i in range(3))==values
+            assert tuple(bool(m.read(ptr+i,1)) for i in range(4))==values
+            assert (base+0x3c66950 in m.hooks) == values[3]
             for key,value in zip(keys,values):assert f'{key}={str(value).lower()}' in m.text
-    print('PASS: Pockets regular/custom config activation and all eight independent combinations at two bases')
+        # Disabled multiselect must not validate its exclusive selection consumer.
+        # Shared feedback code is also used/validated by quick-store.
+        m=Machine(base, {'pockets': DEFAULT+b'enable_multiselect=false'})
+        m.write(base+0x0308b3f0, 0xdeadbeef, 4)
+        m.boot();m.activate()
+        assert 'BOOT_OK' in m.text and 'QUICK_STORE_READY' in m.text
+        assert base+0x3c66950 not in m.hooks
+    print('PASS: Pockets regular/custom config activation and all sixteen independent combinations, disabled-hook conflict isolation at two bases')
 
 def check_catalog_settings():
     for base in (0x80000000,0x1234500000):

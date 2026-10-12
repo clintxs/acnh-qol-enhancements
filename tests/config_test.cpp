@@ -33,12 +33,12 @@ int main() {
     }
     assert(ParseConfig("enabled=true\nversion=0.1.0\nfaster_player=true", config,
                        ConfigLayer::Module, true));
-    assert(ParseConfig("faster_ui=true", config, ConfigLayer::Custom, true));
-    assert(!ParseConfig("faster_ui=true", config, ConfigLayer::Module, true));
-    assert(ParseConfig("enabled=true\nversion=0.1.0\nfaster_npc_list=Sócrates,フータ,傅达", config,
+    assert(ParseConfig("boost_ui_messages=true", config, ConfigLayer::Custom, true));
+    assert(!ParseConfig("boost_ui_messages=true", config, ConfigLayer::Module, true));
+    assert(ParseConfig("enabled=true\nversion=0.1.0\nboost_npc_list=Sócrates,フータ,傅达", config,
                        ConfigLayer::Module, true));
     for (auto invalid : {"\xc0\xaf", "\xed\xa0\x80", "\xf4\x90\x80\x80", "\xe2\x82", "\x80", "\xc2\x80"}) {
-        assert(!ParseConfig(std::string("faster_npc_list=") + invalid, config, ConfigLayer::Custom, true));
+        assert(!ParseConfig(std::string("boost_npc_list=") + invalid, config, ConfigLayer::Custom, true));
     }
     Version version{};
     assert(ParseVersion("65535.65535.65535", version));

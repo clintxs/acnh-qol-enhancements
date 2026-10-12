@@ -20,7 +20,7 @@ def check():
         # Catalog, Pockets, Faster Dialogue, Crafting, Controls settings.
         assert len(lines) == 21, default.text
         assert 'log_versions=true log_settings=true log_debug=false' in default.text
-        assert 'crafting_speed=6' in default.text and 'faster_unnamed=true' in default.text
+        assert 'crafting_speed=6' in default.text and 'boost_unnamed_messages=true' in default.text
         for line in lines:
             assert 'settings:' in line or 'Core:' in line or '; enabled=' in line, line
         assert len(default.hooks) == expected_hook_count(default, (True,) * len(SLUGS))
@@ -54,10 +54,10 @@ def check():
         m = machine(base, {'core': quiet, 'core.custom': b'log_debug=true\n\xff'})
         assert 'WARNING:' in m.text and 'BOOT_OK' not in m.text
         m = machine(base, {
-            'faster-dialogue': DEFAULT + b'faster_npc_list=owl,Blathers',
+            'faster-dialogue': DEFAULT + b'boost_npc_list=owl,Blathers',
             'faster-dialogue.custom': b'enabled=false\nbase_speed=6',
             'crafting': DEFAULT.replace(b'true', b'false')})
-        assert 'base=6 boost=6' in m.text and 'faster_npc_list[0]=owl' in m.text and 'faster_npc_list[1]=blathers' in m.text
+        assert 'base=6 boost=6' in m.text and 'boost_npc_list[0]=owl' in m.text and 'boost_npc_list[1]=blathers' in m.text
         assert '[QoL Enhancements/Crafting] settings: diy_app_preview=true crafting_speed=6' in m.text
         assert m.text.count('settings: enabled=false') == 2
         assert 'WARNING: boost_speed below base_speed' in m.text
