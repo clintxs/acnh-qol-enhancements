@@ -7,8 +7,8 @@ import package
 
 def main():
     root = package.ROOT
-    assert b'auto swim: READY; prototype 4; strong stick; 2s strokes; smooth diving' in (root / 'project.elf').read_bytes(), 'Build first: sh tools/build.sh'
-    stem = f'qol-enhancements-v{package.release_version().replace(".", "_")}_auto-swim-prototype4_for_acnh_v3_0_3'
+    assert b'auto swim: READY; prototype 5; analog speed; manual 2s boosts' in (root / 'project.elf').read_bytes(), 'Build first: sh tools/build.sh'
+    stem = f'qol-enhancements-v{package.release_version().replace(".", "_")}_auto-swim-prototype5_for_acnh_v3_0_3'
     binary, source = (root / 'dist' / (stem + suffix) for suffix in ('.zip', '_source.zip'))
     for path in (binary, source):
         if path.exists(): raise SystemExit(f'Refusing to replace existing archive: {path}')
@@ -20,19 +20,20 @@ def main():
         f'{core}/LICENSE': (root / 'LICENSE').read_bytes(),
         key: (root / 'modules/Controls/romfs/qol-enhancements/config/controls.ini').read_bytes(),
         'README.txt': (
-            'AUTO SWIM - PROTOTYPE 4 - RECURRING ARM STROKES - ACNH 3.0.3\n\n'
+            'AUTO SWIM - PROTOTYPE 5 - ANALOG SWIMMING / MANUAL BOOSTS - ACNH 3.0.3\n\n'
             'Fully close ACNH. Merge the included Core and Controls folders into\n'
             'your existing QoL Enhancements mod folders, replacing matching files.\n'
             'Enable Core and Controls, then restart. Use one Core copy.\n'
             'Other modules and personal custom settings can stay installed.\n'
             'This updates an existing installation; no core.ini is included.\n\n'
             'auto_swim=true is enabled by default at the surface and underwater.\n'
-            'Push about 85% of the left stick travel to propel yourself; lighter\n'
-            'tilt turns in place. Uses held A with an arm stroke about every two\n'
-            'seconds and quieter foot kicking between strokes. Stroke requests\n'
-            'wait for native animation entry instead of expiring after 200ms.\n'
-            'Underwater cruise speed is retained between pulses to smooth motion.\n'
-            'Physical A retains normal behavior. Y still dives/surfaces normally.\n'
+            'Stick travel controls speed beyond a small neutral dead zone.\n'
+            'Starting movement requests one opening arm stroke. After that,\n'
+            'press A for a boost or hold A to repeat when its 2s cooldown ends.\n'
+            'Boosts add 25% of full cruise speed and fade over half a second.\n'
+            'Quiet foot kicking continues between strokes. Underwater speed\n'
+            'stays continuous across animation transitions. Stop/start and\n'
+            'diving/surfacing do not bypass the cooldown. Y keeps priority.\n'
             'Set auto_swim=false in controls.ini or controls.custom.ini and\n'
             'restart to restore ordinary swimming. Custom values take priority.\n\n'
             'Test all directions, gentle stick tilt, neutral/release, repeated\n'

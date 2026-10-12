@@ -1,10 +1,11 @@
-"""Compiled scoped swim input and native held gates/animation selectors.
+"""Compiled analog swimming, boost cooldown and native animation selectors.
 
 Native world updates, loaded speed parameters and animation timing are modeled;
 real sound, collision, creature catches and perceived smoothness need Eden.
 """
 import struct
-from core_arm_test import Machine, DEFAULT, RAW
+import math
+from core_arm_test import Machine, DEFAULT
 from unicorn.arm64_const import *
 
 BINDINGS = (0x236b77c,0x236bea0,0x236bbb8,0x236cf20,0x236db00,0x236d6a0,0x2364b10,0x2365878)
@@ -25,6 +26,7 @@ class SwimMachine(Machine):
         self.samples = []
         self.outer_returns = []
         self.nest_entry = False
+        self.arm_animation = False
         for i, name in enumerate(('SurfaceWait','SurfaceStride','SurfaceEntry','DiveWait','DiveStride','DiveEntry','WaitMovement','StrideMovement')):
             stub = self.ram + 0x10000 + i*16
             self.stubs[stub] = name
@@ -47,12 +49,15 @@ class SwimMachine(Machine):
         name=self.stubs[pc]
         if name.endswith('Movement'):
             # Model the native animation decelerating to zero. Compiled scoped
-            # policy must preserve physical-A motion, turn-only, or cruise.
+            # policy must replace this curve with analog speed and boost decay.
             for offset in (0x1820,0x1844): self.u.mem_write(self.player+offset,struct.pack('<f',.1))
             self.write(self.player+0x1854,0x12345678,4)  # Native steering result.
             u.reg_write(UC_ARM64_REG_X0,3)
             u.reg_write(UC_ARM64_REG_PC,u.reg_read(UC_ARM64_REG_LR)); return
         self.samples.append((name,self.read(self.player+0xec8),self.read(self.player+0xed0),self.read(self.player+0x13d8,4)))
+        if name.endswith('Entry'): self.arm_animation=self.read(self.player+0x13d8,4)<=30
+        # Real native stride callers scale slot zero by .8 for FlapFoot.
+        self.u.mem_write(self.parameters,struct.pack('<f',1. if self.arm_animation else .8))
         self.outer_returns.append(u.reg_read(UC_ARM64_REG_LR))
         u.reg_write(UC_ARM64_REG_X1,self.parameters)
         u.reg_write(UC_ARM64_REG_LR,self.native_return)
@@ -100,62 +105,93 @@ def main():
         m=SwimMachine(base)
         for underwater in (False,True):
             prefix='Dive' if underwater else 'Surface'
-            for x,y,strong in ((0,0,False),(.2,0,False),(.84,0,False),(.86,0,True),
-                               (1,0,True),(-1,0,True),(0,1,True),(0,-1,True),(.5,.5,False),(.61,.61,True),
-                               (float('nan'),0,False),(float('inf'),0,False)):
-                m.update(prefix+'Wait',0,0)
+            # Reset identity for each independent stick case. This tests radial
+            # analog scaling, dead zone, diagonal clamping and invalid inputs.
+            for x,y in ((0,0),(.1,0),(.15,0),(.2,0),(.5,0),(.85,0),(1,0),
+                        (-1,0),(0,1),(0,-1),(.5,.5),(.8,.8),
+                        (float('nan'),0),(float('inf'),0),(2,0)):
+                m.write(m.player+0x230,m.read(m.player+0x230,4)+1,4)
+                m.arm_animation=False
                 held,pressed,frames=m.update(prefix+'Stride',x,y,held=0x80,pressed=0x40)
-                assert held == (0x80|strong) and pressed == (0x40|strong)
-                expected_speed = (.8 if underwater else .1) if strong else 0.
-                assert abs(m.float(0x1820)-expected_speed)<1e-6
+                squared=x*x+y*y
+                throttle=(min(math.sqrt(squared),1)-.15)/.85 if .15**2<squared<=2 else 0.
+                active=throttle>0
+                assert (held,pressed,frames)==(0x80|active,0x40|active,0 if active else 31)
+                assert abs(m.float(0x1820)-.8*throttle)<1e-6
+                assert m.float(0x1820)==m.float(0x1844)
                 m.animation(underwater,frames)
                 m.held_gate(underwater,held)
                 cases+=1
-            # A press rejected by the native animation gate must stay pending
-            # until entry. Model a delay longer than the old 200 ms window.
-            m.update(prefix+'Wait',0,0)
+            # Opening stroke stays pending through a delayed native gate.
+            m.write(m.player+0x230,m.read(m.player+0x230,4)+1,4)
+            m.arm_animation=False
             assert m.update(prefix+'Stride') == (1,1,0)
             for frame in range(20):
                 m.tick+=TICKS//30
                 assert m.update(prefix+'Stride') == (1,1,0)
             assert m.update(prefix+'Entry') == (1,0,0)
-            m.animation(underwater,0)
             assert m.update(prefix+'Stride') == (1,0,31)
-            # Several cycles: cadence is measured from accepted arm entry,
-            # even if the next native transition is delayed by half a second.
+            assert abs(m.float(0x1820)-1.)<1e-6  # .8 cruise + .2 impulse.
+            # No further automatic arm strokes, even over several deadlines.
+            # A short tap during cooldown is ignored, never queued for later.
+            for frame in range(1,181):
+                m.tick+=TICKS//30
+                pressed=1 if frame==10 else 0
+                assert m.update(prefix+'Stride',pressed=pressed)==(1,0,31)
+                envelope=max(0.,1-frame/15)
+                assert abs(m.float(0x1820)-(.8+.2*envelope))<1e-6
+                if frame in (30,90,150):
+                    assert m.update(prefix+'Entry')==(1,0,31)
+                cases+=1
+            # A single ready tap latches until native entry, including after
+            # release, and starts the next cooldown only on actual entry.
+            assert m.update(prefix+'Stride',pressed=1)==(1,1,0)
+            for frame in range(16):
+                m.tick+=TICKS//30
+                assert m.update(prefix+'Stride')==(1,1,0)
+            assert m.update(prefix+'Entry')==(1,0,0)
+            # Holding A repeats at each cooldown boundary, with quiet kicking
+            # throughout the remaining interval. Speed remains independent of
+            # the arm/foot animation and proportional to current stick travel.
             for cycle in range(3):
                 for frame in range(1,61):
                     m.tick+=TICKS//30
-                    held,pressed,frames=m.update(prefix+'Stride')
-                    assert (held,pressed,frames)==((1,1,0) if frame==60 else (1,0,31))
-                    m.animation(underwater,frames)
-                    if underwater: assert abs(m.float(0x1820)-.8)<1e-6
+                    expected=(1,1,0) if frame==60 else (1,0,31)
+                    assert m.update(prefix+'Stride',x=.575,held=1)==expected
+                    envelope=max(0.,1-frame/15)
+                    assert abs(m.float(0x1820)-(.4+.2*envelope))<1e-6
                     cases+=1
-                for frame in range(15):
-                    m.tick+=TICKS//30
-                    assert m.update(prefix+'Stride') == (1,1,0)
-                assert m.update(prefix+'Entry') == (1,0,0)
-                assert m.update(prefix+'Stride') == (1,0,31)
-                # Ordinary entries between timed strokes remain quiet.
-                assert m.update(prefix+'Entry') == (1,0,31)
-            # A synchronous entry sees our borrowed A, not physical A, and
-            # must still consume the pending stroke once.
+                assert m.update(prefix+'Entry',x=.575,held=1)==(1,0,0)
+                assert m.update(prefix+'Wait',x=.575,held=1)==(1,0,31)
+                assert abs(m.float(0x1820)-.6)<1e-6  # No dive wait gap.
+            # Stop/start cannot bypass the shared stroke cooldown.
             m.update(prefix+'Wait',0,0)
+            assert m.update(prefix+'Stride')==(1,0,31)
+            # After the impulse fades, neutral stops; a ready neutral A stroke
+            # gives a small forward impulse along the native facing direction.
+            for frame in range(60):
+                m.tick+=TICKS//30
+                m.update(prefix+'Wait',0,0)
+            assert m.float(0x1820)==m.float(0x1844)==0
+            assert m.update(prefix+'Wait',0,0,pressed=1)==(1,1,0)
+            assert m.update(prefix+'Entry',0,0)==(1,0,0)
+            m.update(prefix+'Stride',0,0)
+            assert abs(m.float(0x1820)-.2)<1e-6
+            # Y takes priority over automatic/manual arm requests.
+            assert m.update(prefix+'Stride',pressed=9)==(0,8,31)
+            # Guarded players retain all original input and speed handling.
+            for kwargs in ({'mode':1},{'enabled':0},{'locked':1},{'resident':8}):
+                assert m.update(prefix+'Stride',.5,0,held=1,pressed=1,**kwargs)==(1,1,7)
+                assert abs(m.float(0x1820)-.1)<1e-6
+                cases+=1
+            # Nested entry must not confuse borrowed held A with physical A.
+            m.write(m.player+0x230,m.read(m.player+0x230,4)+1,4)
             m.nest_entry=True
             m.update(prefix+'Stride')
             assert m.samples[-1][0]==prefix+'Entry'
-            assert m.update(prefix+'Stride') == (1,0,31)
-            # A wait frame between pulses retains the recorded native cruise.
-            m.update(prefix+'Wait')
-            if underwater: assert abs(m.float(0x1820)-.8)<1e-6
-            m.update(prefix+'Stride',.5,0)
-            assert m.float(0x1820)==m.float(0x1844)==0
-            assert m.update(prefix+'Stride') == (1,1,0)
-            for kwargs in ({'mode':1},{'enabled':0},{'locked':1},{'resident':8},{'held':1},{'pressed':1}):
-                held,pressed,frames=m.update(prefix+'Stride',.5,0,**kwargs)
-                assert held==kwargs.get('held',0) and pressed==kwargs.get('pressed',0) and frames==7
-                assert abs(m.float(0x1820)-.1)<1e-6
-                cases+=1
+            assert m.update(prefix+'Stride')==(1,0,31)
+        # Diving/surfacing must preserve an existing boost cooldown.
+        assert m.update('SurfaceStride',held=1)==(1,0,31)
         # No scope: other callers of shared movement keep native speeds.
         m.u.reg_write(UC_ARM64_REG_X0,m.player)
         m.u.reg_write(UC_ARM64_REG_X1,m.parameters)
@@ -172,6 +208,6 @@ def main():
             n.write(base+offset,0xdeadbeef,4); n.boot(); n.activate()
             assert 'auto swim: DISABLED' in n.text and all(base+a not in n.hooks for a in BINDINGS)
             assert base+0x2222a34 in n.hooks
-    print(f'PASS: {cases} strong/light stick, scoped input restoration, native held gates and quiet animation selection, acknowledged 2s cadence and delayed recurring entries, dive cruise, manual A, locks, remote, config and conflicts')
+    print(f'PASS: {cases} analog stick speed, opening stroke only, manual tap/hold cooldown, delayed entries, decaying impulse, neutral boost, native steering, scope restoration, Y priority, surface/dive cruise, config and conflicts')
 
 if __name__=='__main__': main()

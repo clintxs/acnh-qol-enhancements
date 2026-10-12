@@ -108,3 +108,44 @@ ASLR bases, including delays of 500ms before entry (longer than the old window),
 quiet intermediate entries, input restoration and continuous underwater cruise.
 Native update/animation timing is modeled and the actual animation selectors
 execute. Live validation of recurring arm animation and sound remains pending.
+
+
+Prototype 5: analog swimming with manual stroke boosts
+
+User requests a swimming rework: analog speed like land movement, one opening
+stroke on starting to move, then manual A boosts with a ~2s cooldown; holding A
+repeats as soon as ready. This supersedes prototype 4's automatic timed strokes
+and the physical-A bypass. The setting remains auto_swim=true by default; false
+installs none of these hooks and retains all native swimming behavior.
+
+StickThrottle applies a .15 radial dead zone, then linear (magnitude-.15)/.85,
+clamped to 1 for diagonal overtravel. This is a playtest tuning choice; steering
+still executes the native stick handling. Nonfinite/corrupt inputs yield zero.
+The shared movement wrappers replace current/target speed after native steering
+with cruise * (throttle + .25 * boostEnvelope). BoostEnvelope decays linearly
+from 1 to 0 over 9,600,000 ticks (half a second) following accepted arm entry.
+This removes animation-driven deceleration at both surface and depth. A neutral
+manual boost uses native facing. Quiet cruise is learned from StrideMovement
+slot zero; normal arm entry passes full base speed, whereas FlapFoot callers
+scale by .8. Normalize arm parameters by .8, keeping the same cruise regardless
+of animation. Native request results, steering and other action updates remain.
+
+A ready physical press/hold latches an arm request until stride entry, even if
+a tapped button is subsequently released. Early taps during cooldown are
+ignored. Holding A retries when ready; automatic stick-only swimming never
+schedules later periodic arm strokes. An opening stroke also consumes the same
+cooldown so stop/start cannot spam boosts. Diving/surfacing preserves cooldown
+while relearning cruise speed for the new mode. A half-second gap between swim
+callbacks resets session movement/pending state without clearing cooldown.
+Y press clears queued strokes and suppresses borrowed A that update, allowing
+native diving/surfacing/catching priority. All borrowed A bits and frames are
+restored after the synchronous native call; guarded/nonlocal input is untouched.
+
+Compiled checks at two ASLR bases cover analog cardinal/diagonal scaling and
+invalid input, delayed opening and manual strokes, six seconds with no further
+automatic arms, ignored cooldown taps, three held-A boost cycles, impulse decay,
+quiet/native arm selectors, wait-frame continuity in both modes, neutral thrust,
+stop/start and mode-change cooldown preservation, Y priority, nested entries,
+input restoration, guards, config layering and all hook dependency conflicts.
+Native world movement/animation timing is modeled. In-game feel, collision and
+creature interaction validation remain pending.
