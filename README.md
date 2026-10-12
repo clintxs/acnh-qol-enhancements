@@ -123,9 +123,11 @@ settings default to true. All Controls settings work in `controls.ini` and
 Automatic swimming is enabled by default at the surface and underwater. Stick
 travel gradually controls speed, with a small neutral dead zone. Starting to
 move requests one opening arm stroke. Further arm strokes require A: press for
-a small boost or hold to repeat whenever the roughly two-second cooldown ends.
-Each boost adds 25% of full cruising speed and fades over half a second. Quiet
-foot kicking continues between strokes, and underwater speed is independent of
+a boost or hold to repeat whenever the roughly two-second cooldown ends.
+Each boost adds 100% of full cruising speed and fades over half a second. Ready
+boosts interrupt the current kick animation; the two-second cooldown starts
+when the arm stroke begins. Quiet foot kicking continues between strokes,
+and underwater speed is independent of
 the animation cycle. Stopping/restarting or diving/surfacing does not bypass the
 boost cooldown. Y still takes priority for diving/surfacing/catching. Set
 `auto_swim = false` in `controls.ini` or `controls.custom.ini` and restart to

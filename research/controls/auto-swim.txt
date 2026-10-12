@@ -149,3 +149,31 @@ stop/start and mode-change cooldown preservation, Y priority, nested entries,
 input restoration, guards, config layering and all hook dependency conflicts.
 Native world movement/animation timing is modeled. In-game feel, collision and
 creature interaction validation remain pending.
+
+
+Prototype 6: 100% boost and interruptible stroke timing
+
+Live feedback requested a noticeable 100% boost and reported variable arm
+stroke intervals. Raise BoostFraction from .25 to 1: at full stick, initial
+boost speed is twice quiet cruise, fading to cruise over the same half-second.
+
+The prototype 5 cooldown was already measured from actual stride entry, but a
+ready request could wait behind animation-dependent StrideMovement results.
+Surface update at 0236C214 and dive update at 0236DEF4 compare that result to 1;
+values >1 skip the native A request gate entirely. Repeated pending A input
+alone could therefore wait until the kick/turn cycle allowed a transition.
+When a stroke is pending inside the matching swim scope, return native stride
+request type 0 from the movement wrapper after running native movement and our
+speed policy. This reaches the existing A gate immediately, allowing a ready
+stroke to interrupt the current cycle. The original result is returned for all
+other calls. Native input/world locks, Y priority, FSM request construction and
+entry remain in control. Cooldown still starts on actual arm entry; no timer
+catch-up or accumulated repeat requests can cause early strokes.
+
+Compiled tests execute the real surface/dive compare/branch after a modeled
+unfinished animation result of 3. Pending strokes reach A with result 0; other
+calls keep 3. Test held-A cadence at mixed 60/30/24/20 Hz update steps with FSM
+entry on the next update: five repeated strokes per mode must be >=2 seconds
+apart and <=2 seconds plus update rounding. Existing analog/input restoration,
+manual/held boosts, delayed entry, config and conflict checks remain. Actual
+animation scheduling and perceived timing still require live validation.

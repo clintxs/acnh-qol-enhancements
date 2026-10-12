@@ -25,7 +25,7 @@ constexpr std::size_t Speed = 0x1820, TargetSpeed = 0x1844;
 // uses the game's own stick handling; this only sets swimming propulsion.
 constexpr float StickDeadZone = .15f;
 constexpr float QuietStrideScale = .8f; // Native FlapFoot speed multiplier.
-constexpr float BoostFraction = .25f;
+constexpr float BoostFraction = 1.f;
 constexpr std::uint64_t TicksPerSecond = 19'200'000ull;
 constexpr std::uint64_t StrokeInterval = TicksPerSecond * 2;
 constexpr std::uint64_t BoostDuration = TicksPerSecond / 2;
@@ -147,7 +147,7 @@ void AdjustMovement(void *player, const void *parameters, bool stride) {
             Scope.state->cruiseSpeed = nativeSpeed * (Scope.state->armAnimation ? QuietStrideScale : 1.f);
     }
     // Replace the animation's start/stop speed curve with analog propulsion
-    // plus a small, time-based stroke impulse. Neutral A boosts use facing.
+    // plus a time-based stroke impulse. Neutral A boosts use facing.
     const float speed = Scope.state->cruiseSpeed * (Scope.throttle + BoostFraction * Scope.boost);
     Write(player, field::Speed, speed);
     Write(player, field::TargetSpeed, speed);
@@ -181,7 +181,12 @@ HOOK_DEFINE_TRAMPOLINE(AutoSwimStrideMovement) {
     static unsigned Callback(void *player, const void *parameters) {
         const auto result = Orig(player, parameters);
         AdjustMovement(player, parameters, true);
-        return result;
+        // Native stride updates skip the A request gate when this helper
+        // returns >1 (e.g. the current animation is still playing). A ready
+        // boost must interrupt that cycle instead of waiting an unpredictable
+        // amount of time. Type 0 is the native ordinary stride request; retain
+        // all native input/world guards and the result outside a pending boost.
+        return Scope.player == player && Scope.state && Scope.state->armPending ? 0u : result;
     }
 };
 }
@@ -211,7 +216,7 @@ bool InstallAutoSwim() {
     AutoSwimDiveEntry::InstallAtOffset(address::DiveEntry);
     AutoSwimWaitMovement::InstallAtOffset(address::WaitMovement);
     AutoSwimStrideMovement::InstallAtOffset(address::StrideMovement);
-    Logging.Debug("[QoL Enhancements/Controls] auto swim: READY; prototype 5; analog speed; manual 2s boosts\n");
+    Logging.Debug("[QoL Enhancements/Controls] auto swim: READY; prototype 6; analog speed; 100 percent boosts; interruptible strokes\n");
     return true;
 }
 }
