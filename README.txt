@@ -1,4 +1,4 @@
-QoL Enhancements 0.4.29 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.4.30 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -9,6 +9,9 @@ included. The hint is now Use Item, editable via qol_pockets.hold_wear in the
 Pockets messages INI (English fallback). Restart after editing captions.
 Shopping Card: combined funds, Savings -> Pockets (Bell bags) -> Wallet.
 Native 16:9 placement; display caps at 999,999,999 without limiting spending.
+
+0.4.30: Keep Shopping Card entry silent when balances changed while away,
+including native cash feedback before the card is first displayed.
 
 0.4.28: Correct storage dismissal to wait for native UIMoneyDisappear completion
 (Idle with no pending transitions). The previous predicate tested Play instead.

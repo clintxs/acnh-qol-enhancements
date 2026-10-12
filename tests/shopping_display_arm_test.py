@@ -16,6 +16,7 @@ class DisplayMachine(CardMachine):
         self.hud_page = self.ram + 0x91000
         self.hud_holder = self.ram + 0x92000
         self.hud_layout = self.ram + 0x93000
+        self.write(self.hud + 0x1b0, 3, 4)  # Native State::cPlay.
         self.parameter_calls = []
         self.write(self.hud + 0x210, self.hud_page)
         self.write(self.hud_page + 0x3f8, self.hud_holder)
@@ -384,3 +385,50 @@ for base in (0x7100000000,0x7200000000):
     m.invoke(m.callbacks[0x3025400],m.counter,event)
     assert m.feedback[-1]==('DownFinish',4)
 print('PASS: hidden native cash feedback suppressed while card visible; ordinary cash feedback restored outside card scope at two bases')
+
+# Entry can happen without any HUD update outdoors. A fresh card pane starts
+# hidden, and an auxiliary update can expose it before BellPage's first update.
+from shopping_card_arm_test import RAW
+assert RAW[0x3f87a5a:0x3f87a5a + 15] == b'State::cAppear\0'
+assert int.from_bytes(RAW[0x2b13434:0x2b13438], 'little') == 0x52800041  # mov w1, #2
+for base in (0x7100000000, 0x7200000000):
+    for shop in SHOPS:
+        for auxiliary_first in (False, True):
+            m = DisplayMachine(base)
+            m.write(m.info + 0x38, shop, 4)
+            m.deposit(1000); m.update_hud()
+            m.write(m.info + 0x38, 0, 4)  # No HUD callback during scene change.
+            m.deposit(250); m.wallet -= 100
+            m.write(m.panes['N_ShoppingCard_00'] + 0x58, 2, 1)
+            m.write(m.info + 0x38, shop, 4)
+            m.write(m.hud + 0x1b0, 2, 4)  # Native State::cAppear.
+            event = m.ram + 0x7800
+            m.write(event, 77777, 4); m.write(event + 4, m.wallet, 4)
+            m.write(event + 8, 1, 4); m.write(event + 12, 1, 1)
+            # Native cash initialization runs before our presentation update.
+            m.invoke(m.callbacks[0x3025400], m.counter, event)
+            assert not m.feedback, ('entry cash feedback', shop, auxiliary_first)
+            if auxiliary_first: m.update()
+            m.update_hud()
+            assert not m.feedback and m.texts[-1] == f'{m.balance(0) + m.cash_total:,}'
+            m.write(m.hud + 0x1b0, 3, 4)
+            m.route(0x257b340, 0xb168b4, m.player, 100)
+            m.settle_hud(m.balance(0) + m.cash_total)
+            assert m.feedback[-1] == ('DownFinish', 4)
+            # Interrupt an unfinished transaction with another scene entry.
+            m.deposit(5000); m.update_hud()
+            before = list(m.feedback)
+            m.write(m.hud + 0x1b0, 2, 4); m.update_hud()
+            m.write(m.hud + 0x1b0, 3, 4); m.update_hud()
+            assert m.feedback == before
+            assert m.texts[-1] == f'{m.balance(0) + m.cash_total:,}'
+            # Resource reconstruction may first reach our hook already in Play.
+            m.deposit(100)
+            m.write(m.panes['N_ShoppingCard_00'] + 0x58, 2, 1)
+            m.update_hud()
+            assert m.feedback == before
+            # Missing card resources retain the native cash fallback.
+            del m.panes['N_ShoppingCard_00']
+            m.invoke(m.callbacks[0x3025400], m.counter, event)
+            assert m.feedback[-1] == ('DownFinish', 4)
+print('PASS: silent shop entry before card visibility, no outdoor HUD updates, auxiliary-first opening, native Appear/rebuilt Play, interrupted animations and working purchase/native fallback feedback at two bases')

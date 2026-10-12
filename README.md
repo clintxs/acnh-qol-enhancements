@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.4.29 release test build** for ACNH **3.0.3 on Eden**. One Core
+**0.4.30 release test build** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates eight optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -111,7 +111,7 @@ and restart to restore the native camera restriction. Other camera locks remain 
 
 Swimming is independent of Controls. Disable or remove its mod folder, or set
 `enabled = false` in `swimming.ini` or `swimming.custom.ini`, for vanilla swimming.
-The module supplies `enabled = true`, `version = 0.4.28`, `auto_swim = true`, and `camera_tilt_while_swimming = true`.
+The module supplies `enabled = true`, `version = 0.4.30`, `auto_swim = true`, and `camera_tilt_while_swimming = true`.
 Move any existing personal `auto_swim` setting from `controls.custom.ini` to
 `swimming.custom.ini`; Controls no longer reads it. The implementation lives in
 `source/program/swimming/`, with notes in [research/swimming/auto-swim.txt](research/swimming/auto-swim.txt).
@@ -136,7 +136,7 @@ produce and weeds. It adds no animation speed multiplier or pickup radius.
 
 ```ini
 enabled = true
-version = 0.4.28
+version = 0.4.30
 hold_to_advance_dialogue = true
 hold_to_hoover = true
 auto_vault = true
@@ -226,14 +226,14 @@ Diagnostic checks: `PYTHONPATH='../Grab 5/working/python:tests' python3 tests/di
 Install **QoL Enhancements - Crafting** with Core. This replaces the former
 Faster Crafting package; remove the old folder and rename personal
 `faster-crafting.custom.ini` preferences to `crafting.custom.ini`. Remove any old
-`version` override from that personal file (or update it to 0.4.28). The retired
+`version` override from that personal file (or update it to 0.4.30). The retired
 regular/custom paths are no longer read. Core alone no longer enables DIY previews.
 
 `romfs/qol-enhancements/config/crafting.ini` supplies these defaults:
 
 ```ini
 enabled = true
-version = 0.4.28
+version = 0.4.30
 diy_app_preview = true
 workbench_preview_tilt = true
 crafting_quantity_wrap = true
@@ -466,7 +466,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.4.28
+version = 0.4.30
 base_speed = 2
 boost_speed = 4
 faster_ui = true
@@ -626,9 +626,9 @@ at `../vanilla-3.0.3/Layout`; builders verify their hashes and archive structure
 The package script checks that every INI matches the Core release, refuses to
 replace existing archives, and creates:
 
-- `dist/qol-enhancements-v0_4_28_for_acnh_v3_0_3.zip`
-- `dist/qol-enhancements-v0_4_28_for_acnh_v3_0_3_source.zip`
-- `dist/qol-enhancements-v0_4_28_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
+- `dist/qol-enhancements-v0_4_30_for_acnh_v3_0_3.zip`
+- `dist/qol-enhancements-v0_4_30_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v0_4_30_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
 
 The binary ZIP contains a conspicuous installation text file, README, Core and
 eight independently selectable feature folders, plus a SHA-256 manifest. Source

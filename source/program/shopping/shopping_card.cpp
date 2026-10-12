@@ -40,7 +40,7 @@ constexpr unsigned SetTextMethod = 0x5e0, GroupCount = 0x10, GroupLinkOffset = 0
 constexpr unsigned NextLink = 8, MemberPane = 0x10, MemberMethods = 0x18;
 constexpr unsigned PaneParent = 0x18, PaneFlags = 0x58, CashCurrent = 0x260;
 constexpr unsigned State = 0x1b0, PendingState = 0x1f0, PendingNextState = 0x1f4;
-constexpr unsigned IdleState = 1;
+constexpr unsigned IdleState = 1, AppearState = 2;
 }
 // MurmurHash3(name, 0), independently checked against native 005bd550.
 constexpr unsigned MarketSmall = 0xbe3cad72, MarketLarge = 0x8a17f484, Tailor = 0x91e12aa0;
@@ -312,10 +312,13 @@ std::uintptr_t ShoppingCardPane(std::uintptr_t counter) {
 HOOK_DEFINE_TRAMPOLINE(CashNumberFeedback) {
     static void Callback(std::uintptr_t counter, const void *event) {
         const auto card = ShoppingCardPane(counter);
-        if (card && (Read<std::uint8_t>(card, display::PaneFlags) & 1)) {
+        if (card && ((Read<std::uint8_t>(card, display::PaneFlags) & 1) ||
+                     (CurrentShop() && FindPane(card, "T_SavingsNum_00")))) {
             // The combined counter supplies the one visible transition. Keep
             // native cash text current without replaying its hidden animation
             // and sound, including cash changes while the display is capped.
+            // Native cash feedback can run before the first presentation
+            // update on shop entry, while the card pane is still hidden.
             Fn<void (*)(std::uintptr_t, unsigned)>(address::FormatNumber)(
                 counter, Read<unsigned>(reinterpret_cast<std::uintptr_t>(event), 4));
             return;
@@ -424,7 +427,8 @@ std::uintptr_t BellPageCounter(std::uintptr_t owner) {
     return Fn<std::uintptr_t (*)(std::uintptr_t, const SafeString *)>(address::FindParameter)(
         layout + display::Parameters, &path);
 }
-void UpdateSavingsDisplay(std::uintptr_t counter, const std::uint8_t *player, DisplaySurface surface) {
+void UpdateSavingsDisplay(std::uintptr_t counter, const std::uint8_t *player, DisplaySurface surface,
+                          bool opening = false) {
     const auto shop = !Valid(player) ? 0 : (catalogPlayers & (1u << *player)) ? catalog::DisplayKey :
         (storageSessions[*player].visible || storageSessions[*player].closing) ? storage::DisplayKey : CurrentShop();
     if (surface == DisplaySurface::Hud && !shop) savingsAnimation.initialized = false;
@@ -449,6 +453,11 @@ void UpdateSavingsDisplay(std::uintptr_t counter, const std::uint8_t *player, Di
     const auto number = FindPane(card, "T_SavingsNum_00");
     const bool active = number && shop;
     const bool wasActive = Read<std::uint8_t>(card, display::PaneFlags) & 1;
+    // A scene transition need not run this hook outdoors. Seed from current
+    // funds on native Init/Idle/Appear or a newly constructed card pane, even
+    // if the previous visible shop and resident match. Auxiliary updates may
+    // already have exposed the pane, so native opening state also matters.
+    if (surface == DisplaySurface::Hud && (opening || !wasActive)) savingsAnimation.initialized = false;
     if (active && Valid(player) && storageSessions[*player].visible)
         storageSessions[*player].presented |= 1u << static_cast<unsigned>(surface);
     if (active) {
@@ -495,7 +504,8 @@ HOOK_DEFINE_TRAMPOLINE(BellPageBalanceDisplay) {
         // Each native controller must finish Out before either updater can
         // restore pocket Bells. Both can touch the same counter presentation.
         UpdateStorageDismissal(owner, player, DisplaySurface::Hud);
-        UpdateSavingsDisplay(BellPageCounter(owner), player, DisplaySurface::Hud);
+        UpdateSavingsDisplay(BellPageCounter(owner), player, DisplaySurface::Hud,
+                             owner && Read<unsigned>(owner, display::State) <= display::AppearState);
     }
 };
 HOOK_DEFINE_TRAMPOLINE(ShopWallet) {

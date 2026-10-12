@@ -1,4 +1,5 @@
-"""Core-only storage-payment playtest, retaining installed card colors/settings."""
+"""Core-only Shopping Card playtest, retaining installed card colors/settings."""
+import argparse
 from zipfile import ZipFile, ZIP_DEFLATED
 import hashlib
 import json
@@ -6,13 +7,17 @@ import package
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--shop-entry', action='store_true', help='Package the silent shop-entry fix.')
+    args = parser.parse_args()
     root = package.ROOT
     elf = (root / 'project.elf').read_bytes()
     assert package.release_version().encode()+b'\0' in elf
     for command in (b'EventFlowActionBellCountDown', b'EventFlowQueryHasBellCount',
                     b'EventFlowActionUIMoneyAppear', b'EventFlowActionUIMoneyDisappear'):
         assert command+b'\0' in elf
-    stem = f'qol-enhancements-v{package.release_version().replace(".", "_")}_shopping-storage_for_acnh_v3_0_3'
+    focus = 'shopping-entry' if args.shop_entry else 'shopping-storage'
+    stem = f'qol-enhancements-v{package.release_version().replace(".", "_")}_{focus}_for_acnh_v3_0_3'
     binary, source = (root / 'dist' / (stem + suffix) for suffix in ('.zip', '_source.zip'))
     for path in (binary, source):
         if path.exists(): raise SystemExit(f'Refusing to replace existing archive: {path}')
@@ -23,19 +28,26 @@ def main():
         f'{core}/exefs/main.npdm': (root / 'deploy/main.npdm').read_bytes(),
         f'{core}/LICENSE': (root / 'LICENSE').read_bytes(),
         'README.txt': (
-            'SHOPPING CARD: TOM NOOK STORAGE PAYMENTS - ACNH 3.0.3\n\n'
+            ('SHOPPING CARD: SILENT SHOP ENTRY - ACNH 3.0.3\n\n' if args.shop_entry else
+             'SHOPPING CARD: TOM NOOK STORAGE PAYMENTS - ACNH 3.0.3\n\n') +
             'Close ACNH. Merge the included Core folder into your existing\n'
             'QoL Enhancements - Core (REQUIRED) folder, replacing matching\n'
             'files. Keep one Core enabled and restart. Shopping Card must\n'
             'remain enabled. Your existing layouts, card colors and settings\n'
-            'are retained.\n\n'
+            'are retained.\n\n' +
+            ('Shop entry initializes the card balance silently, including when\n'
+             'funds changed while away or a previous animation was interrupted.\n'
+             'Purchase and sale animations/sounds remain enabled. The confirmed\n'
+             'storage-upgrade counter dismissal fix is retained.\n\n'
+             'Check entry after changing funds outdoors and re-entering shops.\n'
+             'Confirm purchases/sales still animate and play their usual sound.\n' if args.shop_entry else
             'All six storage-expansion fees accept combined funds: savings,\n'
             'then pocket Bell bags, then wallet. The combined card balance\n'
             'appears during the storage payment dialogue. Other Tom Nook\n'
             'fees retain their original handling. No new items or save format.\n\n'
             'Try savings-only and mixed-funds payments, cancellation and\n'
             'insufficient funds. Confirm the card finishes hiding without a\n'
-            'flash of pocket Bells; ordinary counters still work afterward.\n'
+            'flash of pocket Bells; ordinary counters still work afterward.\n') +
             'Automated checks pass;\n'
             'in-game confirmation is pending.\n\n'
             'Built with Exlaunch (GPL-2.0); see LICENSE and matching source ZIP.\n'

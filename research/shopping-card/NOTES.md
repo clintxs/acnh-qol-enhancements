@@ -723,3 +723,35 @@ slots. It covers Play -> queued Out -> Disappear -> queued Idle -> stable Idle,
 interleaved updates/either finish order, reopening, teardown and thirty commands
 before the first display update. Full layout playback remains outside emulation;
 live confirmation is still required. Payment/source priority is unchanged.
+
+
+## 0.4.30 Silent entry with native cash and stale combined balances
+
+User reports an intermittent ka-ching on entering Nook's Cranny, absent on
+immediate repeat visits. Reproduced two paths in the compiled 0.4.29 ELF:
+
+- CashNumberFeedback only suppressed native feedback when the card pane was
+  already visible. A native cash callback before the first presentation update
+  reached the real native DownFinish callback even though the card should own
+  this counter. It now also suppresses feedback when CurrentShop is supported
+  and this bound counter has both custom card and savings-number resources.
+  Formatting still executes; missing resources retain native cash feedback.
+- SavingsAnimation only reset on a HUD update outside card scope, a different
+  shop key or resident. With no outdoors HUD callback, changed funds on returning
+  to the same shop animated against the previous visit. An auxiliary update
+  before HUD could already expose the card. The old ELF produced Up feedback
+  in this sequence. HUD Init/Idle/Appear now seeds silently, as does a freshly
+  hidden/reconstructed card pane, without retaining UI pointers or using time.
+
+BellPage registration at 02B13434 supplies state 2; 02B13454 names it via
+03F87A5A (State::cAppear). Existing Idle/Play/Disappear meanings remain intact.
+Only opening seeds silently; visible purchases/sales retain native stepping,
+Up/Down/Finish and sounds. Storage dismissal still waits for Idle with no
+pending transitions; the user confirmed that 0.4.28 fix works in-game.
+
+Expanded compiled regressions cover all supported shop hashes, two bases,
+auxiliary-first opening, both balance sources changing without outdoor HUD
+updates, interrupted animation, fresh Play panes and native resource fallback.
+The previous ELF fails the new entry-feedback assertion; a separate definition-
+only fixture reproduced its stale combined Up animation. These establish the
+code paths, not the exact live trigger. Live 0.4.30 sound confirmation is pending.

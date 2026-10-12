@@ -2907,3 +2907,26 @@ release metadata, manifests and unchanged layout/color baselines.
   coverage for the setting. Live Redd conversations still need testing.
 - Existing catalog icon badges remain filled-only; this change supplies outline
   stars on existing name-star surfaces rather than introducing a new icon layout.
+
+
+## 0.4.30 Silent Shopping Card entry (2026-10-12)
+
+The user confirmed 0.4.28 storage counter dismissal in-game. Investigated the
+subsequent intermittent shop-entry sound and reproduced native cash feedback
+before card visibility plus stale combined animation with no outdoor HUD
+callback in 0.4.29. Reset on native Init/Idle/Appear or a fresh hidden card pane;
+suppress native cash feedback in supported shops with valid custom resources
+before the first presentation update. No timers, hooks, items or save changes.
+
+Pinned offline build and complete storage/display/payment ARM regression pass
+at two ASLR bases. New cases cover every supported shop, auxiliary-first entry,
+changed savings/wallet without outdoor updates, interrupted transitions, rebuilt
+Play panes and native missing-resource fallback. Existing purchase/sale feedback,
+cap, catalog, all six storage fees/eight residents and native dismissal checks
+pass. Native state registration independently identifies Appear as state 2.
+Package baseline checks retain the original layouts/colors. The exact reported
+live trigger remains unconfirmed; 0.4.30 in-game sound testing is pending.
+
+Core activation/configuration checks pass for all 256 module subsets at two
+bases, including the 0.4.29 Catalog art settings. Full and Core-only release
+packages retain existing resources, settings and prior local archives.
