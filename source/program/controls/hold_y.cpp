@@ -25,7 +25,7 @@ constexpr std::size_t ParameterCount = 0x1d8, ParameterRows = 0x1e0, ParameterFi
 // before context mapping, and extend only the pickup branch after mapping.
 constexpr std::uint64_t HeldY = 1ull << 38;
 constexpr unsigned PickupAction = 1u << 3;
-enum class Action { None, Item, Crop, Weed };
+enum class Action { None, Item, Crop, Weed, Moss };
 struct Hold {
     void *player{};
     unsigned handle{};
@@ -67,12 +67,14 @@ Action ClassifySource(const void *item) {
     if (!item) return Action::None;
     const auto id = Native<unsigned (*)(const void *)>(address::ItemId)(item);
     if (const auto row = ParameterRow(address::FieldParameters, id)) {
-        // FgMainParam's native enum: six vegetable species 18..23; weeds 31.
+        // FgMainParam's native enum: crops 18..23, seasonal weeds 24..30,
+        // and glowing moss (WeedLight) 31. Keep weed and moss holds separate.
         // Flowers, trees, vines, placed ladders/fences and all other field
-        // objects are deliberately excluded from the three hold actions.
+        // objects are deliberately excluded from the four hold actions.
         const auto kind = Native<unsigned short (*)(const void *, const void *)>(address::FieldKind)(item, row);
         if (kind >= 0x12 && kind <= 0x17) return Action::Crop;
-        return kind == 0x1f ? Action::Weed : Action::None;
+        if (kind >= 0x18 && kind <= 0x1e) return Action::Weed;
+        return kind == 0x1f ? Action::Moss : Action::None;
     }
     return ParameterRow(address::ItemParameters, id) ? Action::Item : Action::None;
 }
@@ -181,7 +183,7 @@ bool InstallHoldYPickup() {
     HooverPickup::InstallAtOffset(address::TryPickup);
     HooverReservation::InstallAtOffset(address::ReservePickup);
     HooverFurniture::InstallAtOffset(address::CheckFurniture);
-    Logging.Debug("[QoL Enhancements/Controls] hold Y: READY; item/crop/weed lock; native pickup rules\n");
+    Logging.Debug("[QoL Enhancements/Controls] hold Y: READY; item/crop/weed/moss lock; native pickup rules\n");
     return true;
 }
 }

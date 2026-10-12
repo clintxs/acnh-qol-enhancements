@@ -2681,3 +2681,33 @@ tools, prior tool/empty hands, manual changes, queued gaps and no repeated
 restoration. Existing native request-copy and silent-animation branch checks
 remain. Live idle animation/model refresh timing needs confirmation with this
 build. Earlier releases and prototypes remain preserved.
+
+
+## 0.4.22 Weed hoover classification and separate glowing moss (2026-10-11)
+
+The user reported weeds did not repeat. The original classifier mistakenly
+identified native field kind 31 (`WeedLight`, glowing moss) as ordinary weeds
+and omitted the seven seasonal weed kinds 24..30 (`WeedSpr` through `WeedWin1`).
+The native enum-name table at main+04888638 and actual FgMainParam rows confirm
+these identities. The previous synthetic fixture covered only kind 31 as Weed,
+which concealed this omission.
+
+Seasonal weeds now share the Weed category. At the user's request, glowing moss
+remains supported with a separate Moss category. Starting on weeds skips moss;
+starting on moss skips weeds. Both retain isolation from item/crop holds and
+clear on release. `hold_to_hoover` continues to control all pickup categories.
+There are no additional hooks or changes to native inventory operations.
+
+The pinned offline build passes. The expanded hoover fixture passes 8,637 cases
+at two ASLR bases, including every seasonal weed and glowing moss field variant
+from the actual local 3.0.3 BCSV, native enum-name/hash mapping, native item and
+field-kind decoding, all weed/moss transitions, release, item/crop exclusion and
+changed actual sources in both directions. Picker scheduling and reservation
+services remain modeled. Live Eden confirmation of weed repeats and separate
+moss behavior is still needed. Core and feature markers advance to 0.4.22.
+
+All twelve host suites and the full Controls group pass, including automatic
+vault/ladder/equipment policies and dialogue Hurry/catch behavior. Package
+checks pass for the current nine folders and eight feature markers; the stale
+pre-Swimming folder count in the fixture was corrected. Binary/source/personal
+example archives are packaged separately, preserving previous releases.

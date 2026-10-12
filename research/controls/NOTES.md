@@ -3,7 +3,7 @@
 ## Behavior
 
 An ordinary Y press executes the native picker unchanged. A successful ground
-reservation during that first attempt captures Item, Crop or Weed. Subsequent
+reservation during that first attempt captures Item, Crop, Weed or Moss. Subsequent
 held frames can enter the native pickup branch, but only commit the same kind.
 All six crop species share Crop. Release clears the latch. Empty, failed and
 unsupported initial attempts leave it unarmed. No inventory or save writes are
@@ -56,7 +56,12 @@ restore their previous scope.
 Parameter tables expose count at `1D8`, row pointer array at `1E0` and first ID
 at `1F8`. Lookup checks loaded resources and ID/count bounds. FgMainParam's
 runtime kind enum (`0113DB50`, cache at `050503B8`/`050503C0`) identifies crop
-species as `12..17` and weeds as `1F`. Other field objects are unsupported.
+species as `12..17`, seasonal weeds as `18..1E`, and glowing moss as `1F`.
+All seven seasonal weed types share Weed; glowing moss has a separate Moss
+category. The previous classifier incorrectly treated only WeedLight as Weed,
+so seasonal weeds never armed a hold. The native enum-name table at `04888638`
+confirms `WeedSpr..WeedWin1` occupy `18..1E`, and `WeedLight` occupies `1F`.
+Other field objects are unsupported.
 An ItemParam row without a field row is an Item; dropped produce and weeds
 therefore use the item category. Missing rows never receive a guessed category.
 
