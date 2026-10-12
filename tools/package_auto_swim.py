@@ -7,8 +7,8 @@ import package
 
 def main():
     root = package.ROOT
-    assert b'auto swim: READY; surface and underwater stick strokes' in (root / 'project.elf').read_bytes(), 'Build first: sh tools/build.sh'
-    stem = f'qol-enhancements-v{package.release_version().replace(".", "_")}_auto-swim-prototype1_for_acnh_v3_0_3'
+    assert b'auto swim: READY; surface stick strokes; underwater manual' in (root / 'project.elf').read_bytes(), 'Build first: sh tools/build.sh'
+    stem = f'qol-enhancements-v{package.release_version().replace(".", "_")}_auto-swim-prototype2_for_acnh_v3_0_3'
     binary, source = (root / 'dist' / (stem + suffix) for suffix in ('.zip', '_source.zip'))
     for path in (binary, source):
         if path.exists(): raise SystemExit(f'Refusing to replace existing archive: {path}')
@@ -20,15 +20,16 @@ def main():
         f'{core}/LICENSE': (root / 'LICENSE').read_bytes(),
         key: (root / 'modules/Controls/romfs/qol-enhancements/config/controls.ini').read_bytes(),
         'README.txt': (
-            'AUTO SWIM - PROTOTYPE 1 - ACNH 3.0.3\n\n'
+            'AUTO SWIM - PROTOTYPE 2 - SURFACE ONLY - ACNH 3.0.3\n\n'
             'Fully close ACNH. Merge the included Core and Controls folders into\n'
             'your existing QoL Enhancements mod folders, replacing matching files.\n'
             'Enable Core and Controls, then restart. Use one Core copy.\n'
             'Other modules and personal custom settings can stay installed.\n'
             'This updates an existing installation; no core.ini is included.\n\n'
             'auto_swim=true is enabled by default. Move the left stick to swim\n'
-            'without A, at the surface and underwater. Release the stick to stop\n'
-            'requesting strokes. Y still dives and surfaces normally.\n'
+            'without A at the surface. Release the stick to stop\n'
+            'requesting strokes. Underwater uses normal A controls so you can\n'
+            'turn in place while chasing creatures. Y still dives/surfaces normally.\n'
             'Set auto_swim=false in controls.ini or controls.custom.ini and\n'
             'restart to restore ordinary swimming. Custom values take priority.\n\n'
             'Test all directions, gentle stick tilt, neutral/release, repeated\n'

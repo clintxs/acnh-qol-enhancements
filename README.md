@@ -121,8 +121,9 @@ settings default to true. All Controls settings work in `controls.ini` and
 `controls.custom.ini`. Restart after editing.
 
 Automatic swimming is enabled by default. Move the left stick to swim at the
-surface or underwater without pressing A; release the stick to stop requesting
-strokes. Y still dives/surfaces normally. Set `auto_swim = false` in
+surface without pressing A; release the stick to stop requesting
+strokes. Underwater uses normal A controls so you can turn in place while
+chasing creatures. Y still dives/surfaces normally. Set `auto_swim = false` in
 `controls.ini` or `controls.custom.ini` to restore ordinary swimming. Restart
 after editing. Native stroke timing is preserved; live Eden validation is pending.
 

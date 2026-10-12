@@ -32,3 +32,15 @@ Core integration and other Controls regressions run against the same ELF.
 Loaded parameter resources are modeled. Continuous stroke cadence, swimming
 animations, diving/catching/surfacing, shore exits and multiplayer require live
 Eden testing; no live result is claimed.
+
+Prototype 2: surface only
+
+Live feedback reported a pause between automatic underwater strokes and a need
+to turn in place while chasing creatures. Remove the underwater hook and its
+compatibility dependency entirely. auto_swim remains true by default and only
+extends the surface stroke gate. Underwater A/Y input, timing and turning now
+use the original game code. Returning to the surface resumes auto-swimming.
+Tests retain native underwater branch/request construction with physical A,
+verify tilted sticks cannot synthesize underwater strokes, and confirm that
+an underwater gate conflict does not disable the independent surface hook.
+The preceding underwater hook details document prototype 1 only.

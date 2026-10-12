@@ -15,7 +15,7 @@ class SwimMachine(Machine):
         self.ready = False
         super().__init__(base, {'controls': CONFIG}, **kwargs)
         self.boot(); self.activate()
-        assert len(self.hooks) == 4 and 'auto swim: READY' in self.text, self.text
+        assert len(self.hooks) == 3 and 'auto swim: READY' in self.text, self.text
         self.player = self.ram + 0x1000
         self.context = self.ram + 0x4000
         self.parameters = self.ram + 0x5000
@@ -44,7 +44,11 @@ class SwimMachine(Machine):
         register = 8 if underwater else 9
         self.write(self.context + register * 8, physical)
         self.u.reg_write(UC_ARM64_REG_X0, self.context)
-        self.call(self.module.find('AutoSwimUnderwater' if underwater else 'AutoSwimSurface', 'Callback'))
+        if not underwater:
+            self.call(self.module.find('AutoSwimSurface', 'Callback'))
+        else:
+            assert self.base + UNDERWATER not in self.hooks
+            assert bytes(self.u.mem_read(self.base + UNDERWATER, 20)) == RAW[UNDERWATER:UNDERWATER+20]
         result = self.read(self.context + register * 8)
         assert bytes(self.u.mem_read(self.player, 0x3000)) == before
         # Execute the game's actual A branch. A taken branch lands at the
@@ -80,10 +84,10 @@ def main():
                                   (.15,.15,True), (1,1,True), (float('nan'),0,False), (float('inf'),0,False)):
                 for enabled, mode in ((1,0), (0,0), (1,1)):
                     for physical in (0, 1, 0x80):
-                        assert m.stroke(underwater,x,y,physical,enabled,mode) == (physical | int(moving and enabled and mode != 1))
+                        assert m.stroke(underwater,x,y,physical,enabled,mode) == (physical | int(not underwater and moving and enabled and mode != 1))
                         cases += 1
             for _ in range(30):
-                assert m.stroke(underwater,1,0) == 1
+                assert m.stroke(underwater,1,0) == int(not underwater)
                 assert m.stroke(underwater,0,0) == 0
         for settings, custom, expected in ((CONFIG,None,True), (CONFIG,b'auto_swim=false',False),
                                            (CONFIG+b'auto_swim=false\n',b'auto_swim=true',True),
@@ -91,13 +95,18 @@ def main():
             files={'controls':settings}
             if custom is not None: files['controls.custom']=custom
             n=Machine(base,files); n.boot(); n.activate()
-            assert all((base+a in n.hooks) == expected for a in (SURFACE,UNDERWATER))
-        for offset in (SURFACE, UNDERWATER, PARAMETERS):
+            assert (base+SURFACE in n.hooks) == expected
+            assert base+UNDERWATER not in n.hooks
+        for offset in (SURFACE, PARAMETERS):
             n=Machine(base,{'controls':DEFAULT})
             n.write(base+offset,0xdeadbeef,4); n.boot(); n.activate()
             assert 'auto swim: DISABLED' in n.text
             assert all(base+a not in n.hooks for a in (SURFACE,UNDERWATER))
             assert base+0x2222a34 in n.hooks  # Independent pickup still installs.
-    print(f'PASS: {cases} surface/underwater native stroke gates, deadzone, release, physical A, input guards, overrides and conflicts')
+        n=Machine(base,{'controls':CONFIG})
+        n.write(base+UNDERWATER,0xdeadbeef,4); n.boot(); n.activate()
+        assert base+SURFACE in n.hooks and 'auto swim: READY' in n.text
+        assert base+UNDERWATER not in n.hooks
+    print(f'PASS: {cases} surface auto strokes/underwater manual strokes, deadzone, release, physical A, input guards, overrides and conflicts')
 
 if __name__ == '__main__': main()
