@@ -2,12 +2,14 @@
 from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED
 from compression import zstd
+import argparse
 import hashlib
 import json
 import re
 import build_catalog_badge_layout as badges
 from build_layouts import build as build_fitting
 from build_shopping_card_layout import build as build_shopping
+from shopping_card_texture import COLOR_LABELS, DEFAULT_PALETTE, PALETTES
 
 ROOT = Path(__file__).resolve().parents[1]
 CORE_FOLDER = 'QoL Enhancements - Core (REQUIRED)'
@@ -52,7 +54,6 @@ def suite_files():
         f'{CORE_FOLDER}/LICENSE': (ROOT / 'LICENSE').read_bytes(),
         f'{CORE_FOLDER}/romfs/qol-enhancements/config/core.ini':
             (ROOT / 'modules/Core/romfs/qol-enhancements/config/core.ini').read_bytes(),
-        'faster-dialogue.custom.ini.example': (ROOT / 'examples/faster-dialogue.custom.ini').read_bytes(),
     }
     assert files[f'{CORE_FOLDER}/exefs/subsdk6'][:4] == b'NSO0'
     assert files[f'{CORE_FOLDER}/exefs/main.npdm'][:4] == b'META'
@@ -65,7 +66,7 @@ def suite_files():
         for path in sorted(folder.rglob('*')):
             if path.is_file() and path.name != '.DS_Store':
                 files[f'QoL Enhancements - {label}/{path.relative_to(folder)}'] = path.read_bytes()
-    for label, assets in (('Catalog', catalog_layouts()), ('Fitting Room', build_fitting()), ('Shopping Card', build_shopping())):
+    for label, assets in (('Catalog', catalog_layouts()), ('Fitting Room', build_fitting()), ('Shopping Card', build_shopping(DEFAULT_PALETTE))):
         for name, data in assets.items():
             files[f'QoL Enhancements - {label}/{name}'] = data
     manifest = {name: hashlib.sha256(data).hexdigest() for name, data in files.items()}
@@ -73,28 +74,36 @@ def suite_files():
     return files
 
 def custom_files():
-    # This separate, optional personal mod is intentionally absent from suite
-    # module folders, so replacing those folders cannot overwrite preferences.
+    # Personal settings stay separate so replacing suite modules preserves them.
     return {
-        'README.txt': (
-            'OPTIONAL PERSONAL FASTER DIALOGUE SETTINGS\n\n'
-            'Install the My Custom Faster Dialogue Settings folder alongside\n'
-            'QoL Enhancements - Core and QoL Enhancements - Faster Dialogue.\n'
-            'Enable all three in Eden and fully restart ACNH.\n\n'
-            'This preset uses base 2x, held B/R 4x, and automatic 4x for\n'
-            "Timmy, Tommy, Orville, Wilbur, Kapp'n, UI dialogs and unnamed gameplay messages.\n"
-            'Speeds are nominal tiers based on the native fast-text rate.\n'
-            'Edit romfs/qol-enhancements/config/faster-dialogue.custom.ini\n'
-            'inside the personal mod. Keep this folder when updating the suite.\n'
-            'Do not reinstall this preset over your edited personal settings.\n'
-            'Values override faster-dialogue.ini; omitted keys inherit.\n'
-            'The same settings work in either file.\n'
-            'The personal file alone cannot enable an absent Faster Dialogue module.\n'
-            'Use only one mod supplying this custom file.\n'
-        ).encode(),
-        'My Custom Faster Dialogue Settings/romfs/qol-enhancements/config/faster-dialogue.custom.ini':
+        'My Custom QoL Configuration/romfs/qol-enhancements/config/faster-dialogue.custom.ini':
             (ROOT / 'examples/faster-dialogue.custom.ini').read_bytes(),
     }
+
+
+def optional_files():
+    files = {'README.txt': (ROOT / 'README.txt').read_bytes(), **custom_files()}
+    module = ROOT / 'modules/Shopping Card'
+    for palette in PALETTES:
+        if palette == DEFAULT_PALETTE:
+            continue
+        prefix = f'Shopping Card/{COLOR_LABELS[palette]}/QoL Enhancements - Shopping Card'
+        # Include the regular marker so each variant is a complete replacement module.
+        for path in sorted(module.rglob('*')):
+            if path.is_file() and path.name != '.DS_Store':
+                files[f'{prefix}/{path.relative_to(module)}'] = path.read_bytes()
+        for path, data in build_shopping(palette).items():
+            files[f'{prefix}/{path}'] = data
+    files['SHA256.json'] = (json.dumps({
+        name: hashlib.sha256(data).hexdigest() for name, data in files.items()
+    }, indent=2) + '\n').encode()
+    return files
+
+
+def archive_stem(revision=1):
+    suffix = f'_r{revision}' if revision > 1 else ''
+    return f'qol-enhancements-v{release_version().replace(".", "_")}_for_acnh_v3_0_3{suffix}'
+
 
 def write_source_archive(path):
     excluded = {'.git', '.vscode', '__pycache__', 'build', 'deploy', 'dist', 'out'}
@@ -106,20 +115,24 @@ def write_source_archive(path):
                     archive.write(source, f'qol-enhancements/{relative}')
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--revision', type=int, default=1,
+                        help='Prepare a new packaging revision without replacing previous archives.')
+    args = parser.parse_args()
+    if args.revision < 1:
+        parser.error('--revision must be positive')
     output = ROOT / 'dist'
     output.mkdir(exist_ok=True)
-    stem = f'qol-enhancements-v{release_version().replace(".", "_")}_for_acnh_v3_0_3'
+    stem = archive_stem(args.revision)
     binary, source = output / f'{stem}.zip', output / f'{stem}_source.zip'
-    custom = output / f'{stem}_faster-dialogue-custom-example.zip'
-    for path in (binary, source, custom):
+    optional = output / f'{stem}_optional-files.zip'
+    for path in (binary, source, optional):
         if path.exists(): raise SystemExit(f'Refusing to replace existing release: {path}')
-    files = suite_files()
-    with ZipFile(binary, 'w', ZIP_DEFLATED) as archive:
-        for name, data in sorted(files.items()): archive.writestr(name, data)
-    with ZipFile(custom, 'w', ZIP_DEFLATED) as archive:
-        for name, data in sorted(custom_files().items()): archive.writestr(name, data)
+    for path, files in ((binary, suite_files()), (optional, optional_files())):
+        with ZipFile(path, 'x', ZIP_DEFLATED) as archive:
+            for name, data in sorted(files.items()): archive.writestr(name, data)
     write_source_archive(source)
-    for path in (binary, source, custom):
+    for path in (binary, source, optional):
         with ZipFile(path) as archive: assert archive.testzip() is None
         print(path)
 

@@ -1,12 +1,16 @@
 """Check final suite structure, marker versions, manifests and inherited assets."""
 from pathlib import Path
 from zipfile import ZipFile
+import argparse
 import hashlib
 import json
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 import package
 
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--revision', type=int, default=1)
+args = parser.parse_args()
 files = package.suite_files()
 core = package.CORE_FOLDER
 assert {name for name in files if '/exefs/' in name} == {
@@ -45,16 +49,41 @@ for name, digest in manifest.items(): assert hashlib.sha256(files[name]).hexdige
 # Resource generation must reproduce the reviewed module baselines exactly.
 for name, digest in reference['assets'].items():
     assert hashlib.sha256(files[name]).hexdigest() == digest, name
-print('PASS: eight mod folders, subsdk6 only, seven versioned feature configs and default Core settings, seven layout resources, revised basket and green Shopping Card layout and SHA-256 manifest')
+print('PASS: eight mod folders, subsdk6 only, seven versioned feature configs and default Core settings, seven layout resources, revised basket and default Island Inverted Shopping Card layout and SHA-256 manifest')
 custom = package.custom_files()
 personal = [name for name in custom if '/config/' in name]
 assert len(personal) == 1 and personal[0].endswith('/faster-dialogue.custom.ini')
-assert custom[personal[0]] == files['faster-dialogue.custom.ini.example']
+assert personal[0] == 'My Custom QoL Configuration/romfs/qol-enhancements/config/faster-dialogue.custom.ini'
+assert custom[personal[0]] == (package.ROOT / 'examples/faster-dialogue.custom.ini').read_bytes()
+assert 'faster-dialogue.custom.ini.example' not in files
 assert b'boost_unnamed_messages = true\n' in custom[personal[0]]
 assert not any('/exefs/' in name or name.endswith('/faster-dialogue.ini') for name in custom)
 print('PASS: separate personal preset, no module marker or executable, suite updates cannot replace custom INI')
 
-stem = f'qol-enhancements-v{package.release_version().replace(".", "_")}_for_acnh_v3_0_3'
+optional = package.optional_files()
+assert optional['README.txt'] == files['README.txt'] == (package.ROOT / 'README.txt').read_bytes()
+assert all(optional[name] == data for name, data in custom.items())
+assert not any('/exefs/' in name or 'Island Inverted/' in name for name in optional)
+assert {name.split('/')[1] for name in optional if name.startswith('Shopping Card/')} == {
+    'ADB Teal', 'Bell Gold', 'Hotel Blue', 'Poki Red', 'Island'}
+from build_shopping_card_layout import build as shopping_layout
+for palette, label in package.COLOR_LABELS.items():
+    generated = shopping_layout(palette)
+    if palette == package.DEFAULT_PALETTE:
+        for path, data in generated.items():
+            assert files[f'QoL Enhancements - Shopping Card/{path}'] == data
+        continue
+    prefix = f'Shopping Card/{label}/QoL Enhancements - Shopping Card'
+    for path, data in generated.items():
+        assert optional[f'{prefix}/{path}'] == data
+    assert optional[f'{prefix}/romfs/qol-enhancements/config/shopping-card.ini'] == files[
+        'QoL Enhancements - Shopping Card/romfs/qol-enhancements/config/shopping-card.ini']
+manifest = json.loads(optional['SHA256.json'])
+assert set(manifest) == set(optional) - {'SHA256.json'}
+for name, digest in manifest.items(): assert hashlib.sha256(optional[name]).hexdigest() == digest
+print('PASS: Optional Files contains five complete color variants, exact custom settings, shared README and SHA-256 manifest; default excluded')
+
+stem = package.archive_stem(args.revision)
 archive = package.ROOT / 'dist' / f'{stem}.zip'
 if archive.exists():
     with ZipFile(archive) as result:
@@ -71,9 +100,9 @@ if archive.exists():
         assert any(name.endswith('/source/program/controls/controls_module.cpp') for name in source.namelist())
         assert any(name.endswith('/modules/Controls/romfs/qol-enhancements/config/controls.ini') for name in source.namelist())
         assert not any(name.endswith('/core/patches.hpp') for name in source.namelist())
-    with ZipFile(package.ROOT / 'dist' / f'{stem}_faster-dialogue-custom-example.zip') as result:
-        assert result.testzip() is None and set(result.namelist()) == set(custom)
-        for name, data in custom.items(): assert result.read(name) == data
+    with ZipFile(package.ROOT / 'dist' / f'{stem}_optional-files.zip') as result:
+        assert result.testzip() is None and set(result.namelist()) == set(optional)
+        for name, data in optional.items(): assert result.read(name) == data
     print('PASS: exact binary ZIP contents and source ZIP excludes generated binaries/game assets')
 
 caption_path = 'QoL Enhancements - Fitting Room/romfs/qol-enhancements/messages/fitting-room.ini'

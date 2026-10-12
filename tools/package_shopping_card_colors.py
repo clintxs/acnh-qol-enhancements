@@ -9,14 +9,8 @@ from package import release_version
 
 ROOT = Path(__file__).resolve().parents[1]
 FOLDER = 'QoL Enhancements - Shopping Card'
-COLOR_LABELS = {
-    'green': 'ADB Teal',
-    'gold': 'Bell Gold',
-    'hotel-blue': 'Hotel Blue',
-    'poki-red': 'Poki Red',
-    'island': 'Island',
-    'island-inverted': 'Island Inverted',
-}
+from shopping_card_texture import COLOR_LABELS, DEFAULT_PALETTE
+
 
 
 def main():
@@ -27,21 +21,21 @@ def main():
     if args.revision < 1:
         parser.error('--revision must be positive')
     version = release_version().replace('.', '_')
-    suite = ROOT / 'dist' / f'qol-enhancements-v{version}_for_acnh_v3_0_3.zip'
     revision = f'_r{args.revision}' if args.revision > 1 else ''
     option = args.palette or 'colors'
     output = ROOT / 'dist' / f'shopping-card-{option}-v{version}_for_acnh_v3_0_3{revision}.zip'
     if output.exists():
         raise SystemExit(f'Refusing to replace existing color options: {output}')
     files = {'README.md': (ROOT / 'SHOPPING_CARD_COLORS.md').read_bytes()}
-    for name in (args.palette,) if args.palette else card.PALETTES:
+    palettes = (args.palette,) if args.palette else tuple(
+        name for name in card.PALETTES if name != DEFAULT_PALETTE)
+    for name in palettes:
+        prefix = f'Shopping Card/{COLOR_LABELS[name]}/{FOLDER}'
+        for path in sorted((ROOT / 'modules/Shopping Card').rglob('*')):
+            if path.is_file() and path.name != '.DS_Store':
+                files[f'{prefix}/{path.relative_to(ROOT / "modules/Shopping Card")}'] = path.read_bytes()
         for path, data in card.build(name).items():
-            files[f'{COLOR_LABELS[name]}/{FOLDER}/{path}'] = data
-            if name == 'green':
-                # The fallback must restore the user's known-working release,
-                # rather than a newly regenerated approximation of that art.
-                with ZipFile(suite) as previous:
-                    assert previous.read(f'{FOLDER}/{path}') == data
+            files[f'{prefix}/{path}'] = data
     files['SHA256.json'] = (json.dumps({
         name: hashlib.sha256(data).hexdigest() for name, data in files.items()
     }, indent=2) + '\n').encode()

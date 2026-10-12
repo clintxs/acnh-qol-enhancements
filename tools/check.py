@@ -31,6 +31,8 @@ def main():
             subprocess.run(['c++', '-std=c++20', '-Wall', '-Wextra', '-Werror', '-I', str(ROOT / 'source'),
                             str(ROOT / 'tests' / f'{name}.cpp'), '-o', str(exe)], check=True)
             arguments = [str(exe)]
+            if name == 'dialogue_settings_test':
+                arguments.append(str(ROOT / 'examples/faster-dialogue.custom.ini'))
             if name == 'catalog_test':
                 arguments.append(str(ROOT / 'modules/Pockets/romfs/qol-enhancements/messages/pockets.ini'))
             subprocess.run(arguments, check=True)

@@ -7,6 +7,17 @@ No Pillow/image editor or game asset is required to generate these pixels.
 from dataclasses import dataclass, replace
 from functools import lru_cache
 
+# Packaging uses this reviewed palette; legacy helper defaults remain stable.
+DEFAULT_PALETTE = 'island-inverted'
+COLOR_LABELS = {
+    'green': 'ADB Teal',
+    'gold': 'Bell Gold',
+    'hotel-blue': 'Hotel Blue',
+    'poki-red': 'Poki Red',
+    'island': 'Island',
+    'island-inverted': 'Island Inverted',
+}
+
 PIXELS_PER_UNIT = 2
 CANVAS = (128, 96)
 WIDTH, HEIGHT = (size * PIXELS_PER_UNIT for size in CANVAS)

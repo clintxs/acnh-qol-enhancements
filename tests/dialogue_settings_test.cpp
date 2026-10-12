@@ -2,8 +2,10 @@
 #include <cassert>
 #include <string>
 #include <cstdio>
+#include <fstream>
+#include <iterator>
 using namespace qol::dialogue;
-int main() {
+int main(int argc, char **argv) {
     Settings settings{};
     assert(settings.boostUiMessages && settings.boostUnnamedMessages);
     for (unsigned base = MinSpeed; base <= MaxSpeed; ++base) {
@@ -125,5 +127,19 @@ int main() {
     settings = {};
     assert(ApplySettings("faster_ui=false\nfaster_unnamed=false\nfaster_npc_list=owl", settings) == 3);
     assert(settings.boostUiMessages && settings.boostUnnamedMessages && !settings.npcCount);
+    if (argc == 2) {
+        std::ifstream file(argv[1]);
+        assert(file);
+        const std::string example{std::istreambuf_iterator<char>(file), {}};
+        assert(!ParseSettings(example, settings));
+        assert(settings.npcCount == 21 && settings.baseSpeed == 2 && settings.boostSpeed == 4);
+        for (auto id : {"rcm", "rct", "dod", "doc", "kpp", "kppB", "owl", "gstA", "gstB", "hgh",
+                        "cml", "cmlB", "ttlA", "ttlB", "alp", "alw", "slo", "fox", "skk", "bey", "chy"}) {
+            // Resource IDs select the boost even when the visible name is unrelated or absent.
+            for (auto visible : {"", "Timmy", "フータ", "Sócrates"})
+                assert(SelectSpeed(settings, MessageKind::Npc, id, false, visible) == 4);
+        }
+        assert(SelectSpeed(settings, MessageKind::Npc, "unlisted", false) == 2);
+    }
     puts("PASS: dialogue defaults, aliases/IDs, independent UI/unnamed/NPC policy, exact self-message banks, non-stacking boost, invalid keys/values, duplicates and bounded lists");
 }

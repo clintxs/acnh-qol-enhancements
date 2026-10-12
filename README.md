@@ -364,12 +364,12 @@ the original transaction routines. Space checks no longer assume spending
 Bell bags frees pocket slots. Harv's Island, other vendors, the drop-off box,
 ABD transfers and ordinary pocket-money actions retain their existing paths.
 
-The top-right currency display uses a green shopping card and a separate
+The top-right currency display defaults to Island Inverted, with a lighter teal
+card, teal oval and cream balance, outlines and backing. It shows a separate
 combined balance inside the two shops and while the catalog is open. The display
 saturates at **999,999,999**, while purchases still use the full combined funds;
-the prototype label is English (“Bells”), on a white badge with green text.
-The green oval has a thick white rim. The centered card has a dark edge and
-a white backing behind the oval; the white Bells badge sits at the lower right.
+the label is English (“Bells”). Optional Files supplies five alternative colors.
+The following notes describe development of the original ADB Teal design.
 0.3.10 restored the compact layout after 0.3.9 made both savings and
 ordinary cash counters disappear; the user confirmed the recovery works.
 0.3.11 replaced the stepped corners with native rounded geometry but rendered
@@ -521,11 +521,10 @@ Restart the game after changing settings.
 
 All five preferences below work in either Faster Dialogue INI. Personal
 preferences are best kept in a separate mod so suite updates cannot replace them.
-The main ZIP contains only an `.example` file at its root; it never supplies the
-actual custom INI. A separate optional preset ZIP contains:
+The main ZIP contains no custom INI. The Optional Files ZIP contains:
 
 ```
-My Custom Faster Dialogue Settings/
+My Custom QoL Configuration/
   romfs/qol-enhancements/config/faster-dialogue.custom.ini
 ```
 
@@ -534,7 +533,10 @@ base_speed = 2
 boost_speed = 4
 boost_ui_messages = true
 boost_unnamed_messages = true
-boost_npc_list = Timmy, Tommy, Orville, Wilbur, Kapp'n
+boost_npc_list = rcm, rct, dod, doc, kpp, kppB, owl, gstA, gstB, hgh, cml, cmlB, ttlA, ttlB, alp, alw, slo, fox, skk, bey, chy
+
+# Internal IDs work across languages. You can also use the localized name. English names are shown in parentheses:
+# rcm (Timmy), rct (Tommy), dod (Orville), doc (Wilbur), kpp/kppB (Kapp'n), owl (Blathers), gstA/gstB (Wisp), hgh (Mabel), cml/cmlB (Saharah), ttlA (Tortimer), ttlB (Cornimer), alp (Cyrus), alw (Reese), slo (Leif), fox (Redd), skk (Kicks), bey (C.J.), chy (Flick)
 ```
 
 Enable that personal mod alongside Core and Faster Dialogue. Keep it when
@@ -640,14 +642,20 @@ at `../vanilla-3.0.3/Layout`; builders verify their hashes and archive structure
 The package script checks that every INI matches the Core release, refuses to
 replace existing archives, and creates:
 
-- `dist/qol-enhancements-v0_4_31_for_acnh_v3_0_3.zip`
-- `dist/qol-enhancements-v0_4_31_for_acnh_v3_0_3_source.zip`
-- `dist/qol-enhancements-v0_4_31_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
+- `dist/qol-enhancements-v0_4_32_for_acnh_v3_0_3.zip`
+- `dist/qol-enhancements-v0_4_32_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v0_4_32_for_acnh_v3_0_3_optional-files.zip`
 
 The binary ZIP contains a conspicuous installation text file, README, Core and
 seven independently selectable feature folders, plus a SHA-256 manifest. Source
 includes modules/configurations, translations, code, tools, tests and notices;
-generated game resources and binaries are excluded.
+generated game resources and binaries are excluded. Optional Files includes
+five complete Shopping Card color replacements (excluding default Island Inverted),
+`My Custom QoL Configuration` with an internal-ID dialogue preset, and the shared
+README.txt. Use `python3 tools/package.py --revision 2` to produce `_r2` archives
+without replacing previously generated files. The supplied README.txt is the
+user's v1.0.0 release draft; executable/module versions remain developmental
+until the release is finalized.
 
 To prepare configuration for a fresh original ExeFS extraction:
 

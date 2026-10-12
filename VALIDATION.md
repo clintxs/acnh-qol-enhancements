@@ -3000,3 +3000,29 @@ keys, unchanged layout/NPDM baselines and manifests. Controls features are uncha
 This verifies compiled policy and modeled native paths, not live Eden rendering,
 input timing or animation playback. Live 0.4.32 checks remain necessary for the
 new off switches and localized footer captions. Previous releases are retained.
+
+
+## First-release packaging draft / 0.4.32 revision 2 (2026-10-12)
+
+The user-supplied v1.0.0 README draft replaces README.txt verbatim. Executable
+and module versions remain 0.4.32 while release packaging is prepared; revision
+suffixes preserve every older archive. No runtime C++ behavior changes.
+
+Main-suite packaging now selects Island Inverted explicitly. Optional Files
+contains Shopping Card/ADB Teal, Bell Gold, Hotel Blue, Poki Red and Island,
+each enclosing a complete QoL Enhancements - Shopping Card module with its
+regular configuration marker and generated layout. Island Inverted is excluded
+from the alternatives. The former standalone dialogue-example download and
+loose main-ZIP example are replaced by My Custom QoL Configuration at the
+requested custom INI path. Its 21 NPC IDs and explanatory comments match the
+user's supplied preset; there are no localized-name entries or enabled/version
+overrides. Both downloads carry the same README.txt and their own SHA-256 manifest.
+
+Checks passed: host dialogue parser/selection against the actual example (all
+21 IDs match independently of the visible speaker name), package structure and
+configuration-marker equality, all six palette structure/original-resource
+checks, byte-identical ADB Teal compared with the prior main-suite archive,
+and the new default's native texture-name lookup/relocation at two load bases.
+The supplied README is byte-identical to the attachment. Final ZIP integrity,
+exact content, manifests and source exclusions are checked after generation.
+Native GPU appearance remains a live-game validation boundary.
