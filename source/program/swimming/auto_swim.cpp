@@ -29,7 +29,7 @@ constexpr float BoostFraction = 1.f;
 constexpr std::uint64_t TicksPerSecond = 19'200'000ull;
 constexpr std::uint64_t StrokeInterval = TicksPerSecond * 2;
 constexpr std::uint64_t BoostDelay = TicksPerSecond / 2;
-constexpr std::uint64_t BoostDuration = TicksPerSecond;
+constexpr std::uint64_t BoostDuration = TicksPerSecond * 3 / 2;
 constexpr std::uint64_t SessionGap = TicksPerSecond / 2;
 struct SwimState {
     const void *player{};
@@ -66,7 +66,7 @@ float StickThrottle(const void *player) {
 float BoostEnvelope(const SwimState &state, std::uint64_t now) {
     const auto elapsed = now - state.lastStroke;
     // Match the arm push rather than the start of the animation. Keep the
-    // full one-second fade after this delay, independent of stroke cooldown.
+    // full 1.5-second fade after this delay, independent of stroke cooldown.
     if (!state.hasStroke || elapsed < BoostDelay || elapsed >= BoostDelay + BoostDuration) return 0.f;
     return 1.f - float(elapsed - BoostDelay) / float(BoostDuration);
 }
@@ -222,7 +222,7 @@ bool InstallAutoSwim() {
     AutoSwimDiveEntry::InstallAtOffset(address::DiveEntry);
     AutoSwimWaitMovement::InstallAtOffset(address::WaitMovement);
     AutoSwimStrideMovement::InstallAtOffset(address::StrideMovement);
-    Logging.Debug("[QoL Enhancements/Swimming] auto swim: READY; prototype 8; analog speed; delayed 1s 100 percent boosts; interruptible strokes\n");
+    Logging.Debug("[QoL Enhancements/Swimming] auto swim: READY; prototype 9; analog speed; delayed 1.5s 100 percent boosts; interruptible strokes\n");
     return true;
 }
 }

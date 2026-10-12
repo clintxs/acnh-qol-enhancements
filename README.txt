@@ -11,7 +11,7 @@ Shopping Card: combined funds, Savings -> Pockets (Bell bags) -> Wallet.
 Native 16:9 placement; display caps at 999,999,999 without limiting spending.
 
 0.4.21: Swimming is now its own optional module. Boost propulsion starts 0.5s
-into the arm stroke and fades over one second; stroke cooldown remains 2s.
+into the arm stroke and fades over 1.5 seconds; stroke cooldown remains 2s.
 
 INSTALL
 Fully close ACNH. Disable the standalone Catalog Aware Shops, QoL Pockets
@@ -533,17 +533,17 @@ Early startup errors still log. Special dialogue MESSAGE/SELECT tracing needs
 the diagnostic build and log_debug=true in core.custom.ini. Trace limits remain.
 Invalid values inherit; duplicate keys restore the value from before that file.
 
-Swimming module / auto_swim (prototype 8): enabled by default at the surface and
+Swimming module / auto_swim (prototype 9): enabled by default at the surface and
 underwater. Stick travel gradually controls speed beyond a small neutral dead
 zone. Starting movement requests one opening arm stroke. Press A for a
 boost with a roughly two-second cooldown; hold A to repeat when ready. Further
 arm strokes require A. Each boost starts half a second into the arm stroke,
-adds 100% of full cruise speed and then fades over one full second. Ready strokes interrupt the kick animation, with a two-second
+adds 100% of full cruise speed and then fades over 1.5 seconds. Ready strokes interrupt the kick animation, with a two-second
 cooldown measured from actual arm entry. Quiet kicking and smooth cruise
 continue between strokes.
 Stopping/restarting or diving/surfacing does not bypass the cooldown. Y keeps
 priority for diving/surfacing/catching. Set auto_swim = false in swimming.ini
-or swimming.custom.ini and restart for ordinary swimming. In-game validation
+or swimming.custom.ini and restart for ordinary swimming movement. In-game validation
 of this prototype is pending.
 
 Swimming is independent of Controls. Install Core plus the Swimming folder to
@@ -551,3 +551,9 @@ use the overhaul. Disable/remove Swimming, or set enabled=false in swimming.ini
 or swimming.custom.ini, to use vanilla swimming. Move any personal auto_swim
 setting from controls.custom.ini to swimming.custom.ini. Controls no longer
 owns this setting. Swimming defaults to enabled=true and auto_swim=true.
+
+camera_tilt_while_swimming=true is also enabled by default in Swimming. The
+right stick selects the normal three tilt positions while swimming forward.
+This works independently of auto_swim. Set camera_tilt_while_swimming=false
+in swimming.ini or swimming.custom.ini and restart for the native camera
+restriction. Other camera locks remain active.

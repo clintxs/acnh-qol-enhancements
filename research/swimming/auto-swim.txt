@@ -219,3 +219,43 @@ personal auto_swim preferences to the new Swimming overlay. Core registers the
 eighth feature module with minimum package 0.4.21. The suite now has nine mod
 folders including Core. Tests cover module absence/disable, Controls-only
 isolation and settings layering as well as the delayed boost curve.
+
+
+Prototype 9: 1.5-second boost fade and camera tilt while moving
+-----------------------------------------------------------
+BoostDuration is now 1.5 seconds, retaining the 0.5-second wind-up and
+100 percent peak additive cruise speed. The fade therefore ends at the
+2-second stroke cooldown boundary. Opening/manual/held-A policy is unchanged.
+
+Swimming owns a separate default-true camera_tilt_while_swimming setting.
+auto_swim=false disables movement changes only; disabling Swimming restores
+both native movement and camera restrictions.
+
+ACNH 3.0.3 camera eligibility at main+0x241dab4 is called from camera update
+paths at 0x7afec0, 0x7b6018 and 0x7b7600. It has two false exits: action-service
+flag bit 9 (global lock, 0x241db08..0x241db18), and validated active-resident
+action 0xf7 (surface SwimStride, compare at 0x241dc6c). DiveStride (0xfb)
+already passes this eligibility check. Snapshot validity/type/bounds checks
+precede the action comparison. The normal right-stick three-position tilt
+controller at 0x7cd7bc remains untouched.
+
+A trampoline around the eligibility function calls the native original first.
+If it rejects, the wrapper reads lock bit 9 from service main+0x53f5738 +0x200,
+or initialized fallback flags at main+0x53f08d0 if the service is absent.
+It permits the swimming rejection only when that lock is clear. This preserves
+native initialization/snapshot handling and all camera locks elsewhere in the
+camera update. Entry, flag pointers/lock bit, lock branch and action-comparison fingerprints validate
+these assumptions before install. Camera and movement failures are isolated.
+
+Use the entry trampoline rather than an inline hook on the final comparator:
+the global-lock branch targets the epilogue inside that comparator's possible
+20-byte overwrite span. A far inline hook there could corrupt the lock return.
+
+Regression coverage executes the compiled wrapper and complete native
+eligibility function for all valid action IDs, invalid actions, global flag
+combinations, all residents, both snapshot buffers, invalid snapshots and
+fallback service paths at two ASLR bases. It checks independent config switches,
+duplicate rollback, disabled/absent modules, conflicts and unchanged native
+tilt controller bytes. Swim regressions check the extended curve through its
+2-second endpoint and unchanged cadence. Live camera motion, animation, sound,
+collision and multiplayer still require in-game testing.

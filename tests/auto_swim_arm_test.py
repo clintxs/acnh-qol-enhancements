@@ -9,7 +9,7 @@ from core_arm_test import Machine, DEFAULT
 from unicorn.arm64_const import *
 
 BINDINGS = (0x236b77c,0x236bea0,0x236bbb8,0x236cf20,0x236db00,0x236d6a0,0x2364b10,0x2365878)
-CONFIG = DEFAULT
+CONFIG = DEFAULT + b'camera_tilt_while_swimming=false\n'
 TICKS = 19_200_000
 
 class SwimMachine(Machine):
@@ -150,7 +150,7 @@ def main():
                 m.tick+=TICKS//30
                 pressed=1 if frame==10 else 0
                 assert m.update(prefix+'Stride',pressed=pressed)==(1,0,31)
-                envelope=max(0.,1-(frame-15)/30) if frame>=15 else 0.
+                envelope=max(0.,1-(frame-15)/45) if frame>=15 else 0.
                 assert abs(m.float(0x1820)-(.8+.8*envelope))<1e-6
                 if frame in (30,90,150):
                     assert m.update(prefix+'Entry')==(1,0,31)
@@ -172,7 +172,7 @@ def main():
                     assert m.update(prefix+'Stride',x=.575,held=1)==expected
                     assert m.movement_results[-1]==(0 if frame==60 else 3)
                     m.stride_gate(underwater,frame==60)
-                    envelope=max(0.,1-(frame-15)/30) if frame>=15 else 0.
+                    envelope=max(0.,1-(frame-15)/45) if frame>=15 else 0.
                     assert abs(m.float(0x1820)-(.4+.8*envelope))<1e-6
                     cases+=1
                 assert m.update(prefix+'Entry',x=.575,held=1)==(1,0,0)
@@ -211,12 +211,12 @@ def main():
             assert m.update(prefix+'Entry',0,0)==(1,0,0)
             m.update(prefix+'Stride',0,0)
             assert m.float(0x1820)==0  # Neutral stroke wind-up has no impulse.
-            for frame in range(1,46):
+            for frame in range(1,61):
                 m.tick+=TICKS//30
                 held,_,_=m.update(prefix+'Stride',0,0)
-                envelope=max(0.,1-(frame-15)/30) if frame>=15 else 0.
+                envelope=max(0.,1-(frame-15)/45) if frame>=15 else 0.
                 assert abs(m.float(0x1820)-.8*envelope)<1e-6
-                assert held==int(frame<45)
+                assert held==int(frame<60)
                 cases+=1
             # Y takes priority over automatic/manual arm requests.
             assert m.update(prefix+'Stride',pressed=9)==(0,8,31)
@@ -254,6 +254,6 @@ def main():
             n.write(base+offset,0xdeadbeef,4); n.boot(); n.activate()
             assert 'auto swim: DISABLED' in n.text and all(base+a not in n.hooks for a in BINDINGS)
             assert base+0x2222a34 in n.hooks
-    print(f'PASS: {cases} analog stick speed, opening stroke only, manual tap/hold cooldown, interruptible native stride gates, irregular-rate cadence, delayed entries, half-second wind-up and one-second 100% decaying impulse, neutral boost, native steering, scope restoration, Y priority, surface/dive cruise, config and conflicts')
+    print(f'PASS: {cases} analog stick speed, opening stroke only, manual tap/hold cooldown, interruptible native stride gates, irregular-rate cadence, delayed entries, half-second wind-up and 1.5-second 100% decaying impulse, neutral boost, native steering, scope restoration, Y priority, surface/dive cruise, config and conflicts')
 
 if __name__=='__main__': main()

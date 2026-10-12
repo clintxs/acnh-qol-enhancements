@@ -5,7 +5,7 @@
 using namespace qol::swimming;
 int main() {
     Settings settings{};
-    assert(settings.autoSwim);
+    assert(settings.autoSwim && settings.cameraTiltWhileSwimming);
     for (bool prior : {false, true}) {
         settings.autoSwim = prior;
         assert(!ApplySettings("# inherit", settings) && settings.autoSwim == prior);
@@ -21,5 +21,17 @@ int main() {
     assert(settings.autoSwim);
     assert(ApplySettings(std::string(4097, ' '), settings) == 1 && settings.autoSwim);
     assert(ApplySettings("unknown=true\nbroken", settings) == 2);
+    for (bool prior : {false, true}) {
+        settings.cameraTiltWhileSwimming = prior;
+        assert(!ApplySettings("# inherit", settings) && settings.cameraTiltWhileSwimming == prior);
+        assert(ApplySettings("camera_tilt_while_swimming=yes", settings) == 1 && settings.cameraTiltWhileSwimming == prior);
+        assert(ApplySettings("camera_tilt_while_swimming=false\ncamera_tilt_while_swimming=true", settings) == 1 && settings.cameraTiltWhileSwimming == prior);
+        assert(!ApplySettings("camera_tilt_while_swimming=false", settings) && !settings.cameraTiltWhileSwimming);
+        assert(!ApplySettings("camera_tilt_while_swimming=true", settings) && settings.cameraTiltWhileSwimming);
+    }
+    assert(ApplySettings("auto_swim=false\nauto_swim=true\ncamera_tilt_while_swimming=false", settings) == 1);
+    assert(settings.autoSwim && !settings.cameraTiltWhileSwimming);
+    assert(ApplySettings("auto_swim=false\ncamera_tilt_while_swimming=true\ncamera_tilt_while_swimming=false", settings) == 1);
+    assert(!settings.autoSwim && !settings.cameraTiltWhileSwimming);
     std::cout << "PASS: Swimming default, inheritance, boolean validation and duplicate rollback\n";
 }

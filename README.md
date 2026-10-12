@@ -39,7 +39,7 @@ Missing runtime data leaves the name unchanged. Live Eden verification is pendin
 | Crafting | DIY/workbench previews, quantity wrap + configurable crafting/cooking speed | Configuration only |
 | Shopping Card | Combined savings/cash routing prototype | Configuration + card currency layout |
 | Controls | Automatic traversal, tool restoration, hold Y pickups and dialogue hurry | Configuration only |
-| Swimming | Analog swim speed and timed manual stroke boosts | Configuration only |
+| Swimming | Analog swim speed, timed stroke boosts and camera tilt while moving | Configuration only |
 
 Faster tool-wheel animations and other workspace mods are not bundled in this
 eight-feature suite. Historical source notes under `docs/` describe each
@@ -97,16 +97,21 @@ default at the surface and underwater. Stick travel gradually controls speed, wi
 move requests one opening arm stroke. Further arm strokes require A: press for
 a boost or hold to repeat whenever the roughly two-second cooldown ends.
 Each boost starts half a second into the arm stroke, adds 100% of full cruising
-speed and then fades over one full second. Ready boosts interrupt the current kick animation; the two-second cooldown starts
+speed and then fades over 1.5 seconds. Ready boosts interrupt the current kick animation; the two-second cooldown starts
 when the arm stroke begins. Quiet foot kicking continues between strokes,
 and underwater speed is independent of the animation cycle. Stopping/restarting or diving/surfacing does not bypass the
 boost cooldown. Y still takes priority for diving/surfacing/catching. Set
 `auto_swim = false` in `swimming.ini` or `swimming.custom.ini` and restart to
-restore ordinary swimming. In-game feel and animation validation are pending.
+restore ordinary swimming movement. In-game feel and animation validation are pending.
+
+The right stick can also select the normal three camera tilt positions while
+swimming forward. This works independently of `auto_swim`. Set
+`camera_tilt_while_swimming = false` in `swimming.ini` or `swimming.custom.ini`
+and restart to restore the native camera restriction. Other camera locks remain active.
 
 Swimming is independent of Controls. Disable or remove its mod folder, or set
 `enabled = false` in `swimming.ini` or `swimming.custom.ini`, for vanilla swimming.
-The module supplies `enabled = true`, `version = 0.4.21`, and `auto_swim = true`.
+The module supplies `enabled = true`, `version = 0.4.21`, `auto_swim = true`, and `camera_tilt_while_swimming = true`.
 Move any existing personal `auto_swim` setting from `controls.custom.ini` to
 `swimming.custom.ini`; Controls no longer reads it. The implementation lives in
 `source/program/swimming/`, with notes in [research/swimming/auto-swim.txt](research/swimming/auto-swim.txt).
