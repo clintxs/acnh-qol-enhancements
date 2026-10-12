@@ -270,3 +270,13 @@ Keep the 0.5-second onset delay, 1.5-second fade, 2-second stroke cooldown,
 manual/held-A stroke policy and camera tilt behavior unchanged. Update the
 compiled swim regression's surface/dive, partial-stick and neutral impulse
 expectations to half strength. Preserve prototype 9 archives.
+
+
+Prototype 11: 75 percent boost strength
+--------------------------------------
+Requested another playtest between the previous strengths. Set BoostFraction
+to .75: peak additive propulsion is 75 percent of full cruise speed, yielding
+1.75 times ordinary cruise speed at full stick at the boost peak. Keep the
+0.5-second onset delay, 1.5-second fade, 2-second cooldown, stroke policy and
+camera tilt behavior unchanged. Update surface/dive, partial-stick and neutral
+impulse regression expectations. Preserve all earlier playtest archives.

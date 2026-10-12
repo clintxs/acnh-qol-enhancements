@@ -151,7 +151,7 @@ def main():
                 pressed=1 if frame==10 else 0
                 assert m.update(prefix+'Stride',pressed=pressed)==(1,0,31)
                 envelope=max(0.,1-(frame-15)/45) if frame>=15 else 0.
-                assert abs(m.float(0x1820)-(.8+.4*envelope))<1e-6
+                assert abs(m.float(0x1820)-(.8+.6*envelope))<1e-6
                 if frame in (30,90,150):
                     assert m.update(prefix+'Entry')==(1,0,31)
                 cases+=1
@@ -173,7 +173,7 @@ def main():
                     assert m.movement_results[-1]==(0 if frame==60 else 3)
                     m.stride_gate(underwater,frame==60)
                     envelope=max(0.,1-(frame-15)/45) if frame>=15 else 0.
-                    assert abs(m.float(0x1820)-(.4+.4*envelope))<1e-6
+                    assert abs(m.float(0x1820)-(.4+.6*envelope))<1e-6
                     cases+=1
                 assert m.update(prefix+'Entry',x=.575,held=1)==(1,0,0)
                 assert m.update(prefix+'Wait',x=.575,held=1)==(1,0,31)
@@ -215,7 +215,7 @@ def main():
                 m.tick+=TICKS//30
                 held,_,_=m.update(prefix+'Stride',0,0)
                 envelope=max(0.,1-(frame-15)/45) if frame>=15 else 0.
-                assert abs(m.float(0x1820)-.4*envelope)<1e-6
+                assert abs(m.float(0x1820)-.6*envelope)<1e-6
                 assert held==int(frame<60)
                 cases+=1
             # Y takes priority over automatic/manual arm requests.
@@ -254,6 +254,6 @@ def main():
             n.write(base+offset,0xdeadbeef,4); n.boot(); n.activate()
             assert 'auto swim: DISABLED' in n.text and all(base+a not in n.hooks for a in BINDINGS)
             assert base+0x2222a34 in n.hooks
-    print(f'PASS: {cases} analog stick speed, opening stroke only, manual tap/hold cooldown, interruptible native stride gates, irregular-rate cadence, delayed entries, half-second wind-up and 1.5-second 50% decaying impulse, neutral boost, native steering, scope restoration, Y priority, surface/dive cruise, config and conflicts')
+    print(f'PASS: {cases} analog stick speed, opening stroke only, manual tap/hold cooldown, interruptible native stride gates, irregular-rate cadence, delayed entries, half-second wind-up and 1.5-second 75% decaying impulse, neutral boost, native steering, scope restoration, Y priority, surface/dive cruise, config and conflicts')
 
 if __name__=='__main__': main()

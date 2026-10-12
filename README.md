@@ -96,7 +96,7 @@ Install **QoL Enhancements - Swimming** with Core. Swimming is enabled by
 default at the surface and underwater. Stick travel gradually controls speed, with a small neutral dead zone. Starting to
 move requests one opening arm stroke. Further arm strokes require A: press for
 a boost or hold to repeat whenever the roughly two-second cooldown ends.
-Each boost starts half a second into the arm stroke, adds 50% of full cruising
+Each boost starts half a second into the arm stroke, adds 75% of full cruising
 speed and then fades over 1.5 seconds. Ready boosts interrupt the current kick animation; the two-second cooldown starts
 when the arm stroke begins. Quiet foot kicking continues between strokes,
 and underwater speed is independent of the animation cycle. Stopping/restarting or diving/surfacing does not bypass the
