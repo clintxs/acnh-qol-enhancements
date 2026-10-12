@@ -16,9 +16,9 @@ def check():
         modules = {slug: DEFAULT for slug in SLUGS}
         default = machine(base, modules)
         lines = default.text.splitlines()
-        # Core version/settings + seven module versions/settings + detailed
-        # Pockets, Faster Dialogue, Crafting and Controls settings.
-        assert len(lines) == 20, default.text
+        # Core version/settings + eight module versions/settings + detailed
+        # Pockets, Faster Dialogue, Crafting, Controls and Swimming settings.
+        assert len(lines) == 23, default.text
         assert 'log_versions=true log_settings=true log_debug=false' in default.text
         assert 'crafting_speed=6' in default.text and 'faster_unnamed=true' in default.text
         for line in lines:

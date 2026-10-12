@@ -9,13 +9,13 @@ from core_arm_test import Machine, DEFAULT
 from unicorn.arm64_const import *
 
 BINDINGS = (0x236b77c,0x236bea0,0x236bbb8,0x236cf20,0x236db00,0x236d6a0,0x2364b10,0x2365878)
-CONFIG = DEFAULT + b'hold_to_hoover=false\nhold_to_advance_dialogue=false\nauto_vault=false\nauto_ladder=false\n'
+CONFIG = DEFAULT
 TICKS = 19_200_000
 
 class SwimMachine(Machine):
     def __init__(self, base):
         self.ready = False
-        super().__init__(base, {'controls':CONFIG})
+        super().__init__(base, {'swimming':CONFIG})
         self.boot(); self.activate()
         assert len(self.hooks) == 10 and all(base+a in self.hooks for a in BINDINGS), self.text
         self.player = self.ram + 0x1000
@@ -143,14 +143,14 @@ def main():
                 assert m.update(prefix+'Stride') == (1,1,0)
             assert m.update(prefix+'Entry') == (1,0,0)
             assert m.update(prefix+'Stride') == (1,0,31)
-            assert abs(m.float(0x1820)-1.6)<1e-6  # .8 cruise + 100% impulse.
+            assert abs(m.float(0x1820)-.8)<1e-6  # Cruise only during arm wind-up.
             # No further automatic arm strokes, even over several deadlines.
             # A short tap during cooldown is ignored, never queued for later.
             for frame in range(1,181):
                 m.tick+=TICKS//30
                 pressed=1 if frame==10 else 0
                 assert m.update(prefix+'Stride',pressed=pressed)==(1,0,31)
-                envelope=max(0.,1-frame/30)
+                envelope=max(0.,1-(frame-15)/30) if frame>=15 else 0.
                 assert abs(m.float(0x1820)-(.8+.8*envelope))<1e-6
                 if frame in (30,90,150):
                     assert m.update(prefix+'Entry')==(1,0,31)
@@ -172,12 +172,12 @@ def main():
                     assert m.update(prefix+'Stride',x=.575,held=1)==expected
                     assert m.movement_results[-1]==(0 if frame==60 else 3)
                     m.stride_gate(underwater,frame==60)
-                    envelope=max(0.,1-frame/30)
+                    envelope=max(0.,1-(frame-15)/30) if frame>=15 else 0.
                     assert abs(m.float(0x1820)-(.4+.8*envelope))<1e-6
                     cases+=1
                 assert m.update(prefix+'Entry',x=.575,held=1)==(1,0,0)
                 assert m.update(prefix+'Wait',x=.575,held=1)==(1,0,31)
-                assert abs(m.float(0x1820)-1.2)<1e-6  # No dive wait gap.
+                assert abs(m.float(0x1820)-.4)<1e-6  # Cruise continues during wind-up.
             # Ready strokes bypass an unfinished native kick (result 3) at
             # varying update rates. Model FSM entry on the following update.
             # There must be no early strokes and no animation-length delays.
@@ -210,7 +210,14 @@ def main():
             assert m.update(prefix+'Wait',0,0,pressed=1)==(1,1,0)
             assert m.update(prefix+'Entry',0,0)==(1,0,0)
             m.update(prefix+'Stride',0,0)
-            assert abs(m.float(0x1820)-.8)<1e-6
+            assert m.float(0x1820)==0  # Neutral stroke wind-up has no impulse.
+            for frame in range(1,46):
+                m.tick+=TICKS//30
+                held,_,_=m.update(prefix+'Stride',0,0)
+                envelope=max(0.,1-(frame-15)/30) if frame>=15 else 0.
+                assert abs(m.float(0x1820)-.8*envelope)<1e-6
+                assert held==int(frame<45)
+                cases+=1
             # Y takes priority over automatic/manual arm requests.
             assert m.update(prefix+'Stride',pressed=9)==(0,8,31)
             # Guarded players retain all original input and speed handling.
@@ -226,6 +233,11 @@ def main():
             assert m.update(prefix+'Stride')==(1,0,31)
         # Diving/surfacing must preserve an existing boost cooldown.
         assert m.update('SurfaceStride',held=1)==(1,0,31)
+        for files in ({'controls':DEFAULT},
+                      {'swimming':CONFIG.replace(b'enabled=true',b'enabled=false')},
+                      {'swimming.custom':b'enabled=true\nauto_swim=true'}):
+            n=Machine(base,files); n.boot(); n.activate()
+            assert all(base+a not in n.hooks for a in BINDINGS)
         # No scope: other callers of shared movement keep native speeds.
         m.u.reg_write(UC_ARM64_REG_X0,m.player)
         m.u.reg_write(UC_ARM64_REG_X1,m.parameters)
@@ -233,15 +245,15 @@ def main():
         assert abs(m.float(0x1820)-.1)<1e-6
         for regular,custom,expected in ((CONFIG,None,True),(CONFIG,b'auto_swim=false',False),
                                         (CONFIG+b'auto_swim=false\n',b'auto_swim=true',True)):
-            files={'controls':regular}
-            if custom: files['controls.custom']=custom
+            files={'swimming':regular}
+            if custom: files['swimming.custom']=custom
             n=Machine(base,files); n.boot(); n.activate()
             assert all((base+a in n.hooks)==expected for a in BINDINGS)
         for offset in BINDINGS:
-            n=Machine(base,{'controls':DEFAULT})
+            n=Machine(base,{'swimming':DEFAULT,'controls':DEFAULT})
             n.write(base+offset,0xdeadbeef,4); n.boot(); n.activate()
             assert 'auto swim: DISABLED' in n.text and all(base+a not in n.hooks for a in BINDINGS)
             assert base+0x2222a34 in n.hooks
-    print(f'PASS: {cases} analog stick speed, opening stroke only, manual tap/hold cooldown, interruptible native stride gates, irregular-rate cadence, delayed entries, one-second 100% decaying impulse, neutral boost, native steering, scope restoration, Y priority, surface/dive cruise, config and conflicts')
+    print(f'PASS: {cases} analog stick speed, opening stroke only, manual tap/hold cooldown, interruptible native stride gates, irregular-rate cadence, delayed entries, half-second wind-up and one-second 100% decaying impulse, neutral boost, native steering, scope restoration, Y priority, surface/dive cruise, config and conflicts')
 
 if __name__=='__main__': main()

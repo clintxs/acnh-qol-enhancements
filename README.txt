@@ -1,4 +1,4 @@
-QoL Enhancements 0.4.20 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.4.21 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -10,12 +10,15 @@ Pockets messages INI (English fallback). Restart after editing captions.
 Shopping Card: combined funds, Savings -> Pockets (Bell bags) -> Wallet.
 Native 16:9 placement; display caps at 999,999,999 without limiting spending.
 
+0.4.21: Swimming is now its own optional module. Boost propulsion starts 0.5s
+into the arm stroke and fades over one second; stroke cooldown remains 2s.
+
 INSTALL
 Fully close ACNH. Disable the standalone Catalog Aware Shops, QoL Pockets
 Interactions, Able Sisters Bag Prototype, all Faster Interactions versions,
 Amiibo Scan - 5 Minutes, and the historical Optimized UI/Grab 5 patches.
 
-For the full suite, copy all eight “QoL Enhancements” folders into the game's
+For the full suite, copy all nine “QoL Enhancements” folders into the game's
 mods folder, then enable them in Eden. For selected features, copy Core plus
 only the feature folders you want. Restart the game after changing modules.
 
@@ -275,7 +278,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.4.20
+  version = 0.4.21
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.
@@ -308,7 +311,7 @@ CRAFTING MODULE / SETTINGS (0.3.63)
 Install Core plus “QoL Enhancements - Crafting”. This replaces the former
 “QoL Enhancements - Faster Crafting” folder; remove that old folder when updating.
 Move any personal faster-crafting.custom.ini preferences to crafting.custom.ini.
-Remove old version overrides in that custom file, or update them to 0.4.20.
+Remove old version overrides in that custom file, or update them to 0.4.21.
 Old faster-crafting.ini/custom paths are no longer read.
 DIY app previews are now optional Crafting behavior, not always-on Core behavior.
 
@@ -316,7 +319,7 @@ Regular settings: romfs/qol-enhancements/config/crafting.ini
 Personal overlay: romfs/qol-enhancements/config/crafting.custom.ini
 Defaults in the regular file:
   enabled = true
-  version = 0.4.20
+  version = 0.4.21
   diy_app_preview = true
   workbench_preview_tilt = true
   crafting_quantity_wrap = true
@@ -367,7 +370,7 @@ CONTROLS SETTINGS
 The Controls module includes both hold-Y pickups and dialogue hurry.
 romfs/qol-enhancements/config/controls.ini:
   enabled = true
-  version = 0.4.20
+  version = 0.4.21
   hold_to_advance_dialogue = true
   hold_to_hoover = true
   auto_vault = true
@@ -443,7 +446,7 @@ scripted waits can limit conversation speed. Native overrides take priority.
 No preferences in either file: base 2, held 4, automatic UI/unnamed boost on,
 and an empty NPC list.
 
-Keep the personal mod folder when replacing the eight suite folders. Do not
+Keep the personal mod folder when replacing the nine suite folders. Do not
 reinstall the example preset over your edited preferences. Enable only one
 mod providing the custom file. Fully restart after changes. The custom file
 may include enabled/version and can override a disabled regular configuration.
@@ -530,15 +533,21 @@ Early startup errors still log. Special dialogue MESSAGE/SELECT tracing needs
 the diagnostic build and log_debug=true in core.custom.ini. Trace limits remain.
 Invalid values inherit; duplicate keys restore the value from before that file.
 
-Controls auto_swim (prototype 7): enabled by default at the surface and
+Swimming module / auto_swim (prototype 8): enabled by default at the surface and
 underwater. Stick travel gradually controls speed beyond a small neutral dead
 zone. Starting movement requests one opening arm stroke. Press A for a
 boost with a roughly two-second cooldown; hold A to repeat when ready. Further
-arm strokes require A. Each boost adds 100% of full cruise speed, fading over
-one second. Ready strokes interrupt the kick animation, with a two-second
+arm strokes require A. Each boost starts half a second into the arm stroke,
+adds 100% of full cruise speed and then fades over one full second. Ready strokes interrupt the kick animation, with a two-second
 cooldown measured from actual arm entry. Quiet kicking and smooth cruise
 continue between strokes.
 Stopping/restarting or diving/surfacing does not bypass the cooldown. Y keeps
-priority for diving/surfacing/catching. Set auto_swim = false in controls.ini
-or controls.custom.ini and restart for ordinary swimming. In-game validation
+priority for diving/surfacing/catching. Set auto_swim = false in swimming.ini
+or swimming.custom.ini and restart for ordinary swimming. In-game validation
 of this prototype is pending.
+
+Swimming is independent of Controls. Install Core plus the Swimming folder to
+use the overhaul. Disable/remove Swimming, or set enabled=false in swimming.ini
+or swimming.custom.ini, to use vanilla swimming. Move any personal auto_swim
+setting from controls.custom.ini to swimming.custom.ini. Controls no longer
+owns this setting. Swimming defaults to enabled=true and auto_swim=true.

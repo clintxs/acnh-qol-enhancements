@@ -2,6 +2,7 @@
 #include "modules.hpp"
 #include "release.hpp"
 #include "program/controls/settings.hpp"
+#include "program/swimming/settings.hpp"
 #include "resource_budget.hpp"
 #include "settings.hpp"
 #include "program/crafting/settings.hpp"
@@ -108,7 +109,7 @@ bool ActivateCoreSettings() {
 
 // Minimum PACKAGE versions accepted by Core. Raise only when older assets
 // stop being compatible; release versions still advance with the whole suite.
-const std::array<ModuleDescription, 7> Modules{{
+const std::array<ModuleDescription, 8> Modules{{
     {"Catalog", "catalog", {0, 1, 0}, InstallCatalog},
     {"Pockets", "pockets", {0, 1, 0}, InstallPockets, qol_pockets::Configure, nullptr, qol_pockets::ReportSettings},
     {"Faster Dialogue", "faster-dialogue", {0, 1, 0}, dialogue::Install, dialogue::Configure, nullptr, dialogue::ReportSettings},
@@ -116,6 +117,7 @@ const std::array<ModuleDescription, 7> Modules{{
     {"Shopping Card", "shopping-card", {0, 3, 2}, shopping::Install, nullptr, shopping::PrepareResources},
     {"Crafting", "crafting", {0, 3, 46}, crafting::Install, crafting::Configure, nullptr, crafting::ReportSettings},
     {"Controls", "controls", {0, 4, 14}, controls::Install, controls::Configure, nullptr, controls::ReportSettings},
+    {"Swimming", "swimming", {0, 4, 21}, swimming::Install, swimming::Configure, nullptr, swimming::ReportSettings},
 }};
 
 void ActivateModules() {

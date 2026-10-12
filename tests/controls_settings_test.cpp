@@ -5,16 +5,7 @@
 using namespace qol::controls;
 int main() {
     Settings settings{};
-    assert(settings.autoSwim);
-    for (bool prior : {false, true}) {
-        settings.autoSwim = prior;
-        assert(!ApplySettings("# inherit", settings) && settings.autoSwim == prior);
-        assert(ApplySettings("auto_swim=yes", settings) == 1 && settings.autoSwim == prior);
-        assert(ApplySettings("auto_swim=false\nauto_swim=true", settings) == 1 && settings.autoSwim == prior);
-        assert(ApplySettings("auto_swim=false\n\xff", settings) == 1 && settings.autoSwim == prior);
-        assert(!ApplySettings("auto_swim=false", settings) && !settings.autoSwim);
-        assert(!ApplySettings("auto_swim=true", settings) && settings.autoSwim);
-    }
+    assert(ApplySettings("auto_swim=false", settings) == 1); // Moved to Swimming.
     assert(settings.autoEquipTraversal && settings.autoVault && settings.autoLadder);
     assert(!ApplySettings("# inherit defaults", settings));
     assert(settings.autoEquipTraversal && settings.autoVault && settings.autoLadder);

@@ -1,7 +1,7 @@
 # QoL Enhancements
 
-**0.4.20 release test build** for ACNH **3.0.3 on Eden**. One Core
-executable in **subsdk6** activates seven optional RomFS feature packages. The
+**0.4.21 release test build** for ACNH **3.0.3 on Eden**. One Core
+executable in **subsdk6** activates eight optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
 
@@ -39,9 +39,10 @@ Missing runtime data leaves the name unchanged. Live Eden verification is pendin
 | Crafting | DIY/workbench previews, quantity wrap + configurable crafting/cooking speed | Configuration only |
 | Shopping Card | Combined savings/cash routing prototype | Configuration + card currency layout |
 | Controls | Automatic traversal, tool restoration, hold Y pickups and dialogue hurry | Configuration only |
+| Swimming | Analog swim speed and timed manual stroke boosts | Configuration only |
 
 Faster tool-wheel animations and other workspace mods are not bundled in this
-seven-feature suite. Historical source notes under `docs/` describe each
+eight-feature suite. Historical source notes under `docs/` describe each
 baseline; their old installation/packaging instructions refer to standalone mods.
 
 Core includes the amiibo timeout fix. DIY Recipes app previews now belong to
@@ -55,7 +56,7 @@ Version 1.0.0 is reserved for the initial release.
 `source/program/bootstrap.cpp` validates the original content-mount call and
 continuation, then installs one SIMD-preserving discovery hook at main+037B5464.
 Only after the game's `nn::fs::MountRom("content", ...)` call does Core read the
-seven known configuration paths and install enabled features. Activation is
+eight known configuration paths and install enabled features. Activation is
 once-only and does no recurring filesystem polling. No host mod-folder access,
 new mounts, filesystem permissions or module discovery are needed.
 
@@ -89,6 +90,27 @@ native text speed and B/L/R behavior whenever Y is released; Faster Dialogue
 adds configured speed and its two speaker-name hooks. No synthetic A press or
 choice confirmation is sent.
 
+## Swimming module
+
+Install **QoL Enhancements - Swimming** with Core. Swimming is enabled by
+default at the surface and underwater. Stick travel gradually controls speed, with a small neutral dead zone. Starting to
+move requests one opening arm stroke. Further arm strokes require A: press for
+a boost or hold to repeat whenever the roughly two-second cooldown ends.
+Each boost starts half a second into the arm stroke, adds 100% of full cruising
+speed and then fades over one full second. Ready boosts interrupt the current kick animation; the two-second cooldown starts
+when the arm stroke begins. Quiet foot kicking continues between strokes,
+and underwater speed is independent of the animation cycle. Stopping/restarting or diving/surfacing does not bypass the
+boost cooldown. Y still takes priority for diving/surfacing/catching. Set
+`auto_swim = false` in `swimming.ini` or `swimming.custom.ini` and restart to
+restore ordinary swimming. In-game feel and animation validation are pending.
+
+Swimming is independent of Controls. Disable or remove its mod folder, or set
+`enabled = false` in `swimming.ini` or `swimming.custom.ini`, for vanilla swimming.
+The module supplies `enabled = true`, `version = 0.4.21`, and `auto_swim = true`.
+Move any existing personal `auto_swim` setting from `controls.custom.ini` to
+`swimming.custom.ini`; Controls no longer reads it. The implementation lives in
+`source/program/swimming/`, with notes in [research/swimming/auto-swim.txt](research/swimming/auto-swim.txt).
+
 ## Controls module
 
 Install **QoL Enhancements - Controls** with Core. Press Y to pick up an item,
@@ -107,31 +129,17 @@ produce and weeds. It adds no animation speed multiplier or pickup radius.
 
 ```ini
 enabled = true
-version = 0.4.20
+version = 0.4.21
 hold_to_advance_dialogue = true
 hold_to_hoover = true
 auto_vault = true
 auto_ladder = true
 auto_equip_traversal = true
-auto_swim = true
 ```
 
 Set `hold_to_hoover = false` for ordinary field Y behavior. The two hold-Y
 settings default to true. All Controls settings work in `controls.ini` and
 `controls.custom.ini`. Restart after editing.
-
-Automatic swimming is enabled by default at the surface and underwater. Stick
-travel gradually controls speed, with a small neutral dead zone. Starting to
-move requests one opening arm stroke. Further arm strokes require A: press for
-a boost or hold to repeat whenever the roughly two-second cooldown ends.
-Each boost adds 100% of full cruising speed and fades over one second. Ready
-boosts interrupt the current kick animation; the two-second cooldown starts
-when the arm stroke begins. Quiet foot kicking continues between strokes,
-and underwater speed is independent of
-the animation cycle. Stopping/restarting or diving/surfacing does not bypass the
-boost cooldown. Y still takes priority for diving/surfacing/catching. Set
-`auto_swim = false` in `controls.ini` or `controls.custom.ini` and restart to
-restore ordinary swimming. In-game feel and animation validation are pending.
 
 Automatic traversal is enabled by default. Push firmly toward a vaultable river
 or a climbable cliff face/edge and keep pushing through the normal hop delay.
@@ -211,14 +219,14 @@ Diagnostic checks: `PYTHONPATH='../Grab 5/working/python:tests' python3 tests/di
 Install **QoL Enhancements - Crafting** with Core. This replaces the former
 Faster Crafting package; remove the old folder and rename personal
 `faster-crafting.custom.ini` preferences to `crafting.custom.ini`. Remove any old
-`version` override from that personal file (or update it to 0.4.20). The retired
+`version` override from that personal file (or update it to 0.4.21). The retired
 regular/custom paths are no longer read. Core alone no longer enables DIY previews.
 
 `romfs/qol-enhancements/config/crafting.ini` supplies these defaults:
 
 ```ini
 enabled = true
-version = 0.4.20
+version = 0.4.21
 diy_app_preview = true
 workbench_preview_tilt = true
 crafting_quantity_wrap = true
@@ -446,7 +454,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.4.20
+version = 0.4.21
 base_speed = 2
 boost_speed = 4
 faster_ui = true
@@ -465,7 +473,7 @@ comments, CRLF and an optional UTF-8 BOM.
 Catalog, Fitting Room and Shopping Card expose just `enabled` and
 `version`. Their overlays are `catalog.custom.ini`, `pockets.custom.ini`,
 `fitting-room.custom.ini` and `shopping-card.custom.ini`. Crafting preferences
-use `crafting.custom.ini`; Controls uses `controls.custom.ini`; Core uses the optional settings files described above.
+use `crafting.custom.ini`; Controls uses `controls.custom.ini`; Swimming uses `swimming.custom.ini`; Core uses the optional settings files described above.
 Pockets and Fitting Room caption files are separate translation resources.
 
 Pockets supports three independent settings in `pockets.ini` or
@@ -606,12 +614,12 @@ at `../vanilla-3.0.3/Layout`; builders verify their hashes and archive structure
 The package script checks that every INI matches the Core release, refuses to
 replace existing archives, and creates:
 
-- `dist/qol-enhancements-v0_4_17_for_acnh_v3_0_3.zip`
-- `dist/qol-enhancements-v0_4_17_for_acnh_v3_0_3_source.zip`
-- `dist/qol-enhancements-v0_4_17_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
+- `dist/qol-enhancements-v0_4_21_for_acnh_v3_0_3.zip`
+- `dist/qol-enhancements-v0_4_21_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v0_4_21_for_acnh_v3_0_3_faster-dialogue-custom-example.zip`
 
 The binary ZIP contains a conspicuous installation text file, README, Core and
-seven independently selectable feature folders, plus a SHA-256 manifest. Source
+eight independently selectable feature folders, plus a SHA-256 manifest. Source
 includes modules/configurations, translations, code, tools, tests and notices;
 generated game resources and binaries are excluded.
 

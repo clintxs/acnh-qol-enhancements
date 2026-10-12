@@ -3,7 +3,7 @@
 #include <array>
 #include <cstring>
 
-namespace qol::controls {
+namespace qol::swimming {
 namespace {
 namespace address {
 constexpr std::uintptr_t SurfaceWait = 0x0236b77c;
@@ -28,6 +28,7 @@ constexpr float QuietStrideScale = .8f; // Native FlapFoot speed multiplier.
 constexpr float BoostFraction = 1.f;
 constexpr std::uint64_t TicksPerSecond = 19'200'000ull;
 constexpr std::uint64_t StrokeInterval = TicksPerSecond * 2;
+constexpr std::uint64_t BoostDelay = TicksPerSecond / 2;
 constexpr std::uint64_t BoostDuration = TicksPerSecond;
 constexpr std::uint64_t SessionGap = TicksPerSecond / 2;
 struct SwimState {
@@ -64,8 +65,10 @@ float StickThrottle(const void *player) {
 }
 float BoostEnvelope(const SwimState &state, std::uint64_t now) {
     const auto elapsed = now - state.lastStroke;
-    return state.hasStroke && elapsed < BoostDuration ?
-        1.f - float(elapsed) / float(BoostDuration) : 0.f;
+    // Match the arm push rather than the start of the animation. Keep the
+    // full one-second fade after this delay, independent of stroke cooldown.
+    if (!state.hasStroke || elapsed < BoostDelay || elapsed >= BoostDelay + BoostDuration) return 0.f;
+    return 1.f - float(elapsed - BoostDelay) / float(BoostDuration);
 }
 void Update(void *player, void (*original)(void *), bool underwater, bool entry) {
     if (!player || Read<unsigned>(player, field::UpdateMode) != 0 ||
@@ -120,7 +123,10 @@ void Update(void *player, void (*original)(void *), bool underwater, bool entry)
         }
     }
     const float boost = BoostEnvelope(state, now);
-    const bool active = !transition && (moving || state.armPending || boost > 0.f);
+    // Keep a neutral-stick stroke active through its wind-up as well as the
+    // impulse, so manual A does not lose its animation before propulsion.
+    const bool strokeActive = state.hasStroke && now - state.lastStroke < BoostDelay + BoostDuration;
+    const bool active = !transition && (moving || state.armPending || strokeActive);
     const bool pulse = !entry && state.armPending && !transition;
     const auto frames = Read<unsigned>(player, field::HeldAFrames);
     // A is an input to our cooldown policy. Hide physical A from the native
@@ -205,7 +211,7 @@ bool InstallAutoSwim() {
     const auto &main = exl::util::GetMainModuleInfo();
     for (const auto &f : fingerprints) if (f.offset + sizeof(f.words) > main.m_Text.m_Size ||
         std::memcmp(reinterpret_cast<const void *>(main.m_Text.m_Start + f.offset), f.words, sizeof(f.words))) {
-        Logging.Error("[QoL Enhancements/Controls] auto swim: DISABLED; instruction mismatch at main+0x%lx\n", f.offset);
+        Logging.Error("[QoL Enhancements/Swimming] auto swim: DISABLED; instruction mismatch at main+0x%lx\n", f.offset);
         return false;
     }
     AutoSwimSurfaceWait::InstallAtOffset(address::SurfaceWait);
@@ -216,7 +222,7 @@ bool InstallAutoSwim() {
     AutoSwimDiveEntry::InstallAtOffset(address::DiveEntry);
     AutoSwimWaitMovement::InstallAtOffset(address::WaitMovement);
     AutoSwimStrideMovement::InstallAtOffset(address::StrideMovement);
-    Logging.Debug("[QoL Enhancements/Controls] auto swim: READY; prototype 7; analog speed; 1s 100 percent boosts; interruptible strokes\n");
+    Logging.Debug("[QoL Enhancements/Swimming] auto swim: READY; prototype 8; analog speed; delayed 1s 100 percent boosts; interruptible strokes\n");
     return true;
 }
 }

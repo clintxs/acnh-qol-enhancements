@@ -191,3 +191,31 @@ The existing compiled speed-curve regressions now expect the impulse to decay
 over 30 updates at 30 Hz, including positive propulsion at the half-second
 point and no residual boost after one second. Cadence, native request gate,
 analog input and surface/underwater policy checks remain unchanged.
+
+
+Prototype 8: align propulsion with the arm push
+
+Delay the impulse by 9,600,000 ticks (half a second) after accepted arm entry.
+Keep the full 19,200,000-tick linear fade after the delay: zero impulse before
+0.5s, 100% at 0.5s, fading to zero at 1.5s. The two-second stroke cooldown stays
+anchored to arm entry, not boost onset. Keep the scoped held action active
+through wind-up for neutral-stick manual strokes as well as moving strokes.
+
+Compiled speed-curve checks cover surface/underwater opening and held-A boosts,
+wind-up with unchanged cruise, the exact 0.5s onset and 1.5s expiry, and neutral
+manual strokes throughout wind-up and fade. Existing cadence checks still
+verify the two-second minimum. This is a fixed time offset from arm entry;
+matching the perceived arm-push phase needs in-game validation.
+
+
+Swimming module extraction (suite 0.4.21)
+
+Swimming now owns the scoped hooks, analog movement and boost policy under
+source/program/swimming. Its regular marker is swimming.ini and its personal
+overlay is swimming.custom.ini. auto_swim defaults true; enabled=false or an
+absent Swimming marker installs no swim hooks, independently of Controls.
+Controls no longer parses auto_swim or installs swimming hooks. Move existing
+personal auto_swim preferences to the new Swimming overlay. Core registers the
+eighth feature module with minimum package 0.4.21. The suite now has nine mod
+folders including Core. Tests cover module absence/disable, Controls-only
+isolation and settings layering as well as the delayed boost curve.

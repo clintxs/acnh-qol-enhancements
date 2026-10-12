@@ -1,4 +1,4 @@
 #pragma once
-namespace qol::controls {
+namespace qol::swimming {
 bool InstallAutoSwim();
 }
