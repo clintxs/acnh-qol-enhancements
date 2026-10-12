@@ -12,14 +12,16 @@ struct alignas(4) CatalogItem {
 static_assert(sizeof(CatalogItem) == 8);
 // Unavailable is a separate result from Uncataloged: missing/unsupported
 // runtime data must never produce a misleading star. Values are used in logs.
-enum class CatalogStatus { Unavailable, Cataloged, Uncataloged, VariantUncataloged };
+enum class CatalogStatus { Unavailable, Cataloged, Uncataloged, VariantUncataloged, FakeArtUncataloged };
 constexpr char16_t CatalogMarker(CatalogStatus status) {
     return status == CatalogStatus::Uncataloged          ? u'★'
-           : status == CatalogStatus::VariantUncataloged ? u'☆'
+           : (status == CatalogStatus::VariantUncataloged ||
+            status == CatalogStatus::FakeArtUncataloged) ? u'☆'
                                                          : 0;
 }
 // Ordinary items use the active player's historical catalog, not current pockets.
-// Creatures on Cabinet surfaces instead use the current island museum.
+// Creatures and (when art_donation_stars is enabled) genuine art use the island
+// museum. Uncataloged fakes use an outline star; cataloged fakes have no marker.
 // Cabinet: ordinary item kinds except recipes (also used for new shop dialogue).
 // Miles: ordinary items except recipe books and ability/upgrade books.
 // Furniture: furniture-only, for the original Nook display message.

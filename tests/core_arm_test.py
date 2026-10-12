@@ -482,6 +482,20 @@ def check_pockets_settings():
             for key,value in zip(keys,values):assert f'{key}={str(value).lower()}' in m.text
     print('PASS: Pockets regular/custom config activation and all eight independent combinations at two bases')
 
+def check_catalog_settings():
+    for base in (0x80000000,0x1234500000):
+        for regular,custom,expected in ((b'',b'',True),
+            (b'art_donation_stars=false',b'',False),
+            (b'art_donation_stars=false',b'art_donation_stars=true',True),
+            (b'art_donation_stars=true',b'art_donation_stars=false',False),
+            (b'art_donation_stars=false',b'art_donation_stars=bad',False)):
+            m=Machine(base,{'catalog':DEFAULT+regular,'catalog.custom':custom})
+            m.boot();m.activate()
+            assert 'BOOT_OK' in m.text and 'Catalog: ENABLED' in m.text
+            assert bool(m.read(m.module.find('catalog_aware_shops','Preferences'),1))==expected
+            assert f'art_donation_stars={str(expected).lower()}' in m.text
+    print('PASS: Catalog art regular/custom settings and reports at two bases')
+
 if __name__ == '__main__':
     check_all_subsets()
     check_errors()
@@ -490,3 +504,4 @@ if __name__ == '__main__':
     check_config_layers()
     check_crafting_settings()
     check_pockets_settings()
+    check_catalog_settings()

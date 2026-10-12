@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.4.28 release test build** for ACNH **3.0.3 on Eden**. One Core
+**0.4.29 release test build** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates eight optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.

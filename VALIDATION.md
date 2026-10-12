@@ -2888,3 +2888,22 @@ The complete storage and imported shopping/display regressions pass at both
 ASLR bases. Core activation passes all 256 module subsets at two bases and
 the existing configuration/version/conflict checks. Package checks pass for
 release metadata, manifests and unchanged layout/color baselines.
+
+## 0.4.29 configurable art donation stars
+
+- Classify genuine paintings/sculptures and their fakes using verified ItemKind
+  hashes from all 43 genuine and 27 fake ItemParam rows. With Catalog's
+  `art_donation_stars=true` (default), genuine art uses the existing read-only
+  island museum lookup: undonated is filled; donated by any resident is blank.
+  Fakes use the active player's catalog: missing is outline; owned is blank.
+- `false` restores prior catalog semantics for both kinds of art. The Catalog
+  module now uses the shared regular/custom settings loader, reports the value,
+  inherits omitted/invalid values, and rolls duplicates back to the prior layer.
+  No additional hooks or layouts; no changes to museum creature or recipe policy.
+- Added 1,120 native ARM shop cases across all art IDs, both collection states,
+  donated/undonated status, both setting values and two ASLR bases, plus dialogue
+  hook samples and unavailable museum/catalog guards. Museum and catalog history
+  stay unchanged. Added host parser checks and Core regular/custom activation
+  coverage for the setting. Live Redd conversations still need testing.
+- Existing catalog icon badges remain filled-only; this change supplies outline
+  stars on existing name-star surfaces rather than introducing a new icon layout.

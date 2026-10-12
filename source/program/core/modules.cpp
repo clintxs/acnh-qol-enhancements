@@ -9,6 +9,7 @@
 #include "program/shopping/shopping_card.hpp"
 #include "program/dialogue/settings.hpp"
 #include "program/catalog/game/build_profile.hpp"
+#include "program/catalog/settings.hpp"
 #include "program/catalog/features/catalog_stars.hpp"
 #include "program/catalog/features/catalog_badges.hpp"
 #include "program/catalog/features/catalog_variation_labels.hpp"
@@ -110,7 +111,7 @@ bool ActivateCoreSettings() {
 // Minimum PACKAGE versions accepted by Core. Raise only when older assets
 // stop being compatible; release versions still advance with the whole suite.
 const std::array<ModuleDescription, 8> Modules{{
-    {"Catalog", "catalog", {0, 1, 0}, InstallCatalog},
+    {"Catalog", "catalog", {0, 1, 0}, InstallCatalog, catalog_aware_shops::Configure, nullptr, catalog_aware_shops::ReportSettings},
     {"Pockets", "pockets", {0, 1, 0}, InstallPockets, qol_pockets::Configure, nullptr, qol_pockets::ReportSettings},
     {"Faster Dialogue", "faster-dialogue", {0, 1, 0}, dialogue::Install, dialogue::Configure, nullptr, dialogue::ReportSettings},
     {"Fitting Room", "fitting-room", {0, 1, 0}, able_bag::Install, nullptr, PrepareFittingResources},

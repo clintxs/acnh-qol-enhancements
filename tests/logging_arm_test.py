@@ -17,8 +17,8 @@ def check():
         default = machine(base, modules)
         lines = default.text.splitlines()
         # Core version/settings + eight module versions/settings + detailed
-        # Pockets, Faster Dialogue, Crafting, Controls and Swimming settings.
-        assert len(lines) == 23, default.text
+        # Catalog, Pockets, Faster Dialogue, Crafting, Controls and Swimming settings.
+        assert len(lines) == 24, default.text
         assert 'log_versions=true log_settings=true log_debug=false' in default.text
         assert 'crafting_speed=6' in default.text and 'faster_unnamed=true' in default.text
         for line in lines:

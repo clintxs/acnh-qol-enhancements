@@ -1,5 +1,6 @@
 #include "catalog_ownership.hpp"
 #include "bindings.hpp"
+#include "program/catalog/settings.hpp"
 #include <array>
 #include <cstring>
 
@@ -225,13 +226,21 @@ bool HasNativeItemLookup(std::uint16_t itemId) {
 }
 
 // Exact ItemKind hashes from 3.0.3 ItemParam. Excludes models, shells, fossils,
-// art and event catches (eggs/trash); those retain their existing behavior.
+// art and event catches (eggs/trash); art is classified separately below.
 bool IsMuseumCreature(const ItemMetadata &metadata) {
     constexpr std::uint32_t Fish = 0x9f46eb0d, Insect = 0x91b9b8d3, DiveFish = 0xe47038b8;
     return metadata.identityMatches && (metadata.kindHash == Fish || metadata.kindHash == Insect ||
                                         metadata.kindHash == DiveFish);
 }
-CatalogStatus QueryCreatureDonation(const CatalogItem &item) {
+// Genuine and forged works have distinct ItemKind values and catalog IDs.
+// These hashes are verified against all 43 genuine and 27 forged 3.0.3 rows.
+bool IsRealArt(const ItemMetadata &metadata) {
+    return metadata.kindHash == 0xd9667615 || metadata.kindHash == 0x5db00df4;
+}
+bool IsFakeArt(const ItemMetadata &metadata) {
+    return metadata.kindHash == 0x96ec4b4f || metadata.kindHash == 0x9d3ccf03;
+}
+CatalogStatus QueryMuseumDonation(const CatalogItem &item) {
     if ((item.flags[1] & UnsupportedItemFlagsMask) || !HasNativeItemLookup(item.id) ||
         !Read<std::uintptr_t>(MainAddress(address::ItemKindCache), 8) ||
         !Read<std::uintptr_t>(MainAddress(address::ItemKindGlobal))) {
@@ -370,8 +379,9 @@ CatalogStatus QueryCatalog(std::uint8_t player, const CatalogItem &item, Surface
         !IsEligibleKind(metadata, surface)) {
         return CatalogStatus::Unavailable;
     }
-    if (IsMuseumCreature(metadata)) {
-        return QueryCreatureDonation(item);
+    const bool artStars = GetSettings().artDonationStars;
+    if (IsMuseumCreature(metadata) || (artStars && IsRealArt(metadata))) {
+        return QueryMuseumDonation(item);
     }
     const auto catalogView = FindReadyCatalogView(player);
     if (!catalogView || !HasNativeItemLookup(item.id)) {
@@ -380,7 +390,8 @@ CatalogStatus QueryCatalog(std::uint8_t player, const CatalogItem &item, Surface
     const bool mainItemKnown = FunctionAt<unsigned (*)(const std::uint8_t *, const CatalogItem *)>(
         address::HasCatalogedItem)(&player, &item);
     if (!mainItemKnown) {
-        return CatalogStatus::Uncataloged;
+        return artStars && IsFakeArt(metadata) ? CatalogStatus::FakeArtUncataloged
+                                                    : CatalogStatus::Uncataloged;
     }
     if (!IsFurniture(metadata) || metadata.remakeId < 0) {
         return CatalogStatus::Cataloged;
@@ -394,7 +405,7 @@ CatalogStatus QueryMuseumCreature(const CatalogItem &item) {
     if (!ReadItemMetadata(item, metadata) || !IsMuseumCreature(metadata)) {
         return CatalogStatus::Unavailable;
     }
-    return QueryCreatureDonation(item);
+    return QueryMuseumDonation(item);
 }
 CatalogStatus QueryCabinetCatalog(std::uint8_t player, const CatalogItem &item) {
     return QueryCatalog(player, item, Surface::Cabinet);

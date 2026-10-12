@@ -1,4 +1,4 @@
-QoL Enhancements 0.4.28 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.4.29 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -582,3 +582,14 @@ right stick selects the normal three tilt positions while swimming forward.
 This works independently of auto_swim. Set camera_tilt_while_swimming=false
 in swimming.ini or swimming.custom.ini and restart for the native camera
 restriction. Other camera locks remain active.
+
+ART STARS (Catalog module)
+art_donation_stars = true (default) in catalog.ini enables:
+  Filled star: genuine art not yet donated by anyone on the current island.
+  Outline star: fake art not yet in the active player's catalog.
+  No star: donated genuine art or cataloged fake art.
+Set art_donation_stars = false to restore ordinary catalog stars for art.
+You can also set it in a separate catalog.custom.ini, following the suite's
+personal-settings convention. Restart the game after changing settings.
+Applies to existing shop/dialogue/ground name-star surfaces. Catalog icon
+badges continue to show filled stars only; no new inventory or layout hooks.
