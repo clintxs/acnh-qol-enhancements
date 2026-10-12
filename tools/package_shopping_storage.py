@@ -34,8 +34,9 @@ def main():
             'appears during the storage payment dialogue. Other Tom Nook\n'
             'fees retain their original handling. No new items or save format.\n\n'
             'Try savings-only and mixed-funds payments, cancellation and\n'
-            'insufficient funds. Confirm the counter returns to pocket Bells\n'
-            'after leaving the storage dialogue. Automated checks pass;\n'
+            'insufficient funds. Confirm the card finishes hiding without a\n'
+            'flash of pocket Bells; ordinary counters still work afterward.\n'
+            'Automated checks pass;\n'
             'in-game confirmation is pending.\n\n'
             'Built with Exlaunch (GPL-2.0); see LICENSE and matching source ZIP.\n'
         ).encode(),

@@ -628,3 +628,30 @@ The integrated HUD fixture also connects storage dispatch to real BellPage,
 combined text, savings debit, Down/Finish feedback and ordinary cash restoration.
 Missing/out-of-range/stale/mismatched contexts are rejected. In-game validation
 remains required; previous synthetic-context success claims are superseded.
+
+
+## 0.4.26 Storage counter dismissal (2026-10-12)
+
+Live 0.4.25 confirmation: storage payments/card now work. The user saw a brief
+ordinary Bells counter after the card disappeared. `UIMoneyDisappear` cleared
+storage presentation immediately, so the next BellPage update restored cash
+panes while the native layout was still running its Out animation.
+
+Storage sessions now distinguish active display from closing presentation.
+Dismissal, leaving the storage flow, or event teardown drops the borrowed event
+identity and active flag immediately, retaining only a per-resident closing bit.
+The HUD keeps the card until native `02B12EAC` returns true. Its original body
+follows BellPage+210 -> Page+3F8 -> layout+1B0, checks the animation object's +60
+completion method, and requires BellPage state (+1B0) == 3. The predicate and
+relevant field accesses are fingerprinted. No new hook, frame timeout, save
+state or retained UI pointer is added. Affordability and debit scope are unchanged.
+An explicit UIMoneyAppear in another flow clears closing presentation; a new
+storage appearance starts a fresh session. Auxiliary counters ignore closing.
+
+The storage/HUD fixture executes this original hidden predicate, modeling only
+the layout engine's animation-completion answer. It checks multiple closing
+frames, state 3 with unfinished animation, finished animation with nonhidden
+state, restoration behind a hidden root, ordinary-counter takeover, event
+teardown during Out and reopen during Out, at both ASLR bases. Native engine
+animation playback is not emulated; live confirmation of dismissal remains
+necessary.

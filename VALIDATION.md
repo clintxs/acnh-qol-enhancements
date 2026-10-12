@@ -2805,3 +2805,28 @@ activation and the 1.8m savings payment without changing the wallet.
 Package checks preserve original layouts/colors and validate release metadata.
 Live Eden confirmation with 0.4.25 remains required; 0.4.23/24 synthetic-context
 success claims are superseded. Earlier archives are preserved.
+
+
+## 0.4.26 Storage dismissal without pocket-Bells flash (2026-10-12)
+
+The user confirmed that 0.4.25 fixes storage payment and card display, then
+reported ordinary Bells briefly appearing as the card closes. The event hide
+command cleared card presentation before the native counter's Out completed.
+The fix retains only a per-resident closing bit until original BellPageHidden
+02B12EAC reports completed layout animation and state 3. Active/event identity
+ends immediately; payment routing remains scoped to the native transaction.
+Explicit ordinary-counter appearance and storage reopening replace this state.
+
+The pinned offline 0.4.26 build passes the expanded storage ARM regression:
+original arguments/dispatch, all six fees/eight residents, mixed funds, one-short,
+combined HUD and Down/Finish feedback. The dismissal test runs the original
+hidden predicate with independent page state and modeled engine completion,
+verifies multiple Out frames never expose cash, and restores cash behind a
+hidden root. It covers teardown during Out, reopen and ordinary-counter takeover
+at two ASLR bases. The imported shop/catalog/source-priority/native cash refresh,
+animation and saturation regressions also pass. Core activation passes all 256
+module subsets at two bases and the existing configuration/version checks.
+Package checks validate release metadata, manifests and original layouts/colors.
+No layout assets, hooks, persistent state or save formats are added. Engine
+animation playback remains outside emulation; live 0.4.26 dismissal confirmation
+is pending. Core-only/full/source archives preserve older releases locally.

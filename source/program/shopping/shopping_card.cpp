@@ -14,6 +14,7 @@ constexpr std::uintptr_t ResourceSizeQuery = 0x03e3cad0;
 constexpr std::uintptr_t Wallet = 0x0257abf0, Debit = 0x0257b340;
 constexpr std::uintptr_t WalletSpace = 0x0257ad90, AddCash = 0x0257af90;
 constexpr std::uintptr_t BellDisplayUpdate = 0x0301b394, BellPageUpdate = 0x02b13bf0;
+constexpr std::uintptr_t BellPageHidden = 0x02b12eac;
 constexpr std::uintptr_t StepNumber = 0x03353b14, NumberFeedback = 0x03025400, FormatNumber = 0x03025a4c;
 constexpr std::uintptr_t FindParameter = 0x02b12c24, SafeStringVtableGot = 0x04ab2020;
 constexpr std::uintptr_t FindPane = 0x0027d1d0, SetPaneText = 0x03c1b588, SetGroupText = 0x03c47b90;
@@ -120,9 +121,14 @@ template<std::size_t N> bool Contains(const std::array<unsigned, N> &sites, std:
 // never retain a controller, layout or save pointer across calls.
 unsigned catalogPlayers{};
 // Keep a borrowed event identity only for HUD cleanup; never dereference it.
-// A command from another flow, UI dismissal or event teardown clears visibility.
-struct StorageSession { std::uintptr_t event{}; bool visible{}; };
+// Dismissal/teardown ends the session; presentation can finish its native Out.
+struct StorageSession { std::uintptr_t event{}; bool visible{}, closing{}; };
 std::array<StorageSession, 8> storageSessions{};
+void CloseStorageDisplay(StorageSession &session) {
+    // End transaction scope now, but keep its presentation through the native
+    // Out animation. No event/UI pointer is needed while that animation ends.
+    session = {0, false, session.visible || session.closing};
+}
 std::uintptr_t storageDebitEvent{}; // scoped to synchronous native command execution
 unsigned storageQueryResident{}; // resident + 1, scoped to the native query call
 namespace storage {
@@ -195,8 +201,11 @@ HOOK_DEFINE_TRAMPOLINE(StorageCommand) {
             auto &session = storageSessions[*player];
             if (storageFlow) {
                 if (CommandName(name, "EventFlowActionUIMoneyAppear")) session = {event, true};
-                else if (CommandName(name, "EventFlowActionUIMoneyDisappear") && session.event == event) session = {};
-            } else if (session.event == event) session = {};
+                else if (CommandName(name, "EventFlowActionUIMoneyDisappear") && session.event == event)
+                    CloseStorageDisplay(session);
+            } else if (CommandName(name, "EventFlowActionUIMoneyAppear")) {
+                session = {}; // An explicit ordinary counter replaces a closing card.
+            } else if (session.event == event) CloseStorageDisplay(session);
         }
         // BellCountDown's +30 method returns true: native 0060F610..0060F6AC
         // executes it synchronously through +58. Scope that one dispatch only.
@@ -222,7 +231,7 @@ HOOK_DEFINE_TRAMPOLINE(StoragePayment) {
 };
 HOOK_DEFINE_TRAMPOLINE(StorageEventDestroyed) {
     static void Callback(std::uintptr_t event) {
-        for (auto &session : storageSessions) if (session.event == event) session = {};
+        for (auto &session : storageSessions) if (session.event == event) CloseStorageDisplay(session);
         Orig(event);
     }
 };
@@ -397,7 +406,8 @@ std::uintptr_t BellPageCounter(std::uintptr_t owner) {
 }
 void UpdateSavingsDisplay(std::uintptr_t counter, const std::uint8_t *player, DisplaySurface surface) {
     const auto shop = !Valid(player) ? 0 : (catalogPlayers & (1u << *player)) ? catalog::DisplayKey :
-        storageSessions[*player].visible ? storage::DisplayKey : CurrentShop();
+        (storageSessions[*player].visible ||
+         (surface == DisplaySurface::Hud && storageSessions[*player].closing)) ? storage::DisplayKey : CurrentShop();
     if (surface == DisplaySurface::Hud && !shop) savingsAnimation.initialized = false;
     auto root = BoundNumberPane(counter);
     std::uintptr_t card = 0;
@@ -460,6 +470,10 @@ HOOK_DEFINE_TRAMPOLINE(BellPageBalanceDisplay) {
         // ShopBalanceDisplay. Cash initialization/refresh stays native on both.
         Orig(owner);
         const auto player = owner ? reinterpret_cast<const std::uint8_t *>(owner + display::HudPlayer) : nullptr;
+        // Native BellPageHidden checks both state 3 and completed layout Out
+        // animation. Restoring cash on the event command exposes it mid-fade.
+        if (Valid(player) && storageSessions[*player].closing &&
+            Fn<bool (*)(std::uintptr_t)>(address::BellPageHidden)(owner)) storageSessions[*player] = {};
         UpdateSavingsDisplay(BellPageCounter(owner), player, DisplaySurface::Hud);
     }
 };
