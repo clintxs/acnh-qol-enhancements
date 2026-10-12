@@ -529,3 +529,9 @@ Preferences load after RomFS mounts, so early startup chatter stays suppressed.
 Early startup errors still log. Special dialogue MESSAGE/SELECT tracing needs
 the diagnostic build and log_debug=true in core.custom.ini. Trace limits remain.
 Invalid values inherit; duplicate keys restore the value from before that file.
+
+Controls auto_swim (development): enabled by default. Move the left stick to
+swim at the surface or underwater without A. Release it to stop requesting
+strokes. Y still dives/surfaces normally. Set auto_swim = false in controls.ini
+or controls.custom.ini and restart to restore ordinary swimming. Native stroke
+timing is preserved; live Eden validation is pending.

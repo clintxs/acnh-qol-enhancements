@@ -135,7 +135,7 @@ def main():
         # still disables them without disabling other Controls features.
         for custom, expected in ((None, 20 + EXTRA),
                                  (b'auto_vault=false\nauto_ladder=false\nauto_equip_traversal=false', 13)):
-            files = {'controls': DEFAULT}
+            files = {'controls': DEFAULT + b'auto_swim=false\n'}
             if custom is not None: files['controls.custom'] = custom
             defaults = Machine(base, files)
             defaults.boot(); defaults.activate()
@@ -270,7 +270,7 @@ def main():
         m.finish_change(); assert m.dispatch() == 1
         cases += 1
         for dependency in DEPENDENCIES:
-            config = DEFAULT + b'hold_to_hoover=false\nhold_to_advance_dialogue=false\nauto_vault=true\nauto_ladder=true\nauto_equip_traversal=true\n'
+            config = DEFAULT + b'auto_swim=false\nhold_to_hoover=false\nhold_to_advance_dialogue=false\nauto_vault=true\nauto_ladder=true\nauto_equip_traversal=true\n'
             n = Machine(base, {'controls':config})
             n.u.mem_write(base+dependency, b'\0'*4); n.boot(); n.activate()
             assert base+0x2222950 not in n.hooks

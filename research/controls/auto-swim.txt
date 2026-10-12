@@ -1,0 +1,34 @@
+Automatic swimming - ACNH 3.0.3 - development test
+
+Setting auto_swim=true defaults on; the regular file and custom overlay use
+strict boolean parsing, duplicate rollback, and atomic invalid-file rejection.
+
+Verified local main-relative bindings:
+  02367E3C: surface stroke A-press branch (W9 bit 0), in 02367C08.
+  0236D558: underwater stroke A-press branch (W8 bit 0), in dive wait update.
+  0241E98C: player parameter accessor (argument 1).
+
+Surface wait 0236B77C calls 02364B10 for analog movement, then 02368110 for
+water exits and 02367C08 for stroke/dive requests. Surface stride update
+0236BEA0 also calls 02367C08. The stroke request selects action F7; the later
+Y branch selects F9. Dive wait also calls 02364B10 and selects action FB for
+a stroke. Both stroke gates sit after their native input lock at player+17AC;
+underwater also retains its resident restriction. The hook changes only a
+register at the A branch, leaving all input masks, Y and request construction
+untouched. Native scheduling determines when another stroke can start.
+
+The movement routines use player+12F8 to enable player+EEC's float stick pair,
+and player parameter +120 for the analog deadzone. Parameter objects provide
+the value through virtual slot F0. Native update mode 1 skips local updates;
+the hooks also reject it. NaN, infinity and invalid deadzones fail closed.
+Exact gate/helper instruction fingerprints are checked before either hook is
+installed, so a conflict disables only automatic swimming.
+
+Validation: compiled hooks and native conditional branches at two ASLR bases;
+surface/underwater cardinal and diagonal intent, native deadzone, neutral stick,
+release/repeat, physical A preservation, disabled input, remote update mode,
+invalid analog values, independent config/overlay and compatibility conflicts.
+Core integration and other Controls regressions run against the same ELF.
+Loaded parameter resources are modeled. Continuous stroke cadence, swimming
+animations, diving/catching/surfacing, shore exits and multiplayer require live
+Eden testing; no live result is claimed.

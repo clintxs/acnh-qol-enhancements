@@ -113,11 +113,18 @@ hold_to_hoover = true
 auto_vault = true
 auto_ladder = true
 auto_equip_traversal = true
+auto_swim = true
 ```
 
 Set `hold_to_hoover = false` for ordinary field Y behavior. The two hold-Y
 settings default to true. All Controls settings work in `controls.ini` and
 `controls.custom.ini`. Restart after editing.
+
+Automatic swimming is enabled by default. Move the left stick to swim at the
+surface or underwater without pressing A; release the stick to stop requesting
+strokes. Y still dives/surfaces normally. Set `auto_swim = false` in
+`controls.ini` or `controls.custom.ini` to restore ordinary swimming. Restart
+after editing. Native stroke timing is preserved; live Eden validation is pending.
 
 Automatic traversal is enabled by default. Push firmly toward a vaultable river
 or a climbable cliff face/edge and keep pushing through the normal hop delay.

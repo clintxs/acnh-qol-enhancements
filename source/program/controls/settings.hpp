@@ -4,6 +4,7 @@ namespace qol::controls {
 struct Settings {
     bool holdToHoover = true;
     bool holdToAdvanceDialogue = true;
+    bool autoSwim = true;
     bool autoVault = true;
     bool autoEquipTraversal = true; // Borrow a pocket tool and restore the prior held item.
     bool autoLadder = true; // Handheld and placed ladders, including vines.
@@ -24,12 +25,12 @@ inline unsigned ApplySettings(std::string_view input, Settings &output) {
         const auto key = core::Trim(line.substr(0, equals));
         const auto value = core::Trim(line.substr(equals + 1));
         if (key == "enabled" || key == "version") continue;
-        const unsigned bit = key == "hold_to_hoover" ? 1 : key == "hold_to_advance_dialogue" ? 2 : key == "auto_vault" ? 4 : key == "auto_ladder" ? 8 : key == "auto_equip_traversal" ? 16 : 0;
+        const unsigned bit = key == "hold_to_hoover" ? 1 : key == "hold_to_advance_dialogue" ? 2 : key == "auto_vault" ? 4 : key == "auto_ladder" ? 8 : key == "auto_equip_traversal" ? 16 : key == "auto_swim" ? 32 : 0;
         if (!bit) { ++warnings; continue; }
         if (seen & bit) { duplicate |= bit; ++warnings; continue; }
         seen |= bit;
         if (value == "true" || value == "false")
-            (bit == 1 ? output.holdToHoover : bit == 2 ? output.holdToAdvanceDialogue : bit == 4 ? output.autoVault : bit == 8 ? output.autoLadder : output.autoEquipTraversal) = value == "true";
+            (bit == 1 ? output.holdToHoover : bit == 2 ? output.holdToAdvanceDialogue : bit == 4 ? output.autoVault : bit == 8 ? output.autoLadder : bit == 16 ? output.autoEquipTraversal : output.autoSwim) = value == "true";
         else ++warnings;
     }
     if (duplicate & 1) output.holdToHoover = previous.holdToHoover;
@@ -37,6 +38,7 @@ inline unsigned ApplySettings(std::string_view input, Settings &output) {
     if (duplicate & 4) output.autoVault = previous.autoVault;
     if (duplicate & 8) output.autoLadder = previous.autoLadder;
     if (duplicate & 16) output.autoEquipTraversal = previous.autoEquipTraversal;
+    if (duplicate & 32) output.autoSwim = previous.autoSwim;
     return warnings;
 }
 unsigned Configure(std::string_view input);
