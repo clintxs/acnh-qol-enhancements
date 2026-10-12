@@ -8,6 +8,8 @@
 namespace qol::shopping {
 namespace {
 namespace address {
+constexpr std::uintptr_t DispatchAction = 0x0060f4f0, DispatchQuery = 0x0060fb10;
+constexpr std::uintptr_t DestroyEvent = 0x0060f340, BellCountDown = 0x00c97260;
 constexpr std::uintptr_t ResourceSizeQuery = 0x03e3cad0;
 constexpr std::uintptr_t Wallet = 0x0257abf0, Debit = 0x0257b340;
 constexpr std::uintptr_t WalletSpace = 0x0257ad90, AddCash = 0x0257af90;
@@ -117,6 +119,90 @@ template<std::size_t N> bool Contains(const std::array<unsigned, N> &sites, std:
 // rather than searching BellPage's unrelated root list. Keep only resident bits;
 // never retain a controller, layout or save pointer across calls.
 unsigned catalogPlayers{};
+// Keep a borrowed event identity only for HUD cleanup; never dereference it.
+// A command from another flow, UI dismissal or event teardown clears visibility.
+struct StorageSession { std::uintptr_t event{}; bool visible{}; };
+std::array<StorageSession, 8> storageSessions{};
+std::uintptr_t storageDebitEvent{}; // scoped to synchronous native command execution
+unsigned storageQueryResident{}; // resident + 1, scoped to the native query call
+namespace storage {
+constexpr unsigned QueryFlowchart = 0x10, ActionFlowchart = 0x38;
+constexpr unsigned ActionAmount = 0xd8, ActionSubtract = 0x100;
+constexpr char Flow[] = "SNPC_rco_10_Common_ExpandHouseStorage";
+constexpr unsigned DisplayKey = 2;
+constexpr std::uintptr_t WalletReturn = 0x00f7cd1c;
+}
+bool StorageFlow(std::uintptr_t arguments, unsigned offset) {
+    // Native dispatchers 0060F5EC/0060FBFC follow ResFlowchart::name, a
+    // length-prefixed resource string. Use the current command's flowchart,
+    // since the executor's root can remain SNPC_rco_00_Common across subflows.
+    const auto chart = arguments ? Read<std::uintptr_t>(arguments, offset) : 0;
+    const auto name = chart ? Read<std::uintptr_t>(chart) : 0;
+    return name && Read<std::uint16_t>(name) == sizeof(storage::Flow) - 1 &&
+           !std::memcmp(reinterpret_cast<const void *>(name + 2), storage::Flow, sizeof(storage::Flow));
+}
+bool CommandName(std::uintptr_t name, const char *expected) {
+    const auto methods = name ? Read<std::uintptr_t>(name) : 0;
+    const auto ensure = methods ? Read<std::uintptr_t>(methods, 0x18) : 0;
+    if (!NativeFunction(ensure)) return false;
+    reinterpret_cast<void (*)(std::uintptr_t)>(ensure)(name);
+    const auto text = Read<const char *>(name, 8);
+    return text && !std::strcmp(text, expected);
+}
+bool PayWithCard(const std::uint8_t *player, unsigned amount);
+HOOK_DEFINE_TRAMPOLINE(StorageAffordability) {
+    static unsigned Callback(std::uintptr_t event, std::uintptr_t name,
+                             std::uintptr_t arguments, std::uintptr_t flowName) {
+        const auto player = event ? reinterpret_cast<const std::uint8_t *>(event + field::EventPlayer) : nullptr;
+        const auto previous = storageQueryResident;
+        storageQueryResident = Valid(player) && StorageFlow(arguments, storage::QueryFlowchart) &&
+                               CommandName(name, "HasBellCount") ? *player + 1u : 0;
+        const auto result = Orig(event, name, arguments, flowName);
+        storageQueryResident = previous;
+        return result;
+    }
+};
+HOOK_DEFINE_TRAMPOLINE(StorageCommand) {
+    static void Callback(std::uintptr_t event, std::uintptr_t name, std::uintptr_t arguments,
+                         std::uintptr_t flowName, std::uintptr_t handled) {
+        const auto player = event ? reinterpret_cast<const std::uint8_t *>(event + field::EventPlayer) : nullptr;
+        const bool storageFlow = Valid(player) && StorageFlow(arguments, storage::ActionFlowchart);
+        const bool debit = storageFlow && CommandName(name, "BellCountDown");
+        if (Valid(player)) {
+            auto &session = storageSessions[*player];
+            if (storageFlow) {
+                if (CommandName(name, "UIMoneyAppear")) session = {event, true};
+                else if (CommandName(name, "UIMoneyDisappear") && session.event == event) session = {};
+            } else if (session.event == event) session = {};
+        }
+        // BellCountDown's +30 method returns true: native 0060F610..0060F6AC
+        // executes it synchronously through +58. Scope that one dispatch only.
+        const auto previous = storageDebitEvent;
+        storageDebitEvent = debit ? event : 0;
+        Orig(event, name, arguments, flowName, handled);
+        storageDebitEvent = previous;
+    }
+};
+HOOK_DEFINE_TRAMPOLINE(StoragePayment) {
+    static void Callback(std::uintptr_t action) {
+        const auto event = action ? Read<std::uintptr_t>(action, field::ActionEvent) : 0;
+        const auto player = event ? reinterpret_cast<const std::uint8_t *>(event + field::EventPlayer) : nullptr;
+        if (Valid(player) && storageDebitEvent == event) {
+            const auto amount = Read<int>(action, storage::ActionAmount);
+            if (Read<std::uint8_t>(action, storage::ActionSubtract) && amount >= 0) {
+                PayWithCard(player, static_cast<unsigned>(amount));
+                return;
+            }
+        }
+        Orig(action);
+    }
+};
+HOOK_DEFINE_TRAMPOLINE(StorageEventDestroyed) {
+    static void Callback(std::uintptr_t event) {
+        for (auto &session : storageSessions) if (session.event == event) session = {};
+        Orig(event);
+    }
+};
 void SetCatalogOpen(std::uintptr_t owner, bool active) {
     const auto player = owner ? reinterpret_cast<const std::uint8_t *>(owner + catalog::Player) : nullptr;
     if (!Valid(player)) return;
@@ -287,7 +373,8 @@ std::uintptr_t BellPageCounter(std::uintptr_t owner) {
         layout + display::Parameters, &path);
 }
 void UpdateSavingsDisplay(std::uintptr_t counter, const std::uint8_t *player, DisplaySurface surface) {
-    const auto shop = !Valid(player) ? 0 : (catalogPlayers & (1u << *player)) ? catalog::DisplayKey : CurrentShop();
+    const auto shop = !Valid(player) ? 0 : (catalogPlayers & (1u << *player)) ? catalog::DisplayKey :
+        storageSessions[*player].visible ? storage::DisplayKey : CurrentShop();
     if (surface == DisplaySurface::Hud && !shop) savingsAnimation.initialized = false;
     auto root = BoundNumberPane(counter);
     std::uintptr_t card = 0;
@@ -358,7 +445,8 @@ HOOK_DEFINE_TRAMPOLINE(ShopWallet) {
         const auto caller = reinterpret_cast<std::uintptr_t>(__builtin_return_address(0));
         // Catalog's exact checkout caller works at Nook Stop and on the phone,
         // including outdoors. Its ordinary cash display calls remain untouched.
-        if (Valid(player) && (caller == Main(catalog::WalletReturn) ||
+        if (Valid(player) && ((caller == Main(storage::WalletReturn) && storageQueryResident == *player + 1u) ||
+                              caller == Main(catalog::WalletReturn) ||
                               (Contains(WalletCallers, caller) && CurrentShop())))
             return CombinedBalance(player);
         return Orig(player);
@@ -372,21 +460,25 @@ HOOK_DEFINE_TRAMPOLINE(ShopDebit) {
             Orig(player, amount);
             return;
         }
-        Balances balance;
-        const auto plan = ReadBalances(player, balance) ? PlanPayment(balance, amount) : Payment{};
-        if (!plan.affordable) {
-            Logging.Debug("[QoL Enhancements/Shopping Card] INSUFFICIENT player=%u bells=%u\n", *player, amount);
-            return;
-        }
-        if (plan.savings)
-            Fn<void (*)(const std::uint8_t *, unsigned)>(address::Withdraw)(player, plan.savings);
-        if (plan.cashDebit) Orig(player, plan.cashDebit);
-        if (plan.walletRefund)
-            Fn<void (*)(const std::uint8_t *, unsigned)>(address::AddCash)(player, plan.walletRefund);
-        Logging.Debug("[QoL Enhancements/Shopping Card] PURCHASE player=%u bells=%u savings=%u pockets=%u wallet=%u\n",
-                    *player, amount, plan.savings, plan.pockets, plan.wallet);
+        PayWithCard(player, amount);
     }
 };
+bool PayWithCard(const std::uint8_t *player, unsigned amount) {
+    Balances balance;
+    const auto plan = ReadBalances(player, balance) ? PlanPayment(balance, amount) : Payment{};
+    if (!plan.affordable) {
+        Logging.Debug("[QoL Enhancements/Shopping Card] INSUFFICIENT player=%u bells=%u\n", *player, amount);
+        return false;
+    }
+    if (plan.savings)
+        Fn<void (*)(const std::uint8_t *, unsigned)>(address::Withdraw)(player, plan.savings);
+    if (plan.cashDebit) ShopDebit::Orig(player, plan.cashDebit);
+    if (plan.walletRefund)
+        Fn<void (*)(const std::uint8_t *, unsigned)>(address::AddCash)(player, plan.walletRefund);
+    Logging.Debug("[QoL Enhancements/Shopping Card] PURCHASE player=%u bells=%u savings=%u pockets=%u wallet=%u\n",
+        *player, amount, plan.savings, plan.pockets, plan.wallet);
+    return true;
+}
 HOOK_DEFINE_TRAMPOLINE(ShopCapacity) {
     static unsigned Callback(const std::uint8_t *player, unsigned reservedSlots) {
         const auto caller = reinterpret_cast<std::uintptr_t>(__builtin_return_address(0));
@@ -447,6 +539,10 @@ bool Install() {
         }
     }
     if (!PrepareResources()) return false;
+    StorageAffordability::InstallAtOffset(address::DispatchQuery);
+    StorageCommand::InstallAtOffset(address::DispatchAction);
+    StoragePayment::InstallAtOffset(address::BellCountDown);
+    StorageEventDestroyed::InstallAtOffset(address::DestroyEvent);
     ShopWallet::InstallAtOffset(address::Wallet);
     ShopDebit::InstallAtOffset(address::Debit);
     ShopCapacity::InstallAtOffset(address::Capacity);
@@ -459,7 +555,7 @@ bool Install() {
     CatalogDestroyed::InstallAtOffset(catalog::Destroy);
     CashNumberFeedback::InstallAtOffset(address::NumberFeedback);
     installed = true;
-    Logging.Debug("[QoL Enhancements/Shopping Card] READY: scoped counter resource budget; combined Bells display; savings -> pocket Bell bags -> wallet in Nook's Cranny/Able Sisters/Nook Shopping\n");
+    Logging.Debug("[QoL Enhancements/Shopping Card] READY: scoped counter resource budget; combined Bells display; savings -> pocket Bell bags -> wallet in Nook's Cranny/Able Sisters/Nook Shopping/Tom Nook storage upgrades\n");
     return true;
 }
 } // namespace qol::shopping

@@ -524,3 +524,41 @@ executes real cash/savings wrappers, debit, credit/overflow and encryption;
 resident/parameter lookup and inventory iteration/insertion are modeled.
 Live mixed-funds checkout in shops, fitting and both catalog entry points is
 still required. Clean uninstall remains ordinary native money/item state.
+
+
+## 0.4.23 Tom Nook storage expansion
+
+The original `SNPC_rco_10_Common_ExpandHouseStorage` flow uses shared
+`HasBellCount` and `BellCountDown` commands for all six fees: 500,000, 700,000,
+900,000, 1,200,000, 1,500,000 and 1,800,000 Bells. Scope by the current command's
+ResFlowchart name, not the executor's root, which can remain
+`SNPC_rco_00_Common` while executing this subflow. No eventflow/MSBT edit.
+
+Shared query dispatcher `0060FB10` reads QueryArg+10 -> ResFlowchart ->
+length-prefixed ResString (`0060FBFC`). During this exact flow's HasBellCount,
+allow its native Wallet return `00F7CD1C` to read combined funds. Restore scope
+immediately after the query. The query retains the native enough/not-enough
+branches and therefore cannot approve a partial payment.
+
+Action dispatcher `0060F4F0` reads ActionArg+38 -> ResFlowchart -> ResString
+(`0060F5EC`). BellCountDown's +30 method (`009DC7A4`) returns true, selecting
+synchronous +58 execution (`0060F610..0060F6AC`). Scope the event identity only
+across that dispatch. BellCountDown execution `00C97260` reads event at +8,
+amount at +D8, and subtract flag at +100. It tail-branches to the shared cash
+debit, so the old shop caller allowlist alone cannot identify storage fees.
+Route nonnegative subtraction through the same savings-first payment helper
+as other card purchases; leave addition and other flows native. No temporary
+money, direct inventory writes, construction flags or loan rules change.
+
+UIMoneyAppear/Disappear in this exact flow control per-resident card visibility.
+Other commands retain visibility without reopening a dismissed counter. A
+command in another flow, or event teardown `0060F340`, clears that event's
+borrowed identity; it is never dereferenced later. The existing combined
+counter/animation and cap apply. Four additional hooks are fingerprint guarded.
+
+The new ARM fixture runs original native action/query dispatch, HasBellCount,
+and synchronous action discrimination with synthetic residents and command
+parameters. Native savings encryption runs; engine parameter binding and cash
+services are modeled. Coverage includes all prices/residents, exact/one-short,
+mixed funds, cancellation/display dismissal, teardown and unrelated fees at
+two ASLR bases. Live storage purchase and HUD timing still need confirmation.

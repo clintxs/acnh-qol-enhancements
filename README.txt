@@ -1,4 +1,4 @@
-QoL Enhancements 0.4.22 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.4.23 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -9,6 +9,9 @@ included. The hint is now Use Item, editable via qol_pockets.hold_wear in the
 Pockets messages INI (English fallback). Restart after editing captions.
 Shopping Card: combined funds, Savings -> Pockets (Bell bags) -> Wallet.
 Native 16:9 placement; display caps at 999,999,999 without limiting spending.
+
+0.4.23: Shopping Card now pays Tom Nook’s storage-expansion fees from combined
+funds, savings first. Includes the combined-balance display during this dialogue.
 
 0.4.22: Fixed hold-Y hoovering for all seasonal weeds. Glowing moss has
 its own category: weed holds skip moss, and moss holds skip weeds.
@@ -165,6 +168,11 @@ plain UTF-8 captions in the Fitting Room
 folder at romfs/qol-enhancements/messages/fitting-room.ini, then restart ACNH.
 Use [USen] with fitting_room.add_to_bag=Bag, or edit the supplied locale
 sections. Missing translations fall back to USen, then built-in English.
+
+Shopping Card: Tom Nook storage expansions also use combined funds, savings first.
+The card balance appears during the storage payment dialogue. Other Tom Nook
+fees retain native payment handling.
+
 Shopping Card: Nook's Cranny/Able Sisters purchases use combined funds; Nook's
 sales deposit to savings and use the ordinary “Thank you! Please come again!”
 message. 0.3.3 removes the misleading pockets-full/wiring explanation. Includes
@@ -281,7 +289,7 @@ regardless of whether the timeout fix is disabled.
 CONFIGURATION AND UPDATES
 Each feature supplies romfs/qol-enhancements/config/<feature>.ini with:
   enabled = true
-  version = 0.4.22
+  version = 0.4.23
 No configuration editing is needed for normal installation. Disable a feature
 through Eden to remove BOTH its code activation and its resource replacements.
 Setting enabled=false stops its code only; its RomFS resources remain loaded.
@@ -314,7 +322,7 @@ CRAFTING MODULE / SETTINGS (0.3.63)
 Install Core plus “QoL Enhancements - Crafting”. This replaces the former
 “QoL Enhancements - Faster Crafting” folder; remove that old folder when updating.
 Move any personal faster-crafting.custom.ini preferences to crafting.custom.ini.
-Remove old version overrides in that custom file, or update them to 0.4.22.
+Remove old version overrides in that custom file, or update them to 0.4.23.
 Old faster-crafting.ini/custom paths are no longer read.
 DIY app previews are now optional Crafting behavior, not always-on Core behavior.
 
@@ -322,7 +330,7 @@ Regular settings: romfs/qol-enhancements/config/crafting.ini
 Personal overlay: romfs/qol-enhancements/config/crafting.custom.ini
 Defaults in the regular file:
   enabled = true
-  version = 0.4.22
+  version = 0.4.23
   diy_app_preview = true
   workbench_preview_tilt = true
   crafting_quantity_wrap = true
@@ -373,7 +381,7 @@ CONTROLS SETTINGS
 The Controls module includes both hold-Y pickups and dialogue hurry.
 romfs/qol-enhancements/config/controls.ini:
   enabled = true
-  version = 0.4.22
+  version = 0.4.23
   hold_to_advance_dialogue = true
   hold_to_hoover = true
   auto_vault = true

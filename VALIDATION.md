@@ -2711,3 +2711,31 @@ vault/ladder/equipment policies and dialogue Hurry/catch behavior. Package
 checks pass for the current nine folders and eight feature markers; the stale
 pre-Swimming folder count in the fixture was corrected. Binary/source/personal
 example archives are packaged separately, preserving previous releases.
+
+
+## 0.4.23 Shopping Card storage expansion (2026-10-12)
+
+Tom Nook's storage flow now uses combined affordability and the existing
+savings-first payment helper. The shared query/action dispatchers gate by the
+current command's exact storage ResFlowchart name. BellCountDown executes
+synchronously within its native dispatcher; scope ends on return. Other fees,
+cash additions, construction flags and loan eligibility stay native. Display
+visibility follows UIMoneyAppear/Disappear and clears on other flows/teardown.
+
+The pinned offline build, all twelve host suites, full Shopping group and Core
+activation/configuration checks pass. Core covers all 256 module subsets at two
+ASLR bases, including absent/disabled Shopping Card and fingerprint conflicts.
+The new compiled ARM fixture executes original native dispatchers, query,
+synchronous-action discriminator and savings encryption at bases zero and
+7100000000. It covers all six prices across eight residents, exact/one-short,
+excess savings, mixed savings/bags/wallet, cancellation, dismissal, teardown,
+other-fee isolation and scope reset after returning. Engine parameter binding
+and cash services are modeled; existing native-cash regressions pass separately.
+The full display/resource/texture/animation/saturation regressions and shipping
+logging checks also pass.
+
+Packaging checks preserve all seven generated layouts and user configuration
+formats. A Core-only update preserves installed card colors and personal
+settings; full-suite and matching source archives accompany it. Live Eden
+confirmation of storage payment, native insufficient/cancel paths and HUD
+appearance/cleanup is pending. No new items, persistent state or save format.
