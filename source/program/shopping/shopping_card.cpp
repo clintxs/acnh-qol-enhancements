@@ -126,18 +126,39 @@ std::array<StorageSession, 8> storageSessions{};
 std::uintptr_t storageDebitEvent{}; // scoped to synchronous native command execution
 unsigned storageQueryResident{}; // resident + 1, scoped to the native query call
 namespace storage {
-constexpr unsigned QueryFlowchart = 0x10, ActionFlowchart = 0x38;
+constexpr unsigned QueryAccessor = 0x28, ActionAccessor = 0;
+constexpr unsigned QueryEvent = 0x10, ActionEvent = 0x38;
+constexpr unsigned AccessorContext = 8, AccessorNode = 0x10, AccessorCounter = 0x14;
+constexpr unsigned ContextNodes = 0x38, ContextNodeCount = 0x40, NodeSize = 0x20;
+constexpr unsigned NodeCounter = 0x10, NodeEvent = 0x14;
+constexpr unsigned FlowName = 0x20, FlowEvents = 0x30, FlowEventCount = 0x16, EventSize = 0x28;
 constexpr unsigned ActionAmount = 0xd8, ActionSubtract = 0x100;
 constexpr char Flow[] = "SNPC_rco_10_Common_ExpandHouseStorage";
 constexpr unsigned DisplayKey = 2;
 constexpr std::uintptr_t WalletReturn = 0x00f7cd1c;
 }
-bool StorageFlow(std::uintptr_t arguments, unsigned offset) {
-    // Native dispatchers 0060F5EC/0060FBFC follow ResFlowchart::name, a
-    // length-prefixed resource string. Use the current command's flowchart,
-    // since the executor's root can remain SNPC_rco_00_Common across subflows.
-    const auto chart = arguments ? Read<std::uintptr_t>(arguments, offset) : 0;
-    const auto name = chart ? Read<std::uintptr_t>(chart) : 0;
+bool StorageFlow(std::uintptr_t arguments, unsigned accessorOffset, unsigned eventOffset) {
+    // Mirror native ParamAccessor at 0058AA18..0058AA38: context -> current
+    // node -> FlowchartObj -> ResFlowchart. Arg.res is a ResEvent whose first
+    // field names EventNN; it does NOT name the owning flowchart. The executor
+    // can still name a different root while this node runs a storage subflow.
+    if (!arguments) return false;
+    const auto accessor = arguments + accessorOffset;
+    const auto context = Read<std::uintptr_t>(accessor, storage::AccessorContext);
+    const auto index = Read<int>(accessor, storage::AccessorNode);
+    if (!context || index < 0 || index >= Read<int>(context, storage::ContextNodeCount)) return false;
+    const auto nodes = Read<std::uintptr_t>(context, storage::ContextNodes);
+    if (!nodes) return false;
+    const auto node = nodes + static_cast<unsigned>(index) * storage::NodeSize;
+    if (Read<unsigned>(node, storage::NodeCounter) != Read<unsigned>(accessor, storage::AccessorCounter)) return false;
+    const auto object = Read<std::uintptr_t>(node);
+    const auto chart = object ? Read<std::uintptr_t>(object) : 0;
+    if (!chart || Read<unsigned>(chart) != 0x4c465645u) return false; // EVFL
+    const auto eventIndex = Read<std::uint16_t>(node, storage::NodeEvent);
+    const auto events = Read<std::uintptr_t>(chart, storage::FlowEvents);
+    if (!events || eventIndex >= Read<std::uint16_t>(chart, storage::FlowEventCount) ||
+        Read<std::uintptr_t>(arguments, eventOffset) != events + eventIndex * storage::EventSize) return false;
+    const auto name = Read<std::uintptr_t>(chart, storage::FlowName);
     return name && Read<std::uint16_t>(name) == sizeof(storage::Flow) - 1 &&
            !std::memcmp(reinterpret_cast<const void *>(name + 2), storage::Flow, sizeof(storage::Flow));
 }
@@ -157,7 +178,7 @@ HOOK_DEFINE_TRAMPOLINE(StorageAffordability) {
                              std::uintptr_t arguments, std::uintptr_t flowName) {
         const auto player = event ? reinterpret_cast<const std::uint8_t *>(event + field::EventPlayer) : nullptr;
         const auto previous = storageQueryResident;
-        storageQueryResident = Valid(player) && StorageFlow(arguments, storage::QueryFlowchart) &&
+        storageQueryResident = Valid(player) && StorageFlow(arguments, storage::QueryAccessor, storage::QueryEvent) &&
                                CommandName(name, "EventFlowQueryHasBellCount") ? *player + 1u : 0;
         const auto result = Orig(event, name, arguments, flowName);
         storageQueryResident = previous;
@@ -168,7 +189,7 @@ HOOK_DEFINE_TRAMPOLINE(StorageCommand) {
     static void Callback(std::uintptr_t event, std::uintptr_t name, std::uintptr_t arguments,
                          std::uintptr_t flowName, std::uintptr_t handled) {
         const auto player = event ? reinterpret_cast<const std::uint8_t *>(event + field::EventPlayer) : nullptr;
-        const bool storageFlow = Valid(player) && StorageFlow(arguments, storage::ActionFlowchart);
+        const bool storageFlow = Valid(player) && StorageFlow(arguments, storage::ActionAccessor, storage::ActionEvent);
         const bool debit = storageFlow && CommandName(name, "EventFlowActionBellCountDown");
         if (Valid(player)) {
             auto &session = storageSessions[*player];

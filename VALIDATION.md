@@ -2766,3 +2766,42 @@ with 0.4.24 is still required. Core activation passes all 256 module subsets
 at two ASLR bases, configuration/version checks and absent/disabled modules.
 Package checks pass for the release markers, original layouts and manifests.
 Core-only/full-suite/source archives retain earlier releases.
+
+
+## 0.4.25 Current-node storage flow ownership (2026-10-12)
+
+User reported no change with 0.4.24. The local Eden log confirms that Core
+0.4.24 loaded and Shopping Card was enabled. No activation failure is reported.
+The remaining bug is the assumed argument layout: ActionArg+38/QueryArg+10
+point to ResEvent (named EventNN), not ResFlowchart. The 0.4.24 fixture still
+manufactured a flow-name record in that event slot, masking this second error.
+
+The fix follows ParamAccessor -> context -> current node -> FlowchartObj ->
+ResFlowchart, with native node bounds/counter and event-identity checks. The
+native ParamAccessor constructor and metadata traversal confirm the offsets;
+the original BFEVFL confirms the resource layout. Full command names remain.
+Additional constructor/accessor fingerprints guard these assumptions.
+
+The new fixture relocates the complete original BFEVFL with its own RELT and
+executes the original ACNH argument-construction windows and ParamAccessor
+constructor. Native GetParamCount independently resolves its original metadata.
+It uses node 3 and an unrelated executor root, then sends these native-produced
+arguments through the actual game dispatchers. This reproduces both symptoms
+on the old 0.4.24 ELF, and passes on the pinned 0.4.25 build.
+
+The expanded storage regression passes all fees/residents, mixed funds,
+exact/one-short, cancellation/dismissal, unrelated fees and teardown at two
+ASLR bases. An integrated regression now joins this native argument/ownership
+path to real BellPage/number feedback: 2,077,777 combined text, a 1.8m savings
+payment, unchanged wallet, Down/Finish feedback and ordinary cash restoration.
+Missing, out-of-range, stale and mismatched contexts fail closed. The inherited
+shop/catalog/payment/display/animation/saturation regressions pass as well.
+
+Core activation passes all 256 module subsets at two ASLR bases, configuration
+and version checks, and absent/disabled modules. A focused check with the user's
+existing Shopping Card 0.4.21 marker also passes native storage dispatch, HUD
+activation and the 1.8m savings payment without changing the wallet.
+
+Package checks preserve original layouts/colors and validate release metadata.
+Live Eden confirmation with 0.4.25 remains required; 0.4.23/24 synthetic-context
+success claims are superseded. Earlier archives are preserved.

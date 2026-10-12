@@ -587,3 +587,44 @@ storage BFEVFL and passes those strings into the original native dispatchers.
 It additionally checks native name hashes against the original command
 registries. The corrected fixture fails on 0.4.23 before the fix. This supersedes
 the earlier synthetic-command test evidence; another live Eden check is needed.
+
+
+## 0.4.25 Resolve the actual owning flowchart
+
+Live logs confirm 0.4.24 Core loaded, Shopping Card enabled, and both symptoms
+persisted. The second boundary mistake was treating ActionArg+38 / QueryArg+10
+as ResFlowchart. They are ResEvent pointers; their first field names EventNN.
+The native dispatcher builds diagnostics from an event name plus executor
+root name, not from the current subflow. Earlier fixtures manufactured a
+flow-name record in that event field, masking this mistake.
+
+The published EventFlow implementation clarified the argument/accessor types:
+https://github.com/open-ead/EventFlow/blob/master/include/evfl/Action.h
+https://github.com/open-ead/EventFlow/blob/master/include/evfl/Query.h
+https://github.com/open-ead/EventFlow/blob/master/include/evfl/Param.h
+These were checked against ACNH's actual native instructions before use.
+ParamAccessor constructor 0058A9E8 stores context at +8, node index at +10 and
+node counter at +14. Native 0058AA18..0058AA38 follows context+38 node buffer,
+32-byte indexed node -> first pointer FlowchartObj -> first pointer
+ResFlowchart, then uses its events+30 and node event index+14. The flow name
+is at ResFlowchart+20, confirmed independently in the original BFEVFL.
+
+StorageFlow now follows that chain. Action accessor begins at argument+0;
+query accessor begins at argument+28. Validate node bounds/counter, EVFL magic,
+event bounds and equality between the current node's event and Arg.res before
+matching the flow name. No borrowed context/resource pointer is retained.
+The original command-name and synchronous payment fixes remain necessary.
+
+The fixture now relocates the complete original storage BFEVFL using its RELT.
+Native construction windows 0058D65C..0058D688 (query) and
+0058DC50..0058DC90 (action), including the real ParamAccessor constructor,
+produce the arguments. Native GetParamCount independently resolves the actual
+parameter metadata through that node. These native-produced args reproduce
+both 0.4.24 failures; synthetic flow names in Arg.res are gone. A nonzero node
+and unrelated executor root explicitly exercise subflow ownership. Native
+constructor/accessor windows join the fingerprint set.
+
+The integrated HUD fixture also connects storage dispatch to real BellPage,
+combined text, savings debit, Down/Finish feedback and ordinary cash restoration.
+Missing/out-of-range/stale/mismatched contexts are rejected. In-game validation
+remains required; previous synthetic-context success claims are superseded.

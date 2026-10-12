@@ -8,6 +8,7 @@ import struct
 from pathlib import Path
 from shopping_card_arm_test import CardMachine, RAW
 from unicorn.arm64_const import *
+from unicorn import UC_HOOK_CODE
 
 FLOW = 'SNPC_rco_10_Common_ExpandHouseStorage'
 PRICES = (500000, 700000, 900000, 1200000, 1500000, 1800000)
@@ -27,19 +28,30 @@ flowchart = resource_u64(resource_u64(0x28))
 assert RESOURCE[flowchart:flowchart+4] == b'EVFL'
 assert resource_string(resource_u64(flowchart+0x20)) == FLOW
 NATIVE_COMMANDS = {}
+ACTOR_COMMANDS = {}
 actors = resource_u64(flowchart+0x28)
 for index in range(struct.unpack_from('<H', RESOURCE, flowchart+0x10)[0]):
     actor = actors+index*0x38
-    if resource_string(resource_u64(actor)) != 'EventFlowSystemActor': continue
     for table_offset,count_offset,prefix in ((0x18,0x30,'EventFlowAction'),
                                              (0x20,0x32,'EventFlowQuery')):
         table = resource_u64(actor+table_offset)
         for command in range(struct.unpack_from('<H', RESOURCE, actor+count_offset)[0]):
             name = resource_string(resource_u64(table+command*8))
             assert name.startswith(prefix)
-            NATIVE_COMMANDS[name[len(prefix):]] = name
+            ACTOR_COMMANDS[index, table_offset == 0x20, command] = name
+            if resource_string(resource_u64(actor)) == 'EventFlowSystemActor':
+                NATIVE_COMMANDS[name[len(prefix):]] = name
 for name in ('BellCountDown','HasBellCount','UIMoneyAppear','UIMoneyDisappear'):
     assert name in NATIVE_COMMANDS
+RESOURCE_EVENTS = {}
+events = resource_u64(flowchart+0x30)
+for index in range(struct.unpack_from('<H', RESOURCE, flowchart+0x16)[0]):
+    event = events+index*0x28
+    kind = RESOURCE[event+8]
+    if kind not in (0,1): continue
+    actor,command = struct.unpack_from('<HH', RESOURCE, event+0xc)
+    name = ACTOR_COMMANDS[actor, kind == 1, command]
+    RESOURCE_EVENTS.setdefault(name, index)
 
 
 class StorageMachine(CardMachine):
@@ -61,13 +73,34 @@ class StorageMachine(CardMachine):
         self.res_name = self.area+0x3600; self.table = self.area+0x4000
         self.query_table = self.area+0x4100; self.methods = self.area+0x4200
         self.executor = self.area+0x4300; self.context = self.area+0x4400
+        self.evfl_context = self.area+0x4800; self.nodes = self.area+0x4900
+        self.flow_object = self.area+0x4a00; self.actor_binding = self.area+0x4b00
+        self.command_binding = self.area+0x4c00
+        self.resource = self.area+0x7000
+        # Relocate the complete ORIGINAL BFEVFL, keeping its event names,
+        # parameter records, events and owning flowchart distinct.
+        relocated = bytearray(RESOURCE)
+        relt = struct.unpack_from('<I', RESOURCE, 0x18)[0]
+        assert RESOURCE[relt:relt+4] == b'RELT'
+        assert struct.unpack_from('<I', RESOURCE, relt+8)[0] == 1
+        for entry in range(struct.unpack_from('<I', RESOURCE, relt+0x24)[0]):
+            offset,bits = struct.unpack_from('<II', RESOURCE, relt+0x28+entry*8)
+            for bit in range(32):
+                if bits & (1 << bit):
+                    pointer = resource_u64(offset+bit*8)
+                    if pointer: struct.pack_into('<Q', relocated, offset+bit*8, self.resource+pointer)
+        self.u.mem_write(self.resource,bytes(relocated))
+        self.write(self.evfl_context+0x38,self.nodes)
+        self.write(self.evfl_context+0x40,4,4)
+        self.write(self.nodes+3*0x20,self.flow_object)
+        self.write(self.nodes+3*0x20+0x10,19,4)
+        self.u.mem_write(self.chart,bytes(self.u.mem_read(self.resource+flowchart,0x48)))
+        self.write(self.flow_object,self.chart)
         self.noop = base+0x9d9494
         self.write(self.methods+0x18,self.noop)
         for name,text in ((self.name,self.command_text),(self.flow_name,self.flow_text)):
             self.write(name,self.methods); self.write(name+8,text)
         self.u.mem_write(self.flow_text,b'SNPC_rco_00_Common\0')  # unrelated ROOT is intentional
-        self.write(self.chart,self.res_name)
-        self.write(self.args+0x10,self.chart); self.write(self.args+0x38,self.chart)
         self.write(self.event+0x288,self.executor); self.write(self.executor+8,self.context)
         self.write(self.context+0xb8,1,4)  # skip debug formatting
         for action,table in ((self.action,self.table),(self.check,self.query_table)):
@@ -90,13 +123,46 @@ class StorageMachine(CardMachine):
         if getattr(self,'base',0)+0xc97260==pc:
             self.storage_payments+=1
         super().service(u,pc,size,data)
-    def command(self,name,flow=FLOW):
+    def command(self,name,flow=FLOW,query=False):
         native_name = NATIVE_COMMANDS.get(name, 'EventFlowAction'+name)
         self.u.mem_write(self.command_text,native_name.encode()+b'\0')
         self.u.mem_write(self.res_name,struct.pack('<H',len(flow))+flow.encode()+b'\0')
+        self.write(self.chart+0x20,self.res_name)
+        event_index = RESOURCE_EVENTS.get(native_name, RESOURCE_EVENTS[NATIVE_COMMANDS['SetTagFromSystem']])
+        event = self.resource+events+event_index*0x28
+        self.write(self.nodes+3*0x20+0x14,event_index,2)
+        self.construct_argument(event,query)
+        # Native GetParamCount independently follows this accessor's context
+        # node, owning flowchart and ResEvent. It must find the original params.
+        accessor = self.args+(0x28 if query else 0)
+        params = resource_u64(events+event_index*0x28+0x10)
+        count = struct.unpack_from('<H', RESOURCE, params+2)[0] if params else 0
+        assert self.invoke(self.base+0x58aa0c,accessor) == count
         h=self.invoke(self.base+0x5bd550,self.command_text,0)
         if name in REGISTRY: assert h == struct.unpack_from('<I', RAW, REGISTRY[name])[0]
         self.write(self.action+0x10,h,4);self.write(self.check+0x10,h,4)
+    def construct_argument(self,event,query):
+        # Execute the actual ACNH EventFlow argument-construction windows and
+        # ParamAccessor constructor. Supply engine bindings/current node only;
+        # do not manufacture fields based on the feature's own assumptions.
+        sp = self.ram+0x1d0000
+        self.u.reg_write(UC_ARM64_REG_SP,sp)
+        self.u.reg_write(UC_ARM64_REG_X29,self.args+0x50)
+        self.u.reg_write(UC_ARM64_REG_X0,self.command_binding)
+        self.u.reg_write(UC_ARM64_REG_X19,self.evfl_context)
+        self.u.reg_write(UC_ARM64_REG_X20,3)
+        self.u.reg_write(UC_ARM64_REG_X21,event)
+        self.u.reg_write(UC_ARM64_REG_X22,self.actor_binding)
+        self.u.reg_write(UC_ARM64_REG_X23,self.actor_binding)
+        self.u.reg_write(UC_ARM64_REG_X9,self.nodes+3*0x20+8)
+        self.write(sp+0x18,self.args+0x28)
+        self.write(sp+0x28,self.nodes+3*0x20+8)
+        start,end = (0x58d65c,0x58d688) if query else (0x58dc50,0x58dc90)
+        guard = self.u.hook_add(UC_HOOK_CODE,lambda u,pc,n,d: u.emu_stop() if pc==self.base+end else None)
+        self.u.emu_start(self.base+start,self.base+end,count=1000)
+        self.u.hook_del(guard)
+        assert self.u.reg_read(UC_ARM64_REG_PC)==self.base+end
+        assert self.read(self.args+(0x10 if query else 0x38))==event
     def funds(self,player,savings,wallet,bags):
         self.write(self.event+0x2a8,player,1)
         current=self.balance(player)
@@ -105,7 +171,7 @@ class StorageMachine(CardMachine):
     def total(self,player):
         return self.balance(player)+self.wallet+sum(self.bags)
     def affordable(self,price,flow=FLOW):
-        self.command('HasBellCount',flow);self.write(self.check+0xd0,price,4)
+        self.command('HasBellCount',flow,query=True);self.write(self.check+0xd0,price,4)
         return self.invoke(self.callbacks[0x60fb10],self.event,self.name,self.args,self.flow_name)
     def dispatch(self,name='BellCountDown',price=0,flow=FLOW,subtract=True):
         self.command(name,flow);self.write(self.action+0xd8,price,4)
@@ -164,3 +230,36 @@ for base in (0,0x7100000000):
     # Invalid residents fall back to the native query without card money.
     m.write(m.event+0x2a8,255,1);assert m.affordable(1800000)==1
     print('PASS: storage native dispatch timing, all six prices/eight residents, mixed funds, one-short, cancellation, scope cleanup and other fees; base',hex(base))
+
+# Join the actual argument/dispatcher path to the existing native BellPage and
+# number-feedback fixture, so visibility alone cannot conceal a wiring failure.
+from shopping_display_arm_test import DisplayMachine
+class StorageDisplayMachine(StorageMachine, DisplayMachine): pass
+for base in (0,0x7100000000):
+    m=StorageDisplayMachine(base)
+    m.funds(0,2000000,77777,[])
+    m.update_hud();assert not m.shown('N_ShoppingCard_00')
+    m.dispatch('UIMoneyAppear');m.update_hud()
+    assert m.shown('N_ShoppingCard_00') and not m.shown('T_Num_00')
+    assert m.texts[-1]=='2,077,777' and not m.feedback
+    assert m.affordable(1800000)==0
+    m.dispatch(price=1800000);m.update_hud()
+    assert m.balance()==200000 and m.wallet==77777
+    assert m.feedback[-1]==('Down',2)
+    m.settle_hud(277777)
+    assert m.feedback[-1]==('DownFinish',4)
+    m.dispatch('UIMoneyDisappear');m.update_hud()
+    assert not m.shown('N_ShoppingCard_00') and m.shown('T_Num_00')
+    # Missing, out-of-range, stale and mismatched native node contexts cannot
+    # activate card money. The constructor/accessor path above is the valid case.
+    gate=m.module.find('shopping','StorageFlow')
+    assert m.invoke(gate,0,0,0x38)==0
+    m.command('UIMoneyAppear')
+    m.write(m.args+8,0);assert m.invoke(gate,m.args,0,0x38)==0
+    m.command('UIMoneyAppear')
+    m.write(m.args+0x10,4,4);assert m.invoke(gate,m.args,0,0x38)==0
+    m.command('UIMoneyAppear')
+    m.write(m.args+0x14,18,4);assert m.invoke(gate,m.args,0,0x38)==0
+    m.command('UIMoneyAppear')
+    m.write(m.args+0x38,m.resource+events);assert m.invoke(gate,m.args,0,0x38)==0
+    print('PASS: native-created storage args -> owning flow -> combined HUD -> savings debit -> Down/Finish feedback -> native cash restoration; invalid contexts rejected; base',hex(base))
