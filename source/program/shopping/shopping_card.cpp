@@ -141,6 +141,8 @@ bool StorageFlow(std::uintptr_t arguments, unsigned offset) {
     return name && Read<std::uint16_t>(name) == sizeof(storage::Flow) - 1 &&
            !std::memcmp(reinterpret_cast<const void *>(name + 2), storage::Flow, sizeof(storage::Flow));
 }
+// Dispatch receives serialized names, including EventFlowAction/Query prefixes.
+// Decompiled scripts omit those prefixes for readability.
 bool CommandName(std::uintptr_t name, const char *expected) {
     const auto methods = name ? Read<std::uintptr_t>(name) : 0;
     const auto ensure = methods ? Read<std::uintptr_t>(methods, 0x18) : 0;
@@ -156,7 +158,7 @@ HOOK_DEFINE_TRAMPOLINE(StorageAffordability) {
         const auto player = event ? reinterpret_cast<const std::uint8_t *>(event + field::EventPlayer) : nullptr;
         const auto previous = storageQueryResident;
         storageQueryResident = Valid(player) && StorageFlow(arguments, storage::QueryFlowchart) &&
-                               CommandName(name, "HasBellCount") ? *player + 1u : 0;
+                               CommandName(name, "EventFlowQueryHasBellCount") ? *player + 1u : 0;
         const auto result = Orig(event, name, arguments, flowName);
         storageQueryResident = previous;
         return result;
@@ -167,12 +169,12 @@ HOOK_DEFINE_TRAMPOLINE(StorageCommand) {
                          std::uintptr_t flowName, std::uintptr_t handled) {
         const auto player = event ? reinterpret_cast<const std::uint8_t *>(event + field::EventPlayer) : nullptr;
         const bool storageFlow = Valid(player) && StorageFlow(arguments, storage::ActionFlowchart);
-        const bool debit = storageFlow && CommandName(name, "BellCountDown");
+        const bool debit = storageFlow && CommandName(name, "EventFlowActionBellCountDown");
         if (Valid(player)) {
             auto &session = storageSessions[*player];
             if (storageFlow) {
-                if (CommandName(name, "UIMoneyAppear")) session = {event, true};
-                else if (CommandName(name, "UIMoneyDisappear") && session.event == event) session = {};
+                if (CommandName(name, "EventFlowActionUIMoneyAppear")) session = {event, true};
+                else if (CommandName(name, "EventFlowActionUIMoneyDisappear") && session.event == event) session = {};
             } else if (session.event == event) session = {};
         }
         // BellCountDown's +30 method returns true: native 0060F610..0060F6AC

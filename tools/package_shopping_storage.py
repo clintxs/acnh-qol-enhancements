@@ -7,7 +7,11 @@ import package
 
 def main():
     root = package.ROOT
-    assert b'Tom Nook storage upgrades' in (root / 'project.elf').read_bytes()
+    elf = (root / 'project.elf').read_bytes()
+    assert package.release_version().encode()+b'\0' in elf
+    for command in (b'EventFlowActionBellCountDown', b'EventFlowQueryHasBellCount',
+                    b'EventFlowActionUIMoneyAppear', b'EventFlowActionUIMoneyDisappear'):
+        assert command+b'\0' in elf
     stem = f'qol-enhancements-v{package.release_version().replace(".", "_")}_shopping-storage_for_acnh_v3_0_3'
     binary, source = (root / 'dist' / (stem + suffix) for suffix in ('.zip', '_source.zip'))
     for path in (binary, source):

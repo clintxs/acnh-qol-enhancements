@@ -562,3 +562,28 @@ parameters. Native savings encryption runs; engine parameter binding and cash
 services are modeled. Coverage includes all prices/residents, exact/one-short,
 mixed funds, cancellation/display dismissal, teardown and unrelated fees at
 two ASLR bases. Live storage purchase and HUD timing still need confirmation.
+
+
+## 0.4.24 Correct serialized storage command names
+
+Live 0.4.23 feedback: Tom Nook still displayed pocket Bells and rejected a
+payment that savings could cover. Both are reproduced on the old compiled ELF
+using the original BFEVFL command names: 2,000,000 savings + 77,777 wallet,
+1,800,000 fee, card hidden and native insufficient result 1.
+
+The decompiler slices `[15:]` from actions and `[14:]` from queries in
+`decompiler/bfevfl.py`. Those shortened names are presentation only. The native
+dispatchers receive `EventFlowActionUIMoneyAppear`,
+`EventFlowActionUIMoneyDisappear`, `EventFlowActionBellCountDown` and
+`EventFlowQueryHasBellCount`. The actual BFEVFL actor arrays and main's native
+hash registries at 0487D8B0 / 0487D450 / 04880370 confirm them. Scope comparisons
+now use the complete serialized names. Dispatch offsets, flow matching, money
+helpers, display lifecycle and all other fee handling remain as before.
+
+The earlier fixture used the same shortened names as the faulty comparisons,
+so its native dispatcher coverage did not catch this boundary mismatch. The
+fixture now reads actor action/query tables directly from the untouched local
+storage BFEVFL and passes those strings into the original native dispatchers.
+It additionally checks native name hashes against the original command
+registries. The corrected fixture fails on 0.4.23 before the fix. This supersedes
+the earlier synthetic-command test evidence; another live Eden check is needed.

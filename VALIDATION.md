@@ -2739,3 +2739,30 @@ formats. A Core-only update preserves installed card colors and personal
 settings; full-suite and matching source archives accompany it. Live Eden
 confirmation of storage payment, native insufficient/cancel paths and HUD
 appearance/cleanup is pending. No new items, persistent state or save format.
+
+
+## 0.4.24 Storage command-name boundary fix (2026-10-12)
+
+Live 0.4.23 testing supersedes its synthetic command-name fixture: storage
+showed ordinary pocket Bells and rejected sufficient savings. The decompiler
+removes EventFlowAction/EventFlowQuery prefixes for readability. Production
+scope comparisons and the fixture both mistakenly used those shortened names.
+
+Reproduced both symptoms on the previous compiled ELF with original resource
+names, 2,000,000 savings, 77,777 wallet and a 1,800,000 fee. Corrected comparisons
+use the full serialized names. The fixture now extracts commands from the
+original storage BFEVFL actor tables and cross-checks native command hashes
+against the original main registries. This fixture fails on 0.4.23 before the
+fix. Native dispatch timing, offsets and transaction helpers are unchanged.
+
+The pinned offline 0.4.24 build and corrected storage ARM regression pass,
+including all six prices/eight residents at two ASLR bases, mixed funds,
+insufficient funds, dismissal/cancellation, teardown and unrelated fees. The
+imported shop/catalog/source-priority regressions also pass. A focused check
+using an existing 0.4.23 feature marker passes: card activates, the 1.8m fee
+comes from savings, wallet stays at 77,777, and dismissal clears visibility.
+Source-priority and display algorithms did not change. In-game confirmation
+with 0.4.24 is still required. Core activation passes all 256 module subsets
+at two ASLR bases, configuration/version checks and absent/disabled modules.
+Package checks pass for the release markers, original layouts and manifests.
+Core-only/full-suite/source archives retain earlier releases.

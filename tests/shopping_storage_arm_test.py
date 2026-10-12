@@ -5,11 +5,42 @@ initialize reusable commands, and execute BellCountDown synchronously. Engine
 parameter binding/cash services are modeled; native savings encryption runs.
 """
 import struct
+from pathlib import Path
 from shopping_card_arm_test import CardMachine, RAW
 from unicorn.arm64_const import *
 
 FLOW = 'SNPC_rco_10_Common_ExpandHouseStorage'
 PRICES = (500000, 700000, 900000, 1200000, 1500000, 1800000)
+REGISTRY = {'HasBellCount':0x4880370, 'BellCountDown':0x487d450,
+            'UIMoneyAppear':0x487d8b0}
+
+# Read the real actor command tables. The decompiler deliberately strips the
+# EventFlowAction/EventFlowQuery prefixes, so its display names cannot model
+# what these native dispatchers receive.
+RESOURCE = (Path(__file__).resolve().parents[2] / 'vanilla-3.0.3/EventFlow' /
+            (FLOW + '.bfevfl')).read_bytes()
+def resource_u64(offset): return struct.unpack_from('<Q', RESOURCE, offset)[0]
+def resource_string(offset):
+    size = struct.unpack_from('<H', RESOURCE, offset)[0]
+    return RESOURCE[offset+2:offset+2+size].decode()
+flowchart = resource_u64(resource_u64(0x28))
+assert RESOURCE[flowchart:flowchart+4] == b'EVFL'
+assert resource_string(resource_u64(flowchart+0x20)) == FLOW
+NATIVE_COMMANDS = {}
+actors = resource_u64(flowchart+0x28)
+for index in range(struct.unpack_from('<H', RESOURCE, flowchart+0x10)[0]):
+    actor = actors+index*0x38
+    if resource_string(resource_u64(actor)) != 'EventFlowSystemActor': continue
+    for table_offset,count_offset,prefix in ((0x18,0x30,'EventFlowAction'),
+                                             (0x20,0x32,'EventFlowQuery')):
+        table = resource_u64(actor+table_offset)
+        for command in range(struct.unpack_from('<H', RESOURCE, actor+count_offset)[0]):
+            name = resource_string(resource_u64(table+command*8))
+            assert name.startswith(prefix)
+            NATIVE_COMMANDS[name[len(prefix):]] = name
+for name in ('BellCountDown','HasBellCount','UIMoneyAppear','UIMoneyDisappear'):
+    assert name in NATIVE_COMMANDS
+
 
 class StorageMachine(CardMachine):
     def __init__(self, base):
@@ -60,9 +91,11 @@ class StorageMachine(CardMachine):
             self.storage_payments+=1
         super().service(u,pc,size,data)
     def command(self,name,flow=FLOW):
-        self.u.mem_write(self.command_text,name.encode()+b'\0')
+        native_name = NATIVE_COMMANDS.get(name, 'EventFlowAction'+name)
+        self.u.mem_write(self.command_text,native_name.encode()+b'\0')
         self.u.mem_write(self.res_name,struct.pack('<H',len(flow))+flow.encode()+b'\0')
         h=self.invoke(self.base+0x5bd550,self.command_text,0)
+        if name in REGISTRY: assert h == struct.unpack_from('<I', RAW, REGISTRY[name])[0]
         self.write(self.action+0x10,h,4);self.write(self.check+0x10,h,4)
     def funds(self,player,savings,wallet,bags):
         self.write(self.event+0x2a8,player,1)
