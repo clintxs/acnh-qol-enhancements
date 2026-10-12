@@ -6,7 +6,7 @@
 namespace qol::controls {
 namespace {
 namespace address {
-constexpr std::uintptr_t ActionEntered = 0x02275730;
+constexpr std::uintptr_t ActionEntryFinished = 0x02277260;
 constexpr std::uintptr_t ToolChangeEntry = 0x023758a0, ToolChangeUpdate = 0x02375ed0;
 constexpr std::uintptr_t ToolChangeAnimationBranch = 0x02376018;
 constexpr std::uintptr_t StableActions = 0x02222950, RequestAction = 0x02272704;
@@ -54,7 +54,7 @@ template<class F> F Native(std::uintptr_t offset) { return reinterpret_cast<F>(M
 // pocket accessors own their read locks; never keep their returned pointers.
 using Item = std::uint64_t;
 constexpr Item EmptyItem = 0xfffe;
-constexpr unsigned MoveAction = 0xc, ToolChangeAction = 0x29;
+constexpr unsigned IdleAction = 5, MoveAction = 0xc, ToolChangeAction = 0x29;
 struct ToolSelection { Item item = EmptyItem; int slot = -1; };
 Item Held(void *player) {
     // The native nontrivial Item return uses AArch64's hidden X8 result,
@@ -118,7 +118,7 @@ struct BorrowedTool {
     unsigned handle{}, kind{}, facing{};
     ToolSelection borrowed{}, previous{};
     std::array<float, 3> bank{};
-    bool equipEntered{}, equipFinished{}, traversalEntered{}, traversalFinished{};
+    bool equipEntered{}, equipFinished{}, traversalEntered{};
 };
 std::array<BorrowedTool, 8> BorrowedTools{};
 BorrowedTool *SwapFor(void *player) {
@@ -603,22 +603,29 @@ HOOK_DEFINE_TRAMPOLINE(AutoVaultEntry) {
         return result;
     }
 };
-// The dispatcher can still report Move while a new action is queued. Observe
-// actual action entries, rather than treating that old Move value as completion.
-HOOK_DEFINE_TRAMPOLINE(AutoTraversalActionEntered) {
+// State entry finishes even while the stick is released. Observe its native
+// finalizer after all entry setup, rather than waiting for the walking-only
+// dispatcher or mistaking an old Move value for a queued traversal finishing.
+HOOK_DEFINE_TRAMPOLINE(AutoTraversalActionFinished) {
     static void Callback(void *player, unsigned action) {
+        Orig(player, action);
+        const bool locomotion = action == IdleAction || action == MoveAction;
         if (auto swap = SwapFor(player); swap && swap->stage != SwapStage::None) {
             if (swap->stage == SwapStage::Equipping) {
                 if (action == ToolChangeAction) swap->equipEntered = true;
-                if (action == MoveAction && swap->equipEntered) swap->equipFinished = true;
+                if (locomotion && swap->equipEntered) swap->equipFinished = true;
             } else {
                 const bool traversal = swap->kind == LadderKind ? action >= 0x8a && action <= 0x8c
                                                                : action >= 0xb4 && action <= 0xb7;
                 if (traversal) swap->traversalEntered = true;
-                if (action == MoveAction && swap->traversalEntered) swap->traversalFinished = true;
+                if (locomotion && swap->traversalEntered) {
+                    // Preserve manual equipment ownership, then schedule the
+                    // same native silent ToolChange immediately after landing.
+                    if (Held(player) == swap->borrowed.item) RestoreTool(player, *swap);
+                    else { TraceSwap("ownership lost", swap->kind, swap->borrowed.slot); *swap = {}; }
+                }
             }
         }
-        Orig(player, action);
     }
 };
 HOOK_DEFINE_TRAMPOLINE(AutoTraversalSwap) {
@@ -633,13 +640,9 @@ HOOK_DEFINE_TRAMPOLINE(AutoTraversalSwap) {
         if (swap->stage == SwapStage::Equipping && !swap->equipFinished) return result;
         // Manual tool changes take ownership away from this transaction.
         if (Held(player) != swap->borrowed.item) { TraceSwap("ownership lost", swap->kind, swap->borrowed.slot); *swap = {}; return result; }
-        if (swap->stage == SwapStage::Traversing) {
-            if (!swap->traversalFinished) return result;
-            // A real traversal state followed by Move proves completion, even
-            // for a cancelled traversal that never left its starting bank.
-            RestoreTool(player, *swap);
-            return CrossingReady;
-        }
+        // A queued traversal may still report Move. Its completed native
+        // locomotion entry owns restoration, independently of this dispatcher.
+        if (swap->stage == SwapStage::Traversing) return result;
         const auto x = Read<float>(player, field::StickX), y = Read<float>(player, field::StickY);
         const bool intent = x*x+y*y >= .81f && Read<unsigned>(actor, field::Facing) == swap->facing &&
             Read<std::array<float, 3>>(actor, field::Position) == swap->bank;
@@ -718,7 +721,7 @@ bool InstallAutoTraversal(bool vault, bool ladder, bool autoEquip) {
         }
     }
     constexpr Fingerprint swapFingerprints[]{
-        {address::ActionEntered, {0xd10303ff,0x6d0523e9,0xa9067bfd,0xa9076ffc,0xa90867fa}},
+        {address::ActionEntryFinished, {0xd10203ff,0xa9037bfd,0xa90467fa,0xa9055ff8,0xa90657f6}},
         {address::ToolChangeEntry, {0xd101c3ff,0xa9037bfd,0xa9045ff8,0xa90557f6,0xa9064ff4}},
         {address::ToolChangeUpdate, {0xd10683ff,0xfd00abe8,0xf900b7fc,0xa915fbfd,0xa9175ff8}},
         {address::ToolChangeAnimationBranch, {0x39400ee8,0x34000b08,0x52800020,0x9402a25a,0xf949d809}},
@@ -740,7 +743,7 @@ bool InstallAutoTraversal(bool vault, bool ladder, bool autoEquip) {
         }
     }
     if (AutoEquipEnabled) {
-        AutoTraversalActionEntered::InstallAtOffset(address::ActionEntered);
+        AutoTraversalActionFinished::InstallAtOffset(address::ActionEntryFinished);
         AutoTraversalSwap::InstallAtOffset(address::StableActions);
     }
 #if CAS_AUTO_VAULT_DIAGNOSTIC

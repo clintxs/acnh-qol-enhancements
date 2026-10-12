@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.4.19 release test build** for ACNH **3.0.3 on Eden**. One Core
+**0.4.20 release test build** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates seven optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -107,7 +107,7 @@ produce and weeds. It adds no animation speed multiplier or pickup radius.
 
 ```ini
 enabled = true
-version = 0.4.19
+version = 0.4.20
 hold_to_advance_dialogue = true
 hold_to_hoover = true
 auto_vault = true
@@ -122,7 +122,8 @@ settings default to true. All Controls settings work in `controls.ini` and
 Automatic traversal is enabled by default. Push firmly toward a vaultable river
 or a climbable cliff face/edge and keep pushing through the normal hop delay.
 Controls uses a ladder or pole from your pockets without the turn-to-camera
-animation, then restores your previous tool or returns to empty hands. Placed
+animation, then restores your previous tool or returns to empty hands as soon
+as traversal ends, even if you remain still. Placed
 ladders and vines work without a pocket ladder. Ordinary narrow hops keep priority.
 The pole, uphill/downhill ladder, silent tool restoration and placed climbing
 features were confirmed working in Eden.
@@ -196,14 +197,14 @@ Diagnostic checks: `PYTHONPATH='../Grab 5/working/python:tests' python3 tests/di
 Install **QoL Enhancements - Crafting** with Core. This replaces the former
 Faster Crafting package; remove the old folder and rename personal
 `faster-crafting.custom.ini` preferences to `crafting.custom.ini`. Remove any old
-`version` override from that personal file (or update it to 0.4.19). The retired
+`version` override from that personal file (or update it to 0.4.20). The retired
 regular/custom paths are no longer read. Core alone no longer enables DIY previews.
 
 `romfs/qol-enhancements/config/crafting.ini` supplies these defaults:
 
 ```ini
 enabled = true
-version = 0.4.19
+version = 0.4.20
 diy_app_preview = true
 workbench_preview_tilt = true
 crafting_quantity_wrap = true
@@ -431,7 +432,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.4.19
+version = 0.4.20
 base_speed = 2
 boost_speed = 4
 faster_ui = true

@@ -13,7 +13,7 @@ from unicorn.arm64_const import *
 SWAP_CONFIG = CONFIG.replace(b'auto_equip_traversal=false', b'auto_equip_traversal=true')
 EMPTY, NET, POLE, LADDER, AXE = 0xfffe, 0x1234567800001001, 0x1002, 0x1003, 0x999900001004
 KINDS = {EMPTY: 0, NET: 1, POLE: 0x28, LADDER: 0x11, AXE: 3}
-DEPENDENCIES = (0x2222950, 0x2272704, 0x2572e00, 0x2577ea0, 0x242d8f0, 0x19d5d04, 0x19d78cc, 0x256a0c0, 0x2275730, 0x23758a0, 0x2375ed0, 0x2376018)
+DEPENDENCIES = (0x2222950, 0x2272704, 0x2572e00, 0x2577ea0, 0x242d8f0, 0x19d5d04, 0x19d78cc, 0x256a0c0, 0x2277260, 0x23758a0, 0x2375ed0, 0x2376018)
 
 class SwapMachine(LadderMachine):
     def __init__(self, base):
@@ -31,14 +31,24 @@ class SwapMachine(LadderMachine):
         self.write(self.module.find('AutoTraversalSwap', 'OrigRef'), self.dispatch_original)
         self.dispatch_result = 0
         self.enter_original = self.ram + 0xd0d0
-        self.write(self.module.find('AutoTraversalActionEntered', 'OrigRef'), self.enter_original)
+        self.write(self.module.find('AutoTraversalActionFinished', 'OrigRef'), self.enter_original)
         self.ladder_valid = False
         self.ladder_result = False
         self.u.mem_write(self.player+0x18e0, bytes(range(32)))
 
     def service(self, u, pc, size, context):
         if hasattr(self, 'action_requests'):
-            if pc == self.base + 0x242d8f0:
+            if pc == self.base + 0x2275730 and getattr(self, 'native_idle', False):
+                self.idle_order.append('begin')
+                result = 0
+            elif pc == self.base + 0x226ac64 and getattr(self, 'native_idle', False):
+                self.idle_order.append('setup')
+                result = 0
+            elif pc == self.base + 0x2277260 and getattr(self, 'native_idle', False):
+                assert self.idle_order == ['begin', 'setup']
+                u.reg_write(UC_ARM64_REG_PC, self.module.find('AutoTraversalActionFinished', 'Callback'))
+                return
+            elif pc == self.base + 0x242d8f0:
                 assert self.read(self.reg(0), 1) == 0
                 self.write(self.reg(8), self.held)  # Native Item result ABI: X8.
                 result = 0
@@ -55,6 +65,7 @@ class SwapMachine(LadderMachine):
             elif pc == self.base + 0x19d78cc:
                 result = KINDS.get(self.read(self.reg(0)+8), 0)
             elif pc == self.base + 0x3dbb160:
+                assert not getattr(self, 'inside_entry', False) or self.entry_finalized
                 assert self.reg(0) == self.controller + 0x278 and self.reg(1) == 0x29
                 data = bytes(u.mem_read(self.player + 0x1860, 0x7a))
                 assert data[:32] == bytes(range(32))
@@ -65,6 +76,7 @@ class SwapMachine(LadderMachine):
                 self.write(self.controller + 0x280, 0x29, 4)
                 result = 0
             elif pc == self.enter_original:
+                self.entry_finalized = True
                 result = 0
             elif pc == self.dispatch_original:
                 result = self.dispatch_result
@@ -81,10 +93,25 @@ class SwapMachine(LadderMachine):
         return self.reg(0)
 
     def enter(self, action):
+        self.entry_finalized = False
+        self.inside_entry = True
         self.write(self.controller+0x280, action, 4)
         self.u.reg_write(UC_ARM64_REG_X0, self.player)
         self.u.reg_write(UC_ARM64_REG_X1, action)
-        self.call(self.module.find('AutoTraversalActionEntered', 'Callback'))
+        self.call(self.module.find('AutoTraversalActionFinished', 'Callback'))
+        self.inside_entry = False
+
+    def enter_idle(self):
+        # Execute the real native idle-entry wrapper, including its tail call
+        # to the completed-entry hook. Only native setup services are modeled.
+        self.native_idle = self.inside_entry = True
+        self.entry_finalized = False
+        self.idle_order = []
+        self.write(self.controller+0x280, 5, 4)
+        self.u.reg_write(UC_ARM64_REG_X0, self.player)
+        self.call(self.base + 0x228f9d8)
+        assert self.entry_finalized and self.idle_order == ['begin', 'setup']
+        self.native_idle = self.inside_entry = False
 
     def finish_change(self):
         self.enter(0x29)
@@ -139,7 +166,8 @@ def main():
                     cases += 1
                 m.stick(0.,0.)
                 m.enter(0xc)
-                assert m.dispatch() == 1
+                assert len(m.action_requests) == 2  # Restored by entry, no dispatch needed.
+                assert m.dispatch() == 0
                 assert m.action_requests[-1] == (prior, {NET:0, AXE:3, EMPTY:-1}[prior])
                 m.finish_change()
                 assert m.dispatch() == 0 and len(m.action_requests) == 2
@@ -203,8 +231,30 @@ def main():
                 assert m.dispatch() == 0 and len(m.action_requests) == 1
                 m.enter(0x8a if ladder else 0xb4)
                 m.enter(0xc)
-                assert m.dispatch() == 1 and m.action_requests[-1] == (NET,0)
+                assert m.dispatch() == 0 and m.action_requests[-1] == (NET,0)
                 cases += 1
+        # Landing into idle restores without any walking dispatcher, even if
+        # input is unavailable. Intermediate/queued actions never restore.
+        for ladder in (False, True):
+            for prior in (NET, EMPTY):
+                for changed in (False, True):
+                    m = SwapMachine(base)
+                    m.held, m.tool = prior, KINDS[prior]
+                    m.held_slot = 0 if prior == NET else -1
+                    m.begin(ladder)
+                    assert m.dispatch() == 1
+                    m.enter(5)  # No real traversal entry yet: queued gap.
+                    assert len(m.action_requests) == 1
+                    m.enter(0x8a if ladder else 0xb4)
+                    m.stick(0., 0.)
+                    m.write(m.player+0x12f8, 0, 1)
+                    if changed: m.held, m.tool = AXE, KINDS[AXE]
+                    m.enter_idle()  # Real idle wrapper completes, no dispatch.
+                    assert len(m.action_requests) == (1 if changed else 2)
+                    if not changed: assert m.action_requests[-1] == (prior, 0 if prior == NET else -1)
+                    m.enter(5)  # Once only; no repeated restoration.
+                    assert len(m.action_requests) == (1 if changed else 2)
+                    cases += 1
         for animate in (0,1):
             m = SwapMachine(base)
             m.write(m.player+0x190e, animate, 1)

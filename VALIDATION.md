@@ -2635,3 +2635,27 @@ and prototype archives remain preserved.
 After the logging-only adjustment, quiet startup and all logging combinations
 pass, as do Core activation across all 128 module subsets at two ASLR bases,
 configuration/version/error cases and the final 134 swap/default/override cases.
+
+
+## Immediate traversal tool restoration, release 0.4.20 (2026-10-11)
+
+Live 0.4.19 feedback: a borrowed pole/ladder remains equipped until the player
+moves. Native return logic enters idle action 5; the previous implementation
+only recognized walking action 0x0C and performed restoration in its dispatcher.
+Borrowing now observes completed native state entry at 02277260, after native
+setup/finalization. Real traversal followed by Idle or Move requests silent
+restoration immediately, with no stick, input-validity or walking-update gate.
+Manual equipment ownership, exact item/slot restoration and once-only clearing
+remain. Queued locomotion values without actual traversal entry cannot restore.
+The finalizer replaces the old begin hook and fingerprint; hook count is unchanged.
+
+Pinned normal build, all 11 host suites, full Controls group and shipping
+logging checks pass. ARM counts at two ASLR bases: pole 246, ladder 144, placed
+ladder 180, swap 150, pickup 181, dialogue 1,024, hurry 712 and catch 772.
+New swap cases execute the actual native idle-entry wrapper and its tail call,
+with native setup services modeled. They require finalization before the
+restore request, released stick, input invalid, no walking dispatcher, both
+tools, prior tool/empty hands, manual changes, queued gaps and no repeated
+restoration. Existing native request-copy and silent-animation branch checks
+remain. Live idle animation/model refresh timing needs confirmation with this
+build. Earlier releases and prototypes remain preserved.

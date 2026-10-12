@@ -93,3 +93,30 @@ The full Controls and host suites pass. Live silent equip/model refresh,
 traversal/restoration timing and multiplayer still require in-game testing.
 
 2026-10-11 live follow-up: user confirmed silent auto equip prototype 2 working.
+
+Release 0.4.20: restore while standing still (2026-10-11)
+User reports the borrowed ladder/pole stays held until moving after landing.
+The old observer only recognized Move (0x0C), and restoration itself waited
+for StableActions (02222950), which is not the stationary completion path.
+Native return helper 0226A88C schedules action 5 (idle). Its entry wrapper
+0228F9D8 calls shared begin 02275730(player,5), idle setup 0226AC64, then
+TAIL CALLS shared entry finalizer 02277260(player,5). Move wrapper 02290734
+likewise ends at that finalizer with 0x0C, after movement setup 02318678.
+
+Replace the begin observer with an after-Orig hook on 02277260. ToolChange,
+ladder/pole entry tracking now observes completed entry setup. A genuine
+traversal followed by completed Idle OR Move entry immediately requests native
+silent restoration. It does not depend on input validity, stick strength or
+running StableActions. That dispatcher continues to handle equip/traverse and
+cancellation, but no longer owns post-traversal restoration. A pending action
+with an old locomotion value still cannot restore without real traversal entry.
+Exact borrowed-item ownership, player/handle identity, previous-item/slot lookup
+and once-only clearing are preserved. No extra hook count or global idle change.
+The replacement fingerprint protects 02277260's first five instructions.
+
+The swap harness now executes real native idle-entry wrapper instructions,
+modeling its setup services and hooking its actual tail finalizer. It checks
+that native finalization ran before restoration, both traversal tools, prior
+tool/empty hands, stick released, input invalid, no walking dispatcher,
+manual equipment ownership and repeated idle entry. Native rendering/animation
+and the new live timing still need in-game confirmation.
