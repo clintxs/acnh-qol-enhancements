@@ -3,7 +3,7 @@
 #include <array>
 #include <cstring>
 
-namespace qol::swimming {
+namespace qol::controls {
 namespace {
 namespace address {
 constexpr std::uintptr_t SurfaceWait = 0x0236b77c;
@@ -26,6 +26,7 @@ constexpr std::size_t Speed = 0x1820, TargetSpeed = 0x1844;
 constexpr float StickDeadZone = .15f;
 constexpr float QuietStrideScale = .8f; // Native FlapFoot speed multiplier.
 constexpr float BoostFraction = .625f;
+bool StrokeBoost = true;
 constexpr std::uint64_t TicksPerSecond = 19'200'000ull;
 constexpr std::uint64_t StrokeInterval = TicksPerSecond * 2;
 constexpr std::uint64_t BoostDelay = TicksPerSecond / 2;
@@ -154,7 +155,7 @@ void AdjustMovement(void *player, const void *parameters, bool stride) {
     }
     // Replace the animation's start/stop speed curve with analog propulsion
     // plus a time-based stroke impulse. Neutral A boosts use facing.
-    const float speed = Scope.state->cruiseSpeed * (Scope.throttle + BoostFraction * Scope.boost);
+    const float speed = Scope.state->cruiseSpeed * (Scope.throttle + (StrokeBoost ? BoostFraction * Scope.boost : 0.f));
     Write(player, field::Speed, speed);
     Write(player, field::TargetSpeed, speed);
 }
@@ -196,7 +197,8 @@ HOOK_DEFINE_TRAMPOLINE(AutoSwimStrideMovement) {
     }
 };
 }
-bool InstallAutoSwim() {
+bool InstallAutoSwim(bool strokeBoost) {
+    StrokeBoost = strokeBoost;
     struct Fingerprint { std::uintptr_t offset; std::uint32_t words[5]; };
     constexpr Fingerprint fingerprints[]{
         {address::SurfaceWait, {0xd104c3ff,0xfd0073e8,0xa90f7bfd,0xa9105ffc,0xa91157f6}},
@@ -211,7 +213,7 @@ bool InstallAutoSwim() {
     const auto &main = exl::util::GetMainModuleInfo();
     for (const auto &f : fingerprints) if (f.offset + sizeof(f.words) > main.m_Text.m_Size ||
         std::memcmp(reinterpret_cast<const void *>(main.m_Text.m_Start + f.offset), f.words, sizeof(f.words))) {
-        Logging.Error("[QoL Enhancements/Swimming] auto swim: DISABLED; instruction mismatch at main+0x%lx\n", f.offset);
+        Logging.Error("[QoL Enhancements/Controls] auto swim: DISABLED; instruction mismatch at main+0x%lx\n", f.offset);
         return false;
     }
     AutoSwimSurfaceWait::InstallAtOffset(address::SurfaceWait);
@@ -222,7 +224,8 @@ bool InstallAutoSwim() {
     AutoSwimDiveEntry::InstallAtOffset(address::DiveEntry);
     AutoSwimWaitMovement::InstallAtOffset(address::WaitMovement);
     AutoSwimStrideMovement::InstallAtOffset(address::StrideMovement);
-    Logging.Debug("[QoL Enhancements/Swimming] auto swim: READY; prototype 12; analog speed; delayed 1.5s 62.5 percent boosts; interruptible strokes\n");
+    Logging.Debug("[QoL Enhancements/Controls] auto swim: READY; analog speed; delayed 1.5s 62.5 percent boosts=%s; interruptible strokes\n",
+                  StrokeBoost ? "true" : "false");
     return true;
 }
 }

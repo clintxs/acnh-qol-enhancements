@@ -2930,3 +2930,35 @@ live trigger remains unconfirmed; 0.4.30 in-game sound testing is pending.
 Core activation/configuration checks pass for all 256 module subsets at two
 bases, including the 0.4.29 Catalog art settings. Full and Core-only release
 packages retain existing resources, settings and prior local archives.
+
+
+## 0.4.31 Swimming returns to Controls (2026-10-12)
+
+Controls now owns default-true `auto_swim` and `swim_stroke_boost`. The latter
+removes only the additive 62.5% impulse when false; opening/manual/held-A
+strokes, the 2s cooldown, 0.5s wind-up and 1.5s fade scheduling remain intact.
+The camera tilt fix always installs with Controls, including `auto_swim=false`.
+Separate Swimming activation/configuration and its camera setting are retired.
+
+Validation against the shipping ELF:
+- Local Switch toolchain build passed.
+- Host config/policy tests passed, including both new Controls booleans,
+  inheritance, invalid values, per-key duplicate rollback and retired camera key.
+- Compiled swimming tests passed 5,792 surface/dive cases with propulsion on/off,
+  opening and manual strokes, neutral speed, irregular-rate cadence, native
+  animation selectors, scoped input restoration and conflict isolation.
+- Boost custom overlays disable/re-enable propulsion; duplicate/invalid overlays
+  retain the prior setting, with native dive arm entry and peak speed checked.
+- Native camera eligibility passed 2,804 action/lock/snapshot cases at two bases;
+  Controls config cases include vanilla movement, absent/disabled Controls,
+  ignored retired Swimming files and unchanged three-position controller bytes.
+- All 128 subsets of seven feature modules passed at two ASLR bases, including
+  version/config layers, once-only discovery and isolated compatibility failures.
+- Shipping logging and existing Controls traversal, tool restoration, hold Y,
+  dialogue hurry and first-catch regressions passed.
+
+User previously confirmed the 62.5% boost and camera behavior in game. The
+new cosmetic-stroke option and merged release still need in-game testing.
+Archives retain earlier releases; 0.4.31 contains Core plus seven feature folders
+and no separate Swimming folder. Move personal swimming preferences into
+`controls.custom.ini` and remove the retired folder when upgrading.

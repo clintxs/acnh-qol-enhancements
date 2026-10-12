@@ -290,3 +290,24 @@ speed, yielding 1.625 times ordinary cruise speed at full stick at the peak.
 Keep the 0.5-second onset delay, 1.5-second fade, 2-second cooldown, stroke
 policy and camera tilt behavior unchanged. Update surface/dive, partial-stick
 and neutral impulse regression expectations. Preserve earlier archives.
+
+
+0.4.31: Return swimming to Controls; optional cosmetic strokes
+------------------------------------------------------------
+User confirmed the 62.5 percent boost feels right. Move swimming and camera
+hooks into source/program/controls and retire the separate Swimming module.
+Controls owns auto_swim=true and swim_stroke_boost=true. Camera tilt is now
+an unconditional Controls fix, including auto_swim=false; remove its setting.
+
+InstallAutoSwim receives the boost preference. AdjustMovement omits only the
+additive impulse when disabled. Keep BoostEnvelope, held-A borrowing, pending
+arm requests, opening stroke, native selectors and the 2-second cooldown
+unchanged, so cosmetic strokes have exactly the same scheduling. This also
+removes opening/neutral-stick propulsion. With auto_swim=false the eight
+movement hooks are absent regardless of boost preference; camera still installs.
+
+Core now discovers seven feature packages, and Controls installs up to nine
+additional hooks. Both regular/custom controls INIs parse the two booleans with
+per-key duplicate rollback. Retired Swimming files are ignored; user-facing
+upgrade instructions move personal auto_swim preferences into controls.custom.ini
+and remove the old Swimming folder. Preserve old releases and playtest ZIPs.

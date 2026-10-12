@@ -11,7 +11,7 @@ from build_shopping_card_layout import build as build_shopping
 
 ROOT = Path(__file__).resolve().parents[1]
 CORE_FOLDER = 'QoL Enhancements - Core (REQUIRED)'
-LABELS = ('Catalog', 'Pockets', 'Faster Dialogue', 'Fitting Room', 'Shopping Card', 'Crafting', 'Controls', 'Swimming')
+LABELS = ('Catalog', 'Pockets', 'Faster Dialogue', 'Fitting Room', 'Shopping Card', 'Crafting', 'Controls')
 
 def release_version():
     text = (ROOT / 'source/program/core/release.hpp').read_text()
@@ -42,7 +42,7 @@ def suite_files():
         'START HERE - CORE IS REQUIRED.txt': (
             'CORE IS REQUIRED FOR ALL FEATURE MODULES TO WORK.\n\n'
             'Install and enable QoL Enhancements - Core (REQUIRED).\n'
-            'For the full suite, copy all nine QoL Enhancements folders into the\n'
+            'For the full suite, copy all eight QoL Enhancements folders into the\n'
             'game mods folder. For selected features, copy Core plus those folders.\n'
             'Disable older standalone versions and restart the game.\n'
             'See README.txt for details. This is an integration test build.\n'

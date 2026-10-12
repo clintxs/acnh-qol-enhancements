@@ -9,11 +9,12 @@ from unicorn.arm64_const import *
 
 ELIGIBILITY = 0x241dab4
 FINGERPRINTS = (ELIGIBILITY, 0x241dac4, 0x241dae4, 0x241db08, 0x241dc6c)
-CAMERA_ONLY = DEFAULT + b'auto_swim=false\n'
+CONFIG = DEFAULT + b'hold_to_hoover=false\nhold_to_advance_dialogue=false\nauto_vault=false\nauto_ladder=false\n'
+CAMERA_ONLY = CONFIG + b'auto_swim=false\n'
 
 class CameraMachine(Machine):
     def __init__(self, base):
-        super().__init__(base, {'swimming': CAMERA_ONLY})
+        super().__init__(base, {'controls': CAMERA_ONLY})
         self.boot(); self.activate()
         assert len(self.hooks) == 3 and base+ELIGIBILITY in self.hooks, self.text
         self.callback = self.module.find('SwimmingCameraTiltEligibility', 'Callback')
@@ -75,15 +76,16 @@ def main():
                 assert m.result(True) == int(not flags)
                 cases += 1
         for files, camera, movement in (
-            ({'swimming':DEFAULT}, True, True),
-            ({'swimming':CAMERA_ONLY}, True, False),
-            ({'swimming':DEFAULT+b'camera_tilt_while_swimming=false\n'}, False, True),
-            ({'swimming':CAMERA_ONLY+b'camera_tilt_while_swimming=false\n'}, False, False),
-            ({'swimming':DEFAULT,'swimming.custom':b'camera_tilt_while_swimming=false'}, False, True),
-            ({'swimming':DEFAULT+b'camera_tilt_while_swimming=false\n','swimming.custom':b'camera_tilt_while_swimming=true'}, True, True),
-            ({'swimming':DEFAULT.replace(b'enabled=true',b'enabled=false')}, False, False),
-            ({'swimming.custom':b'enabled=true\ncamera_tilt_while_swimming=true'}, False, False),
-            ({'controls':DEFAULT}, False, False),
+            ({'controls':CONFIG}, True, True),
+            ({'controls':CAMERA_ONLY}, True, False),
+            ({'controls':CONFIG+b'swim_stroke_boost=false\n'}, True, True),
+            ({'controls':CONFIG,'controls.custom':b'auto_swim=false'}, True, False),
+            ({'controls':CAMERA_ONLY,'controls.custom':b'auto_swim=true'}, True, True),
+            ({'controls':CONFIG+b'camera_tilt_while_swimming=false\n'}, True, True),
+            ({'controls':CONFIG.replace(b'enabled=true',b'enabled=false')}, False, False),
+            ({'controls.custom':b'enabled=true\nauto_swim=true'}, False, False),
+            ({'swimming':DEFAULT}, False, False),
+            ({'swimming':DEFAULT,'swimming.custom':b'auto_swim=false','controls':CONFIG}, True, True),
         ):
             n=Machine(base,files); n.boot(); n.activate()
             assert (base+ELIGIBILITY in n.hooks) == camera
@@ -91,14 +93,14 @@ def main():
             # The native three-position tilt controller is left intact.
             assert bytes(n.u.mem_read(base+0x7cd7bc,0x400)) == RAW[0x7cd7bc:0x7cdbbc]
         for offset in FINGERPRINTS:
-            n=Machine(base,{'swimming':DEFAULT})
+            n=Machine(base,{'controls':CONFIG})
             n.write(base+offset,0xdeadbeef,4); n.boot(); n.activate()
             assert 'camera tilt: DISABLED' in n.text and base+ELIGIBILITY not in n.hooks
             assert all(base+a in n.hooks for a in BINDINGS)
         # A movement conflict must not prevent the independent camera feature.
-        n=Machine(base,{'swimming':DEFAULT})
+        n=Machine(base,{'controls':CONFIG})
         n.write(base+BINDINGS[0],0xdeadbeef,4); n.boot(); n.activate()
         assert base+ELIGIBILITY in n.hooks and all(base+a not in n.hooks for a in BINDINGS)
-    print(f'PASS: {cases} native camera action/lock/snapshot cases at two ASLR bases; only SwimStride rejection relaxed; three-position controller unchanged; independent settings, disabled modules and isolated conflicts')
+    print(f'PASS: {cases} native camera action/lock/snapshot cases at two ASLR bases; only SwimStride rejection relaxed; three-position controller unchanged; automatic Controls camera fix, boost/movement settings, disabled modules and isolated conflicts')
 
 if __name__ == '__main__': main()

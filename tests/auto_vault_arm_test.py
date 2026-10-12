@@ -13,14 +13,14 @@ DEPENDENCIES = (GEOMETRY, 0x230b8d0, 0x230bf18, 0x239a340, 0x239aff4,
                 0x15f5c40, 0x241e98c, 0x239a398, 0x221a094, 0x2223454)
 DIAGNOSTIC = b"DIAGNOSTIC: auto-vault-v4" in (Path(__file__).resolve().parents[1] / "project.elf").read_bytes()
 EXTRA = 3 * int(DIAGNOSTIC)
-CONFIG = DEFAULT + b'hold_to_hoover=false\nhold_to_advance_dialogue=false\nauto_vault=true\nauto_ladder=false\nauto_equip_traversal=false\n'
+CONFIG = DEFAULT + b'auto_swim=false\nhold_to_hoover=false\nhold_to_advance_dialogue=false\nauto_vault=true\nauto_ladder=false\nauto_equip_traversal=false\n'
 
 
 class VaultMachine(Machine):
     def __init__(self, base, verbose=True, config=CONFIG, expected_hooks=None):
         super().__init__(base, {'controls': config}, verbose=verbose)
         self.boot(); self.activate()
-        assert len(self.hooks) == (5 + EXTRA if expected_hooks is None else expected_hooks) and all(base + a in self.hooks for a in (GEOMETRY, 0x230b8d0)), self.text
+        assert len(self.hooks) == (6 + EXTRA if expected_hooks is None else expected_hooks) and all(base + a in self.hooks for a in (GEOMETRY, 0x230b8d0)), self.text
         self.player = self.ram + 0x1000
         self.actor = self.ram + 0x6000
         self.request = self.ram + 0x8000
@@ -485,18 +485,18 @@ def main():
             conflict = Machine(base, {'controls': CONFIG})
             conflict.write(base + offset, 0, 4)
             conflict.boot(); conflict.activate()
-            assert len(conflict.hooks) == 2 and 'auto vault: DISABLED' in conflict.text
+            assert len(conflict.hooks) == 3 and 'auto vault: DISABLED' in conflict.text
             cases += 1
         for setting in (b'auto_vault=false\n',):
-            disabled = Machine(base, {'controls': DEFAULT + b'hold_to_hoover=false\nhold_to_advance_dialogue=false\nauto_ladder=false\nauto_equip_traversal=false\n' + setting})
+            disabled = Machine(base, {'controls': DEFAULT + b'auto_swim=false\nhold_to_hoover=false\nhold_to_advance_dialogue=false\nauto_ladder=false\nauto_equip_traversal=false\n' + setting})
             disabled.boot(); disabled.activate()
-            assert len(disabled.hooks) == 2
+            assert len(disabled.hooks) == 3
         overlay = Machine(base, {'controls': CONFIG, 'controls.custom': b'auto_vault=false'})
         overlay.boot(); overlay.activate()
-        assert len(overlay.hooks) == 2
-        enabled = Machine(base, {'controls': DEFAULT + b'auto_ladder=false\nauto_equip_traversal=false\n', 'controls.custom': b'auto_vault=true'})
+        assert len(overlay.hooks) == 3
+        enabled = Machine(base, {'controls': DEFAULT + b'auto_swim=false\nauto_ladder=false\nauto_equip_traversal=false\n', 'controls.custom': b'auto_vault=true'})
         enabled.boot(); enabled.activate()
-        assert base + GEOMETRY in enabled.hooks and len(enabled.hooks) == 16 + EXTRA
+        assert base + GEOMETRY in enabled.hooks and len(enabled.hooks) == 17 + EXTRA
         absent = Machine(base, {'controls.custom': b'auto_vault=true'})
         absent.boot(); absent.activate()
         assert len(absent.hooks) == 2

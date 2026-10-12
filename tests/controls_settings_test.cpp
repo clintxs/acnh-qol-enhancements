@@ -5,7 +5,6 @@
 using namespace qol::controls;
 int main() {
     Settings settings{};
-    assert(ApplySettings("auto_swim=false", settings) == 1); // Moved to Swimming.
     assert(settings.autoEquipTraversal && settings.autoVault && settings.autoLadder);
     assert(!ApplySettings("# inherit defaults", settings));
     assert(settings.autoEquipTraversal && settings.autoVault && settings.autoLadder);
@@ -83,5 +82,37 @@ int main() {
     assert(settings.holdToHoover && !settings.holdToAdvanceDialogue);
     assert(ApplySettings("hold_to_hoover=false\nhold_to_hoover=true\nhold_to_advance_dialogue=true", settings) == 1);
     assert(settings.holdToHoover && settings.holdToAdvanceDialogue);
+    {
+        Settings settings{};
+        assert(settings.autoSwim && settings.swimStrokeBoost);
+        for (bool prior : {false, true}) {
+            settings.autoSwim = prior;
+            assert(!ApplySettings("# inherit", settings) && settings.autoSwim == prior);
+            assert(ApplySettings("auto_swim=yes", settings) == 1 && settings.autoSwim == prior);
+            assert(ApplySettings("auto_swim=false\nauto_swim=true", settings) == 1 && settings.autoSwim == prior);
+            assert(ApplySettings("auto_swim=false\n\xff", settings) == 1 && settings.autoSwim == prior);
+            assert(!ApplySettings("auto_swim=false", settings) && !settings.autoSwim);
+            assert(!ApplySettings("auto_swim=true", settings) && settings.autoSwim);
+        }
+        assert(!ApplySettings("enabled=false\nversion=0.4.21\nauto_swim=false", settings));
+        assert(!settings.autoSwim);
+        assert(!ApplySettings("\xef\xbb\xbf ; comment\r\nauto_swim = true\r\n", settings));
+        assert(settings.autoSwim);
+        assert(ApplySettings(std::string(4097, ' '), settings) == 1 && settings.autoSwim);
+        assert(ApplySettings("unknown=true\nbroken", settings) == 2);
+        for (bool prior : {false, true}) {
+            settings.swimStrokeBoost = prior;
+            assert(!ApplySettings("# inherit", settings) && settings.swimStrokeBoost == prior);
+            assert(ApplySettings("swim_stroke_boost=yes", settings) == 1 && settings.swimStrokeBoost == prior);
+            assert(ApplySettings("swim_stroke_boost=false\nswim_stroke_boost=true", settings) == 1 && settings.swimStrokeBoost == prior);
+            assert(!ApplySettings("swim_stroke_boost=false", settings) && !settings.swimStrokeBoost);
+            assert(!ApplySettings("swim_stroke_boost=true", settings) && settings.swimStrokeBoost);
+        }
+        assert(ApplySettings("auto_swim=false\nauto_swim=true\nswim_stroke_boost=false", settings) == 1);
+        assert(settings.autoSwim && !settings.swimStrokeBoost);
+        assert(ApplySettings("auto_swim=false\nswim_stroke_boost=true\nswim_stroke_boost=false", settings) == 1);
+        assert(!settings.autoSwim && !settings.swimStrokeBoost);
+    }
+    assert(ApplySettings("camera_tilt_while_swimming=false", settings) == 1); // Retired key.
     std::cout << "PASS: Controls default, inheritance, strict boolean, duplicate rollback and atomic invalid files\n";
 }

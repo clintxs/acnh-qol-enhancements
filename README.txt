@@ -1,4 +1,4 @@
-QoL Enhancements 0.4.30 — ACNH 3.0.3 — Eden integration test
+QoL Enhancements 0.4.31 — ACNH 3.0.3 — Eden integration test
 
 CORE IS REQUIRED. Install and enable “QoL Enhancements - Core (REQUIRED)”
 with any feature module. All packages in this ZIP belong to the same release.
@@ -9,6 +9,12 @@ included. The hint is now Use Item, editable via qol_pockets.hold_wear in the
 Pockets messages INI (English fallback). Restart after editing captions.
 Shopping Card: combined funds, Savings -> Pockets (Bell bags) -> Wallet.
 Native 16:9 placement; display caps at 999,999,999 without limiting spending.
+
+0.4.31: Move swimming back into Controls. auto_swim and swim_stroke_boost
+both default to true. Disable the boost for cosmetic strokes with the same
+cooldown. Camera tilt while swimming is always fixed when Controls is enabled.
+Remove the old Swimming mod folder and move personal auto_swim preferences
+from swimming.custom.ini into controls.custom.ini. Restart after upgrading.
 
 0.4.30: Keep Shopping Card entry silent when balances changed while away,
 including native cash feedback before the card is first displayed.
@@ -41,7 +47,7 @@ Fully close ACNH. Disable the standalone Catalog Aware Shops, QoL Pockets
 Interactions, Able Sisters Bag Prototype, all Faster Interactions versions,
 Amiibo Scan - 5 Minutes, and the historical Optimized UI/Grab 5 patches.
 
-For the full suite, copy all nine “QoL Enhancements” folders into the game's
+For the full suite, copy all eight “QoL Enhancements” folders into the game's
 mods folder, then enable them in Eden. For selected features, copy Core plus
 only the feature folders you want. Restart the game after changing modules.
 
@@ -474,7 +480,7 @@ scripted waits can limit conversation speed. Native overrides take priority.
 No preferences in either file: base 2, held 4, automatic UI/unnamed boost on,
 and an empty NPC list.
 
-Keep the personal mod folder when replacing the nine suite folders. Do not
+Keep the personal mod folder when replacing the eight suite folders. Do not
 reinstall the example preset over your edited preferences. Enable only one
 mod providing the custom file. Fully restart after changes. The custom file
 may include enabled/version and can override a disabled regular configuration.
@@ -561,38 +567,24 @@ Early startup errors still log. Special dialogue MESSAGE/SELECT tracing needs
 the diagnostic build and log_debug=true in core.custom.ini. Trace limits remain.
 Invalid values inherit; duplicate keys restore the value from before that file.
 
-Swimming module / auto_swim (prototype 12): enabled by default at the surface and
-underwater. Stick travel gradually controls speed beyond a small neutral dead
-zone. Starting movement requests one opening arm stroke. Press A for a
-boost with a roughly two-second cooldown; hold A to repeat when ready. Further
-arm strokes require A. Each boost starts half a second into the arm stroke,
-adds 62.5% of full cruise speed and then fades over 1.5 seconds. Ready strokes interrupt the kick animation, with a two-second
-cooldown measured from actual arm entry. Quiet kicking and smooth cruise
-continue between strokes.
-Stopping/restarting or diving/surfacing does not bypass the cooldown. Y keeps
-priority for diving/surfacing/catching. Set auto_swim = false in swimming.ini
-or swimming.custom.ini and restart for ordinary swimming movement. In-game validation
-of this prototype is pending.
+Swimming controls (part of Controls):
+auto_swim=true enables analog joystick swimming at the surface and underwater,
+with one opening arm stroke. A requests a stroke every 2s; hold A to repeat.
+swim_stroke_boost=true adds 62.5% of full cruise speed, starting 0.5s into the
+stroke and fading over 1.5s. Both settings default to true in controls.ini.
+Set swim_stroke_boost=false for cosmetic arm strokes with the same timing and
+no extra propulsion, including the opening stroke. Set auto_swim=false for
+vanilla swimming movement; swim_stroke_boost has no effect then.
 
-Swimming is independent of Controls. Install Core plus the Swimming folder to
-use the overhaul. Disable/remove Swimming, or set enabled=false in swimming.ini
-or swimming.custom.ini, to use vanilla swimming. Move any personal auto_swim
-setting from controls.custom.ini to swimming.custom.ini. Controls no longer
-owns this setting. Swimming defaults to enabled=true and auto_swim=true.
+Stopping/restarting and diving/surfacing do not bypass the cooldown. Underwater
+speed stays smooth between animations. Y keeps priority for diving, surfacing
+and catching. Restart after changing controls.ini or controls.custom.ini.
 
-camera_tilt_while_swimming=true is also enabled by default in Swimming. The
-right stick selects the normal three tilt positions while swimming forward.
-This works independently of auto_swim. Set camera_tilt_while_swimming=false
-in swimming.ini or swimming.custom.ini and restart for the native camera
-restriction. Other camera locks remain active.
+The right stick always selects the normal three camera tilt positions while
+swimming forward with Controls enabled, even with auto_swim=false. There is
+no camera toggle; other native camera locks remain active.
 
-ART STARS (Catalog module)
-art_donation_stars = true (default) in catalog.ini enables:
-  Filled star: genuine art not yet donated by anyone on the current island.
-  Outline star: fake art not yet in the active player's catalog.
-  No star: donated genuine art or cataloged fake art.
-Set art_donation_stars = false to restore ordinary catalog stars for art.
-You can also set it in a separate catalog.custom.ini, following the suite's
-personal-settings convention. Restart the game after changing settings.
-Applies to existing shop/dialogue/ground name-star surfaces. Catalog icon
-badges continue to show filled stars only; no new inventory or layout hooks.
+Disable/remove the old separate Swimming folder when upgrading. Move any
+personal auto_swim preference from swimming.custom.ini into controls.custom.ini,
+retaining existing Controls preferences. Swimming INIs and the old
+camera_tilt_while_swimming setting are retired.

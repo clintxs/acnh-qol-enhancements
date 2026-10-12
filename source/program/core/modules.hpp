@@ -15,6 +15,6 @@ struct ModuleDescription {
     // Report effective settings after both layers, including disabled modules.
     void (*reportSettings)() = nullptr;
 };
-extern const std::array<ModuleDescription, 8> Modules;
+extern const std::array<ModuleDescription, 7> Modules;
 void ActivateModules();
 } // namespace qol::core

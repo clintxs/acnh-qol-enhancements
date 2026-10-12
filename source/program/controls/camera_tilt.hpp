@@ -1,4 +1,4 @@
 #pragma once
-namespace qol::swimming {
+namespace qol::controls {
 bool InstallSwimmingCameraTilt();
 }

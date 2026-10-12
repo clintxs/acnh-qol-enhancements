@@ -9,13 +9,13 @@ from unicorn import Uc, UC_ARCH_ARM64, UC_MODE_ARM, UC_HOOK_CODE, UC_HOOK_MEM_WR
 from unicorn.arm64_const import *
 from elf_loader import Module, ROOT
 RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
-SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'shopping-card', 'crafting', 'controls', 'swimming')
-COUNTS = (19, 20, 7, 12, 15, 19, 18, 9)  # Controls and Faster Dialogue share five reveal sites.
+SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'shopping-card', 'crafting', 'controls')
+COUNTS = (19, 20, 7, 12, 15, 19, 27)  # Controls and Faster Dialogue share five reveal sites.
 RELEASE_VERSION = re.search(r'ReleaseVersion\[\] = "(\d+\.\d+\.\d+)"',
                             (ROOT / 'qol-enhancements/source/program/core/release.hpp').read_text())[1]
 DEFAULT = f'enabled=true\nversion={RELEASE_VERSION}\n'.encode()
 # Explicitly isolate pickup/dialogue checks from swimming/traversal; Core tests use real defaults.
-CONTROLS_MANUAL = DEFAULT + b'auto_vault=false\nauto_ladder=false\nauto_equip_traversal=false\n'
+CONTROLS_MANUAL = DEFAULT + b'auto_vault=false\nauto_ladder=false\nauto_equip_traversal=false\nauto_swim=false\n'
 
 def expected_hook_count(machine, enabled):
     # The existing verbose-dialogue build adds a Catalog message trace hook.
@@ -157,7 +157,7 @@ def check_all_subsets():
             before = (len(m.hooks), len(m.opened), len(m.logs))
             m.activate()
             assert before == (len(m.hooks), len(m.opened), len(m.logs))
-    print('PASS: all 256 module subsets at two bases; deferred activation, isolated C++ hooks, C++ dialogue hooks, once-only reads')
+    print('PASS: all 128 module subsets at two bases; deferred activation, isolated C++ hooks, C++ dialogue hooks, once-only reads')
 
 def check_errors():
     for slug in SLUGS:
@@ -319,7 +319,7 @@ def check_config_layers():
     for base in (0x7100000000, 0x7200000000):
         for slug in SLUGS:
             # Core supplies the naming and merge behavior for every module.
-            accepted_version = b'0.4.21' if slug == 'swimming' else b'0.4.14' if slug == 'controls' else b'0.3.46' if slug == 'crafting' else b'0.3.2'
+            accepted_version = b'0.4.14' if slug == 'controls' else b'0.3.46' if slug == 'crafting' else b'0.3.2'
             for regular, custom, active in (
                 (DEFAULT, b'enabled=false', False),
                 (DEFAULT.replace(b'true', b'false'), b'enabled=true', True),
@@ -368,7 +368,7 @@ def check_config_layers():
             m = Machine(base, files)
             m.boot(); m.activate()
             assert 'base=2 boost=4 faster_ui=true faster_unnamed=true npc_count=6' in m.text, m.text
-    print('PASS: shared regular/custom order, enabled/version overrides for all eight modules, atomic metadata, failure fallback, inheritance and settings parity at two bases')
+    print('PASS: shared regular/custom order, enabled/version overrides for all seven modules, atomic metadata, failure fallback, inheritance and settings parity at two bases')
 
 def check_crafting_settings():
     preview_sites=(0x2e9c670,0x267d64,0x2e9cde0,0x2e9fbb0,0x2e9d538,0x39392b0,0x32b9fcc,0x32b9e08,0x6021a4,0x39f63f0)

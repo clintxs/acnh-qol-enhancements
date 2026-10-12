@@ -2,7 +2,7 @@
 #include "camera_tilt.hpp"
 #include <cstring>
 
-namespace qol::swimming {
+namespace qol::controls {
 namespace {
 namespace address {
 constexpr std::uintptr_t CameraTiltEligibility = 0x0241dab4;
@@ -47,12 +47,12 @@ bool InstallSwimmingCameraTilt() {
     const auto &main = exl::util::GetMainModuleInfo();
     for (const auto &f : fingerprints) if (f.offset + sizeof(f.words) > main.m_Text.m_Size ||
         std::memcmp(reinterpret_cast<const void *>(main.m_Text.m_Start + f.offset), f.words, sizeof(f.words))) {
-        Logging.Error("[QoL Enhancements/Swimming] camera tilt: DISABLED; instruction mismatch at main+0x%lx\n", f.offset);
+        Logging.Error("[QoL Enhancements/Controls] camera tilt: DISABLED; instruction mismatch at main+0x%lx\n", f.offset);
         return false;
     }
     Main = main.m_Text.m_Start;
     SwimmingCameraTiltEligibility::InstallAtOffset(address::CameraTiltEligibility);
-    Logging.Debug("[QoL Enhancements/Swimming] camera tilt: READY; native tilt positions while swimming forward\n");
+    Logging.Debug("[QoL Enhancements/Controls] camera tilt: READY; native tilt positions while swimming forward\n");
     return true;
 }
 }

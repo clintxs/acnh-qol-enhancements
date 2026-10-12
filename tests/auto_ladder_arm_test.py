@@ -11,11 +11,11 @@ from unicorn.arm64_const import *
 LADDER = 0x2396154
 PLACED_LADDER = 0x22d9bd8
 LANDING = 0x2396bfc
-CONFIG = DEFAULT + b'hold_to_hoover=false\nhold_to_advance_dialogue=false\nauto_vault=true\nauto_ladder=true\nauto_equip_traversal=false\n'
+CONFIG = DEFAULT + b'auto_swim=false\nhold_to_hoover=false\nhold_to_advance_dialogue=false\nauto_vault=true\nauto_ladder=true\nauto_equip_traversal=false\n'
 
 class LadderMachine(VaultMachine):
     def __init__(self, base, config=CONFIG, expected_hooks=None):
-        super().__init__(base, config=config, expected_hooks=7 + EXTRA if expected_hooks is None else expected_hooks)
+        super().__init__(base, config=config, expected_hooks=8 + EXTRA if expected_hooks is None else expected_hooks)
         self.contact_original = self.ram + 0xd0a0
         self.write(self.module.find('AutoLadderContact', 'OrigRef'), self.contact_original)
         self.u.mem_write(base + 0x15f3040, RAW[0x15f3040:0x15f3040+20])
@@ -222,10 +222,10 @@ def main():
             assert n.vault_calls == []
             cases += 1
         # Independent settings and compatibility failures preserve the other tool.
-        for setting, expected in ((b'auto_vault=false\nauto_ladder=true\n',6+int(DIAGNOSTIC)),
-                                  (b'auto_vault=true\nauto_ladder=false\n',5+EXTRA),
-                                  (b'auto_vault=false\nauto_ladder=false\n',2)):
-            machine = Machine(base, {'controls': DEFAULT+b'hold_to_hoover=false\nhold_to_advance_dialogue=false\nauto_equip_traversal=false\n'+setting})
+        for setting, expected in ((b'auto_vault=false\nauto_ladder=true\n',7+int(DIAGNOSTIC)),
+                                  (b'auto_vault=true\nauto_ladder=false\n',6+EXTRA),
+                                  (b'auto_vault=false\nauto_ladder=false\n',3)):
+            machine = Machine(base, {'controls': DEFAULT + b'auto_swim=false\nhold_to_hoover=false\nhold_to_advance_dialogue=false\nauto_equip_traversal=false\n'+setting})
             machine.boot(); machine.activate()
             assert len(machine.hooks) == expected, machine.text
             cases += 1
@@ -233,13 +233,13 @@ def main():
             conflict = Machine(base, {'controls': CONFIG})
             conflict.write(base + offset, 0, 4)
             conflict.boot(); conflict.activate()
-            assert len(conflict.hooks) == 5 + EXTRA and base + LANDING not in conflict.hooks
+            assert len(conflict.hooks) == 6 + EXTRA and base + LANDING not in conflict.hooks
             assert 'auto ladder: DISABLED' in conflict.text
             cases += 1
         conflict = Machine(base, {'controls': CONFIG})
         conflict.write(base + 0x239a340, 0, 4)
         conflict.boot(); conflict.activate()
-        assert len(conflict.hooks) == 6 + int(DIAGNOSTIC) and base + LANDING in conflict.hooks
+        assert len(conflict.hooks) == 7 + int(DIAGNOSTIC) and base + LANDING in conflict.hooks
         cases += 1
     print(f'PASS: {cases} auto ladder cases at two bases; compiled policy, native hop guards/timer; live cliff contact pending')
 

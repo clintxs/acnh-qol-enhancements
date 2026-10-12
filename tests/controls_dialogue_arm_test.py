@@ -15,7 +15,7 @@ def main():
     for base in (0x7100000000, 0x7200000000):
         m = HurryMachine(base, faster_dialogue=False)
         native = HurryMachine(base, enabled=False)
-        assert len(m.hooks) == 13
+        assert len(m.hooks) == 14
         assert all(base + a in m.hooks for a in (*REVEAL, ADVANCE, *PICKUP))
         assert all(base + a not in m.hooks for a in NAMES)
         # No Faster Dialogue: ordinary and B/L/R-held text must be byte-for-byte
@@ -96,11 +96,11 @@ def main():
         # Disabled hurry never validates or installs its advance/controller path.
         m = Machine(0x7100000000, {'controls': DEFAULT + b'hold_to_advance_dialogue=false'})
         m.write(m.base + offset, 0xdeadbeef, 4); m.boot(); m.activate()
-        assert 'BOOT_OK' in m.text and len(m.hooks) == 7
+        assert 'BOOT_OK' in m.text and len(m.hooks) == 8
     for offset in REVEAL:
         m = Machine(0x7100000000, {'controls': DEFAULT, 'faster-dialogue': DEFAULT})
         m.write(m.base + offset, 0xdeadbeef, 4); m.boot(); m.activate()
-        assert len(m.hooks) == 7 and m.base + ADVANCE not in m.hooks
+        assert len(m.hooks) == 8 and m.base + ADVANCE not in m.hooks
     m = Machine(0x7100000000, {'controls': DEFAULT})
     m.write(m.base + PICKUP[0], 0xdeadbeef, 4); m.boot(); m.activate()
     assert m.base + ADVANCE in m.hooks and all(m.base + a in m.hooks for a in REVEAL)

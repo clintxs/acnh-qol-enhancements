@@ -17,7 +17,7 @@ DEPENDENCIES = (0x2222950, 0x2272704, 0x2572e00, 0x2577ea0, 0x242d8f0, 0x19d5d04
 
 class SwapMachine(LadderMachine):
     def __init__(self, base):
-        super().__init__(base, config=SWAP_CONFIG, expected_hooks=9 + EXTRA)
+        super().__init__(base, config=SWAP_CONFIG, expected_hooks=10 + EXTRA)
         self.controller = self.ram + 0x16000
         self.write(self.player + 0x70, self.controller)
         self.write(self.controller + 0x280, 0xc, 4)
@@ -133,8 +133,8 @@ def main():
     for base in (0x7100000000, 0x7200000000):
         # Omitted keys now activate all traversal paths; explicit custom false
         # still disables them without disabling other Controls features.
-        for custom, expected in ((None, 20 + EXTRA),
-                                 (b'auto_vault=false\nauto_ladder=false\nauto_equip_traversal=false', 13)):
+        for custom, expected in ((None, 29 + EXTRA),
+                                 (b'auto_vault=false\nauto_ladder=false\nauto_equip_traversal=false', 22)):
             files = {'controls': DEFAULT + b''}
             if custom is not None: files['controls.custom'] = custom
             defaults = Machine(base, files)

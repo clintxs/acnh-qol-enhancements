@@ -167,9 +167,9 @@ def main():
             n.boot(); n.activate()
             assert 'auto placed ladder: DISABLED;' in n.text
             assert 'auto placed ladder: READY;' not in n.text
-            assert 'auto ladder: READY;' in n.text and len(n.hooks) == 7 + EXTRA
+            assert 'auto ladder: READY;' in n.text and len(n.hooks) == 8 + EXTRA
             cases += 1
-        n = Machine(base, {'controls': DEFAULT+b'hold_to_hoover=false\nhold_to_advance_dialogue=false\nauto_vault=true\nauto_ladder=false\nauto_equip_traversal=false\n'})
+        n = Machine(base, {'controls': DEFAULT + b'auto_swim=false\nhold_to_hoover=false\nhold_to_advance_dialogue=false\nauto_vault=true\nauto_ladder=false\nauto_equip_traversal=false\n'})
         n.boot(); n.activate()
         assert 'auto placed ladder: READY;' not in n.text
         cases += 1
