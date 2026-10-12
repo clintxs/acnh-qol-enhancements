@@ -7,9 +7,9 @@ import package
 
 def main():
     root = package.ROOT
-    assert b'auto swim: READY; prototype 11; analog speed; delayed 1.5s 75 percent boosts; interruptible strokes' in (root / 'project.elf').read_bytes(), 'Build first: sh tools/build.sh'
+    assert b'auto swim: READY; prototype 12; analog speed; delayed 1.5s 62.5 percent boosts; interruptible strokes' in (root / 'project.elf').read_bytes(), 'Build first: sh tools/build.sh'
     assert b'camera tilt: READY; native tilt positions while swimming forward' in (root / 'project.elf').read_bytes(), 'Build camera support first'
-    stem = f'qol-enhancements-v{package.release_version().replace(".", "_")}_swimming-prototype11_for_acnh_v3_0_3'
+    stem = f'qol-enhancements-v{package.release_version().replace(".", "_")}_swimming-prototype12_for_acnh_v3_0_3'
     binary, source = (root / 'dist' / (stem + suffix) for suffix in ('.zip', '_source.zip'))
     for path in (binary, source):
         if path.exists(): raise SystemExit(f'Refusing to replace existing archive: {path}')
@@ -23,7 +23,7 @@ def main():
         'QoL Enhancements - Controls/romfs/qol-enhancements/config/controls.ini':
             (root / 'modules/Controls/romfs/qol-enhancements/config/controls.ini').read_bytes(),
         'README.txt': (
-            'AUTO SWIM - PROTOTYPE 11 - 75 PERCENT BOOST AND CAMERA TILT - ACNH 3.0.3\n\n'
+            'AUTO SWIM - PROTOTYPE 12 - 62.5 PERCENT BOOST AND CAMERA TILT - ACNH 3.0.3\n\n'
             'Fully close ACNH. Merge the included Core, Controls and Swimming folders into\n'
             'your existing QoL Enhancements mod folders, replacing matching files.\n'
             'Enable Core and Swimming, then restart. Controls is independent. Use one Core copy.\n'
@@ -35,7 +35,7 @@ def main():
             'Stick travel controls speed beyond a small neutral dead zone.\n'
             'Starting movement requests one opening arm stroke. After that,\n'
             'press A for a boost or hold A to repeat when its 2s cooldown ends.\n'
-            'Boosts start half a second into the arm stroke, adding 75% of\n'
+            'Boosts start half a second into the arm stroke, adding 62.5% of\n'
             'full cruise speed and then fading over 1.5 seconds.\n'
             'Ready strokes interrupt the current kick animation; the cooldown\n'
             'starts when an arm stroke begins.\n'

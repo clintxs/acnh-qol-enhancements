@@ -280,3 +280,13 @@ to .75: peak additive propulsion is 75 percent of full cruise speed, yielding
 0.5-second onset delay, 1.5-second fade, 2-second cooldown, stroke policy and
 camera tilt behavior unchanged. Update surface/dive, partial-stick and neutral
 impulse regression expectations. Preserve all earlier playtest archives.
+
+
+Prototype 12: 62.5 percent boost strength
+----------------------------------------
+Requested the midpoint between the 50 and 75 percent playtests. Set
+BoostFraction to .625: peak additive propulsion is 62.5 percent of full cruise
+speed, yielding 1.625 times ordinary cruise speed at full stick at the peak.
+Keep the 0.5-second onset delay, 1.5-second fade, 2-second cooldown, stroke
+policy and camera tilt behavior unchanged. Update surface/dive, partial-stick
+and neutral impulse regression expectations. Preserve earlier archives.
