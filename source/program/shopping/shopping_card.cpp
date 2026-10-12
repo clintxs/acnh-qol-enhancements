@@ -14,8 +14,6 @@ constexpr std::uintptr_t ResourceSizeQuery = 0x03e3cad0;
 constexpr std::uintptr_t Wallet = 0x0257abf0, Debit = 0x0257b340;
 constexpr std::uintptr_t WalletSpace = 0x0257ad90, AddCash = 0x0257af90;
 constexpr std::uintptr_t BellDisplayUpdate = 0x0301b394, BellPageUpdate = 0x02b13bf0;
-constexpr std::uintptr_t BellPageHidden = 0x02b12eac;
-constexpr std::uintptr_t AuxiliaryCounterHidden = 0x0301a690;
 constexpr std::uintptr_t StepNumber = 0x03353b14, NumberFeedback = 0x03025400, FormatNumber = 0x03025a4c;
 constexpr std::uintptr_t FindParameter = 0x02b12c24, SafeStringVtableGot = 0x04ab2020;
 constexpr std::uintptr_t FindPane = 0x0027d1d0, SetPaneText = 0x03c1b588, SetGroupText = 0x03c47b90;
@@ -41,6 +39,8 @@ constexpr unsigned BindingAdapter = 0x48, AdapterPayload = 8, AdapterMethods = 0
 constexpr unsigned SetTextMethod = 0x5e0, GroupCount = 0x10, GroupLinkOffset = 0x14;
 constexpr unsigned NextLink = 8, MemberPane = 0x10, MemberMethods = 0x18;
 constexpr unsigned PaneParent = 0x18, PaneFlags = 0x58, CashCurrent = 0x260;
+constexpr unsigned State = 0x1b0, PendingState = 0x1f0, PendingNextState = 0x1f4;
+constexpr unsigned IdleState = 1;
 }
 // MurmurHash3(name, 0), independently checked against native 005bd550.
 constexpr unsigned MarketSmall = 0xbe3cad72, MarketLarge = 0x8a17f484, Tailor = 0x91e12aa0;
@@ -349,8 +349,12 @@ void UpdateStorageDismissal(std::uintptr_t owner, const std::uint8_t *player, Di
     auto &session = storageSessions[*player];
     const auto bit = 1u << static_cast<unsigned>(surface);
     if (!(session.closing & bit)) return;
-    const auto hidden = surface == DisplaySurface::Hud ? address::BellPageHidden : address::AuxiliaryCounterHidden;
-    if (Fn<bool (*)(std::uintptr_t)>(hidden)(owner)) session.closing &= ~bit;
+    // Native UIMoneyDisappear update (00D18F18..00D18F38) completes only
+    // once both queued transitions are empty and the controller is Init/Idle.
+    // State 3 is Play, NOT hidden; its predicates were the wrong signal.
+    if (owner && Read<int>(owner, display::PendingState) == -1 &&
+        Read<int>(owner, display::PendingNextState) == -1 &&
+        Read<unsigned>(owner, display::State) <= display::IdleState) session.closing &= ~bit;
 }
 // The native number transition is a value object (counter+260), separate from
 // the controller and its text binding. Use its exact stepping/rounding with an

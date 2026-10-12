@@ -686,3 +686,40 @@ with independent completion answers and verifies each completion order, multiple
 Out frames, teardown, reopening and explicit ordinary-counter takeover. The
 standalone reproduction bypasses imported test loops so new fingerprints do not
 mask the old binary's presentation failure. In-game confirmation remains needed.
+
+
+## 0.4.28 Use the actual UIMoneyDisappear completion condition
+
+User identified the successful-payment Sub_Event12 boundary: the success
+message is followed by UIMoneyDisappear and two reservation flags. No subsequent
+UIMoneyAppear occurs in that block. Native action registry 0487F860 points to
+constructor 01043414, whose vtable provides enter 00D18D50 and update 00D18E50.
+This command is asynchronous (+30 returns false), requests dismissal, then
+waits for the money controller at screen+288 -> +210 to finish.
+
+The earlier meaning assigned to 02B12EAC / 0301A690 was WRONG. Both require
+controller state 3; native state-registration strings identify this as
+State::cPlay (04000077), not hidden. State 1 is State::cIdle (03FE3B76).
+Auxiliary State::cDisappear is 5; BellPage State::cDisappear is 4. Their native
+Out updates 0301B340 / 02B13B94 queue Idle (1) after the layout completion query
+(+50). The previous tests supplied a guessed hidden=state3/virtual+60 interface,
+so their passing result did not validate actual native disappearance semantics.
+The 0.4.26/27 hidden-predicate interpretation and related success claims above
+are superseded by this direct command/state-registration evidence.
+
+Actual UIMoneyDisappear completion 00D18F18..00D18F38 requires both transition
+slots (+1F0 and +1F4) to equal -1 and current state (+1B0) <= 1 (Init/Idle).
+Storage dismissal now uses exactly these fields/conditions independently for
+both presented controller paths. It keeps the existing card and native UI
+commands; no static timers, eventflow replacement, new hooks, saved state or
+items are involved. Fingerprints validate the native completion window and
+both native Out -> queued Idle handlers instead of the misidentified functions.
+
+Reproduced the 0.4.27 ELF restoring cash in Play while ORIGINAL UIMoneyDisappear
+completion returned unfinished. The corrected fixture runs the original
+00D18F14..00D18F3C completion window directly, with actual controller fields,
+and checks presentation against its answer across six states and both pending
+slots. It covers Play -> queued Out -> Disappear -> queued Idle -> stable Idle,
+interleaved updates/either finish order, reopening, teardown and thirty commands
+before the first display update. Full layout playback remains outside emulation;
+live confirmation is still required. Payment/source priority is unchanged.

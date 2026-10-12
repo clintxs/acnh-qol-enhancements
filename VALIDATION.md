@@ -2859,3 +2859,32 @@ ASLR bases and version/configuration checks. Package checks preserve layouts,
 colors and release metadata. Live 0.4.27 validation remains necessary; original
 engine animation playback is modeled at its completion interface. Core-only,
 full and source archives retain earlier local releases.
+
+
+## 0.4.28 Native UIMoneyDisappear completion (2026-10-12)
+
+User pinpointed the successful-payment UIMoneyDisappear in Sub_Event12.
+Native command/state registration evidence reveals the previous predicates
+02B12EAC/0301A690 test Play (state 3), not hidden. This supersedes the incorrect
+hidden-state interpretation and fixture completion claims for 0.4.26/27.
+Reproduced 0.4.27 restoring cash while actual UIMoneyDisappear completion says
+unfinished. The fix uses the native command's own condition: both pending
+transition slots -1 and current state Init/Idle (<=1), for each presented
+controller. Native show/hide events and the Shopping Card remain enabled.
+No static delay, new hook, items or persistent state is added.
+
+The pinned offline 0.4.28 build and expanded storage ARM regression validate
+against the ORIGINAL UIMoneyDisappear completion instructions, with native
+state names and both pending slots. Coverage includes six states, either
+controller finish order, interleaved updates, Play/Out/queued Idle, rapid event
+dispatch before rendering, reopen/teardown/ordinary-counter takeover, all six
+prices/eight residents and mixed funds. Existing shop/catalog/cash refresh,
+source-priority, animation and cap regressions remain covered. Focused existing
+0.4.21 marker compatibility uses the same final presentation/completion matrix.
+Full engine layout playback and real 30x dialogue playback remain outside this
+fixture; in-game 0.4.28 confirmation is pending.
+
+The complete storage and imported shopping/display regressions pass at both
+ASLR bases. Core activation passes all 256 module subsets at two bases and
+the existing configuration/version/conflict checks. Package checks pass for
+release metadata, manifests and unchanged layout/color baselines.
