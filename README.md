@@ -641,6 +641,13 @@ compatibility with that mod's future hooks or NPDM.
 
 ## Pockets hold-A selection (development test)
 
+The `hold-select-sound1` Core update replaces the cursor movement cue with the
+native A/confirm cue when a move queues a held selection or deselection. It
+leaves ordinary navigation, backtracking and normal A presses unchanged.
+Run `python3 tools/package_hold_select_sound.py` after building to package this
+Core-only update without replacing captions or settings. Audible Eden testing
+is still required.
+
 In Nook’s Cranny selling and shed put-away screens, hold **A** and move over
 items to repeat the first press's action. Start on an unselected item to select
 items, or on a selected item to deselect them. Each hold keeps that action until

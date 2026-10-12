@@ -10,6 +10,8 @@ namespace {
 namespace address {
 constexpr std::uintptr_t PocketPageVtable = 0x04a06b00;
 constexpr std::uintptr_t ApplicationGlobal = 0x059f83f0;
+constexpr std::uintptr_t ButtonFeedback = 0x03c66950;
+constexpr std::uintptr_t ItemFeedbackValidity = 0x02fbfe5c;
 }
 namespace layout {
 constexpr std::size_t Page = 0x210, Mode = 0x1c4fc, State = 0x1b0;
@@ -21,6 +23,8 @@ constexpr std::size_t RowCount = 8, Rows = 0x10, RowBytes = 0x48, Consumed = 0x3
 constexpr std::size_t InputContext = 0x210, InputBlocked = 0x54, InputMask = 0x58;
 constexpr std::size_t GlobalInputMasks = 0x418, GlobalInputMask = 0x10;
 constexpr std::size_t ItemWidgets = 0x590, ItemFlags = 0x2c3;
+constexpr std::size_t FeedbackValidity = 0x2a0, FeedbackRow = 0x2a8;
+constexpr std::size_t ParameterValue = 0x40, DecideContext = 0x298;
 }
 constexpr unsigned NativeA = 1u << 4;
 constexpr unsigned OtherActionButtons = (1u << 5) | (1u << 6) | (1u << 7) | // B/X/Y
@@ -45,6 +49,58 @@ struct InputCapture {
     bool starting{};
 };
 InputCapture capture{};
+struct SafeString { std::uintptr_t vtable; const char *text; };
+struct DeferredFeedback { void *widget{}, *context{}; std::uintptr_t stringVtable{}; };
+DeferredFeedback deferred{};
+
+HOOK_DEFINE_TRAMPOLINE(HoldSelectFeedback) {
+    static void Callback(void *widget, const SafeString *event, void *context) {
+        // A real click can follow navigation in the same input pass. Preserve
+        // its original Select -> Decide order rather than replaying movement
+        // after the confirm sound, and leave no synthetic feedback pending.
+        if (deferred.widget == widget && event && event->text &&
+            std::strcmp(event->text, "Decide") == 0) {
+            const SafeString previous{deferred.stringVtable, "Select"};
+            Orig(widget, &previous, deferred.context);
+            deferred = {};
+        }
+        // Select is the UI focus/movement event, not the A-button Decide event.
+        // Defer only pocket item focus during this observer's native input pass.
+        // Never retain the caller's temporary SafeString or touch other screens.
+        if (capture.owner && event && event->text && std::strcmp(event->text, "Select") == 0) {
+            auto *page = Field<void *>(capture.owner, layout::Page);
+            for (int slot = 0; page && slot < 40; ++slot) {
+                if (widget != Field<void *>(page, layout::ItemWidgets + sizeof(void *) * slot)) continue;
+                if (deferred.widget) {
+                    const SafeString previous{deferred.stringVtable, "Select"};
+                    Orig(deferred.widget, &previous, deferred.context);
+                }
+                deferred = {widget, context, event->vtable};
+                return;
+            }
+        }
+        Orig(widget, event, context);
+    }
+};
+
+void FlushHoldFeedback(void *selectedWidget, int row) {
+    const auto pending = deferred;
+    deferred = {};
+    // No observed movement event means there is nothing to replace. In
+    // particular, native A clicks already produced their own Decide feedback.
+    if (!pending.widget) return;
+    const bool selecting = selectedWidget == pending.widget;
+    if (selecting) {
+        if (auto *parameter = Field<void *>(selectedWidget, layout::FeedbackValidity))
+            Field<int>(parameter, layout::ParameterValue) =
+                game::FunctionAt<int (*)(void *)>(address::ItemFeedbackValidity)(selectedWidget);
+        if (auto *parameter = Field<void *>(selectedWidget, layout::FeedbackRow))
+            Field<int>(parameter, layout::ParameterValue) = row;
+    }
+    const SafeString event{pending.stringVtable, selecting ? "Decide" : "Select"};
+    HoldSelectFeedback::Orig(pending.widget, &event,
+        selecting ? Field<void *>(selectedWidget, layout::DecideContext) : pending.context);
+}
 
 bool IsMultiSelection(void *owner) {
     const int mode = Field<int>(owner, layout::Mode);
@@ -111,15 +167,13 @@ void BeforeHoldSelectInput(void *page, void *snapshot, unsigned blocked) {
     capture = {owner, row, slot, starting};
 }
 
-void AfterHoldSelectInput(void *page, void *, unsigned) {
-    const auto input = capture;
-    capture = {};
-    if (!input.owner || !gesture.holding) return;
+void *QueueHeldSelection(void *page, const InputCapture &input) {
+    if (!input.owner || !gesture.holding) return nullptr;
     auto *owner = pocket_input::FindPocketController(page);
     if (owner != input.owner || !IsMultiSelection(owner) ||
         Field<int>(owner, layout::Mode) != gesture.mode) {
         gesture = {};
-        return;
+        return nullptr;
     }
     if (input.starting && (Field<std::uint16_t>(owner, layout::LogicalInput) & SelectItem)) {
         // Navigation and the first A press can share a frame. Native input
@@ -130,20 +184,27 @@ void AfterHoldSelectInput(void *page, void *, unsigned) {
                                   (std::uint64_t{1} << clickedSlot));
     }
     const int slot = pocket_input::FindFocusedItemSlot(page, input.row);
-    if (slot < 0 || slot == input.previousSlot) return;
+    if (slot < 0 || slot == input.previousSlot) return nullptr;
     const auto bit = std::uint64_t{1} << slot;
     const bool selected = (Field<std::uint64_t>(owner, layout::SelectedSlots) & bit) != 0;
     if (selected == gesture.selecting ||
         (Field<std::uint64_t>(owner, layout::BlockedSlots) & bit) ||
-        Field<std::uint16_t>(owner, layout::LogicalInput) != 0) return;
+        Field<std::uint16_t>(owner, layout::LogicalInput) != 0) return nullptr;
     auto *widget = Field<void *>(page, layout::ItemWidgets + sizeof(void *) * slot);
-    if (!widget || !(Field<std::uint8_t>(widget, layout::ItemFlags) & 1)) return;
+    if (!widget || !(Field<std::uint8_t>(widget, layout::ItemFlags) & 1)) return nullptr;
     // Mirror native click callback 030884b0. The browsing update 0308b3f0
     // performs the toggle, selection-limit checks, storage-capacity checks and
     // feedback. Only toggle items that differ from this hold's target state,
     // and never overwrite a real A request.
     Field<std::int8_t>(owner, layout::ClickSlot) = slot;
     Field<std::uint16_t>(owner, layout::LogicalInput) |= SelectItem;
+    return widget;
+}
+
+void AfterHoldSelectInput(void *page, void *, unsigned) {
+    const auto input = capture;
+    capture = {};
+    FlushHoldFeedback(QueueHeldSelection(page, input), input.row);
 }
 }
 
@@ -158,7 +219,9 @@ bool InstallHoldSelect() {
     struct Check { std::uintptr_t offset; std::array<std::uint32_t, 5> words; };
     constexpr std::array checks{
         Check{0x030884b0, {0xd100c3ff, 0xa9017bfd, 0xa9024ff4, 0x910043fd, 0xf941080e}},
-        Check{0x0308b3f0, {0xd10283ff, 0xfd001be8, 0xa9047bfd, 0xa9056ffc, 0xa90667fa}}};
+        Check{0x0308b3f0, {0xd10283ff, 0xfd001be8, 0xa9047bfd, 0xa9056ffc, 0xa90667fa}},
+        Check{address::ButtonFeedback, {0xd102c3ff, 0xa9077bfd, 0xf90043f7, 0xa90957f6, 0xa90a4ff4}},
+        Check{address::ItemFeedbackValidity, {0x394b0c09, 0x7200013f, 0x394c5408, 0x7a401900, 0x1a9f07e0}}};
     for (const auto &check : checks) {
         if (std::memcmp(reinterpret_cast<const void *>(game::MainAddress(check.offset)),
                         check.words.data(), sizeof(check.words)) != 0) {
@@ -170,7 +233,8 @@ bool InstallHoldSelect() {
         Logging.Error("[QoL Enhancements/Pockets] HOLD_SELECT_DISABLED shared input unavailable\n");
         return false;
     }
-    Logging.Debug("[QoL Enhancements/Pockets] HOLD_SELECT_READY select/deselect; selling / put in storage\n");
+    HoldSelectFeedback::InstallAtOffset(address::ButtonFeedback);
+    Logging.Debug("[QoL Enhancements/Pockets] HOLD_SELECT_READY select/deselect with Decide feedback; selling / put in storage\n");
     return true;
 }
 }

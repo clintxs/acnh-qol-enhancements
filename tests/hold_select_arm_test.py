@@ -5,6 +5,8 @@ through its mask, limit, capacity and refresh handling; drawing is stubbed.
 The imported harness also runs existing Pockets regressions.
 """
 from arm_stack_test import Machine, symbol
+from unicorn import UC_HOOK_CODE
+from unicorn.arm64_const import UC_ARM64_REG_PC
 
 cases = 0
 for base in (0x80000000, 0x1234500000):
@@ -17,6 +19,7 @@ for base in (0x80000000, 0x1234500000):
     prepare, animate, suppress = [h.ram + o for o in (0x85000, 0x85010, 0x85020)]
     h.u.mem_write(h.mod + symbol('InputHandlers'), bytes(5 * 8))
     h.stubs[h.mod + symbol('SvcLogger', 'LogRaw')] = lambda: None
+    h.stubs[h.mod + symbol('nx64', '4HookEmmb')] = lambda: h.reg(0)
     # Shared trampoline is already installed by the harness. Use real feature
     # registration, including its producer/consumer fingerprint checks.
     h.write(h.mod + symbol('3qol4core', '9Installed'), 1, 1)
@@ -45,21 +48,46 @@ for base in (0x80000000, 0x1234500000):
         h.write(page + 0x590 + slot * 8, widget)
         h.write(widget + 0x218, panes + slot * 16)
         h.write(widget + 0x2c3, 1, 1)
+        h.write(widget + 0x315, 1, 1)
+        parameter = h.ram + 0x88000 + slot * 0x100
+        h.write(widget + 0x2a0, parameter)
+        h.write(widget + 0x2a8, parameter + 0x50)
         h.write(widget + 0x2f0, marker_ptr)
     target, native_click, native_calls, free_storage = 0, None, [], 40
+    feedback_events = []
+    sound_string, sound_text = h.ram + 0x87000, h.ram + 0x87100
+    h.write(sound_string, base + 0x47f9770)
+    h.write(sound_string + 8, sound_text)
+    h.u.mem_write(sound_text, b'Select\0')
+    feedback_pending = False
     def native_input():
+        global feedback_pending
         native_calls.append(1)
+        old_pane = h.read(controller + 0x10)
         h.write(controller + 0x10, panes + target * 16 if target >= 0 else 0)
         if native_click is not None:
             h.write(pocket + 0x1c518, native_click, 1)
             h.write(pocket + 0x1c51a, 4, 2)
         # Native pass consumes A after navigation; this must not block the observer.
         for row in range(2): h.write(rows + row * 0x48 + 0x3c, 0xffffffff, 4)
+        feedback_pending = target >= 0 and old_pane != panes + target * 16
+        if feedback_pending:
+            h.put(0, widgets + target * 0x400); h.put(1, sound_string); h.put(2, 123)
+    def redirect_feedback(u, pc, size, data):
+        # The modeled navigation ends with the actual compiled feedback hook;
+        # retain its caller's LR so it returns to the shared after-observer.
+        if pc == base + 0x3c58d24 and feedback_pending:
+            u.reg_write(UC_ARM64_REG_PC, h.callback('HoldSelectFeedback'))
+    h.u.hook_add(UC_HOOK_CODE, redirect_feedback)
+    def feedback():
+        name = bytes(h.u.mem_read(h.read(h.reg(1)+8), 16)).split(b'\0')[0]
+        feedback_events.append((h.reg(0), name, h.reg(2)))
     refreshes = []
     h.stubs = {base + 0x3c58d24: native_input, prepare: lambda: None,
                animate: lambda: None, suppress: lambda: 1,
                h.mod + symbol('SvcLogger', 'LogRaw'): lambda: None,
                base + 0x257c230: lambda: free_storage,
+               base + 0x3c66950: feedback,
                base + 0x3093d24: lambda: refreshes.append(h.read(pocket + 0x1c4e8))}
     def frame(buttons=0, move=None, blocked=0, consumed=0, click=None, other_row=0):
         global target, native_click
@@ -92,13 +120,21 @@ for base in (0x80000000, 0x1234500000):
         # First item uses the normal A click, then four cursor moves add four more.
         frame(16, click=0); native_select()
         for slot in range(1, 5):
+            feedback_events.clear()
             frame(16, slot)
+            assert feedback_events == [(widgets + slot * 0x400, b'Decide', 0)]
+            assert h.read(h.ram + 0x88000 + slot * 0x100 + 0x40, 4) == 1
+            assert h.read(h.ram + 0x88000 + slot * 0x100 + 0x90, 4) == 1
             assert h.read(pocket + 0x1c518, 1) == slot
             assert h.read(pocket + 0x1c51a, 2) == 4
             native_select()
         assert h.read(pocket + 0x1c4e8) == 31
+        feedback_events.clear()
         frame(16, 3); assert h.read(pocket + 0x1c51a, 2) == 0  # Backtracking.
+        assert feedback_events == [(widgets + 3 * 0x400, b'Select', 123)]
+        feedback_events.clear()
         frame(16); assert h.read(pocket + 0x1c51a, 2) == 0  # Stationary hold.
+        assert feedback_events == []
         frame(0); frame(16, click=3); native_select()  # Separate tap still deselects.
         assert h.read(pocket + 0x1c4e8) == 23
         frame(0, 39); frame(16, click=39); native_select()
@@ -108,7 +144,9 @@ for base in (0x80000000, 0x1234500000):
         reset(mode); h.write(pocket + 0x1c4e8, 31)
         frame(16, click=0); native_select()
         for slot in range(1, 5):
+            feedback_events.clear()
             frame(16 | 8, slot); native_select()
+            assert feedback_events == [(widgets + slot * 0x400, b'Decide', 0)]
         assert h.read(pocket + 0x1c4e8) == 0
         frame(16, 3); assert h.read(pocket + 0x1c51a, 2) == 0
         frame(16); assert h.read(pocket + 0x1c51a, 2) == 0
@@ -140,6 +178,32 @@ for base in (0x80000000, 0x1234500000):
         frame(16, 1); native_select()
         assert h.read(pocket + 0x1c4e8) == 0
         cases += 1
+    # Navigation plus a real A click retains Select -> Decide ordering, rather
+    # than replaying the deferred cursor cue after the real confirm.
+    reset(); feedback_events.clear()
+    h.write(rows + 0x48, 16, 4); h.write(rows + 0x48 + 0x3c, 0, 4)
+    h.put(0, page); h.put(1, snapshot); h.put(2, 0)
+    h.run(h.mod + symbol('BeforeHoldSelectInput'))
+    for event in (b'Select', b'Decide'):
+        h.u.mem_write(sound_text, event + b'\0')
+        h.put(0, widgets + 0x400); h.put(1, sound_string); h.put(2, 123)
+        h.run(h.callback('HoldSelectFeedback'))
+        if event == b'Select': assert feedback_events == []
+    assert [event[1] for event in feedback_events] == [b'Select', b'Decide']
+    h.write(controller + 0x10, panes + 16)
+    h.write(pocket + 0x1c518, 1, 1); h.write(pocket + 0x1c51a, 4, 2)
+    h.put(0, page); h.put(1, snapshot); h.put(2, 0)
+    h.run(h.mod + symbol('AfterHoldSelectInput'))
+    assert len(feedback_events) == 2
+    cases += 1
+    # Outside an eligible held-input pass, every event passes through unchanged.
+    for event in (b'Select', b'Decide', b'Unselect'):
+        feedback_events.clear(); h.u.mem_write(sound_text, event + b'\0')
+        h.put(0, widgets); h.put(1, sound_string); h.put(2, 123)
+        h.run(h.callback('HoldSelectFeedback'))
+        assert feedback_events == [(widgets, event, 123)]
+        cases += 1
+    h.u.mem_write(sound_text, b'Select\0')
     for setting in ('parent', 'local', 'global', 'consumed', 'B', 'selected', 'blocked-slot', 'disabled',
                     'pending-click', 'outside-grid', 'wrong-row', 'transition', 'state', 'single-pick', 'wrong-mode'):
         reset(); frame(16)

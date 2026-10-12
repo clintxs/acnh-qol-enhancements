@@ -1,5 +1,27 @@
 # Unified QoL validation
 
+## Hold-A selection feedback test (2026-10-11)
+
+Added one fingerprint-checked trampoline at 03c66950 (button feedback). Only
+Select events from this pocket page's item widgets during the eligible native
+input pass are deferred; the temporary SafeString is never retained. After
+navigation, the existing selection observer either queues a synthetic click
+and replaces that item's Select with Decide, or replays Select unchanged.
+Native A feedback is not replaced or duplicated. Decide uses the native
+02fbfe5c validity value, input row and widget+298 context, matching quick-store.
+This feedback accompanies the request, like native A; the original selection
+consumer still enforces limits and capacity and may reject it.
+
+Offline build and host policy tests passed. Pockets ARM regressions: 978 cases,
+228 hint cases, 104 recycling cases; hold-select 96 cases at two ASLR bases.
+Core activation passed all 256 module combinations at two bases with the
+additional feedback hook; no overlapping hook sites were detected.
+The hold-select test runs the compiled feedback hook during modeled navigation,
+checks exactly one Decide in place of Select, validity/row parameters,
+select/deselect, unchanged backtracking, no stationary repeats and unchanged
+out-of-scope events. Native selection consumer runs; audio/rendering are mocked.
+Actual sound choice/timing in Eden remains unverified.
+
 ## Pockets consume shortcut test (2026-10-11)
 
 Verified ItemUIContextMenu.bcsv rows 37/38/40 and CmnSubWin USen captions
