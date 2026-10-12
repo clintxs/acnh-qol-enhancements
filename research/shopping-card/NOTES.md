@@ -655,3 +655,34 @@ state, restoration behind a hidden root, ordinary-counter takeover, event
 teardown during Out and reopen during Out, at both ASLR bases. Native engine
 animation playback is not emulated; live confirmation of dismissal remains
 necessary.
+
+
+## 0.4.27 Both counter updaters must preserve storage presentation
+
+Live 0.4.26 feedback: pocket Bells still briefly appear. Logs confirm Core
+0.4.26 and Shopping Card 0.4.21 loaded. The user clarified that the Shopping
+Card must remain available in storage dialogue, with no ordinary Bells counter.
+No UI events are removed: storage's UIMoneyAppear/Disappear still execute.
+
+Reproduced the actual code gap on the 0.4.26 ELF with interleaved updates:
+storage appear -> HUD -> auxiliary -> disappear -> HUD (card still shown) ->
+auxiliary (cash restored before either Out finished). The 0.4.26 fixture only
+called the HUD during dismissal, concealing this independent updater path.
+Only that path honored closing state; it also cleared the global state as soon
+as its own window hid, regardless of the other controller's lifecycle.
+
+Closing state is now a bit mask of controllers that presented the storage
+balance. Both update paths honor it, and each clears its own bit through its
+original hidden predicate. The HUD uses 02B12EAC, the auxiliary uses 0301A690
+(direct owner+210 layout -> layout+1B0 animation +60; owner+1B0 == 3). The card
+remains selected on both paths while any presented controller is still closing.
+If dialogue finishes before any first display update, both bits are retained.
+No timers, hook additions, saved state, or UI/event pointer retention are added.
+Native commands, payment routing and ordinary-counter takeover remain intact.
+
+The revised fixture invokes both update paths before and after dismissal,
+deliberately sharing their pane binding. It runs both original hidden predicates
+with independent completion answers and verifies each completion order, multiple
+Out frames, teardown, reopening and explicit ordinary-counter takeover. The
+standalone reproduction bypasses imported test loops so new fingerprints do not
+mask the old binary's presentation failure. In-game confirmation remains needed.

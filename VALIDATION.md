@@ -2830,3 +2830,32 @@ Package checks validate release metadata, manifests and original layouts/colors.
 No layout assets, hooks, persistent state or save formats are added. Engine
 animation playback remains outside emulation; live 0.4.26 dismissal confirmation
 is pending. Core-only/full/source archives preserve older releases locally.
+
+
+## 0.4.27 Storage presentation across both native counter paths (2026-10-12)
+
+Live 0.4.26 still flashed pocket Bells; logs confirm the correct Core loaded.
+The user's final preference is to retain the Shopping Card during storage
+upgrades and exclude the ordinary Bells presentation throughout that dialogue.
+UI events are preserved. Reproduced the flash on 0.4.26: HUD update retained
+the card after UIMoneyDisappear, then auxiliary update restored cash before
+Out finished. The earlier fixture only updated the HUD during dismissal.
+
+Both paths now preserve closing presentation. A per-resident bit mask records
+which controller paths presented storage, and each completes through its own
+native hidden predicate (HUD 02B12EAC, auxiliary 0301A690). Neither updater
+restores cash until all presented paths finish. Before any initial display,
+both bits are retained for fast dialogue. No timer or new hook is involved.
+
+Pinned offline 0.4.27 build and expanded storage ARM regression pass, including
+both update paths interleaved, both completion orders, original native hidden
+predicates, multiple Out frames, teardown/reopen/ordinary-counter takeover,
+combined payment and all six fees/eight residents. Imported shop/catalog/cash,
+source-priority, animation and cap checks pass. A focused final presentation
+run also passes with the user's existing 0.4.21 marker and 30 event commands
+before the first UI update. This exercises rapid dispatch, not full native
+hold-to-advance playback. Core activation passes all 256 module subsets at two
+ASLR bases and version/configuration checks. Package checks preserve layouts,
+colors and release metadata. Live 0.4.27 validation remains necessary; original
+engine animation playback is modeled at its completion interface. Core-only,
+full and source archives retain earlier local releases.

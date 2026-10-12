@@ -240,26 +240,35 @@ class StorageDisplayMachine(StorageMachine, DisplayMachine):
         # Run the ORIGINAL BellPageHidden predicate. Only the layout engine's
         # animation-completion answer is modeled, independently of page state.
         self.out_finished = False
+        self.aux_out_finished = False
         animation = self.ram+0x1e5000
         self.write(self.hud_layout+0x1b0,animation)
         self.write(animation,animation+0x100)
         self.write(animation+0x100+0x58,base+0x1600)
         self.write(animation+0x100+0x60,base+0x1610)
+        auxiliary = animation+0x200
+        self.write(self.counter+0x1b0,auxiliary)
+        self.write(auxiliary,auxiliary+0x100)
+        self.write(auxiliary+0x100+0x60,base+0x1620)
     def service(self,u,pc,size,data):
         if pc==self.base+0x1600: self.finish(0); return
         if pc==self.base+0x1610: self.finish(int(self.out_finished)); return
+        if pc==self.base+0x1620: self.finish(int(self.aux_out_finished)); return
         super().service(u,pc,size,data)
     def finish_out(self):
         self.write(self.hud+0x1b0,3,4)
         self.out_finished=True
+        self.write(self.owner+0x1b0,3,4)
+        self.aux_out_finished=True
         self.write(self.panes['RootPane']+0x58,2,1)
+        self.update()
         self.update_hud()
 
 for base in (0,0x7100000000):
     m=StorageDisplayMachine(base)
     m.funds(0,2000000,77777,[])
     m.update_hud();assert not m.shown('N_ShoppingCard_00')
-    m.dispatch('UIMoneyAppear');m.update_hud()
+    m.dispatch('UIMoneyAppear');m.update_hud();m.update()
     assert m.shown('N_ShoppingCard_00') and not m.shown('T_Num_00')
     assert m.texts[-1]=='2,077,777' and not m.feedback
     assert m.affordable(1800000)==0
@@ -274,8 +283,13 @@ for base in (0,0x7100000000):
     for state,finished in ((2,False),(3,False),(2,True)):
         m.write(m.hud+0x1b0,state,4);m.out_finished=finished
         for _ in range(8):
-            m.update_hud()
+            m.update();m.update_hud();m.update()
             assert m.shown('N_ShoppingCard_00') and not m.shown('T_Num_00')
+    # A hidden HUD must not release the still-closing auxiliary counter.
+    m.write(m.hud+0x1b0,3,4);m.out_finished=True
+    for _ in range(8):
+        m.update_hud();m.update()
+        assert m.shown('N_ShoppingCard_00') and not m.shown('T_Num_00')
     m.finish_out()
     assert not m.shown('N_ShoppingCard_00') and m.shown('T_Num_00')
     assert not m.shown('RootPane') # Cash is restored only behind the hidden page.
@@ -285,7 +299,8 @@ for base in (0,0x7100000000):
     # Cancellation/teardown can precede animation completion. An explicit
     # unrelated money counter must still take over immediately.
     m.out_finished=False;m.write(m.hud+0x1b0,0,4)
-    m.dispatch('UIMoneyAppear');m.update_hud()
+    m.aux_out_finished=False;m.write(m.owner+0x1b0,0,4)
+    m.dispatch('UIMoneyAppear');m.update_hud();m.update()
     m.invoke(m.callbacks[0x60f340],m.event);m.update_hud()
     assert not m.visible(0) and m.shown('N_ShoppingCard_00') and not m.shown('T_Num_00')
     m.dispatch('OtherAction',flow='SNPC_rco_00_Common');m.update_hud()
@@ -297,6 +312,28 @@ for base in (0,0x7100000000):
     m.dispatch('UIMoneyAppear');m.update_hud() # Reopen interrupts a pending Out.
     assert m.visible(0) and m.shown('N_ShoppingCard_00') and not m.shown('T_Num_00')
     m.dispatch('UIMoneyDisappear');m.finish_out()
+    # Reverse completion order too. The fixture deliberately shares the pane
+    # binding between both controllers, exposing updater-order regressions.
+    m.out_finished=False;m.write(m.hud+0x1b0,0,4)
+    m.aux_out_finished=False;m.write(m.owner+0x1b0,0,4)
+    m.dispatch('UIMoneyAppear');m.update();m.update_hud()
+    m.dispatch('UIMoneyDisappear')
+    m.aux_out_finished=True;m.write(m.owner+0x1b0,3,4)
+    for _ in range(8):
+        m.update();m.update_hud()
+        assert m.shown('N_ShoppingCard_00') and not m.shown('T_Num_00')
+    m.finish_out()
+    # Fast dialogue may dispatch both UI commands before the first render.
+    m.out_finished=False;m.write(m.hud+0x1b0,0,4)
+    m.aux_out_finished=False;m.write(m.owner+0x1b0,0,4)
+    m.dispatch('UIMoneyAppear');m.dispatch('UIMoneyDisappear')
+    for _ in range(30): m.dispatch('OtherAction')
+    m.update_hud();m.update()
+    assert m.shown('N_ShoppingCard_00') and not m.shown('T_Num_00')
+    m.write(m.hud+0x1b0,3,4);m.out_finished=True
+    m.update_hud();m.update()
+    assert m.shown('N_ShoppingCard_00') and not m.shown('T_Num_00')
+    m.finish_out()
     # Missing, out-of-range, stale and mismatched native node contexts cannot
     # activate card money. The constructor/accessor path above is the valid case.
     gate=m.module.find('shopping','StorageFlow')
@@ -309,4 +346,4 @@ for base in (0,0x7100000000):
     m.write(m.args+0x14,18,4);assert m.invoke(gate,m.args,0,0x38)==0
     m.command('UIMoneyAppear')
     m.write(m.args+0x38,m.resource+events);assert m.invoke(gate,m.args,0,0x38)==0
-    print('PASS: native storage args -> combined HUD/payment/feedback; card retained throughout Out until native hidden predicate, teardown/reopen/ordinary-counter takeover, invalid contexts rejected; base',hex(base))
+    print('PASS: native storage args/payment/feedback; BOTH native controller hidden predicates, interleaved updates, either completion order, teardown/reopen/ordinary takeover, invalid contexts; base',hex(base))

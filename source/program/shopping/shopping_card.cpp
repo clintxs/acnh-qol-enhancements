@@ -15,6 +15,7 @@ constexpr std::uintptr_t Wallet = 0x0257abf0, Debit = 0x0257b340;
 constexpr std::uintptr_t WalletSpace = 0x0257ad90, AddCash = 0x0257af90;
 constexpr std::uintptr_t BellDisplayUpdate = 0x0301b394, BellPageUpdate = 0x02b13bf0;
 constexpr std::uintptr_t BellPageHidden = 0x02b12eac;
+constexpr std::uintptr_t AuxiliaryCounterHidden = 0x0301a690;
 constexpr std::uintptr_t StepNumber = 0x03353b14, NumberFeedback = 0x03025400, FormatNumber = 0x03025a4c;
 constexpr std::uintptr_t FindParameter = 0x02b12c24, SafeStringVtableGot = 0x04ab2020;
 constexpr std::uintptr_t FindPane = 0x0027d1d0, SetPaneText = 0x03c1b588, SetGroupText = 0x03c47b90;
@@ -122,12 +123,19 @@ template<std::size_t N> bool Contains(const std::array<unsigned, N> &sites, std:
 unsigned catalogPlayers{};
 // Keep a borrowed event identity only for HUD cleanup; never dereference it.
 // Dismissal/teardown ends the session; presentation can finish its native Out.
-struct StorageSession { std::uintptr_t event{}; bool visible{}, closing{}; };
+struct StorageSession {
+    std::uintptr_t event{};
+    bool visible{};
+    std::uint8_t closing{}, presented{}; // bits for auxiliary and HUD controllers
+};
 std::array<StorageSession, 8> storageSessions{};
 void CloseStorageDisplay(StorageSession &session) {
     // End transaction scope now, but keep its presentation through the native
     // Out animation. No event/UI pointer is needed while that animation ends.
-    session = {0, false, session.visible || session.closing};
+    // Wait only for controllers that actually presented the storage balance.
+    // If dialogue advanced before their first update, either may still open.
+    session = {0, false, static_cast<std::uint8_t>(session.visible ?
+        (session.presented ? session.presented : 3) : session.closing), 0};
 }
 std::uintptr_t storageDebitEvent{}; // scoped to synchronous native command execution
 unsigned storageQueryResident{}; // resident + 1, scoped to the native query call
@@ -336,6 +344,14 @@ unsigned FormatSavings(char16_t (&output)[12], unsigned balance) {
     return length;
 }
 enum class DisplaySurface : unsigned { Auxiliary, Hud };
+void UpdateStorageDismissal(std::uintptr_t owner, const std::uint8_t *player, DisplaySurface surface) {
+    if (!Valid(player)) return;
+    auto &session = storageSessions[*player];
+    const auto bit = 1u << static_cast<unsigned>(surface);
+    if (!(session.closing & bit)) return;
+    const auto hidden = surface == DisplaySurface::Hud ? address::BellPageHidden : address::AuxiliaryCounterHidden;
+    if (Fn<bool (*)(std::uintptr_t)>(hidden)(owner)) session.closing &= ~bit;
+}
 // The native number transition is a value object (counter+260), separate from
 // the controller and its text binding. Use its exact stepping/rounding with an
 // empty callback, then send feedback through the live HUD's native Up/Down and
@@ -406,8 +422,7 @@ std::uintptr_t BellPageCounter(std::uintptr_t owner) {
 }
 void UpdateSavingsDisplay(std::uintptr_t counter, const std::uint8_t *player, DisplaySurface surface) {
     const auto shop = !Valid(player) ? 0 : (catalogPlayers & (1u << *player)) ? catalog::DisplayKey :
-        (storageSessions[*player].visible ||
-         (surface == DisplaySurface::Hud && storageSessions[*player].closing)) ? storage::DisplayKey : CurrentShop();
+        (storageSessions[*player].visible || storageSessions[*player].closing) ? storage::DisplayKey : CurrentShop();
     if (surface == DisplaySurface::Hud && !shop) savingsAnimation.initialized = false;
     auto root = BoundNumberPane(counter);
     std::uintptr_t card = 0;
@@ -430,6 +445,8 @@ void UpdateSavingsDisplay(std::uintptr_t counter, const std::uint8_t *player, Di
     const auto number = FindPane(card, "T_SavingsNum_00");
     const bool active = number && shop;
     const bool wasActive = Read<std::uint8_t>(card, display::PaneFlags) & 1;
+    if (active && Valid(player) && storageSessions[*player].visible)
+        storageSessions[*player].presented |= 1u << static_cast<unsigned>(surface);
     if (active) {
         char16_t text[12]{};
         const auto balance = std::min(CombinedBalance(player), SavingsLimit);
@@ -461,6 +478,7 @@ HOOK_DEFINE_TRAMPOLINE(ShopBalanceDisplay) {
         Orig(owner);
         const auto counter = owner ? Read<std::uintptr_t>(owner, display::Counter) : 0;
         const auto player = owner ? reinterpret_cast<const std::uint8_t *>(owner + display::Player) : nullptr;
+        UpdateStorageDismissal(owner, player, DisplaySurface::Auxiliary);
         UpdateSavingsDisplay(counter, player, DisplaySurface::Auxiliary);
     }
 };
@@ -470,10 +488,9 @@ HOOK_DEFINE_TRAMPOLINE(BellPageBalanceDisplay) {
         // ShopBalanceDisplay. Cash initialization/refresh stays native on both.
         Orig(owner);
         const auto player = owner ? reinterpret_cast<const std::uint8_t *>(owner + display::HudPlayer) : nullptr;
-        // Native BellPageHidden checks both state 3 and completed layout Out
-        // animation. Restoring cash on the event command exposes it mid-fade.
-        if (Valid(player) && storageSessions[*player].closing &&
-            Fn<bool (*)(std::uintptr_t)>(address::BellPageHidden)(owner)) storageSessions[*player] = {};
+        // Each native controller must finish Out before either updater can
+        // restore pocket Bells. Both can touch the same counter presentation.
+        UpdateStorageDismissal(owner, player, DisplaySurface::Hud);
         UpdateSavingsDisplay(BellPageCounter(owner), player, DisplaySurface::Hud);
     }
 };
