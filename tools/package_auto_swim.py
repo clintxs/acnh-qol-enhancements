@@ -7,8 +7,8 @@ import package
 
 def main():
     root = package.ROOT
-    assert b'auto swim: READY; prototype 6; analog speed; 100 percent boosts; interruptible strokes' in (root / 'project.elf').read_bytes(), 'Build first: sh tools/build.sh'
-    stem = f'qol-enhancements-v{package.release_version().replace(".", "_")}_auto-swim-prototype6_for_acnh_v3_0_3'
+    assert b'auto swim: READY; prototype 7; analog speed; 1s 100 percent boosts; interruptible strokes' in (root / 'project.elf').read_bytes(), 'Build first: sh tools/build.sh'
+    stem = f'qol-enhancements-v{package.release_version().replace(".", "_")}_auto-swim-prototype7_for_acnh_v3_0_3'
     binary, source = (root / 'dist' / (stem + suffix) for suffix in ('.zip', '_source.zip'))
     for path in (binary, source):
         if path.exists(): raise SystemExit(f'Refusing to replace existing archive: {path}')
@@ -20,7 +20,7 @@ def main():
         f'{core}/LICENSE': (root / 'LICENSE').read_bytes(),
         key: (root / 'modules/Controls/romfs/qol-enhancements/config/controls.ini').read_bytes(),
         'README.txt': (
-            'AUTO SWIM - PROTOTYPE 6 - 100% BOOST / STEADIER STROKES - ACNH 3.0.3\n\n'
+            'AUTO SWIM - PROTOTYPE 7 - ONE-SECOND BOOST - ACNH 3.0.3\n\n'
             'Fully close ACNH. Merge the included Core and Controls folders into\n'
             'your existing QoL Enhancements mod folders, replacing matching files.\n'
             'Enable Core and Controls, then restart. Use one Core copy.\n'
@@ -30,7 +30,7 @@ def main():
             'Stick travel controls speed beyond a small neutral dead zone.\n'
             'Starting movement requests one opening arm stroke. After that,\n'
             'press A for a boost or hold A to repeat when its 2s cooldown ends.\n'
-            'Boosts add 100% of full cruise speed and fade over half a second.\n'
+            'Boosts add 100% of full cruise speed and fade over one second.\n'
             'Ready strokes interrupt the current kick animation; the cooldown\n'
             'starts when an arm stroke begins.\n'
             'Quiet foot kicking continues between strokes. Underwater speed\n'

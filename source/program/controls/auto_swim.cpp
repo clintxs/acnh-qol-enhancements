@@ -28,7 +28,7 @@ constexpr float QuietStrideScale = .8f; // Native FlapFoot speed multiplier.
 constexpr float BoostFraction = 1.f;
 constexpr std::uint64_t TicksPerSecond = 19'200'000ull;
 constexpr std::uint64_t StrokeInterval = TicksPerSecond * 2;
-constexpr std::uint64_t BoostDuration = TicksPerSecond / 2;
+constexpr std::uint64_t BoostDuration = TicksPerSecond;
 constexpr std::uint64_t SessionGap = TicksPerSecond / 2;
 struct SwimState {
     const void *player{};
@@ -216,7 +216,7 @@ bool InstallAutoSwim() {
     AutoSwimDiveEntry::InstallAtOffset(address::DiveEntry);
     AutoSwimWaitMovement::InstallAtOffset(address::WaitMovement);
     AutoSwimStrideMovement::InstallAtOffset(address::StrideMovement);
-    Logging.Debug("[QoL Enhancements/Controls] auto swim: READY; prototype 6; analog speed; 100 percent boosts; interruptible strokes\n");
+    Logging.Debug("[QoL Enhancements/Controls] auto swim: READY; prototype 7; analog speed; 1s 100 percent boosts; interruptible strokes\n");
     return true;
 }
 }

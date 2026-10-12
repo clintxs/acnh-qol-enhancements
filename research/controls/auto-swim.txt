@@ -177,3 +177,17 @@ entry on the next update: five repeated strokes per mode must be >=2 seconds
 apart and <=2 seconds plus update rounding. Existing analog/input restoration,
 manual/held boosts, delayed entry, config and conflict checks remain. Actual
 animation scheduling and perceived timing still require live validation.
+
+
+Prototype 7: one-second boost fade
+
+Live feedback confirms consistent strokes with prototype 6 and requests a
+longer boost for smoother propulsion. Extend BoostDuration from 9,600,000 to
+19,200,000 ticks (one second). Keep the 100% boost strength, linear fade and
+two-second stroke cooldown. SessionGap remains half a second; it identifies
+gaps between swim callbacks and is independent of boost duration.
+
+The existing compiled speed-curve regressions now expect the impulse to decay
+over 30 updates at 30 Hz, including positive propulsion at the half-second
+point and no residual boost after one second. Cadence, native request gate,
+analog input and surface/underwater policy checks remain unchanged.

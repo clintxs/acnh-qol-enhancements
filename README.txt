@@ -530,12 +530,12 @@ Early startup errors still log. Special dialogue MESSAGE/SELECT tracing needs
 the diagnostic build and log_debug=true in core.custom.ini. Trace limits remain.
 Invalid values inherit; duplicate keys restore the value from before that file.
 
-Controls auto_swim (prototype 6): enabled by default at the surface and
+Controls auto_swim (prototype 7): enabled by default at the surface and
 underwater. Stick travel gradually controls speed beyond a small neutral dead
 zone. Starting movement requests one opening arm stroke. Press A for a
 boost with a roughly two-second cooldown; hold A to repeat when ready. Further
 arm strokes require A. Each boost adds 100% of full cruise speed, fading over
-half a second. Ready strokes interrupt the kick animation, with a two-second
+one second. Ready strokes interrupt the kick animation, with a two-second
 cooldown measured from actual arm entry. Quiet kicking and smooth cruise
 continue between strokes.
 Stopping/restarting or diving/surfacing does not bypass the cooldown. Y keeps

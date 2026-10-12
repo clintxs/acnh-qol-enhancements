@@ -124,7 +124,7 @@ Automatic swimming is enabled by default at the surface and underwater. Stick
 travel gradually controls speed, with a small neutral dead zone. Starting to
 move requests one opening arm stroke. Further arm strokes require A: press for
 a boost or hold to repeat whenever the roughly two-second cooldown ends.
-Each boost adds 100% of full cruising speed and fades over half a second. Ready
+Each boost adds 100% of full cruising speed and fades over one second. Ready
 boosts interrupt the current kick animation; the two-second cooldown starts
 when the arm stroke begins. Quiet foot kicking continues between strokes,
 and underwater speed is independent of
