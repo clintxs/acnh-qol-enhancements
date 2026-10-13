@@ -1,6 +1,7 @@
+#include "program/catalog/features/catalog_features.hpp"
 #include "program/core/hook_plan.hpp"
-#include "catalog_stars.hpp"
-#include "catalog_star_text.hpp"
+#include "program/catalog/features/catalog_stars.hpp"
+#include "program/catalog/features/catalog_star_text.hpp"
 #include "program/catalog/game/recipe_knowledge.hpp"
 #include "program/catalog/game/catalog_ownership.hpp"
 #include "program/catalog/game/bindings.hpp"
@@ -114,15 +115,12 @@ void MarkInventoryCollectible(exl::hook::InlineCtx *registers, std::uintptr_t na
     if (player >= 8) {
         return;
     }
-    const bool recipe = item.id == game::RecipeCardId;
-    const auto status = recipe ? game::QueryRecipeCard(player, item) : game::RecipeStatus::Unavailable;
-    const auto donation = recipe ? game::CatalogStatus::Unavailable : game::QueryMuseumCreature(item);
-    if (!recipe && donation == game::CatalogStatus::Unavailable) {
-        return;
-    }
-    const bool missing = recipe ? status == game::RecipeStatus::Unlearned
-                                : donation == game::CatalogStatus::Uncataloged;
-    const bool marked = missing && MarkBalloonName(nativeFrame, u'★');
+    const auto decision = DecideItemMarker(player, item, ItemUse::InventoryCollectible);
+    const bool recipe = decision.isRecipe;
+    const auto status = decision.recipe;
+    const auto donation = decision.catalog;
+    if (!recipe && donation == game::CatalogStatus::Unavailable) return;
+    const bool marked = decision.marker && MarkBalloonName(nativeFrame, decision.marker);
     if (!recipe) {
         static unsigned creatureReports = 0;
         if (creatureReports++ < 64) {
@@ -179,8 +177,8 @@ HOOK_DEFINE_INLINE(CabinetCatalogStar) {
         }
         const auto item = Read<game::CatalogItem>(registers->X[22]);
         const auto player = Read<std::uint8_t>(shopController, layout::ControllerPlayer);
-        const auto status = isFittingRoom ? game::QueryFittingRoomCatalog(player, item)
-                                          : game::QueryCabinetCatalog(player, item);
+        const auto status = isFittingRoom ? QueryCatalog(player, item, Surface::FittingRoom)
+                                          : QueryCatalog(player, item, Surface::Cabinet);
         static unsigned fittingReports = 0;
         if (isFittingRoom && status != game::CatalogStatus::Uncataloged && fittingReports < 64) {
             ++fittingReports;
@@ -188,7 +186,7 @@ HOOK_DEFINE_INLINE(CabinetCatalogStar) {
                 "[QoL Enhancements/Catalog] FITTING_CATALOG_STAR item=%u player=%u status=%u marked=0\n",
                 item.id, player, static_cast<unsigned>(status));
         }
-        const auto marker = game::CatalogMarker(status);
+        const auto marker = CatalogMarker(status);
         static unsigned shopReports = 0;
         if (!isFittingRoom && !marker && shopReports < 64) {
             ++shopReports;
@@ -234,18 +232,11 @@ HOOK_DEFINE_INLINE(GroundCatalogStar) {
             return;
         }
         const auto item = Read<game::CatalogItem>(registers->X[21]);
-        char16_t marker = 0;
-        unsigned status = 0;
-        const bool isRecipe = item.id == game::RecipeCardId;
-        if (isRecipe) {
-            const auto recipeStatus = game::QueryRecipeCard(player, item);
-            status = static_cast<unsigned>(recipeStatus);
-            marker = recipeStatus == game::RecipeStatus::Unlearned ? u'★' : 0;
-        } else {
-            const auto catalogStatus = game::QueryCabinetCatalog(player, item);
-            status = static_cast<unsigned>(catalogStatus);
-            marker = game::CatalogMarker(catalogStatus);
-        }
+        const auto decision = DecideItemMarker(player, item, ItemUse::ItemName);
+        const auto marker = decision.marker;
+        const bool isRecipe = decision.isRecipe;
+        const auto status = isRecipe ? static_cast<unsigned>(decision.recipe)
+                                     : static_cast<unsigned>(decision.catalog);
         const bool marked =
             marker && MarkNameObject(nativeFrame - layout::GroundNameBelowFrame, marker);
         static unsigned reports = 0;

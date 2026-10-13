@@ -64,13 +64,13 @@ if baseline:
         return {address - base for address in m.hooks}, m.text
 
     for base in BASES:
-        for slugs in (('pockets',), ('controls',), ('crafting',), ('pockets', 'controls', 'crafting')):
+        for slugs in (('pockets',), ('controls',), ('crafting',), ('pockets', 'controls', 'crafting'), ('catalog',), ('pockets', 'controls', 'crafting', 'catalog')):
             files = dict.fromkeys(slugs, DEFAULT)
             current_sites, current_log = installed(base, files)
             with patch.object(Path, 'read_bytes', baseline_read):
                 baseline_sites, baseline_log = installed(base, files)
             assert current_sites == baseline_sites, (slugs, current_sites ^ baseline_sites)
-            for marker in ('QUICK_STORE_READY', 'DIY preview: READY', 'auto vault: READY', 'auto ladder: READY', 'auto equip: READY'):
+            for marker in ('QUICK_STORE_READY', 'DIY preview: READY', 'auto vault: READY', 'auto ladder: READY', 'auto equip: READY', 'CATALOG_STARS_READY', 'CATALOG_BADGES_READY', 'CATALOG_VARIATIONS_READY', 'DIALOGUE_ITEM_STARS_READY'):
                 assert (marker in current_log) == (marker in baseline_log), (slugs, marker)
     print('PASS: migrated feature and combined hook sites/readiness match the preserved stage 0 ELF at two bases')
     # Run the same behavioral assertions against both ELFs, including full item

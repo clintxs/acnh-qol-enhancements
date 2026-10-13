@@ -1,5 +1,6 @@
+#include "program/catalog/features/catalog_features.hpp"
 #include "program/core/hook_plan.hpp"
-#include "catalog_variation_labels.hpp"
+#include "program/catalog/features/catalog_variation_labels.hpp"
 #include "program/catalog/game/bindings.hpp"
 #include "program/catalog/game/catalog_ownership.hpp"
 #include <array>
@@ -28,7 +29,6 @@ template <class T> T Read(std::uintptr_t object, std::size_t offset = 0) {
 
 enum class Catalog : unsigned { Nook, Hhp };
 constexpr std::array<const char *, 2> CatalogNames{"Nook", "HHP"};
-constexpr std::size_t MaximumLabelUnits = 256;
 
 struct LabelContext {
     std::uintptr_t payload{}, setter{};
@@ -85,19 +85,6 @@ LabelContext CaptureLabel(std::uintptr_t controller, const game::CatalogItem *it
 // MSBT resources, formatter buffers, or their cached lengths. The native setter
 // copies the text synchronously, and native binding notification/sizing follows.
 // Tagged text, unexpected lengths and oversized labels are left unchanged.
-bool CopyMarkedLabel(char16_t *output, const char16_t *text, unsigned length) {
-    if (!text || !length || length + 3ull > MaximumLabelUnits) return false;
-    if (text[0] == u'☆' || text[0] == u'★') return false;
-    for (unsigned i = 0; i < length; ++i) {
-        if (text[i] < 0x20 || text[i] == 0x7f) return false;
-    }
-    if (text[length] != 0) return false;
-    output[0] = u'☆';
-    output[1] = u' ';
-    std::memcpy(output + 2, text, (length + 1) * sizeof(char16_t));
-    return true;
-}
-
 template <class Original>
 void SetLabelText(Original original, std::uintptr_t setter, std::uintptr_t payload,
                   const char16_t *text, unsigned length) {
@@ -106,11 +93,9 @@ void SetLabelText(Original original, std::uintptr_t setter, std::uintptr_t paylo
         original(payload, text, length);
         return;
     }
-    const auto status = game::QueryFurnitureCatalog(context->player, context->item);
-    const bool missing = status == game::CatalogStatus::Uncataloged ||
-                         status == game::CatalogStatus::VariantUncataloged;
-    char16_t marked[MaximumLabelUnits];
-    const bool changed = missing && CopyMarkedLabel(marked, text, length);
+    const auto status = QueryCatalog(context->player, context->item, Surface::Furniture);
+    char16_t marked[VariationLabelUnits];
+    const bool changed = CopyVariationLabel(marked, text, length, status);
     original(payload, changed ? marked : text, changed ? length + 2 : length);
     static std::array<unsigned, CatalogNames.size()> reports{};
     const auto index = static_cast<unsigned>(context->catalog);

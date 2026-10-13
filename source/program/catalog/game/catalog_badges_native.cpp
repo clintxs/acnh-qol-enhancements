@@ -1,5 +1,6 @@
+#include "program/catalog/features/catalog_features.hpp"
 #include "program/core/hook_plan.hpp"
-#include "catalog_badges.hpp"
+#include "program/catalog/features/catalog_badges.hpp"
 #include "program/catalog/game/bindings.hpp"
 #include "program/catalog/game/catalog_ownership.hpp"
 #include "program/catalog/game/recipe_knowledge.hpp"
@@ -217,18 +218,12 @@ void UpdateRowBadge(std::uintptr_t row, std::uint8_t player, const game::Catalog
     }
     // Diagnose ownership separately from pane discovery. Earlier releases
     // reported Unavailable for every missing layout, hiding the actual result.
-    const bool isMiles = catalog == CatalogSurface::Miles;
-    const bool isRecipe = isMiles && item.id == game::RecipeCardId;
-    const auto recipeStatus =
-        isRecipe ? game::QueryRecipeCard(player, item) : game::RecipeStatus::Unavailable;
-    const auto status = isRecipe  ? game::CatalogStatus::Unavailable
-                        : isMiles ? game::QueryMilesCatalog(player, item)
-                                  : game::QueryCabinetCatalog(player, item);
-    // Row icons represent the item family. A missing body variant alone does
-    // not earn a filled star; catalog_variation_labels marks that color with ☆.
-    const bool visible =
-        found == panes.size() && (isRecipe ? recipeStatus == game::RecipeStatus::Unlearned
-                                           : status == game::CatalogStatus::Uncataloged);
+    const auto decision = DecideItemMarker(player, item, ItemUse::CatalogRow,
+        catalog == CatalogSurface::Miles ? Surface::Miles : Surface::Cabinet);
+    const bool isRecipe = decision.isRecipe;
+    const auto recipeStatus = decision.recipe;
+    const auto status = decision.catalog;
+    const bool visible = ShowRowBadge(decision, found == panes.size());
     for (const auto pane : panes) {
         if (!pane) {
             continue;

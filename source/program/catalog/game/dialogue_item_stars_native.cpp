@@ -1,6 +1,7 @@
+#include "program/catalog/features/catalog_features.hpp"
 #include "program/core/hook_plan.hpp"
-#include "catalog_stars.hpp"
-#include "catalog_star_text.hpp"
+#include "program/catalog/features/catalog_stars.hpp"
+#include "program/catalog/features/catalog_star_text.hpp"
 #include "program/catalog/game/bindings.hpp"
 #include "program/catalog/game/catalog_ownership.hpp"
 #include "program/catalog/game/recipe_knowledge.hpp"
@@ -57,16 +58,13 @@ void MarkDialogueItem(exl::hook::InlineCtx *registers, std::uintptr_t name,
         return;
     }
     const auto item = Read<game::CatalogItem>(itemAddress);
-    const bool recipe = villagerCraft || item.id == game::RecipeCardId;
-    std::uint16_t recipeId = item.id == game::RecipeCardId ? item.extra : 0xffff;
-    const auto recipeStatus = villagerCraft
-        ? game::QueryVillagerCraftRecipe(player, event, recipeId)
-        : recipe ? game::QueryRecipeCard(player, item) : game::RecipeStatus::Unavailable;
-    const auto status =
-        recipe ? game::CatalogStatus::Unavailable
-               : creatureOnly ? game::QueryMuseumCreature(item) : game::QueryCabinetCatalog(player, item);
-    const auto marker = recipe ? (recipeStatus == game::RecipeStatus::Unlearned ? u'★' : 0)
-                               : game::CatalogMarker(status);
+    const auto decision = DecideItemMarker(player, item,
+        villagerCraft ? ItemUse::VillagerCraft : creatureOnly ? ItemUse::CatchDialogue : ItemUse::ItemName,
+        Surface::Cabinet, event);
+    const auto recipeId = decision.recipeId;
+    const auto recipeStatus = decision.recipe;
+    const auto status = decision.catalog;
+    const auto marker = decision.marker;
     const auto type = Read<unsigned>(name, layout::NameType);
     bool marked = false;
     if (marker && type <= 2) {

@@ -13,26 +13,30 @@ static_assert(sizeof(CatalogItem) == 8);
 // Unavailable is a separate result from Uncataloged: missing/unsupported
 // runtime data must never produce a misleading star. Values are used in logs.
 enum class CatalogStatus { Unavailable, Cataloged, Uncataloged, VariantUncataloged, FakeArtUncataloged };
-constexpr char16_t CatalogMarker(CatalogStatus status) {
-    return status == CatalogStatus::Uncataloged          ? u'★'
-           : (status == CatalogStatus::VariantUncataloged ||
-            status == CatalogStatus::FakeArtUncataloged) ? u'☆'
-                                                         : 0;
-}
-// Ordinary items use the active player's historical catalog, not current pockets.
-// Creatures and (when art_donation_stars is enabled) genuine art use the island
-// museum. Uncataloged fakes use an outline star; cataloged fakes have no marker.
-// Cabinet: ordinary item kinds except recipes (also used for new shop dialogue).
-// Miles: ordinary items except recipe books and ability/upgrade books.
-// Furniture: furniture-only, for the original Nook display message.
-// FittingRoom: the eight supported clothing kinds; each color has its own ID.
-// No query writes history or claims a variant on behalf of the game.
-CatalogStatus QueryCabinetCatalog(std::uint8_t player, const CatalogItem &item);
-CatalogStatus QueryMilesCatalog(std::uint8_t player, const CatalogItem &item);
-CatalogStatus QueryFurnitureCatalog(std::uint8_t player, const CatalogItem &item);
-CatalogStatus QueryFittingRoomCatalog(std::uint8_t player, const CatalogItem &item);
-// Island-wide museum state: Cataloged=donated, Uncataloged=undonated.
-// Unsupported creatures or missing data return Unavailable.
-CatalogStatus QueryMuseumCreature(const CatalogItem &item);
+// A validated resource observation, not ownership. Hashes are native ItemKind
+// identifiers; missing identity/fields remain distinguishable from an unknown item.
+struct ItemMetadata {
+    std::uint32_t kindHash = 0;
+    std::int16_t remakeId = -1;
+    bool identityMatches = false;
+};
+// Callback-local borrow of a ready live catalog view. Never retain across UI updates.
+struct CatalogHistory {
+    std::uintptr_t view{};
+    std::uint8_t player{};
+};
+bool ReadCatalogMetadata(const CatalogItem &, ItemMetadata &);
+enum class ItemKind { Ordinary, Currency, Recipe, AbilityBook, Furniture, Clothing };
+ItemKind ClassifyItemKind(const ItemMetadata &);
+bool IsFurnitureKind(const ItemMetadata &);
+bool IsCreatureKind(const ItemMetadata &);
+bool IsGenuineArtKind(const ItemMetadata &);
+bool IsForgedArtKind(const ItemMetadata &);
+bool OpenCatalogHistory(std::uint8_t, const CatalogItem &, CatalogHistory &);
+// Call these only after OpenCatalogHistory succeeds, within the same callback.
+// Native queries own their read locks; this borrow owns no lock or save memory.
+bool HasCatalogedItem(const CatalogHistory &, const CatalogItem &);
+CatalogStatus ReadFurnitureVariant(const CatalogHistory &, const CatalogItem &, std::int16_t);
+CatalogStatus ReadMuseumDonation(const CatalogItem &);
 bool ValidateCatalogBindings();
 } // namespace catalog_aware_shops::game

@@ -1,6 +1,7 @@
+#include "program/catalog/features/catalog_features.hpp"
 #include "program/core/hook_plan.hpp"
-#include "catalog_stars.hpp"
-#include "catalog_star_text.hpp"
+#include "program/catalog/features/catalog_stars.hpp"
+#include "program/catalog/features/catalog_star_text.hpp"
 #include "program/catalog/game/catalog_ownership.hpp"
 #include "program/catalog/game/bindings.hpp"
 #include <array>
@@ -33,7 +34,7 @@ template <class T> T Read(std::uintptr_t object, std::size_t offset = 0) {
     std::memcpy(&value, reinterpret_cast<const void *>(object + offset), sizeof(value));
     return value;
 }
-bool SafeStringEquals(std::uintptr_t safeString, const char *expected) {
+[[maybe_unused]] bool SafeStringEquals(std::uintptr_t safeString, const char *expected) {
     if (!safeString) {
         return false;
     }
@@ -72,23 +73,14 @@ template <std::size_t N> void CopyMessageId(std::uintptr_t safeString, char (&ou
 #endif
 // The event-flow bank is already resolved to a basename at this hook. Each
 // supported flow sets cItemName slot 0 from ShopCheckItemSet before dispatch.
-enum ShopIndex { UnsupportedShop, NookShop, HhpShop, HotelShop, AbleShop };
 constexpr const char *ShopNames[]{"", "nook", "hhp", "hotel", "able"};
-ShopIndex IdentifyShopMessage(std::uintptr_t bank, std::uintptr_t label) {
-    if (SafeStringEquals(bank, "SP_rcm_00_common") && SafeStringEquals(label, "101")) {
-        return NookShop;
-    }
-    if (SafeStringEquals(bank, "SYS_Wherearen_OfficeShop") && SafeStringEquals(label, "001")) {
-        return HhpShop;
-    }
-    if (SafeStringEquals(bank, "SP_kpg") && SafeStringEquals(label, "151")) {
-        return HotelShop;
-    }
-    if (SafeStringEquals(bank, "SP_hgh") &&
-        (SafeStringEquals(label, "051") || SafeStringEquals(label, "052"))) {
-        return AbleShop;
-    }
-    return UnsupportedShop;
+// Borrow only bounded, terminated native SafeStrings for synchronous matching.
+std::string_view BorrowMessageText(std::uintptr_t safeString) {
+    const auto data = safeString ? Read<std::uintptr_t>(safeString, layout::SafeStringData) : 0;
+    if (!data) return {};
+    const auto text = reinterpret_cast<const char *>(data);
+    for (unsigned i = 0; i < 64; ++i) if (!text[i]) return {text, i};
+    return {};
 }
 
 std::uintptr_t FindDialogueFormatter(std::uintptr_t event) {
@@ -188,7 +180,7 @@ HOOK_DEFINE_INLINE(NookDisplayCatalogStar) {
                         bank, label, vtable ? vtable - game::MainAddress(0) : 0);
         }
 #endif
-        const auto shop = IdentifyShopMessage(registers->X[1], registers->X[2]);
+        const auto shop = IdentifyShopMessage(BorrowMessageText(registers->X[1]), BorrowMessageText(registers->X[2]));
         if (shop == UnsupportedShop) {
             return;
         }
@@ -221,9 +213,9 @@ HOOK_DEFINE_INLINE(NookDisplayCatalogStar) {
         // ShopCheckItemSet writes the full eight-byte selection at the common
         // exit for cMamekichi, cWherearenOffice, cHotelEntrance and cTailor.
         const auto item = Read<game::CatalogItem>(result, layout::SelectedShopItem);
-        const auto status = shop == NookShop ? game::QueryFurnitureCatalog(player, item)
-                                             : game::QueryCabinetCatalog(player, item);
-        const auto marker = game::CatalogMarker(status);
+        const auto status = shop == NookShop ? QueryCatalog(player, item, Surface::Furniture)
+                                             : QueryCatalog(player, item, Surface::Cabinet);
+        const auto marker = CatalogMarker(status);
         const bool marked = marker && RegisterMarkedItemName(formatter, item, marker);
         static unsigned reports[5]{};
         if (reports[shop]++ < 48) {

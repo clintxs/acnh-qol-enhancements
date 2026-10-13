@@ -1,6 +1,5 @@
 #include "catalog_ownership.hpp"
 #include "bindings.hpp"
-#include "program/catalog/settings.hpp"
 #include <array>
 #include <cstring>
 
@@ -60,13 +59,6 @@ std::uintptr_t ReadIndirectGlobal(std::uintptr_t moduleOffset) {
     const auto pointerSlot = Read<std::uintptr_t>(MainAddress(moduleOffset));
     return pointerSlot ? Read<std::uintptr_t>(pointerSlot) : 0;
 }
-enum class Surface { Cabinet, Furniture, FittingRoom, Miles };
-struct ItemMetadata {
-    std::uint32_t kindHash = 0;
-    std::int16_t remakeId = -1;
-    bool identityMatches = false;
-};
-
 // Validate the live BCSV row before interpreting its fields. This describes an
 // in-memory resource table, NOT a save-file layout. Unknown/malformed data must
 // never be mistaken for an item the player has not cataloged.
@@ -127,53 +119,6 @@ bool IsFurniture(const ItemMetadata &metadata) {
     return metadata.kindHash == bcsv::FurnitureEnglish ||
            metadata.kindHash == bcsv::FurnitureJapanese;
 }
-bool IsEligibleKind(const ItemMetadata &metadata, Surface surface) {
-    // Money covers every coin/bag denomination, including Bells shaken from
-    // trees. It is currency, not a collectible. Match both ItemKind spellings.
-    constexpr std::uint32_t MoneyEnglish = 0x761e3ce0, MoneyJapanese = 0x3f54ec25;
-    if (metadata.kindHash == MoneyEnglish || metadata.kindHash == MoneyJapanese) {
-        return false;
-    }
-    // Nook Miles mixes physical items with unlocks such as hairstyles, pocket
-    // upgrades and recipe bundles. These books do not have catalog ownership.
-    constexpr std::uint32_t HowtoBook = 0x8d9857c4; // CRC32("DummyHowtoBook")
-    if (surface == Surface::Miles && metadata.kindHash == HowtoBook) {
-        return false;
-    }
-    constexpr std::uint32_t recipeKinds[]{
-        0xeea2c69e, 0x62291ce3, // DummyRecipe: DIY/cooking books, English/Japanese.
-        0x6693e43a, 0x5280a2c3, // DummyDIYRecipe: shop recipe cards.
-        0x890e26a5, 0x698b48d4  // DIYRecipe: inventory recipe cards.
-    };
-    for (const auto recipeKind : recipeKinds) {
-        if (metadata.kindHash == recipeKind) {
-            return false;
-        }
-    }
-    if (surface == Surface::FittingRoom) {
-        constexpr std::uint32_t clothingKinds[]{
-            0xc0939284, 0x7544fe0e, // Tops
-            0x55067543, 0x83552e45, // OnePiece
-            0x0581ce14, 0x34fa4b7e, // Bottoms
-            0xdf4042c0, 0x042bd987, // Socks
-            0xd50eae93, 0x51a1a70e, // Shoes
-            0xa17ec151, 0xc1af5477, // Cap
-            0x7d06eb90, 0xd1982e25, // Helmet
-            0x2340a7bf, 0x8df84ea5  // Accessory
-        };
-        for (const auto clothingKind : clothingKinds) {
-            if (metadata.kindHash == clothingKind) {
-                return metadata.identityMatches;
-            }
-        }
-        return false;
-    }
-    if (surface == Surface::Furniture) {
-        return metadata.identityMatches && IsFurniture(metadata);
-    }
-    return metadata.identityMatches; // Shared lists also sell ordinary tools, plants, etc.
-}
-
 std::uintptr_t FindReadyCatalogView(std::uint8_t player) {
     const auto playerIndex = FunctionAt<unsigned (*)(const std::uint8_t *, unsigned)>(
         address::ResolvePlayerIndex)(&player, LocalPlayerLookupMode);
@@ -355,70 +300,73 @@ CatalogStatus QueryFurnitureVariant(std::uint8_t player, const CatalogItem &item
                : CatalogStatus::VariantUncataloged;
 }
 
-// These redemption rewards are currency, travel access or construction unlocks,
-// not collectible catalog entries. Apply consistently on every catalog surface.
-bool IsExcludedReward(std::uint16_t itemId) {
-    constexpr std::array<std::uint16_t, 14> excluded{
-        5851, 9964,                               // Nook Miles Ticket, Bell voucher.
-        2543, 3075, 3247,                         // Base cliff, path and waterscaping permit items.
-        8773, 8774, 8775, 8776, 8777, 8778, 8779, // Built-in path permits.
-        8780, 8781                                // Waterscaping and cliff permits sold for Miles.
-    };
-    constexpr std::uint16_t CustomDesignPathPermit = 9771;
-    for (const auto excludedId : excluded) {
-        if (itemId == excludedId) {
-            return true;
-        }
-    }
-    return itemId == CustomDesignPathPermit;
-}
-CatalogStatus QueryCatalog(std::uint8_t player, const CatalogItem &item, Surface surface) {
-    ItemMetadata metadata;
-    if (player >= PlayerCount || item.id >= ItemHistoryBitCount || IsExcludedReward(item.id) ||
-        (item.flags[1] & UnsupportedItemFlagsMask) || !ReadItemMetadata(item, metadata) ||
-        !IsEligibleKind(metadata, surface)) {
-        return CatalogStatus::Unavailable;
-    }
-    const bool artStars = GetSettings().artDonationStars;
-    if (IsMuseumCreature(metadata) || (artStars && IsRealArt(metadata))) {
-        return QueryMuseumDonation(item);
-    }
-    const auto catalogView = FindReadyCatalogView(player);
-    if (!catalogView || !HasNativeItemLookup(item.id)) {
-        return CatalogStatus::Unavailable;
-    }
-    const bool mainItemKnown = FunctionAt<unsigned (*)(const std::uint8_t *, const CatalogItem *)>(
-        address::HasCatalogedItem)(&player, &item);
-    if (!mainItemKnown) {
-        return artStars && IsFakeArt(metadata) ? CatalogStatus::FakeArtUncataloged
-                                                    : CatalogStatus::Uncataloged;
-    }
-    if (!IsFurniture(metadata) || metadata.remakeId < 0) {
-        return CatalogStatus::Cataloged;
-    }
-    return QueryFurnitureVariant(player, item, metadata.remakeId, catalogView);
-}
 } // namespace
 
-CatalogStatus QueryMuseumCreature(const CatalogItem &item) {
-    ItemMetadata metadata;
-    if (!ReadItemMetadata(item, metadata) || !IsMuseumCreature(metadata)) {
-        return CatalogStatus::Unavailable;
+ItemKind ClassifyItemKind(const ItemMetadata &metadata) {
+    // Money covers all coin/bag denominations, including tree Bells.
+    // Miles ability/upgrade books and recipe bundles have no catalog ownership.
+    // Match the native English/Japanese ItemKind identifiers. An ordinary
+    // unsupported kind still needs a matching ItemParam identity at the caller.
+    constexpr std::uint32_t MoneyEnglish = 0x761e3ce0, MoneyJapanese = 0x3f54ec25;
+    constexpr std::uint32_t HowtoBook = 0x8d9857c4; // CRC32("DummyHowtoBook")
+    if (metadata.kindHash == MoneyEnglish || metadata.kindHash == MoneyJapanese) {
+        return ItemKind::Currency;
     }
-    return QueryMuseumDonation(item);
+    if (metadata.kindHash == HowtoBook) {
+        return ItemKind::AbilityBook;
+    }
+    constexpr std::uint32_t recipeKinds[]{
+        0xeea2c69e, 0x62291ce3, // DummyRecipe: DIY/cooking books, English/Japanese.
+        0x6693e43a, 0x5280a2c3, // DummyDIYRecipe: shop recipe cards.
+        0x890e26a5, 0x698b48d4  // DIYRecipe: inventory recipe cards.
+    };
+    for (const auto recipeKind : recipeKinds) {
+        if (metadata.kindHash == recipeKind) {
+            return ItemKind::Recipe;
+        }
+    }
+    constexpr std::uint32_t clothingKinds[]{
+        0xc0939284, 0x7544fe0e, // Tops
+        0x55067543, 0x83552e45, // OnePiece
+        0x0581ce14, 0x34fa4b7e, // Bottoms
+        0xdf4042c0, 0x042bd987, // Socks
+        0xd50eae93, 0x51a1a70e, // Shoes
+        0xa17ec151, 0xc1af5477, // Cap
+        0x7d06eb90, 0xd1982e25, // Helmet
+        0x2340a7bf, 0x8df84ea5  // Accessory
+    };
+    for (const auto clothingKind : clothingKinds) {
+        if (metadata.kindHash == clothingKind) {
+            return ItemKind::Clothing;
+        }
+    }
+    if (IsFurniture(metadata)) {
+        return ItemKind::Furniture;
+    }
+    return ItemKind::Ordinary;
 }
-CatalogStatus QueryCabinetCatalog(std::uint8_t player, const CatalogItem &item) {
-    return QueryCatalog(player, item, Surface::Cabinet);
+
+bool ReadCatalogMetadata(const CatalogItem &item, ItemMetadata &metadata) {
+    return ReadItemMetadata(item, metadata);
 }
-CatalogStatus QueryMilesCatalog(std::uint8_t player, const CatalogItem &item) {
-    return QueryCatalog(player, item, Surface::Miles);
+bool OpenCatalogHistory(std::uint8_t player, const CatalogItem &item, CatalogHistory &history) {
+    history.view = FindReadyCatalogView(player);
+    history.player = player;
+    return history.view && HasNativeItemLookup(item.id);
 }
-CatalogStatus QueryFurnitureCatalog(std::uint8_t player, const CatalogItem &item) {
-    return QueryCatalog(player, item, Surface::Furniture);
+bool HasCatalogedItem(const CatalogHistory &history, const CatalogItem &item) {
+    return FunctionAt<unsigned (*)(const std::uint8_t *, const CatalogItem *)>(
+        address::HasCatalogedItem)(&history.player, &item);
 }
-CatalogStatus QueryFittingRoomCatalog(std::uint8_t player, const CatalogItem &item) {
-    return QueryCatalog(player, item, Surface::FittingRoom);
+CatalogStatus ReadFurnitureVariant(const CatalogHistory &history, const CatalogItem &item,
+                                   std::int16_t remakeId) {
+    return QueryFurnitureVariant(history.player, item, remakeId, history.view);
 }
+CatalogStatus ReadMuseumDonation(const CatalogItem &item) { return QueryMuseumDonation(item); }
+bool IsFurnitureKind(const ItemMetadata &metadata) { return IsFurniture(metadata); }
+bool IsCreatureKind(const ItemMetadata &metadata) { return IsMuseumCreature(metadata); }
+bool IsGenuineArtKind(const ItemMetadata &metadata) { return IsRealArt(metadata); }
+bool IsForgedArtKind(const ItemMetadata &metadata) { return IsFakeArt(metadata); }
 // Instruction words below are intentional raw ARM fingerprints. They are build
 // evidence, not feature logic: changing them requires re-verifying the target
 // game's disassembly. A mismatch disables hooks instead of guessing a layout.
