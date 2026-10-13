@@ -1,3 +1,4 @@
+#include "native/runtime.hpp"
 #include "lib.hpp"
 #include "modules.hpp"
 #include "release.hpp"
@@ -29,9 +30,10 @@ namespace able_bag { bool Install(); }
 namespace qol::core {
 namespace {
 bool InstallCatalog() {
-    const auto &main = exl::util::GetMainModuleInfo();
-    if (!catalog_aware_shops::game::MatchesExpectedCode(
-            reinterpret_cast<const std::byte *>(main.m_Text.m_Start), main.m_Text.m_Size)) return false;
+    if (const auto result = catalog_aware_shops::game::ValidateExpectedCode(native::MainExecutable()); !result) {
+        native::ReportMismatch(result);
+        return false;
+    }
     using namespace catalog_aware_shops::features;
     const bool stars = InstallCatalogStars();
     const bool shopDialogue = InstallNookCatalogStars();
@@ -41,9 +43,10 @@ bool InstallCatalog() {
     return stars && shopDialogue && generalDialogue && badges && variations;
 }
 bool InstallPockets() {
-    const auto &main = exl::util::GetMainModuleInfo();
-    if (!qol_pockets::game::MatchesExpectedCode(
-            reinterpret_cast<const std::byte *>(main.m_Text.m_Start), main.m_Text.m_Size)) return false;
+    if (const auto result = qol_pockets::game::ValidateExpectedCode(native::MainExecutable()); !result) {
+        native::ReportMismatch(result);
+        return false;
+    }
     using namespace qol_pockets::features;
     const bool stacks = InstallStackSplitting();
     const bool storage = InstallStorageWithdrawal();

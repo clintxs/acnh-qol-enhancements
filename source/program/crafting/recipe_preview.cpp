@@ -1,5 +1,7 @@
 #include "lib.hpp"
 #include "recipe_preview.hpp"
+#include "game/preview_native.hpp"
+#include "program/core/native/runtime.hpp"
 #include "recipe_preview_layout.hpp"
 #include "recipe_preview_banner.hpp"
 #include "recipe_preview_hint.hpp"
@@ -11,59 +13,14 @@
 
 namespace qol::crafting {
 namespace {
-namespace address {
-constexpr std::uintptr_t BuildLayout = 0x00267d64, FindPane = 0x0027d1d0;
-constexpr std::uintptr_t PhoneBind = 0x02e9cde0, PhoneFrame = 0x02e9fbb0;
-constexpr std::uintptr_t PhoneDeactivate = 0x02e9d538;
-constexpr std::uintptr_t PhoneRendererModeSlot = 0x049e8378, PhoneRendererMode = 0x02ea0754;
-constexpr std::uintptr_t RecipeFocus = 0x02e96a80, RecipeLeave = 0x02e99d90;
-constexpr std::uintptr_t PageInput = 0x03c58d24, UiContext = 0x04ab2230;
-constexpr std::uintptr_t Application = 0x059f83f0;
-constexpr std::uintptr_t CreateItemModel = 0x032bd990, ReleaseModel = 0x032ba5e4;
-constexpr std::uintptr_t ChangeItemModel = 0x032ba168;
-constexpr std::uintptr_t ResetRecipeGrid = 0x03764290, ActivateRecipeGrid = 0x0335b4a0;
-constexpr std::uintptr_t FocusRecipeGrid = 0x03763e14, GridRowForIndex = 0x03765104;
-constexpr std::uintptr_t GridRequestVtable = 0x04a2b020;
-constexpr std::uintptr_t ChangeState = 0x03dbb160;
-constexpr std::uintptr_t DrawModelLayer = 0x039392b0, RenderLayers = 0x04abdb78;
-constexpr std::uintptr_t SetModelRotation = 0x032b9e08;
-constexpr std::uintptr_t BuildModelMatrix = 0x006021a4, DrawLayerContents = 0x039f63f0;
-constexpr std::uintptr_t Atan2 = 0x03f03370; // Main's atan2f import, no module math-library dependency.
-constexpr std::uintptr_t ItemParamGlobalSlot = 0x04ac0428;
-constexpr std::uintptr_t UpdateItemActor = 0x0192a590;
-constexpr std::uintptr_t UpdateModelTransform = 0x032b9fcc, EntityManager = 0x04ab27c0;
-constexpr std::uintptr_t CapturePicture = 0x03a17390, AlternateCapturePicture = 0x03a174f0;
-constexpr std::uintptr_t WorkbenchPageVtable = 0x04a3b3e0;
-}
-namespace field {
-constexpr std::size_t Resident = 0x1f8, PhoneLayout = 0x210, Selection = 0x218;
-constexpr std::size_t Recipes = 0x8a350, State = 0x1b0, Requests = 0x1f0;
-constexpr std::size_t LayoutInstances = 0x3f8, LayoutAccessor = 0x58;
-constexpr std::size_t GetNativeLayout = 0x28, LayoutRoot = 0x18, Grid = 0x580;
-constexpr std::size_t Rows = 0x210, RowCount = 0x208, PaneFlags = 0x58;
-constexpr std::size_t ShortcutHint = 0x570, HintInput = 0xa0;
-constexpr std::size_t InputRow = 0x10, InputKind = 0x14;
-constexpr std::size_t PageInputContext = 0x210, InputDisabled = 0x54, InputBlockMask = 0x58;
-constexpr std::size_t ApplicationMasks = 0x418, GlobalBlockMask = 0x10;
-constexpr std::size_t Controller = 0x30, Parameters = 0x28;
-constexpr std::size_t ModelMode = 0x50, ModelHandle = 0x6c;
-constexpr std::size_t ModelState = 0x10, BackgroundPage = 0x58, VisibilityPage = 0x60;
-constexpr std::size_t ModelReady = 0x69, ModelFlags = 0x74, ModelAngles = 0x80;
-constexpr std::size_t GridColumns = 0x2e8, GridVisibleItems = 0x2f4, GridTopRow = 0x430;
-constexpr std::size_t GridItems = 0x3cc, GridState = 0x298, LeftStick = 4;
-constexpr std::size_t RightStick = 0x0c, ConsumedAxes = 0x40;
-constexpr std::size_t LayerCount = 0x20, Layers = 0x28, LayerClearColor = 0x9c;
-constexpr std::size_t DrawLayer = 0x3d0, RendererState = 0x248, DrawInfo = 0x18, DrawView = 8;
-constexpr std::size_t ComponentOwner = 0x48, ComponentAngles = 0x2bc, ComponentPoseSize = 0x2c8;
-constexpr std::size_t SetComponentAngles = 0x150;
-constexpr std::size_t ComponentScale = 0x2a0, PrimaryAngles = 0x2b0;
-constexpr std::size_t CompletedItem = 0x94;
-constexpr std::size_t EntityHandle = 0x230, ParentHandle = 0x234, EntityComponent = 0x68;
-constexpr std::size_t EntityRegistry = 0x1c0, RegistryEntries = 8, EntityFlags = 0x248;
-constexpr std::size_t EntityKind = 0x15c, ItemChildren = 0x274, ItemChildCount = 0x394;
-constexpr std::size_t EntityPhase = 0x288, EntityStage = 0x5e8;
-constexpr std::size_t ItemPoseState = 0x39c, ItemData = 0x360;
-}
+namespace profile = game::v303::preview;
+namespace address = profile::address;
+namespace field = profile::field;
+namespace itemTable = profile::itemTable;
+using profile::ModelMatrix;
+using profile::GridRequest;
+using profile::ItemRequest;
+
 constexpr unsigned DiyModelMode = 2;
 // CreateItemModel accepts these profiles (032BD990); the current profile is
 // owned by native UI scheduling. A background-page index is a separate enum.
@@ -96,7 +53,7 @@ std::atomic<unsigned> PreviewHandle{}, PreviewAngleZ{}, MatrixCalls{}, MatrixMat
 std::atomic<std::uint64_t> PreviewAngleXY{};
 std::atomic<std::uint64_t> PreviewOriginXY{}, PreviewItem{};
 std::atomic<unsigned> PreviewOriginZ{}, PreviewPoseEpoch{};
-struct ModelMatrix { float values[12]; }; // ARM64 returns this 48-byte object through x8.
+
 // Only the owned actor's update accesses these caches. UI changes publish an
 // epoch, rather than resetting scene-thread storage while it may be in use.
 struct CarrierPose {
@@ -138,29 +95,12 @@ struct WorkbenchCarrierPose {
 };
 std::array<WorkbenchCarrierPose, 4> WorkbenchPoses{};
 std::uintptr_t Main{};
-template<class T> T &At(void *object, std::size_t offset = 0) {
-    return *reinterpret_cast<T *>(static_cast<std::byte *>(object) + offset);
-}
-template<class F> F Native(std::uintptr_t offset) { return reinterpret_cast<F>(Main + offset); }
-namespace itemTable {
-constexpr std::size_t FirstId = 0x1f8, RowCount = 0x1d8, Rows = 0x1e0;
-constexpr std::size_t HeaderV0 = 12, HeaderV1 = 28, DescriptorSize = 8;
-constexpr unsigned MaxRows = 65536, MaxRowBytes = 4096, MaxFields = 512;
-constexpr unsigned MaxHeaderDistance = 64 * 1024 * 1024;
-constexpr unsigned KindField = 0x5270eb75, IdField = 0x54706054;
-// ItemKind CRC32 values: English and Japanese resource spellings.
-constexpr std::array<unsigned, 8> FixedKinds{
-    0x055c8679, 0xa661cd8e, // RoomWall / 内装：壁紙
-    0xc354e1f6, 0x8b19cf5d, // RoomFloor / 内装：床板
-    0x11e75a84, 0x8e4773fe, // Rug / ラグ
-    0x2c28165c, 0x1ffca4d6  // Fence / 柵
-};
-}
+using game::preview_native::At;
 bool UsesFixedPreviewPose(std::uint16_t itemId) {
     // Read the same live ItemParam table as native item-root update 0192A590.
     // Keep this independent of Catalog, which may be disabled. Validate row identity and
     // runtime header fixups before classifying; do not guess from recipe IDs.
-    auto slot = *Native<void **>(address::ItemParamGlobalSlot);
+    auto slot = game::preview_native::ItemParamGlobalSlot(Main);
     auto table = slot ? At<void *>(slot) : nullptr;
     if (!table) return false;
     const auto firstId = At<std::uint16_t>(table, itemTable::FirstId);
@@ -198,11 +138,11 @@ bool UsesFixedPreviewPose(std::uint16_t itemId) {
         itemTable::FixedKinds.end();
 }
 void *UiContext() {
-    auto storage = *Native<void **>(address::UiContext);
+    auto storage = game::preview_native::UiContext(Main);
     return storage ? At<void *>(storage) : nullptr;
 }
 void *Find(void *root, const char *name) {
-    return root ? Native<void *(*)(void *, const char *, bool)>(address::FindPane)(root, name, true) : nullptr;
+    return root ? profile::FindPane.Resolve(Main)(root, name, true) : nullptr;
 }
 void *PhoneRoot(void *page) {
     // Page +3f8 is an array of layout-instance wrappers, not ui2d Layouts.
@@ -228,7 +168,7 @@ void Visible(void *pane, bool visible) {
         (At<unsigned char>(pane, field::PaneFlags) & ~1u) | unsigned(visible);
 }
 const void *ItemLayerClearColor() {
-    auto storage = *Native<void **>(address::RenderLayers);
+    auto storage = game::preview_native::RenderLayers(Main);
     auto manager = storage ? At<void *>(storage) : nullptr;
     if (!manager) return nullptr;
     const auto count = At<unsigned>(manager, field::LayerCount);
@@ -300,9 +240,9 @@ std::array<unsigned, 3> NativePoseAngles(void *component) {
     std::memcpy(pose.data(), component, pose.size());
     At<void *>(pose.data(), field::ComponentOwner) = nullptr; // Bypass our render fallback.
     for (unsigned i = 0; i < 3; ++i) At<float>(pose.data(), field::ComponentScale + i * sizeof(float)) = 1;
-    const auto matrix = Native<ModelMatrix (*)(void *)>(address::BuildModelMatrix)(pose.data());
+    const auto matrix = profile::BuildModelMatrix.Resolve(Main)(pose.data());
     const auto &m = matrix.values;
-    auto atan2 = Native<float (*)(float, float)>(address::Atan2);
+    auto atan2 = profile::Atan2.Resolve(Main);
     const float horizontal = __builtin_sqrtf(m[4]*m[4] + m[5]*m[5]);
     const float pitch = atan2(-m[6], horizontal);
     // At a pole, choose zero roll and the equivalent yaw. Avoid undefined
@@ -319,7 +259,7 @@ void PublishCarriers(void *controller) {
         for (auto &carrier : PreviewCarriers) carrier.store(0, std::memory_order_release);
         return;
     }
-    auto storage = *Native<void **>(address::EntityManager);
+    auto storage = game::preview_native::EntityManager(Main);
     auto manager = storage ? At<void *>(storage) : nullptr;
     auto registry = manager ? At<void *>(manager, field::EntityRegistry) : nullptr;
     auto entries = registry ? At<void *>(registry, field::RegistryEntries) : nullptr;
@@ -368,7 +308,7 @@ void *PreviewCarrier(void *actor, unsigned index) {
     const auto count = At<unsigned>(actor, field::ItemChildCount);
     if (count > WorkbenchPoses.size() || index >= count) return nullptr;
     const auto handle = At<unsigned>(actor, field::ItemChildren + index * sizeof(unsigned));
-    auto storage = *Native<void **>(address::EntityManager);
+    auto storage = game::preview_native::EntityManager(Main);
     auto manager = storage ? At<void *>(storage) : nullptr;
     auto registry = manager ? At<void *>(manager, field::EntityRegistry) : nullptr;
     auto entries = registry ? At<void *>(registry, field::RegistryEntries) : nullptr;
@@ -491,7 +431,7 @@ HOOK_DEFINE_TRAMPOLINE(UpdatePreviewActor) {
         const bool fixed = PreviewRequestedFixedPose.load(std::memory_order_acquire);
         PreviewFixedPose.store(fixed, std::memory_order_release);
         if (fixed) return;
-        auto storage = *Native<void **>(address::EntityManager);
+        auto storage = game::preview_native::EntityManager(Main);
         auto manager = storage ? At<void *>(storage) : nullptr;
         auto registry = manager ? At<void *>(manager, field::EntityRegistry) : nullptr;
         auto entries = registry ? At<void *>(registry, field::RegistryEntries) : nullptr;
@@ -593,7 +533,7 @@ HOOK_DEFINE_TRAMPOLINE(TraceModelTransform) {
         const auto after = At<unsigned char>(controller, field::ModelFlags);
         if (!(after & TransformPending)) TransformApplied.fetch_add(1, std::memory_order_relaxed);
         if (TransformAttempts.fetch_add(1, std::memory_order_relaxed) >= 8) return;
-        auto storage = *Native<void **>(address::EntityManager);
+        auto storage = game::preview_native::EntityManager(Main);
         auto manager = storage ? At<void *>(storage) : nullptr;
         Logging.Debug("[QoL Enhancements/Crafting] DIY preview: native transform; flags=%u->%u ready=%u entity_phase=%d entity_stage=%u\n",
                     unsigned(before), unsigned(after), At<unsigned char>(controller, field::ModelReady),
@@ -738,14 +678,14 @@ bool RecipeRow(Session &s, void *source) {
 }
 void FocusRecipe(void *phone, void *event) {
     // Preserve the native scrolling-row -> recipe-index mapping and materials.
-    Native<void (*)(void *, void *)>(address::RecipeFocus)(phone, event);
+    profile::RecipeFocus.Resolve(Main)(phone, event);
     if (auto s = ForPhone(phone)) {
         auto source = event ? At<void *>(event, 8) : nullptr;
         s->focusedRow = RecipeRow(*s, source) ? source : nullptr;
     }
 }
 void LeaveRecipe(void *phone, void *event) {
-    Native<void (*)(void *, void *)>(address::RecipeLeave)(phone, event);
+    profile::RecipeLeave.Resolve(Main)(phone, event);
     if (auto s = ForPhone(phone); s && event && s->focusedRow == At<void *>(event, 8))
         s->focusedRow = nullptr;
 }
@@ -755,7 +695,7 @@ bool InputBlocked(Session &s, unsigned blocked) {
     if ((blocked & 1) || !input || At<unsigned char>(input, field::InputDisabled)) return true;
     const auto mask = At<unsigned>(input, field::InputBlockMask);
     if (!mask) return false;
-    auto app = *Native<void **>(address::Application);
+    auto app = game::preview_native::Application(Main);
     auto masks = app ? At<void *>(app, field::ApplicationMasks) : nullptr;
     return !masks || (mask & At<unsigned>(masks, field::GlobalBlockMask));
 }
@@ -777,7 +717,7 @@ void Close(Session &s) {
         const bool stillOwned = context && At<void *>(context, field::Controller) == s.controller &&
             At<unsigned>(s.controller, field::ModelMode) == DiyModelMode;
         if (stillOwned)
-            Native<void (*)(void *, unsigned)>(address::ReleaseModel)(s.controller, DiyModelMode);
+            profile::ReleaseModel.Resolve(Main)(s.controller, DiyModelMode);
         if (stillOwned && At<void *>(context, field::Parameters) == s.parameters) {
             std::memcpy(static_cast<std::byte *>(s.parameters) + 0x2c, s.savedParameters.data(), s.savedParameters.size());
             At<unsigned char>(s.parameters, 0x12) = s.savedHidden;
@@ -787,7 +727,7 @@ void Close(Session &s) {
             At<int>(s.controller, field::ModelMode) = PhoneModelMode;
             // State 1 exit and state 3 entry balance the camera reference
             // counts. Restore the phone reservation before its next frame.
-            Native<void (*)(void *, unsigned)>(address::ChangeState)(
+            profile::ChangeState.Resolve(Main)(
                 static_cast<std::byte *>(s.controller) + 8, PhoneModelState);
         }
     }
@@ -847,9 +787,9 @@ HOOK_DEFINE_TRAMPOLINE(BindPhoneRecipes) {
         auto picture = Find(root, recipe_layout::PictureName);
         bool captureBound = false;
         if (s.capture && picture) {
-            if (auto typed = Native<void *(*)(void *)>(address::CapturePicture)(picture))
+            if (auto typed = profile::CapturePicture.Resolve(Main)(picture))
                 captureBound = At<void *>(typed, 0x100) == s.capture;
-            else if (auto typed = Native<void *(*)(void *)>(address::AlternateCapturePicture)(picture))
+            else if (auto typed = profile::AlternateCapturePicture.Resolve(Main)(picture))
                 captureBound = At<void *>(typed, 0x130) == s.capture;
         }
         if (!captureBound) s.surface = nullptr;
@@ -977,16 +917,7 @@ void RotatePreview(Session &s) {
 // Same request ABI as MenuRecipe's selection restoration at 02E9C0D0 and
 // filter changes at 02E968A0. The native grid repopulates its pooled rows,
 // scroll bar, button focus and cursor; a recipe index is not a pooled-row index.
-struct GridRequest {
-    std::uintptr_t vtable{};
-    int count{}, first{}, selected{};
-    unsigned char padMinimum{}, padRow{}, enabled{1}, loop{}, reverse{}, alternateAxis{1};
-    unsigned char cursor{}, animate{}, flags{}, callback{};
-    unsigned short padding{};
-    int pageRows{}, exitFrames{12}, entryFrames{4};
-    unsigned resident{};
-};
-static_assert(sizeof(GridRequest) == 0x30 && offsetof(GridRequest, resident) == 0x2c);
+
 bool SelectRecipe(Session &s, unsigned selected, unsigned count) {
     auto grid = At<void *>(s.layout, field::Grid);
     if (!grid || At<unsigned>(grid, field::GridItems) != count ||
@@ -1004,12 +935,12 @@ bool SelectRecipe(Session &s, unsigned selected, unsigned count) {
     request.vtable = Main + address::GridRequestVtable;
     request.count = count; request.first = firstRow * columns; request.selected = selected;
     request.resident = At<unsigned char>(s.phone, field::Resident);
-    Native<void (*)(void *, const GridRequest *)>(address::ResetRecipeGrid)(grid, &request);
-    Native<void (*)(void *, void *)>(address::ActivateRecipeGrid)(grid, nullptr);
+    profile::ResetRecipeGrid.Resolve(Main)(grid, &request);
+    profile::ActivateRecipeGrid.Resolve(Main)(grid, nullptr);
     // State-2 focus uses the native input context and cursor path. Its normal
     // enter delegate updates phone +218 and materials through FocusRecipe.
-    Native<void (*)(void *, bool)>(address::FocusRecipeGrid)(grid, false);
-    auto row = Native<void *(*)(void *, unsigned)>(address::GridRowForIndex)(grid, selected);
+    profile::FocusRecipeGrid.Resolve(Main)(grid, false);
+    auto row = profile::GridRowForIndex.Resolve(Main)(grid, selected);
     if (!RecipeRow(s, row)) return false;
     // Focus can already belong to this pooled row after a viewport rebuild.
     // Refresh the app details explicitly through the same native callback.
@@ -1067,7 +998,7 @@ void NavigatePreview(Session &s) {
     // Workbench 0348DE80 changes the existing actor with this item/recipe
     // request. CreateItemModel silently refuses an existing model handle.
     struct { std::uint64_t item; std::uint16_t recipe{0xfffe}, padding{}; } request{item};
-    Native<void (*)(void *, const void *)>(address::ChangeItemModel)(s.controller, &request);
+    profile::ChangeItemModel.Resolve(Main)(s.controller, &request);
     Visible(s.gridPane, false); Visible(s.scrollPane, false); Visible(s.cursorPane, false);
     Logging.Debug("[QoL Enhancements/Crafting] DIY preview: navigated; recipe_index=%u count=%u item=%u fixed=%u\n",
                 selected, count, unsigned(item & 0xffff), unsigned(s.fixedPose));
@@ -1201,7 +1132,7 @@ bool Begin(Session &s) {
     const auto color = ItemLayerClearColor();
     PreviewClearColor.store(color, std::memory_order_release);
     Logging.Debug("[QoL Enhancements/Crafting] DIY preview: background #E5DFC7; layer_color=%p\n", color);
-    Native<void (*)(void *, unsigned)>(address::ChangeState)(static_cast<std::byte *>(controller) + 8, 1);
+    profile::ChangeState.Resolve(Main)(static_cast<std::byte *>(controller) + 8, 1);
     s.phase = Phase::Starting;
     Logging.Debug("[QoL Enhancements/Crafting] DIY preview: renderer acquired; previous_mode=%d previous_state=%d\n", mode, state);
     return true;
@@ -1233,15 +1164,9 @@ HOOK_DEFINE_TRAMPOLINE(UpdatePhoneRecipes) {
         if (s->phase != Phase::Starting) return;
         if (++s->frames > 120) { Close(*s); return; }
         if (At<int>(s->controller, 0x10) != 1) return;
-        struct ItemRequest {
-            unsigned display{};
-            std::uint32_t itemLow{}, itemHigh{};
-            std::uint16_t recipe{0xfffe}, padding{};
-            void *visibilityPage{};
-        } request;
-        static_assert(sizeof(ItemRequest) == 24 && offsetof(ItemRequest, visibilityPage) == 16);
+        ItemRequest request;
         request.itemLow = s->item; request.itemHigh = s->item >> 32;
-        Native<void (*)(void *, const ItemRequest *)>(address::CreateItemModel)(s->controller, &request);
+        profile::CreateItemModel.Resolve(Main)(s->controller, &request);
         if (!At<unsigned>(s->controller, field::ModelHandle)) { Close(*s); return; }
         std::memcpy(s->initialAngles.data(), static_cast<std::byte *>(s->controller) + field::ModelAngles, sizeof(s->initialAngles));
         ResetPoseOrigin(s->controller, s->item);
@@ -1265,67 +1190,16 @@ HOOK_DEFINE_TRAMPOLINE(DeactivatePhoneRecipes) {
 };
 } // namespace
 bool InstallRecipePreview() {
-    struct Fingerprint { std::uintptr_t offset; std::uint32_t words[5]; };
-    constexpr Fingerprint fingerprints[]{
-        {recipe_hint::BuildFooter, {0xd10383ff, 0xa9097bfd, 0xf90053f9, 0xa90b5ff8, 0xa90c57f6}},
-        {recipe_hint::AppendHint, {0xb941f008, 0x3100051f, 0xb941f409, 0xb941b00a, 0x3a410920}},
-        {0x00267d64, {0xa9ba7bfd, 0xa9016ffc, 0x910003fd, 0xa90267fa, 0xa9035ff8}},
-        {0x02e9cde0, {0xd10243ff, 0xa9037bfd, 0xa9046ffc, 0xa90567fa, 0xa9065ff8}},
-        {0x02e9fbb0, {0xa9bb7bfd, 0xa90167fa, 0xa9025ff8, 0xa90357f6, 0xa9044ff4}},
-        {0x02e9d538, {0xa9bd7bfd, 0xf9000bf5, 0xa9024ff4, 0x910003fd, 0xf9410814}},
-        {0x032bd990, {0x6db923e9, 0xa9017bfd, 0x910043fd, 0xf90013fc, 0xa90367fa}},
-        {0x032ba5e4, {0xd100c3ff, 0xa9017bfd, 0xf90013f3, 0x910043fd, 0xb9405008}},
-        {0x03dbb160, {0xa9be7bfd, 0xa9014ff4, 0x910003fd, 0xb9400808, 0x2a0103f3}},
-        {0x03a17390, {0xa9bd7bfd, 0xa90157f6, 0xa9024ff4, 0x910003fd, 0xd00085c8}},
-        {0x03a174f0, {0xa9bd7bfd, 0xa90157f6, 0xa9024ff4, 0x910003fd, 0xd00085c8}},
-        {0x0027d1d0, {0xa9bd7bfd, 0xf9000bf5, 0xa9024ff4, 0x910003fd, 0xaa0003f4}},
-        // Hotel overlay uses Pane geometry, the matrix dirty flag and ordered children.
-        {0x0027bfb4, {0xbd4002c0, 0xbd003260, 0xbd4006c0, 0xbd003660, 0xbd400ac0}},
-        {0x0027bfe4, {0xbd400380, 0xbd004a60, 0xbd400780, 0xbd004e60, 0xf9401e88}},
-        {0x0027d550, {0x121c0109, 0x2a491069, 0x36000d89, 0x121b7908, 0xaa1303e0}},
-        {0x0027e208, {0x910082b6, 0xf94016b5, 0xeb1602bf, 0x54ffff20, 0xd503201f}},
-        {0x03c66298, {0xf9402c00, 0xaa0203f5, 0xaa0103f4, 0xf9000fbf, 0xb40000a0}},
-        {0x02e93798, {0x528000a8, 0x9a9f1102, 0x94231d66, 0x395ed2a8, 0xf902ba60}},
-        {0x02e96a80, {0xf9410808, 0xf942c109, 0xb4000789, 0xf940042b, 0xb400074b}},
-        {0x03c4b880, {0xd10203ff, 0xa9027bfd, 0xa9036ffc, 0xa90467fa, 0xa9055ff8}},
-        {0x02b0c810, {0xf9400268, 0xaa1303e0, 0xf940d108, 0xd63f0100, 0xf9400268}},
-        {0x02ea0754, {0x52800340, 0xd65f03c0, 0xf9400408, 0xb4000148, 0xa9412802}},
-        {0x032b9e08, {0xa9bc7bfd, 0xf9000bf7, 0xa90257f6, 0xa9034ff4, 0x910003fd}},
-        {0x032ba000, {0x91020261, 0xaa1303e0, 0x97ffff80, 0x36000200, 0xb9405268}},
-        {0x03c4bac4, {0xbd400100, 0xbc038c20, 0xbd400500, 0xf8418c08, 0xf90003fb}},
-        {0x032b9fcc, {0xd100c3ff, 0xa9017bfd, 0xa9024ff4, 0x910043fd, 0x3941d008}},
-        {0x02b0e20c, {0xf0015948, 0x91064108, 0xf9400108, 0xf9401900, 0x141eaf6c}},
-        {0x039392b0, {0xd10203ff, 0x6d032beb, 0x6d0423e9, 0xa9057bfd, 0xa90657f6}},
-        {0x006021a4, {0xb942b00c, 0x12005d8f, 0xb942bc09, 0xb942c00b, 0xb942c40a}},
-        {0x039f63f0, {0x6db63bef, 0x6d0133ed, 0x6d022beb, 0x6d0323e9, 0xa9047bfd}},
-        {0x032b9750, {0xaa1403e1, 0x940001ad, 0x9000f3c8, 0x91240108, 0xf9400108}},
-        {0x01513a48, {0xd101c3ff, 0x6d012beb, 0x6d0223e9, 0xa9037bfd, 0xa9045ff8}},
-        {0x032be2b0, {0xb9406c09, 0x34000629, 0xa9be7bfd, 0xa9014ff4, 0x910003fd}},
-        {0x032ba034, {0xaa1303e0, 0x9400109e, 0x36000080, 0x3941d268, 0x121f1908}},
-        {0x0192a1f0, {0xa9bb7bfd, 0xf9000bf9, 0xa9025ff8, 0xa90357f6, 0xa9044ff4}},
-        {0x019362f4, {0xd101c3ff, 0xa9027bfd, 0xf9001bf9, 0xa9045ff8, 0xa90557f6}},
-        // Native grid restoration, focus mapping and existing-actor item changes.
-        {0x032ba168, {0xb9406c08, 0x34000d68, 0xd101c3ff, 0xa9037bfd, 0xf90023f7}},
-        {0x03764290, {0xd10203ff, 0xfd001be8, 0xf90027f9, 0xa903fbfd, 0xa9055ff8}},
-        {0x0335b4a0, {0xb40003a0, 0xb9429808, 0x7100091f, 0x54000063, 0xb4000341}},
-        {0x03763e14, {0xf9416c08, 0xf100011f, 0xb9429809, 0x7a421920, 0x54000d61}},
-        {0x03765104, {0xb943d408, 0x6b01011f, 0x5400038d, 0xb942e808, 0x1ac80c29}},
-        {0x03c49700, {0xbd54a260, 0xb901233c, 0xbd000720, 0x1400000a, 0xbd54a660}},
-        {0x03c49710, {0xbd54a660, 0xb901233c, 0x5280002e, 0x14000005, 0xbd54a260}},
-        {0x0192a590, {0xd104c3ff, 0x6d093bef, 0x6d0a33ed, 0x6d0b2beb, 0x6d0c23e9}},
-        {0x019282fc, {0xd10103ff, 0xa9017bfd, 0xf90013f5, 0xa9034ff4, 0x910043fd}},
-        {0x005f7b4c, {0xb9400028, 0xb902b008, 0xb9400428, 0xb902b408, 0xb9400828}},
-        {0x00690504, {0xbd42b120, 0xbd42b521, 0xbd42b922, 0x7e21d800, 0x7e21d821}},
-        {0x03f03370, {0xb0005ef0, 0xf940ba11, 0x9105c210, 0xd61f0220, 0xb0005ef0}},
-    };
     const auto &main = exl::util::GetMainModuleInfo();
-    for (const auto &f : fingerprints) if (f.offset + sizeof(f.words) > main.m_Text.m_Size ||
-        std::memcmp(reinterpret_cast<const void *>(main.m_Text.m_Start + f.offset), f.words, sizeof(f.words))) {
+    const auto executable = native::MainExecutable();
+    for (const auto &f : profile::DiyChecks) if (const auto result = executable.Check(f); !result) {
+        native::ReportMismatch(result);
         Logging.Error("[QoL Enhancements/Crafting] DIY preview: DISABLED; instruction mismatch at main+0x%lx\n", f.offset); return false;
     }
+    if (!game::preview_native::GlobalsAvailable()) return false;
     Main = main.m_Text.m_Start;
     const auto modeSlot = Main + address::PhoneRendererModeSlot;
-    if (!main.m_Data.InRange(modeSlot) || !main.m_Data.InRange(modeSlot + sizeof(std::uintptr_t) - 1) ||
+    if (!native::MainDataContains(address::PhoneRendererModeSlot, sizeof(std::uintptr_t)) ||
         *reinterpret_cast<const std::uintptr_t *>(modeSlot) != Main + address::PhoneRendererMode) {
         Logging.Error("[QoL Enhancements/Crafting] DIY preview: DISABLED; renderer mode slot mismatch\n");
         return false;
@@ -1361,27 +1235,19 @@ bool InstallRecipePreview() {
     return true;
 }
 bool InstallWorkbenchPreviewTilt() {
-    struct Fingerprint { std::uintptr_t offset; std::uint32_t words[5]; };
-    constexpr Fingerprint fingerprints[]{
-        {address::UpdateItemActor, {0xd104c3ff, 0x6d093bef, 0x6d0a33ed, 0x6d0b2beb, 0x6d0c23e9}},
-        {address::BuildModelMatrix, {0xb942b00c, 0x12005d8f, 0xb942bc09, 0xb942c00b, 0xb942c40a}},
-        {address::Atan2, {0xb0005ef0, 0xf940ba11, 0x9105c210, 0xd61f0220, 0xb0005ef0}},
-        {0x005f7b4c, {0xb9400028, 0xb902b008, 0xb9400428, 0xb902b408, 0xb9400828}},
-        {0x019282fc, {0xd10103ff, 0xa9017bfd, 0xf90013f5, 0xa9034ff4, 0x910043fd}},
-        {0x032bd9cc, {0x1ac82128, 0x5285bd89, 0x72a00069, 0x0a090108, 0x7a409904}},
-        {0x0346e7d8, {0xf902ce9f, 0x9100414a, 0xf902d29f, 0xb9004a88, 0xf900028a}},
-    };
     const auto &main = exl::util::GetMainModuleInfo();
-    for (const auto &f : fingerprints) {
+    const auto executable = native::MainExecutable();
+    for (const auto &f : profile::WorkbenchChecks) {
         // These trampolines may already belong to our DIY installer.
         if ((f.offset == address::UpdateItemActor && ActorHookInstalled) ||
             (f.offset == address::BuildModelMatrix && DiyHooksInstalled)) continue;
-        if (f.offset + sizeof(f.words) > main.m_Text.m_Size ||
-            std::memcmp(reinterpret_cast<const void *>(main.m_Text.m_Start + f.offset), f.words, sizeof(f.words))) {
+        if (const auto result = executable.Check(f); !result) {
+            native::ReportMismatch(result);
             Logging.Error("[QoL Enhancements/Crafting] workbench tilt: DISABLED; instruction mismatch at main+0x%lx\n", f.offset);
             return false;
         }
     }
+    if (!game::preview_native::GlobalsAvailable()) return false;
     Main = main.m_Text.m_Start;
     if (!core::RegisterPageInput(WorkbenchTiltInput)) return false;
     WorkbenchTiltEnabled.store(true, std::memory_order_release);
