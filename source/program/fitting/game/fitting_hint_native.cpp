@@ -1,6 +1,7 @@
 #include "program/core/hook_plan.hpp"
 #include "lib.hpp"
-#include "fitting_hint.hpp"
+#include "program/fitting/features/fitting_hint.hpp"
+#include "program/fitting/features/fitting_features.hpp"
 #include "program/core/hint_text.hpp"
 #include "program/pockets/text/catalog.hpp"
 #include <nn/fs/fs_files.hpp>
@@ -16,7 +17,7 @@ constexpr std::uintptr_t GetActiveLocale = 0x037cefc4;
 constexpr std::uintptr_t BufferedStringVtableGot = 0x04ab2bc0;
 constexpr std::uintptr_t FittingVtable = 0x04a10620;
 }
-constexpr char CaptionKey[] = "fitting_room.add_to_bag";
+constexpr auto &CaptionKey = BagHintKey;
 constexpr char MessagesPath[] = "content:/qol-enhancements/messages/fitting-room.ini";
 constexpr int NativeY = 7;
 struct SafeString { std::uintptr_t vtable{}; const char *text{}; };
@@ -65,6 +66,39 @@ const char16_t *BagCaption() {
     return caption ? caption : u"Bag";
 }
 
+class NativeFooter : public game::Footer {
+    std::uintptr_t footer, owner;
+public:
+    NativeFooter(std::uintptr_t footer, std::uintptr_t owner) : footer(footer), owner(owner) {}
+    int Count() const override { return Field<int>(footer, 0x218); }
+    int Capacity() const override { return Field<int>(footer, 0x21c); }
+    bool Ready() const override {
+        return Field<std::uintptr_t>(footer, 0x220) && Field<std::uintptr_t>(footer, 0x228);
+    }
+    bool Contains(const char *key) const override {
+        const auto entries = Field<HintDescription **>(footer, 0x220);
+        for (int i = 0; i < Count(); ++i) {
+            if (entries[i] && entries[i]->caption.text &&
+                !std::strcmp(entries[i]->caption.text, key)) return true;
+        }
+        return false;
+    }
+    void AppendYHint(const char *key) override {
+        HintDescription hint;
+        hint.button = NativeY;
+        const auto player = Field<std::uint8_t>(owner, 0x1f8);
+        hint.player = player < 8 ? player : 0xff;
+        hint.caption = {Field<std::uintptr_t>(Main(address::BufferedStringVtableGot)) + 16, hint.key};
+        // Copy only a bounded, terminated key into the native descriptor.
+        if (!key) return;
+        unsigned length = 0;
+        while (length < sizeof(hint.key) && key[length]) ++length;
+        if (length == sizeof(hint.key)) return;
+        std::memcpy(hint.key, key, length + 1);
+        Function<void (*)(std::uintptr_t, const HintDescription *, unsigned)>(address::AppendHint)(footer, &hint, 1);
+    }
+};
+
 HOOK_DEFINE_INLINE(AppendBagFooterHint) {
     static void Callback(exl::hook::InlineCtx *registers) {
         // 03114f28 runs only when the native fitting footer is rebuilt, after
@@ -72,22 +106,8 @@ HOOK_DEFINE_INLINE(AppendBagFooterHint) {
         // type-checked footer; x20 is still the fitting-room controller here.
         const auto footer = registers->X[19], owner = registers->X[20];
         if (!footer || !owner || Field<std::uintptr_t>(owner) != Main(address::FittingVtable)) return;
-        const int count = Field<int>(footer, 0x218), capacity = Field<int>(footer, 0x21c);
-        const auto entries = Field<HintDescription **>(footer, 0x220);
-        // Leave one of the five visible slots for the native ticket hint.
-        if (count < 0 || count >= 4 || count + 1 >= capacity || !entries ||
-            !Field<std::uintptr_t>(footer, 0x228)) return;
-        for (int i = 0; i < count; ++i) {
-            if (entries[i] && entries[i]->caption.text &&
-                !std::strcmp(entries[i]->caption.text, CaptionKey)) return;
-        }
-        HintDescription hint;
-        hint.button = NativeY;
-        const auto player = Field<std::uint8_t>(owner, 0x1f8);
-        hint.player = player < 8 ? player : 0xff;
-        hint.caption = {Field<std::uintptr_t>(Main(address::BufferedStringVtableGot)) + 16, hint.key};
-        std::memcpy(hint.key, CaptionKey, sizeof(CaptionKey));
-        Function<void (*)(std::uintptr_t, const HintDescription *, unsigned)>(address::AppendHint)(footer, &hint, 1);
+        NativeFooter target(footer, owner);
+        AppendBagHint(target);
     }
 };
 

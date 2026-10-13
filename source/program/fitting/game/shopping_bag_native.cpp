@@ -1,7 +1,7 @@
 #include "program/core/hook_plan.hpp"
 #include "lib.hpp"
-#include "bag_policy.hpp"
-#include "fitting_hint.hpp"
+#include "program/fitting/features/fitting_features.hpp"
+#include "program/fitting/features/fitting_hint.hpp"
 #include "program/shopping/shopping_card.hpp"
 #include <array>
 #include <cstring>
@@ -53,44 +53,15 @@ struct Session {
     int backRow = -1;
 };
 Session session;
-// Freeze both native delivery alternatives before any payment or clothing swap.
-enum class Preflight { Invalid, Ready, NoSpace };
-constexpr unsigned DeliveryLimit = Bag::Limit + 10;
-struct PurchasePlan {
-    bool active{}, done{};
-    unsigned sendCount{}, wearCount{};
-    Item send[DeliveryLimit]{}, wear[DeliveryLimit]{};
-    Item *sendRefs[DeliveryLimit]{}, *wearRefs[DeliveryLimit]{};
-    int extraPrice{};
-};
 PurchasePlan purchase;
-struct BadgeMotion { Item item{}; unsigned frame{}; bool added{}, active{}; };
-std::array<BadgeMotion, 16> motions{};
+struct NativeReferences {
+    Item *send[game::DeliveryLimit]{}, *wear[game::DeliveryLimit]{};
+} purchaseRefs;
+BadgeMotions motions{};
 unsigned nextMotion{};
-void StartBadgeMotion(const Item &item, bool added) {
-    for (auto &motion : motions) if (motion.active && motion.item == item) {
-        motion = {item, 0, added, true}; return;
-    }
-    motions[nextMotion++ % motions.size()] = {item, 0, added, true};
-}
-bool HasBadgeMotion() {
-    for (const auto &motion : motions) if (motion.active) return true;
-    return false;
-}
-void AdvanceBadgeMotion() {
-    for (auto &motion : motions) if (motion.active && ++motion.frame > (motion.added ? 7u : 1u)) motion.active = false;
-}
-float BadgeScale(unsigned frame) {
-    // Native EquipIn BFLAN Hermite keys: (frame,value,slope).
-    constexpr float keys[][3]{{0,.5f,.26666667f},{3,1.4f,0},{6,.9f,0},{7,1,0}};
-    for (unsigned i=0; i<3; ++i) if (float(frame)<=keys[i+1][0]) {
-        const float span=keys[i+1][0]-keys[i][0], t=(float(frame)-keys[i][0])/span;
-        const float t2=t*t, t3=t2*t;
-        return (2*t3-3*t2+1)*keys[i][1]+(t3-2*t2+t)*span*keys[i][2]
-             +(-2*t3+3*t2)*keys[i+1][1]+(t3-t2)*span*keys[i+1][2];
-    }
-    return 1;
-}
+bool HasBadgeMotion() { return HasBagBadgeMotion(motions); }
+void AdvanceBadgeMotion() { AdvanceBagBadgeMotions(motions); }
+constexpr unsigned DeliveryLimit = game::DeliveryLimit;
 using InputFn = void (*)(std::uintptr_t, std::uintptr_t, unsigned);
 using PriceFn = int (*)(std::uintptr_t);
 InputFn originalInput{};
@@ -143,26 +114,6 @@ int DeliveryCount(std::uintptr_t owner, bool wear) {
     Fn<void (*)(std::uintptr_t, NativeList *, unsigned)>(address::Collect)(owner, &list, wear);
     return list.count >= 0 && list.count <= 10 ? list.count : -1;
 }
-Preflight CanAdd(std::uintptr_t owner, const Item &item) {
-    Item outfit[10]{};
-    const auto count = OutfitItems(owner, outfit);
-    unsigned extras = session.bag.ExtraCount(outfit, count);
-    if (!Bag::Contains(outfit, count, item)) ++extras;
-    const int purchaseCount = DeliveryCount(owner, false), oldClothes = DeliveryCount(owner, true);
-    if (purchaseCount < 0 || oldClothes < 0) return Preflight::Invalid;
-    std::uint8_t player = At<std::uint8_t>(owner, field::Player);
-    if (player >= 8) return Preflight::Invalid;
-    const unsigned storage = At<std::uint8_t>(owner, field::HasStorage)
-        ? Fn<unsigned (*)(const void *)>(address::StorageFree)(&player) : 0;
-    const unsigned pockets = Fn<unsigned (*)(const void *)>(address::PocketsFree)(&player);
-    if (storage > 20000 || pockets > 40) return Preflight::Invalid;
-    // Deliberately do not assume payment frees Bell/ticket pocket slots. Those
-    // optimizations are deferred until checkout itself is implemented.
-    const bool fits = Fits(storage, pockets, oldClothes, purchaseCount, extras);
-    Logging.Debug("[QoL Enhancements/Fitting Room] CAPACITY storage=%u pockets=%u old=%d purchases=%d extras=%u fits=%d\n",
-                storage, pockets, oldClothes, purchaseCount, extras, fits);
-    return fits ? Preflight::Ready : Preflight::NoSpace;
-}
 int ItemPrice(const Item &item) {
     // Read-only synthetic outfit for the native price helper. It reads the
     // stock-pointer field and ten (display index, stock index, ticket flag) rows.
@@ -178,62 +129,6 @@ int ItemPrice(const Item &item) {
     return Fn<PriceFn>(address::Price)(state);
 }
 
-// Build an immutable, bounded list while the transaction is still read-only.
-Preflight InvalidPreflight(unsigned line) {
-    Logging.Error("[QoL Enhancements/Fitting Room] PREFLIGHT_INVALID line=%u\n", line);
-    return Preflight::Invalid;
-}
-Preflight PreparePurchase(std::uintptr_t owner) {
-    if (purchase.active || purchase.done) return InvalidPreflight(__LINE__);
-    purchase = {};
-    NativeList send, wear;
-    Fn<void (*)(std::uintptr_t, NativeList *, unsigned)>(address::Collect)(owner, &send, 0);
-    Fn<void (*)(std::uintptr_t, NativeList *, unsigned)>(address::Collect)(owner, &wear, 1);
-    if (send.count < 0 || send.count > 10 || wear.count < 0 || wear.count > 10) return InvalidPreflight(__LINE__);
-    purchase.sendCount = send.count; purchase.wearCount = wear.count;
-    for (int i = 0; i < send.count; ++i) {
-        if (!send.items[i]) return InvalidPreflight(__LINE__);
-        purchase.send[i] = *send.items[i];
-    }
-    for (int i = 0; i < wear.count; ++i) {
-        if (!wear.items[i]) return InvalidPreflight(__LINE__);
-        purchase.wear[i] = *wear.items[i];
-    }
-    Item outfit[10]{};
-    const auto outfitCount = OutfitItems(owner, outfit);
-    // Require the native purchase collector to agree with our outfit view.
-    if (outfitCount != unsigned(send.count)) return InvalidPreflight(__LINE__);
-    for (unsigned i = 0; i < outfitCount; ++i)
-        if (!Bag::Contains(purchase.send, purchase.sendCount, outfit[i])) return InvalidPreflight(__LINE__);
-    for (unsigned i = 0; i < session.bag.count; ++i) {
-        auto &entry = session.bag.entries[i];
-        bool inStock = false;
-        for (unsigned j = 0; j < At<std::uint16_t>(owner, field::StockCount); ++j) {
-            Item stock;
-            if (StockItem(owner, j, stock) && stock == entry.item) { inStock = true; break; }
-        }
-        if (!inStock) return InvalidPreflight(__LINE__);
-        const int quote = ItemPrice(entry.item);
-        if (quote < 0 || quote > 1000000) return InvalidPreflight(__LINE__);
-        entry.price = quote;
-        if (Bag::Contains(outfit, outfitCount, entry.item)) continue;
-        if (purchase.sendCount == DeliveryLimit || purchase.wearCount == DeliveryLimit) return InvalidPreflight(__LINE__);
-        purchase.send[purchase.sendCount++] = entry.item;
-        purchase.wear[purchase.wearCount++] = entry.item;
-        purchase.extraPrice += quote;
-    }
-    std::uint8_t player = At<std::uint8_t>(owner, field::Player);
-    if (player >= 8) return InvalidPreflight(__LINE__);
-    const unsigned storage = At<std::uint8_t>(owner, field::HasStorage)
-        ? Fn<unsigned (*)(const void *)>(address::StorageFree)(&player) : 0;
-    const unsigned pockets = Fn<unsigned (*)(const void *)>(address::PocketsFree)(&player);
-    if (storage > 20000 || pockets > 40) return InvalidPreflight(__LINE__);
-    const unsigned reserve = purchase.sendCount > purchase.wearCount ? purchase.sendCount : purchase.wearCount;
-    const bool fits = reserve <= storage + pockets;
-    Logging.Debug("[QoL Enhancements/Fitting Room] PREFLIGHT send=%u wear=%u storage=%u pockets=%u fits=%d\n",
-                purchase.sendCount, purchase.wearCount, storage, pockets, fits);
-    return fits ? Preflight::Ready : Preflight::NoSpace;
-}
 unsigned Wallet(std::uintptr_t owner) {
     const auto player = At<std::uint8_t>(owner, field::Player);
     return player < 8 ? qol::shopping::AvailableBells(&player) : 0;
@@ -299,14 +194,10 @@ void UpdateBadge(std::uintptr_t row, const Item *item) {
     const auto root = RowRoot(row), pane = Find(root, "N_Bag_00");
     const bool visible = item && session.bag.Find(*item) >= 0;
     if (pane) {
-        bool shown = visible;
-        float scale = 1;
-        unsigned alpha = 255;
-        for (const auto &motion : motions) if (motion.active && item && motion.item == *item) {
-            if (motion.added) { scale = BadgeScale(motion.frame); alpha = motion.frame ? 255 : 0; }
-            else { shown = motion.frame == 0; }
-            break;
-        }
+        const auto visual = BagBadgeVisual(session.bag, motions, item);
+        const bool shown = visual.shown;
+        const float scale = visual.scale;
+        const auto alpha = visual.alpha;
         // Native matrix propagation 0027e470..0027e49c requires bit 4.
         // Without it the renderer can retain the initial half-scale matrix
         // until a parent animation (such as moving the cursor) invalidates it.
@@ -381,7 +272,7 @@ void Refresh(std::uintptr_t owner) {
     }
     session.dirty = retryCounter;
 }
-void PlayCursorTap(std::uintptr_t owner) {
+void TapFocusedCursor(std::uintptr_t owner) {
     if (session.inputRow != 0) return;
     const auto page = At<std::uintptr_t>(owner, field::Page);
     const auto list = page ? At<std::uintptr_t>(page, field::List) : 0;
@@ -420,6 +311,121 @@ void PlayCursorTap(std::uintptr_t owner) {
     At<void (*)(std::uintptr_t,const Operation *)>(interface,0x18)(animation,&play);
     At<void (*)(std::uintptr_t,float)>(implementation,0x190)(target,1.0f);
 }
+// Feature diagnostics are synchronous observers, not game operations.
+void ReportInvalidPreflight() {
+    Logging.Error("[QoL Enhancements/Fitting Room] PREFLIGHT_INVALID feature validation\n");
+}
+template<class Operations> class NativeSource : public Operations {
+protected:
+    std::uintptr_t owner;
+public:
+    explicit NativeSource(std::uintptr_t owner) : owner(owner) {}
+    unsigned ReadOutfit(Item *items) override { return OutfitItems(owner, items); }
+    bool ReadDeliveryCounts(unsigned &send, unsigned &wear) override {
+        const int purchases = DeliveryCount(owner, false), oldClothes = DeliveryCount(owner, true);
+        if (purchases < 0 || oldClothes < 0) return false;
+        send = purchases; wear = oldClothes;
+        return true;
+    }
+    bool ReadDeliveries(game::DeliveryAlternatives &items) override {
+        NativeList send, wear;
+        Fn<void (*)(std::uintptr_t, NativeList *, unsigned)>(address::Collect)(owner, &send, 0);
+        Fn<void (*)(std::uintptr_t, NativeList *, unsigned)>(address::Collect)(owner, &wear, 1);
+        if (send.count < 0 || send.count > 10 || wear.count < 0 || wear.count > 10) return false;
+        items.sendCount = send.count; items.wearCount = wear.count;
+        for (int i = 0; i < send.count; ++i) {
+            if (!send.items[i]) return false;
+            items.send[i] = *send.items[i];
+        }
+        for (int i = 0; i < wear.count; ++i) {
+            if (!wear.items[i]) return false;
+            items.wear[i] = *wear.items[i];
+        }
+        return true;
+    }
+    bool HasStock(const Item &item) override {
+        for (unsigned i = 0; i < At<std::uint16_t>(owner, field::StockCount); ++i) {
+            Item stock;
+            if (StockItem(owner, i, stock) && stock == item) return true;
+        }
+        return false;
+    }
+    int Quote(const Item &item) override { return ItemPrice(item); }
+    bool ReadSpace(game::Space &space) override {
+        std::uint8_t player = At<std::uint8_t>(owner, field::Player);
+        if (player >= 8) return false;
+        space.storage = At<std::uint8_t>(owner, field::HasStorage)
+            ? Fn<unsigned (*)(const void *)>(address::StorageFree)(&player) : 0;
+        space.pockets = Fn<unsigned (*)(const void *)>(address::PocketsFree)(&player);
+        return space.storage <= 20000 && space.pockets <= 40;
+    }
+};
+class NativeSelection : public NativeSource<game::FittingSelection> {
+    std::uintptr_t record;
+public:
+    NativeSelection(std::uintptr_t owner, std::uintptr_t record)
+        : NativeSource(owner), record(record) {}
+    bool SelectedItem(Item &item) override { return DisplayedItem(owner, session.focus, item); }
+    void ShowSpaceError() override {
+        At<unsigned>(owner, 0x1c4f0) = At<std::uint8_t>(owner, field::HasStorage) ? 3 : 2;
+        const auto active = At<std::uint8_t>(owner, 0x200);
+        if (active <= 1) At<int>(owner, 0x1f0 + active * 4) = 4;
+    }
+    void PlayCursorTap() override { TapFocusedCursor(owner); }
+    void ConsumeToggle() override { At<unsigned>(record, 0x3c) |= 0x80; }
+};
+class NativeCheckoutContext : public NativeSource<game::Checkout> {
+    std::uintptr_t output{};
+    unsigned (*answerCallback)(std::uintptr_t, std::uintptr_t, unsigned){};
+    void (*checkoutCallback)(std::uintptr_t, unsigned){};
+public:
+    NativeCheckoutContext(std::uintptr_t owner, std::uintptr_t output = 0,
+        unsigned (*answer)(std::uintptr_t, std::uintptr_t, unsigned) = nullptr,
+        void (*checkout)(std::uintptr_t, unsigned) = nullptr)
+        : NativeSource(owner), output(output), answerCallback(answer), checkoutCallback(checkout) {}
+    int TotalPrice() override { return Fn<PriceFn>(address::Price)(owner + field::PriceState); }
+    unsigned AvailableBells() override { return Wallet(owner); }
+    void StoreTotal(int total) override { At<int>(owner, field::NativeTotal) = total; }
+    void OpenConfirmation(int total, unsigned funds, bool affordable) override {
+        At<unsigned>(owner, 0x1c4c4) = funds;
+        At<unsigned>(owner, 0x1c4f0) = affordable ? 4 : 1;
+        const auto active = At<std::uint8_t>(owner, 0x200);
+        if (active <= 1 && At<int>(owner, 0x1f0 + active * 4) == -1)
+            At<int>(owner, 0x1f0 + active * 4) = 4;
+        Logging.Debug("[QoL Enhancements/Fitting Room] CONFIRM total=%d wallet=%u\n", total, funds);
+    }
+    game::Question CurrentQuestion() override {
+        switch (At<unsigned>(owner, 0x1c4f0)) {
+        case 4: return game::Question::Purchase;
+        case 5: return game::Question::WearOrSend;
+        default: return game::Question::Other;
+        }
+    }
+    bool IdleCommand() override { return At<int>(owner, field::Command) == -1; }
+    bool OutfitSlotsEmpty() override {
+        // Persistent stock indices, not failed/unresolved stock lookups.
+        bool empty = true;
+        for (unsigned i = 0; i < 10; ++i) empty &= At<int>(owner, field::Outfit + i * 12 + 4) == -1;
+        return empty;
+    }
+    void SelectSendQuestion() override { At<unsigned>(owner, 0x1c4f0) = 5; }
+    unsigned FundsError() override { return ErrorDialog(owner, output, 1); }
+    unsigned SpaceError() override {
+        return ErrorDialog(owner, output, At<std::uint8_t>(owner, field::HasStorage) ? 3 : 2);
+    }
+    unsigned ReturnToBrowsing() override { At<int>(owner, field::Command) = -1; return 0; }
+    unsigned NativeAnswer(unsigned answer) override { return answerCallback(owner, output, answer); }
+    void NativeCheckout(unsigned wear) override {
+        if (purchase.active)
+            Logging.Debug("[QoL Enhancements/Fitting Room] COMMIT_BEGIN wear=%u total=%d\n",
+                          wear & 1, At<int>(owner, field::NativeTotal));
+        checkoutCallback(owner, wear);
+    }
+    void CheckoutReturned() override {
+        session.dirty = false;
+        Logging.Debug("[QoL Enhancements/Fitting Room] COMMIT_RETURNED\n");
+    }
+};
 void HandleInput(std::uintptr_t page, std::uintptr_t snapshot, unsigned blocked) {
     const auto owner = session.owner;
     if (!snapshot || !IsOwner(owner) || At<std::uintptr_t>(owner, field::Page) != page) return;
@@ -442,35 +448,20 @@ void HandleInput(std::uintptr_t page, std::uintptr_t snapshot, unsigned blocked)
                     At<int>(owner, field::State), At<int>(owner, field::Command), session.focus,
                     buttons, At<unsigned>(record, 0x3c), blocked);
     }
-    if (!pressed || (blocked & 1) || !context || !masks ||
-        At<std::uint8_t>(context, 0x54) || (At<unsigned>(context, 0x58) & At<unsigned>(masks, 0x10)) ||
-        (At<unsigned>(record, 0x3c) & 0x80) || (buttons & 0x7f) ||
-        At<int>(owner, field::State) != 3 || At<int>(owner, field::Command) != -1 ||
-        At<int>(owner, 0x1f0) != -1 || At<int>(owner, 0x1f4) != -1) return;
-    Item item;
-    if (!DisplayedItem(owner, session.focus, item)) return;
-    const bool removing = session.bag.Find(item) >= 0;
-    const int price = removing ? 0 : ItemPrice(item);
-    const auto capacity = removing ? Preflight::Ready : CanAdd(owner, item);
-    const bool limit = !removing && session.bag.count == Bag::Limit;
-    const auto result = capacity == Preflight::Invalid || limit ? ToggleResult::Invalid :
-        session.bag.Toggle(item, price, capacity == Preflight::Ready);
-    if (capacity == Preflight::NoSpace && !limit) {
-        // Open the same native error dialog used at checkout, without adding UI.
-        At<unsigned>(owner, 0x1c4f0) = At<std::uint8_t>(owner, field::HasStorage) ? 3 : 2;
-        const auto active = At<std::uint8_t>(owner, 0x200);
-        if (active <= 1) At<int>(owner, 0x1f0 + active * 4) = 4;
-    }
-    if (result == ToggleResult::Added || result == ToggleResult::Removed) {
-        StartBadgeMotion(item, result == ToggleResult::Added);
-        PlayCursorTap(owner);
-    }
-    At<unsigned>(record, 0x3c) |= 0x80;
-    session.notice = result == ToggleResult::Full ? "No room in storage/pockets" :
-                     result == ToggleResult::Invalid ? "Cannot add this item" : "Y: Add/remove bag (test)";
+    const bool allowed = !(blocked & 1) && context && masks &&
+        !At<std::uint8_t>(context, 0x54) &&
+        !(At<unsigned>(context, 0x58) & At<unsigned>(masks, 0x10));
+    const bool browsing = At<int>(owner, field::State) == 3 &&
+        At<int>(owner, field::Command) == -1 && At<int>(owner, 0x1f0) == -1 && At<int>(owner, 0x1f4) == -1;
+    if (!BagInputEligible(pressed, allowed, At<unsigned>(record, 0x3c) & 0x80, buttons & 0x7f, browsing)) return;
+    NativeSelection selection(owner, record);
+    const auto outcome = ToggleBagSelection(session.bag, motions, nextMotion, selection);
+    if (!outcome.handled) return;
+    session.notice = outcome.result == ToggleResult::Full ? "No room in storage/pockets" :
+                     outcome.result == ToggleResult::Invalid ? "Cannot add this item" : "Y: Add/remove bag (test)";
     session.dirty = true;
     Logging.Debug("[QoL Enhancements/Fitting Room] TOGGLE item=%u extra=%x result=%u count=%u price=%d\n",
-                item.id, item.extra, unsigned(result), session.bag.count, price);
+                outcome.item.id, outcome.item.extra, unsigned(outcome.result), session.bag.count, outcome.price);
 }
 void Input(std::uintptr_t page, std::uintptr_t snapshot, unsigned blocked) {
     HandleInput(page, snapshot, blocked);
@@ -514,31 +505,45 @@ std::uintptr_t HandleWearChoiceBack(std::uintptr_t page, std::uintptr_t snapshot
     const auto context = At<std::uintptr_t>(page, 0x210);
     const auto app = At<std::uintptr_t>(Main(address::Application));
     const auto masks = app ? At<std::uintptr_t>(app, 0x418) : 0;
-    if (!pressed || (blocked & 1) || !context || !masks ||
-        At<std::uint8_t>(context, 0x54) ||
-        (At<unsigned>(context, 0x58) & At<unsigned>(masks, 0x10)) ||
-        (At<unsigned>(record, 0x3c) & (Back | Accept)) || (buttons & ~AccompanyingInputFlag) != Back) return 0;
-    const unsigned style = At<unsigned>(dialog, 0x22c);
-    if (style > 2 || !At<std::uintptr_t>(dialog, 0x248) ||
-        !At<std::uintptr_t>(dialog, 0x250) || At<std::uintptr_t>(dialog, 0x258)) return 0;
-    const auto no = At<std::uintptr_t>(page, 0x578 + (style == 2 ? 8 : 0));
-    const auto yes = At<std::uintptr_t>(page, 0x588 + (style == 2 ? 8 : 0));
-    const auto noCursor = no ? At<std::uintptr_t>(no, 0x218) : 0;
-    const auto yesCursor = yes ? At<std::uintptr_t>(yes, 0x218) : 0;
-    const auto manager = At<std::uintptr_t>(context, 0x48);
-    if (!noCursor || !yesCursor || !manager ||
-        At<unsigned>(manager, 0x18) <= unsigned(row) ||
-        !(At<unsigned>(noCursor, 0x14b0) & (1u << row))) return 0;
-    const auto cursors = At<std::uintptr_t>(manager, 0x20);
-    const auto cursor = cursors ? At<std::uintptr_t>(cursors, row * 8) : 0;
-    const auto focused = cursor ? At<std::uintptr_t>(cursor, 0x10) : 0;
-    if (focused != noCursor && focused != yesCursor) return 0;
-    At<unsigned>(record, 0x3c) |= Back;
-    if (focused == noCursor) return record;
-    struct FocusRequest { std::uintptr_t page, button; int row, padding; };
-    const FocusRequest request{page, no, row, 0};
-    Fn<void (*)(const FocusRequest *)>(address::FocusButton)(&request);
-    return 0;
+    const bool allowed = !(blocked & 1) && context && masks &&
+        !At<std::uint8_t>(context, 0x54) &&
+        !(At<unsigned>(context, 0x58) & At<unsigned>(masks, 0x10));
+    class NativeChoice : public game::WearChoice {
+        std::uintptr_t page, dialog, context, record, no{};
+        int row;
+    public:
+        NativeChoice(std::uintptr_t page, std::uintptr_t dialog, std::uintptr_t context,
+                     std::uintptr_t record, int row)
+            : page(page), dialog(dialog), context(context), record(record), row(row) {}
+        game::ChoiceFocus CurrentFocus() override {
+            const unsigned style = At<unsigned>(dialog, 0x22c);
+            if (style > 2 || !At<std::uintptr_t>(dialog, 0x248) ||
+                !At<std::uintptr_t>(dialog, 0x250) || At<std::uintptr_t>(dialog, 0x258)) return game::ChoiceFocus::Unavailable;
+            no = At<std::uintptr_t>(page, 0x578 + (style == 2 ? 8 : 0));
+            const auto yes = At<std::uintptr_t>(page, 0x588 + (style == 2 ? 8 : 0));
+            const auto noCursor = no ? At<std::uintptr_t>(no, 0x218) : 0;
+            const auto yesCursor = yes ? At<std::uintptr_t>(yes, 0x218) : 0;
+            const auto manager = At<std::uintptr_t>(context, 0x48);
+            if (!noCursor || !yesCursor || !manager ||
+                At<unsigned>(manager, 0x18) <= unsigned(row) ||
+                !(At<unsigned>(noCursor, 0x14b0) & (1u << row))) return game::ChoiceFocus::Unavailable;
+            const auto cursors = At<std::uintptr_t>(manager, 0x20);
+            const auto cursor = cursors ? At<std::uintptr_t>(cursors, row * 8) : 0;
+            const auto focused = cursor ? At<std::uintptr_t>(cursor, 0x10) : 0;
+            if (focused != noCursor && focused != yesCursor) return game::ChoiceFocus::Unavailable;
+            return focused == noCursor ? game::ChoiceFocus::Send : game::ChoiceFocus::Wear;
+        }
+        void ConsumeBack() override { At<unsigned>(record, 0x3c) |= Back; }
+        void FocusSend() override {
+            struct FocusRequest { std::uintptr_t page, button; int row, padding; };
+            const FocusRequest request{page, no, row, 0};
+            Fn<void (*)(const FocusRequest *)>(address::FocusButton)(&request);
+        }
+    } choice(page, dialog, context, record, row);
+    const auto action = HandleBackShortcut(pressed, allowed,
+        At<unsigned>(record, 0x3c) & (Back | Accept),
+        (buttons & ~AccompanyingInputFlag) == Back, choice);
+    return action == BackAction::ConfirmSend ? record : 0;
 }
 void WearChoiceInput(std::uintptr_t page, std::uintptr_t snapshot, unsigned blocked) {
     const auto record = HandleWearChoiceBack(page, snapshot, blocked);
@@ -556,7 +561,7 @@ void WearChoiceInput(std::uintptr_t page, std::uintptr_t snapshot, unsigned bloc
 }
 HOOK_DEFINE_TRAMPOLINE(Begin) {
     static void Callback(std::uintptr_t owner) {
-        session = {}; purchase = {}; motions = {}; nextMotion = 0; session.owner = owner;
+        session = {}; purchase = {}; purchaseRefs = {}; motions = {}; nextMotion = 0; session.owner = owner;
         Orig(owner);
         session.dirty = true;
         Logging.Debug("[QoL Enhancements/Fitting Room] SESSION_BEGIN player=%u\n", At<std::uint8_t>(owner, field::Player));
@@ -564,7 +569,7 @@ HOOK_DEFINE_TRAMPOLINE(Begin) {
 };
 HOOK_DEFINE_TRAMPOLINE(Destroy) {
     static void Callback(std::uintptr_t owner) {
-        if (session.owner == owner) { session = {}; purchase = {}; motions = {}; nextMotion = 0; }
+        if (session.owner == owner) { session = {}; purchase = {}; purchaseRefs = {}; motions = {}; nextMotion = 0; }
         Orig(owner);
     }
 };
@@ -596,7 +601,7 @@ HOOK_DEFINE_TRAMPOLINE(Price) {
         if (!session.owner || state != session.owner + field::PriceState) return native;
         Item outfit[10]{};
         const unsigned count = OutfitItems(session.owner, outfit);
-        return native + session.bag.ExtraPrice(outfit, count);
+        return PriceWithBag(native, session.bag, outfit, count);
     }
 };
 HOOK_DEFINE_TRAMPOLINE(Collect) {
@@ -606,7 +611,7 @@ HOOK_DEFINE_TRAMPOLINE(Collect) {
         // array; they never append to or destroy these lists after collection.
         // Both arrays live through the entire synchronous checkout call.
         auto *items = (wear & 1) ? purchase.wear : purchase.send;
-        auto *refs = (wear & 1) ? purchase.wearRefs : purchase.sendRefs;
+        auto *refs = (wear & 1) ? purchaseRefs.wear : purchaseRefs.send;
         const auto count = (wear & 1) ? purchase.wearCount : purchase.sendCount;
         EXL_ASSERT(list && list->count == 0 && list->capacity == 10 && count <= DeliveryLimit);
         for (unsigned i = 0; i < count; ++i) refs[i] = &items[i];
@@ -633,58 +638,23 @@ HOOK_DEFINE_TRAMPOLINE(PurchaseRecord) {
 HOOK_DEFINE_TRAMPOLINE(GrossPrice) {
     static int Callback(std::uintptr_t state) {
         const int native = Orig(state);
-        return purchase.active && state == session.owner + field::PriceState
-            ? native + purchase.extraPrice : native;
+        return GrossPriceWithBag(native, purchase, state == session.owner + field::PriceState);
     }
 };
 HOOK_DEFINE_TRAMPOLINE(Dialog) {
     static unsigned Callback(std::uintptr_t owner, std::uintptr_t output, unsigned answer) {
-        // A confirmed bag-only purchase has no new outfit to wear. Advance to
-        // the existing send-choice path, including its final preflight, without
-        // returning another dialog descriptor to the shared popup controller.
-        // Require every persistent outfit index to be the native empty sentinel;
-        // unresolved/invalid stock entries must not be mistaken for no outfit.
-        if (IsOwner(owner) && session.bag.count && answer == 1 &&
-            At<unsigned>(owner, 0x1c4f0) == 4 && At<int>(owner, field::Command) == -1) {
-            bool emptyOutfit = true;
-            for (unsigned i = 0; i < 10; ++i)
-                emptyOutfit &= At<int>(owner, field::Outfit + i * 12 + 4) == -1;
-            if (emptyOutfit) {
-                At<unsigned>(owner, 0x1c4f0) = 5;
-                answer = 0; // Native No thanks / send purchase, never wear.
-            }
-        }
-        // State 5 is the native wear/send choice, after payment confirmation.
-        if (IsOwner(owner) && session.bag.count && At<unsigned>(owner, 0x1c4f0) == 5) {
-            const auto result = PreparePurchase(owner);
-            const int total = Fn<PriceFn>(address::Price)(owner + field::PriceState);
-            At<int>(owner, field::NativeTotal) = total;
-            if (total < 0 || unsigned(total) > Wallet(owner)) return ErrorDialog(owner, output, 1);
-            if (result == Preflight::Invalid) {
-                At<int>(owner, field::Command) = -1;
-                return 0; // Close confirmation, return to browsing; no false capacity error.
-            }
-            if (result == Preflight::NoSpace) return ErrorDialog(owner, output, At<std::uint8_t>(owner, field::HasStorage) ? 3 : 2);
-        }
-        return Orig(owner, output, answer);
+        if (!IsOwner(owner)) return Orig(owner, output, answer);
+        NativeCheckoutContext checkout(owner, output,
+            [](auto object, auto result, auto choice) { return Orig(object, result, choice); });
+        return AnswerBagConfirmation(session.bag, purchase, checkout, answer, ReportInvalidPreflight);
     }
 };
 HOOK_DEFINE_TRAMPOLINE(Play) {
     static void Callback(std::uintptr_t owner) {
-        if (IsOwner(owner) && session.bag.count && At<int>(owner, field::Command) == 1) {
-            // Native code tests only outfit slots before opening confirmation.
-            // Mirror that transition for bag-only purchases as well.
-            PreparePurchase(owner);
-            const int total = Fn<PriceFn>(address::Price)(owner + field::PriceState);
-            const auto wallet = Wallet(owner);
-            At<int>(owner, field::NativeTotal) = total;
-            At<unsigned>(owner, 0x1c4c4) = wallet;
-            At<unsigned>(owner, 0x1c4f0) = total < 0 || unsigned(total) > wallet ? 1 : 4;
-            const auto active = At<std::uint8_t>(owner, 0x200);
-            if (active <= 1 && At<int>(owner, 0x1f0 + active * 4) == -1)
-                At<int>(owner, 0x1f0 + active * 4) = 4;
-            Logging.Debug("[QoL Enhancements/Fitting Room] CONFIRM total=%d wallet=%u\n", total, wallet);
-            return;
+        if (IsOwner(owner)) {
+            NativeCheckoutContext checkout(owner);
+            if (OpenBagConfirmation(session.bag, purchase, checkout,
+                                    At<int>(owner, field::Command) == 1, ReportInvalidPreflight)) return;
         }
         Orig(owner);
         if (IsOwner(owner) && (session.dirty || HasBadgeMotion())) {
@@ -696,24 +666,11 @@ HOOK_DEFINE_TRAMPOLINE(Play) {
 HOOK_DEFINE_TRAMPOLINE(Checkout) {
     static void Callback(std::uintptr_t owner, unsigned wear) {
         if (!IsOwner(owner)) { Orig(owner, wear); return; }
-        if (purchase.active || purchase.done) return; // No reentrant or repeated payment.
-        if (!session.bag.count) { Orig(owner, wear); return; }
-        const auto result = PreparePurchase(owner);
-        const int total = Fn<PriceFn>(address::Price)(owner + field::PriceState);
-        if (result != Preflight::Ready || total < 0 || unsigned(total) > Wallet(owner)) {
-            Logging.Debug("[QoL Enhancements/Fitting Room] COMMIT_REJECTED result=%u total=%d\n", unsigned(result), total);
-            return;
-        }
-        At<int>(owner, field::NativeTotal) = total;
-        purchase.active = true;
-        Logging.Debug("[QoL Enhancements/Fitting Room] COMMIT_BEGIN wear=%u total=%d\n", wear & 1, total);
-        // Native code performs payment, ticket use, storage/pocket delivery,
-        // clothing swap, result dialog routing, purchase records and milestones.
-        Orig(owner, wear);
-        purchase.active = false;
-        purchase.done = true;
-        session.bag.Clear(); session.dirty = false;
-        Logging.Debug("[QoL Enhancements/Fitting Room] COMMIT_RETURNED\n");
+        NativeCheckoutContext checkout(owner, 0, nullptr,
+            [](auto object, auto choice) { Orig(object, choice); });
+        const auto step = CommitBagCheckout(session.bag, purchase, checkout, wear, ReportInvalidPreflight);
+        if (step == CheckoutStep::Rejected)
+            Logging.Debug("[QoL Enhancements/Fitting Room] COMMIT_REJECTED\n");
     }
 };
 } // namespace
@@ -724,7 +681,7 @@ bool Install() {
     // pass before installing any hook. The page input body can already be hooked
     // by QoL Pockets; only our private vtable slot must still be original.
     const Fingerprint checks[]{
-#include "fingerprints.inc"
+#include "program/fitting/game/fingerprints.inc"
     };
     const auto &module = exl::util::GetMainModuleInfo();
     for (const auto &check : checks) {
