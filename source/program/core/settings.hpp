@@ -32,5 +32,4 @@ inline unsigned ApplyCoreSettings(std::string_view input, Settings &output) {
     return qol::core::settings::Apply(input, output, SettingsSchema, qol::core::settings::Metadata::None);
 }
 
-bool InstallAmiiboTimeout(unsigned frames);
 } // namespace qol::core

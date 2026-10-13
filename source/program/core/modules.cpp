@@ -2,57 +2,14 @@
 #include "lib.hpp"
 #include "modules.hpp"
 #include "release.hpp"
-#include "program/controls/settings.hpp"
-#include "resource_budget.hpp"
+#include "features/core_features.hpp"
 #include "settings.hpp"
-#include "program/crafting/settings.hpp"
-#include "program/shopping/shopping_card.hpp"
-#include "program/dialogue/settings.hpp"
-#include "program/catalog/game/build_profile.hpp"
-#include "program/catalog/settings.hpp"
-#include "program/catalog/features/catalog_stars.hpp"
-#include "program/catalog/features/catalog_badges.hpp"
-#include "program/catalog/features/catalog_variation_labels.hpp"
-#include "program/pockets/features/pockets.hpp"
-#include "program/pockets/settings.hpp"
 #include <nn/fs/fs_files.hpp>
 #include <atomic>
 #include <cstdio>
 
-namespace able_bag { bool Install(); }
-
 namespace qol::core {
 namespace {
-bool ValidateCatalog() {
-    const auto result = catalog_aware_shops::game::ValidateExpectedCode(native::MainExecutable());
-    if (!result) native::ReportMismatch(result);
-    return bool(result);
-}
-InstallResult InstallCatalog() {
-    using namespace catalog_aware_shops::features;
-    const FeatureDescription features[]{
-        {"catalog.profile", true, ValidateCatalog},
-        {"catalog.item_names", true, InstallCatalogStars, {"catalog.profile"}},
-        {"catalog.shop_dialogue", true, InstallNookCatalogStars, {"catalog.profile"}},
-        {"catalog.item_dialogue", true, InstallDialogueItemStars, {"catalog.profile"}},
-        {"catalog.badges", true, InstallCatalogBadges, {"catalog.profile"}},
-        {"catalog.variation_labels", true, InstallCatalogVariationLabels, {"catalog.profile"}},
-    };
-    return ActivateFeatures(features);
-}
-InstallResult InstallDialogue() {
-    const FeatureDescription features[]{{"dialogue.speed", true, dialogue::Install}};
-    return ActivateFeatures(features);
-}
-InstallResult InstallFitting() {
-    const FeatureDescription features[]{{"fitting.bag", true, able_bag::Install}};
-    return ActivateFeatures(features);
-}
-InstallResult InstallShopping() {
-    const FeatureDescription features[]{{"shopping.card", true, shopping::Install}};
-    return ActivateFeatures(features);
-}
-
 enum class LoadResult { Absent, Invalid, Ready };
 // A null metadata pointer is used only for Core's optional settings files.
 // Feature modules still require their regular enabled/version marker.
@@ -89,7 +46,6 @@ LoadResult LoadConfig(const ModuleDescription &module, Config *metadata, ConfigL
 std::atomic<bool> ActivationStarted{false};
 Settings CorePreferences{};
 unsigned ConfigureCore(std::string_view input) { return ApplyCoreSettings(input, CorePreferences); }
-bool InstallCoreTimeout() { return InstallAmiiboTimeout(CorePreferences.amiiboTimeoutFrames); }
 bool ActivateCoreSettings() {
     const ModuleDescription core{"Core", "core", {}, nullptr, ConfigureCore};
     for (const auto layer : {ConfigLayer::Module, ConfigLayer::Custom}) {
@@ -102,21 +58,9 @@ bool ActivateCoreSettings() {
     Logging.Settings("[QoL Enhancements/Core] settings: amiibo_timeout_frames=%u log_versions=%s log_settings=%s log_debug=%s\n",
                      CorePreferences.amiiboTimeoutFrames, CorePreferences.logging.versions ? "true" : "false",
                      CorePreferences.logging.settings ? "true" : "false", CorePreferences.logging.debug ? "true" : "false");
-    return ActivateFeature({"core.amiibo_timeout", CorePreferences.amiiboTimeoutFrames != 0, InstallCoreTimeout}).Complete();
+    return ActivateCoreFeatures(CorePreferences).Complete();
 }
 } // namespace
-
-// Minimum PACKAGE versions accepted by Core. Raise only when older assets
-// stop being compatible; release versions still advance with the whole suite.
-const std::array<ModuleDescription, 7> Modules{{
-    {"Catalog", "catalog", {0, 1, 0}, InstallCatalog, catalog_aware_shops::Configure, nullptr, catalog_aware_shops::ReportSettings},
-    {"Pockets", "pockets", {0, 1, 0}, qol_pockets::features::InstallPockets, qol_pockets::Configure, nullptr, qol_pockets::ReportSettings},
-    {"Faster Dialogue", "faster-dialogue", {0, 1, 0}, InstallDialogue, dialogue::Configure, nullptr, dialogue::ReportSettings},
-    {"Fitting Room", "fitting-room", {0, 1, 0}, InstallFitting, nullptr, PrepareFittingResources},
-    {"Shopping Card", "shopping-card", {0, 3, 2}, InstallShopping, nullptr, shopping::PrepareResources},
-    {"Crafting", "crafting", {0, 3, 46}, crafting::Install, crafting::Configure, nullptr, crafting::ReportSettings},
-    {"Controls", "controls", {0, 4, 14}, controls::Install, controls::Configure, nullptr, controls::ReportSettings},
-}};
 
 void ActivateModules() {
     if (ActivationStarted.exchange(true)) return;
@@ -130,9 +74,8 @@ void ActivateModules() {
             continue;
         }
         const auto beforeResourceMutation = MutationCount();
-        const char *resourceId = module.prepareResources == PrepareFittingResources ? "resources.fitting" : "resources.shopping";
         const auto resourceResult = module.prepareResources
-            ? ActivateFeature({resourceId, true, module.prepareResources}) : FeatureResult{};
+            ? ActivateFeature({module.resourceFeature, true, module.prepareResources}) : FeatureResult{};
         const bool resourcesReady = resourceResult.Complete();
         const bool resourcesPublished = MutationCount() != beforeResourceMutation;
         ActivationResults.Store(module.slug, {FeatureState::Disabled, resourcesPublished, "package resources only"});

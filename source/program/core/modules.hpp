@@ -15,6 +15,9 @@ struct ModuleDescription {
     bool (*prepareResources)() = nullptr;
     // Report effective settings after both layers, including disabled modules.
     void (*reportSettings)() = nullptr;
+    // Explicit activation identity for prepareResources; never infer it from
+    // a callback address. Null only when there is no resource preparation.
+    const char *resourceFeature = nullptr;
 };
 extern const std::array<ModuleDescription, 7> Modules;
 void ActivateModules();

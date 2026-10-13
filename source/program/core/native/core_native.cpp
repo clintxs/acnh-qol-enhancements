@@ -1,9 +1,12 @@
 #include "program/core/hook_plan.hpp"
 #include "lib.hpp"
-#include "settings.hpp"
+#include "program/core/settings.hpp"
+#include "core_operations.hpp"
+#include "runtime.hpp"
+#include "program/catalog/game/build_profile.hpp"
 #include <cstring>
 
-namespace qol::core {
+namespace qol::core::game {
 namespace {
 constexpr std::uintptr_t ScanTimeoutAssignment = 0x00bc4144;
 unsigned TimeoutFrames{};
@@ -15,6 +18,11 @@ HOOK_DEFINE_INLINE(ScanTimeout) {
     }
 };
 } // namespace
+bool ValidateCatalogProfile() {
+    const auto result = catalog_aware_shops::game::ValidateExpectedCode(native::MainExecutable());
+    if (!result) native::ReportMismatch(result);
+    return bool(result);
+}
 bool InstallAmiiboTimeout(unsigned frames) {
     if (!frames) {
         Logging.Debug("[QoL Enhancements/Core] Amiibo timeout: disabled; native behavior retained\n");
@@ -40,4 +48,4 @@ bool InstallAmiiboTimeout(unsigned frames) {
     Logging.Debug("[QoL Enhancements/Core] Amiibo timeout: READY; C++ hook; frames=%u\n", TimeoutFrames);
     return true;
 }
-} // namespace qol::core
+} // namespace qol::core::game
