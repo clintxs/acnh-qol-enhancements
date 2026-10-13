@@ -275,21 +275,22 @@ that startup reports no disabled features. That final live check remains pending
 
 ## Reading the implementation
 
-Start with `source/program/bootstrap.cpp`: it checks the supported game build,
-initializes the hook framework, and enables balloon, dialogue, catalog badge,
-and variation-label hooks.
+The source notes above describe the historical standalone mod. In the unified
+suite, start with [the Catalog feature policy](../source/program/catalog/features/catalog_features.cpp)
+and [the current handoff](native-first-catalog.md). Core owns activation;
+`catalog/game/*_native.cpp` retain verified hook sites and native UI operations.
 
-| File under `source/program` | Responsibility |
+| File under `source/program/catalog` | Responsibility |
 |---|---|
-| `game/catalog_ownership.cpp` | Validates item metadata, resolves the player's catalog, then checks item and furniture-variant history. Start at `QueryCatalog`. |
-| `game/recipe_knowledge.cpp` | Validates a recipe card and live history before calling the game's learned-recipe getter. |
-| `game/catalog_ownership.hpp` | Defines the 8-byte native item and the four ownership results. |
-| `features/catalog_stars.cpp` | Finds the selected item in shop/fitting-room, pockets, storage, and ground names, checks catalog or recipe history, then prefixes its name. |
-| `features/dialogue_item_stars.cpp` | Marks actual item substitutions in shared event-flow setters before their native copy. |
-| `features/nook_catalog_stars.cpp` | Matches shop dialogue messages, finds the live formatter, and registers a copied starred item name. The filename and diagnostic names retain their historical Nook naming. |
-| `features/catalog_badges.cpp` | Updates icon badges in Nook Shopping, HHP, Hotel and Nook Miles, including Miles recipe knowledge. |
-| `features/catalog_variation_labels.cpp` | Marks missing furniture colors in the native variation-name label. |
-| `features/catalog_star_text.hpp` | Inserts a marker while preserving noun metadata, capacity and capitalization. It contains no game addresses. |
+| `features/catalog_features.cpp` | Surface/reward eligibility; recipe/catalog/donation routing; art setting; filled/hollow/absent markers; row visibility; variation-label text and exact shop message matching. |
+| `game/catalog_ownership.cpp` | Validates ItemParam, resolves ready history, and calls native catalog, variant and island museum queries with their read locks. Native kind hashes remain here. |
+| `game/recipe_knowledge.cpp` | Validates recipe identity and DIY/cooking category, reads the event-owned villager recipe, and calls native learned-recipe getters. |
+| `game/catalog_stars_native.cpp` | Confirms selected-item caller/controller scope and applies feature decisions to shop/fitting, pockets, storage and ground names. |
+| `game/dialogue_item_stars_native.cpp` | Uses the verified event-flow source item and marks native temporary singular/plural forms before their owned copy. |
+| `game/nook_catalog_stars_native.cpp` | Supplies exact shop message text, live selection/formatter and native copied item-name registration. Historical Nook hook/log identities remain stable. |
+| `game/catalog_badges_native.cpp` | Resolves each row's typed name binding/icon subtree; applies visibility to every found badge pane, including reset on unknown/excluded/reused rows. |
+| `game/catalog_variation_labels_native.cpp` | Borrows the exact label payload/setter within a nested synchronous scope, then calls the original setter once with copied feature text or native fallback. |
+| `features/catalog_star_text.hpp` | Template text insertion preserving verified noun metadata, capacity and caller-supplied capitalization. It contains no game addresses. |
 
 Three kinds of numbers have different purposes:
 - `address::...` values locate code/vtables/globals relative to the main module;
