@@ -1,8 +1,9 @@
 #include "program/core/hook_plan.hpp"
 #include "lib.hpp"
-#include "settings.hpp"
+#include "../settings.hpp"
 #include "program/core/page_input.hpp"
 #include <array>
+#include "../features/crafting.hpp"
 #include <cstring>
 
 namespace qol::crafting {
@@ -60,7 +61,7 @@ static_assert(offsetof(HintDescription, player) == 0x68);
 static_assert(offsetof(HintDescription, alternateButton) == 0x74);
 static_assert(sizeof(HintDescription) == 0x80);
 SafeString QuantityBank, QuantityCaption;
-struct PreviewBinding { void *sequence{}, *page{}; bool armed{}, favoriteArmed{}; };
+struct PreviewBinding { void *sequence{}, *page{}; features::ShortcutHold hold; };
 std::array<PreviewBinding, 8> Bindings{};
 void *PreviewPage(void *sequence) {
     auto page = Virtual<void *(*)(void *)>(sequence, layout::PageGetter)(sequence);
@@ -158,7 +159,7 @@ HOOK_DEFINE_TRAMPOLINE(EnterQuantityShortcutPreview) {
     static void Callback(void *sequence) {
         Orig(sequence);
         const auto resident = Field<unsigned char>(sequence, layout::Resident);
-        if (resident < Bindings.size()) Bindings[resident] = {sequence, PreviewPage(sequence), false};
+        if (resident < Bindings.size()) Bindings[resident] = {sequence, PreviewPage(sequence), {}};
     }
 };
 HOOK_DEFINE_TRAMPOLINE(LeaveQuantityShortcutPreview) {
@@ -183,46 +184,49 @@ bool QuantityShortcutInput(void *page, void *snapshot, unsigned blocked) {
             auto masks = app ? Field<void *>(app, 0x418) : nullptr;
             unavailable = !masks || (Field<unsigned>(input, 0x58) & Field<unsigned>(masks, 0x10));
         }
-        if (unavailable || !rows || resident >= 8 || Field<unsigned>(snapshot, 8) > 8 ||
-            resident >= Field<unsigned>(snapshot, 8) || Field<unsigned>(sequence, layout::State) != PreviewState) {
-            binding.armed = binding.favoriteArmed = false; return false;
-        }
-        auto row = rows + resident * 0x48;
-        const unsigned buttons = Field<unsigned>(row);
-        const unsigned consumed = Field<unsigned>(row, 0x3c);
-        const bool fresh = binding.armed, freshFavorite = binding.favoriteArmed;
-        binding.armed = !(buttons & YMask);
-        binding.favoriteArmed = !(buttons & XMask);
-        // Y used to be Favorite here. Consume every Y sample, including held
-        // or ineligible presses, so it can never favorite instead of opening
-        // quantity. Other pages keep the native controls.
-        Field<unsigned>(row, 0x3c) |= buttons & YMask;
-        if ((buttons & 0x30) || Field<int>(sequence, layout::Result) != -1) return false;
-        if (freshFavorite && (buttons & XMask) && !(buttons & YMask) && !(consumed & XMask) &&
-            Field<int>(sequence, layout::Action) == -1) {
-            // The native Favorite delegate (03493018) queues action 3 in
-            // +1C1CC. Play update runs the existing favorite toggle normally.
-            Field<int>(sequence, layout::Action) = 3;
-            Field<unsigned>(row, 0x3c) |= XMask;
-        }
-        if (!fresh || !(buttons & YMask) || (consumed & YMask) ||
-            !SupportsQuantity(sequence)) return false;
-        const unsigned slot = Field<unsigned char>(sequence, layout::PendingSlot);
-        if (slot > 1 || Field<int>(sequence, layout::Pending + slot * 4) != -1) return false;
-        auto child = Field<void *>(sequence, layout::QuantityChild);
-        if (!(Virtual<unsigned (*)(void *)>(child, 0xf0)(child) & 1)) return false;
-        // Native cMultiCreation (03496160) supplies recipe/material limits,
-        // attaches the preallocated selector and opens it. Its update handles
-        // crafting and B -> cPlay. cTransitToMultiCreation only waits for the
-        // confirmation dialog to close; there is no dialog to wait for here.
-        Field<int>(sequence, layout::MaterialStatus) = 0;
-        Field<int>(sequence, layout::Action) = -1;
-        Field<unsigned char>(sequence, layout::FooterFlags) |= 4;
-        Field<int>(sequence, layout::Pending + slot * 4) = QuantityState;
-        Field<unsigned>(row, 0x3c) |= YMask;
-        Logging.Debug("[QoL Enhancements/Crafting] quantity shortcut: open; recipe=%d resident=%u\n",
-                    Field<int>(sequence, layout::Recipe), resident);
-        return true;
+        struct Shortcut : game::QuantityShortcut {
+            void *sequence, *row; unsigned resident, consumed; bool ready;
+            Shortcut(void *s, void *r, unsigned id, unsigned c, bool valid) : sequence(s), row(r), resident(id), consumed(c), ready(valid) {}
+            bool InputReady() override { return ready; }
+            bool QuantityHeld() override { return Field<unsigned>(row) & YMask; }
+            bool FavoriteHeld() override { return Field<unsigned>(row) & XMask; }
+            bool QuantityConsumed() override { return consumed & YMask; }
+            bool FavoriteConsumed() override { return consumed & XMask; }
+            bool ConfirmOrBackHeld() override { return Field<unsigned>(row) & 0x30; }
+            bool HasResult() override { return Field<int>(sequence, layout::Result) != -1; }
+            bool FavoriteAvailable() override { return Field<int>(sequence, layout::Action) == -1; }
+            void RequestFavorite() override { Field<int>(sequence, layout::Action) = 3; }
+            void ConsumeQuantity() override { Field<unsigned>(row, 0x3c) |= Field<unsigned>(row) & YMask; }
+            void ConsumeFavorite() override { Field<unsigned>(row, 0x3c) |= XMask; }
+            bool SupportsQuantity() override { return qol::crafting::SupportsQuantity(sequence); }
+            bool TransitionAvailable() override {
+                const unsigned slot = Field<unsigned char>(sequence, layout::PendingSlot);
+                return slot <= 1 && Field<int>(sequence, layout::Pending + slot * 4) == -1;
+            }
+            bool QuantityChildReady() override {
+                const auto child = Field<void *>(sequence, layout::QuantityChild);
+                return Virtual<unsigned (*)(void *)>(child, 0xf0)(child) & 1;
+            }
+            void RequestQuantitySelector() override {
+                const unsigned slot = Field<unsigned char>(sequence, layout::PendingSlot);
+                // Native cMultiCreation supplies limits, attaches the existing
+                // child and handles crafting/B return. No confirmation dialog
+                // is pending here, so its dialog-wait state is unnecessary.
+                Field<int>(sequence, layout::MaterialStatus) = 0;
+                Field<int>(sequence, layout::Action) = -1;
+                Field<unsigned char>(sequence, layout::FooterFlags) |= 4;
+                Field<int>(sequence, layout::Pending + slot * 4) = QuantityState;
+            }
+            void ReportQuantityOpened() override {
+                Logging.Debug("[QoL Enhancements/Crafting] quantity shortcut: open; recipe=%d resident=%u\n",
+                              Field<int>(sequence, layout::Recipe), resident);
+            }
+        };
+        const bool ready = !unavailable && rows && resident < 8 && Field<unsigned>(snapshot, 8) <= 8 &&
+            resident < Field<unsigned>(snapshot, 8) && Field<unsigned>(sequence, layout::State) == PreviewState;
+        auto row = ready ? rows + resident * 0x48 : nullptr;
+        Shortcut shortcut{sequence, row, resident, row ? Field<unsigned>(row, 0x3c) : 0, ready};
+        return features::HandleQuantityShortcut(binding.hold, shortcut);
     }
     return false;
 }

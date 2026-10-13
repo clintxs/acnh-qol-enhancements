@@ -1,4 +1,6 @@
 #include "lib.hpp"
+// Actual feature decisions start in features/crafting_features.cpp and
+// features/preview_features.cpp; this unit only owns settings and activation.
 #include "settings.hpp"
 #include "recipe_preview.hpp"
 

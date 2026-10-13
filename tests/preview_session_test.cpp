@@ -1,21 +1,22 @@
-#include "program/crafting/services/preview_session.hpp"
+#include "program/crafting/features/recipe_preview.hpp"
 #include <cassert>
 #include <iostream>
 using namespace qol::crafting::preview;
-struct Runtime {
+struct Runtime : qol::crafting::game::PreviewRuntime {
     bool available = true;
     ModelProgress model = ModelProgress::Waiting;
     NavigationProgress navigation = NavigationProgress::Retry;
-    unsigned begins{}, creates{}, closes{}, declined{}, moves{}, banners{}, rotations{}, reports{}, refreshes{};
-    void RefreshHints() { ++refreshes; }
-    bool Begin() { ++begins; return available; }
-    void OpenDeclined() { ++declined; }
-    void Close() { ++closes; }
-    ModelProgress CreateModel() { ++creates; return model; }
-    NavigationProgress Navigate(int direction) { assert(direction == -1 || direction == 1); ++moves; return navigation; }
-    void PlaceBanner() { ++banners; }
-    void Rotate() { ++rotations; }
-    void ReportShowing() { ++reports; }
+    unsigned shows{}, begins{}, creates{}, closes{}, declined{}, moves{}, banners{}, rotations{}, reports{}, refreshes{};
+    void RefreshHints() override { ++refreshes; }
+    bool AcquireRenderer() override { ++begins; return available; }
+    void OpenDeclined() override { ++declined; }
+    void ReleaseRenderer() override { ++closes; }
+    ModelProgress CreateItemModel() override { ++creates; return model; }
+    void ShowPreview() override { ++shows; }
+    NavigationProgress Navigate(int direction) override { assert(direction == -1 || direction == 1); ++moves; return navigation; }
+    void PlaceBanner() override { ++banners; }
+    void Rotate() override { ++rotations; }
+    void ReportShowing() override { ++reports; }
 };
 int main() {
     Session s; Runtime runtime;
@@ -35,7 +36,7 @@ int main() {
     assert(s.State() == Phase::DrainBack && runtime.closes == 2);
     s.ReleaseBack(); runtime.model = ModelProgress::Created;
     s.Open(); s.Frame(runtime); s.Frame(runtime);
-    assert(s.State() == Phase::Showing);
+    assert(s.State() == Phase::Showing && runtime.shows == 1);
     s.Navigate(1); s.Rotate(1,-1); s.Frame(runtime);
     assert(runtime.moves == 1 && runtime.banners == 1 && runtime.rotations == 1);
     // One pending navigation survives loading/retry; it cannot grow a backlog.

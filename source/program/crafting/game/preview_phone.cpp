@@ -33,8 +33,8 @@ void BuildPhoneRecipeHints::Callback(void *phone, unsigned kind){
         // Native kind 1 is category focus. Only advertise A on the recipe
         // list; the preview keeps the normal Sort/Favorite/Close hints.
         const auto count = At<unsigned>(phone, field::Recipes);
-        if (!(kind & 1) && count && count <= 4096 && At<unsigned>(phone, field::Selection) < count &&
-            (!session || session->lifecycle.State() == Phase::Idle || session->lifecycle.State() == Phase::DrainBack))
+        if (features::ShowRecipePreviewHint(kind & 1, count, At<unsigned>(phone, field::Selection),
+            session ? session->lifecycle.State() : Phase::Idle))
             recipe_hint::Append(Main, recipe_hint::Footer(Main, UiContext()),
                                 At<unsigned char>(phone, field::Resident));
     }
@@ -144,22 +144,31 @@ void Close(NativeSession &s) {
     Logging.Debug("[QoL Enhancements/Crafting] DIY preview: grid restored; renderer released\n");
 }
 bool QueuePreview(NativeSession &s) {
-    const auto count = At<unsigned>(s.phone, field::Recipes);
-    const auto selected = At<unsigned>(s.phone, field::Selection);
-    const auto recipes = At<void **>(s.phone, field::Recipes + 8);
-    const bool recipeRow = RecipeRow(s, s.focusedRow);
-    if (!PhoneReady(s.phone) || !recipeRow || selected >= count || count > 4096 || !recipes || !recipes[selected] ||
-        At<std::uint16_t>(recipes[selected], 8) >= 0xfffe || !s.surface || !s.gridPane) {
-        if (s.rejectedPresses++ < 8)
-            Logging.Debug("[QoL Enhancements/Crafting] DIY preview: A declined; recipe_row=%u selected=%u count=%u surface=%p grid=%p input_row=%d\n",
-                        unsigned(recipeRow), selected, count, s.surface, s.gridPane, s.inputRow);
-        return false;
-    }
-    s.item = At<std::uint64_t>(recipes[selected], 8);
-    s.lifecycle.Open();
-    s.refreshFooter = true;
-    Logging.Debug("[QoL Enhancements/Crafting] DIY preview: A queued from input; recipe_index=%u item=%u\n", selected, unsigned(s.item & 0xffff));
-    return true;
+    struct Recipes : game::RecipeOpening {
+        NativeSession &s;
+        explicit Recipes(NativeSession &session) : s(session) {}
+        unsigned Count() override { return At<unsigned>(s.phone, field::Recipes); }
+        unsigned Selected() override { return At<unsigned>(s.phone, field::Selection); }
+        bool FocusedRecipeRow() override { return RecipeRow(s, s.focusedRow); }
+        bool PhoneReady() override { return preview_internal::PhoneReady(s.phone); }
+        void **Rows() const { return At<void **>(s.phone, field::Recipes + 8); }
+        bool HasRecipeList() override { return Rows(); }
+        bool HasRecipe(unsigned selected) override { return Rows()[selected]; }
+        bool HasValidItem(unsigned selected) override { return At<std::uint16_t>(Rows()[selected], 8) < 0xfffe; }
+        bool HasSurface() override { return s.surface; }
+        bool HasGrid() override { return s.gridPane; }
+        std::uint64_t CopyItem(unsigned selected) override { return At<std::uint64_t>(Rows()[selected], 8); }
+        void ReportDeclined(bool row, unsigned selected, unsigned count) override {
+            if (s.rejectedPresses++ < 8)
+                Logging.Debug("[QoL Enhancements/Crafting] DIY preview: A declined; recipe_row=%u selected=%u count=%u surface=%p grid=%p input_row=%d\n",
+                              unsigned(row), selected, count, s.surface, s.gridPane, s.inputRow);
+        }
+        void ReportQueued(unsigned selected) override {
+            s.refreshFooter = true;
+            Logging.Debug("[QoL Enhancements/Crafting] DIY preview: A queued from input; recipe_index=%u item=%u\n", selected, unsigned(s.item & 0xffff));
+        }
+    } recipes{s};
+    return features::QueueRecipePreview(s.lifecycle, recipes, s.item);
 }
 unsigned ObserveFocus(void *layout) {
     const auto columns = At<unsigned>(layout, 0x430), rows = At<unsigned>(layout, 0x434);
@@ -208,13 +217,6 @@ void BindPhoneRecipes::Callback(void *phone){
                     s.surface, s.gridPane, s.inputRow, focusBindings);
     }
 
-float StickAxis(float value) {
-    // Reject NaN/infinity and apply a dead zone to avoid controller drift.
-    if (!(value >= -1.0f && value <= 1.0f)) return 0;
-    if (value > StickDeadZone) return (value - StickDeadZone) / (1.0f - StickDeadZone);
-    if (value < -StickDeadZone) return (value + StickDeadZone) / (1.0f - StickDeadZone);
-    return 0;
-}
 bool WorkbenchTiltInput(void *page, void *snapshot, unsigned blocked) {
     auto context = UiContext();
     auto controller = context ? At<void *>(context, field::Controller) : nullptr;
@@ -233,7 +235,7 @@ bool WorkbenchTiltInput(void *page, void *snapshot, unsigned blocked) {
         for (unsigned i = 0; i < probeCount; ++i) seen |= probes[i].pageClass == pageClass && probes[i].mode == mode;
         if (!seen && rows && count <= 8) for (unsigned i = 0; i < count; ++i) {
             auto row = rows + i * 0x48;
-            if (!StickAxis(At<float>(row, field::RightStick + 4))) continue;
+            if (!features::PreviewStickAxis(At<float>(row, field::RightStick + 4))) continue;
             probes[probeCount++] = {pageClass, mode};
             Logging.Debug("[QoL Enhancements/Crafting] workbench tilt: input probe; page=main+%lx mode=%u state=%d handle=%u flags=%u row=%u y=%d consumed=%u blocked=%u\n",
                         pageClass - Main, mode, At<int>(controller, field::ModelState),
@@ -282,8 +284,8 @@ bool WorkbenchTiltInput(void *page, void *snapshot, unsigned blocked) {
     if (!rows || count > 8 || rowIndex >= count) return false;
     auto row = rows + rowIndex * 0x48;
     if (At<unsigned>(row, field::ConsumedAxes) & RightStickMask) return false;
-    const float y = StickAxis(At<float>(row, field::RightStick + 4));
-    state.tilt = std::clamp(state.tilt - y * DegreesPerUpdate, -MaximumTilt, MaximumTilt);
+    const float y = features::PreviewStickAxis(At<float>(row, field::RightStick + 4));
+    state.tilt = features::TiltWorkbench(state.tilt, y);
     {
         PublicationClock::Write publish{WorkbenchPublication};
         WorkbenchTiltAngle.store(static_cast<unsigned>(static_cast<std::int32_t>(state.tilt * AngleUnitsPerDegree)));
@@ -299,28 +301,34 @@ core::InputOutcome WorkbenchPageInput(const core::PageInputContext &input) {
     return WorkbenchTiltInput(input.page, input.snapshot, input.blocked) ? core::InputOutcome::Consume : core::InputOutcome::PassThrough;
 }
 void RotatePreview(NativeSession &s) {
-    const auto [x, y] = s.lifecycle.TakeRotationInput();
-    if (s.fixedPose || (x == 0 && y == 0)) return;
-    auto context = UiContext();
-    if (!s.ownsRenderer || !context || At<void *>(context, field::Controller) != s.controller ||
-        At<unsigned>(s.controller, field::ModelMode) != DiyModelMode ||
-        At<int>(s.controller, field::ModelState) != 1 || !At<unsigned>(s.controller, field::ModelHandle) ||
-        (At<unsigned char>(s.controller, field::ModelFlags) & MaterialPending)) return;
-    std::array<std::uint32_t, 3> angles{};
-    std::memcpy(angles.data(), static_cast<std::byte *>(s.controller) + field::ModelAngles, sizeof(angles));
-    const float tilt = s.lifecycle.TiltBy(-y * DegreesPerUpdate);
-    angles[0] = s.initialAngles[0] + static_cast<std::uint32_t>(static_cast<std::int32_t>(tilt * AngleUnitsPerDegree));
-    angles[1] += static_cast<std::uint32_t>(static_cast<std::int32_t>(x * DegreesPerUpdate * AngleUnitsPerDegree));
-    // Queue for the native late entity phase. The setter hook also protects
-    // this pose from parameter animation writes in 032B9510. 032BE2B0 sets
-    // the material-publication gate (+398); it is not a transform dirty flag.
-    std::memcpy(static_cast<std::byte *>(s.controller) + field::ModelAngles, angles.data(), sizeof(angles));
-    At<unsigned char>(s.controller, field::ModelFlags) |= TransformPending;
-    PublishPose(s.controller);
-    if (s.rotationReports++ < 4)
-        Logging.Debug("[QoL Enhancements/Crafting] DIY preview: rotation queued; yaw=%08x pitch=%08x ready=%u flags=%u\n",
-                    angles[1], angles[0], At<unsigned char>(s.controller, field::ModelReady),
-                    At<unsigned char>(s.controller, field::ModelFlags));
+    struct Renderer : game::PreviewRotation {
+        NativeSession &s;
+        explicit Renderer(NativeSession &session) : s(session) {}
+        bool FixedPose() override { return s.fixedPose; }
+        bool RendererReady() override {
+            auto context = UiContext();
+            return s.ownsRenderer && context && At<void *>(context, field::Controller) == s.controller &&
+                At<unsigned>(s.controller, field::ModelMode) == DiyModelMode &&
+                At<int>(s.controller, field::ModelState) == 1 && At<unsigned>(s.controller, field::ModelHandle) &&
+                !(At<unsigned char>(s.controller, field::ModelFlags) & MaterialPending);
+        }
+        void QueueRotation(float yawDelta, float tilt) override {
+            std::array<std::uint32_t, 3> angles{};
+            std::memcpy(angles.data(), static_cast<std::byte *>(s.controller) + field::ModelAngles, sizeof(angles));
+            angles[0] = s.initialAngles[0] + static_cast<std::uint32_t>(static_cast<std::int32_t>(tilt * AngleUnitsPerDegree));
+            angles[1] += static_cast<std::uint32_t>(static_cast<std::int32_t>(yawDelta * AngleUnitsPerDegree));
+            // Native late entity phase owns application. +398 gates material
+            // publication, not transform dirtiness; keep the setter protection.
+            std::memcpy(static_cast<std::byte *>(s.controller) + field::ModelAngles, angles.data(), sizeof(angles));
+            At<unsigned char>(s.controller, field::ModelFlags) |= TransformPending;
+            PublishPose(s.controller);
+            if (s.rotationReports++ < 4)
+                Logging.Debug("[QoL Enhancements/Crafting] DIY preview: rotation queued; yaw=%08x pitch=%08x ready=%u flags=%u\n",
+                              angles[1], angles[0], At<unsigned char>(s.controller, field::ModelReady),
+                              At<unsigned char>(s.controller, field::ModelFlags));
+        }
+    } renderer{s};
+    features::RotateRecipePreview(s.lifecycle, renderer);
 }
 bool SelectRecipe(NativeSession &s, unsigned selected, unsigned count) {
     auto grid = At<void *>(s.layout, field::Grid);
@@ -354,113 +362,99 @@ bool SelectRecipe(NativeSession &s, unsigned selected, unsigned count) {
     return At<unsigned>(s.phone, field::Selection) == selected;
 }
 preview::NavigationProgress NavigatePreview(NativeSession &s, int direction) {
-    if (!direction) return preview::NavigationProgress::End;
-    auto context = UiContext();
-    if (!PhoneReady(s.phone) || !context || At<void *>(context, field::Controller) != s.controller ||
-        At<void *>(context, field::Parameters) != s.parameters || !s.ownsRenderer ||
-        At<unsigned>(s.controller, field::ModelMode) != DiyModelMode ||
-        At<int>(s.controller, field::ModelState) != 1 || !At<unsigned>(s.controller, field::ModelHandle) ||
-        (At<unsigned char>(s.controller, field::ModelFlags) & MaterialPending)) return preview::NavigationProgress::Retry;
-    const auto count = At<unsigned>(s.phone, field::Recipes);
-    const auto current = At<unsigned>(s.phone, field::Selection);
-    auto recipes = At<void **>(s.phone, field::Recipes + 8);
-    if (!count || count > 4096 || current >= count || !recipes ||
-        (direction < 0 ? current == 0 : current + 1 == count)) { return preview::NavigationProgress::End; }
-    const unsigned selected = direction < 0 ? current - 1 : current + 1;
-    if (!recipes[selected] || At<std::uint16_t>(recipes[selected], 8) >= 0xfffe) { return preview::NavigationProgress::End; }
-    const auto item = At<std::uint64_t>(recipes[selected], 8);
-    recipe_banner::Restore(s.hotelBanner); // Native details update owns its original hierarchy.
-    if (!SelectRecipe(s, selected, count)) return preview::NavigationProgress::Retry;
-    s.item = item;
-    s.fixedPose = UsesFixedPreviewPose(static_cast<std::uint16_t>(item));
-    // Keep the displayed scene pose and carrier identities until native item
-    // replacement completes. Dropping scene ownership here renders the old
-    // mesh with the reset controller pose for one capture (a visible snap).
-    s.lifecycle.ResetItemRotation();
-    std::memcpy(static_cast<std::byte *>(s.controller) + field::ModelAngles,
-                s.initialAngles.data(), sizeof(s.initialAngles));
-    ResetPoseOrigin(s.controller, item, s.fixedPose);
-    At<std::uint64_t>(s.parameters, 0x2c) = item;
-    At<unsigned>(s.parameters, 0x2140) = 1;
-    // Workbench 0348DE80 changes the existing actor with this item/recipe
-    // request. CreateItemModel silently refuses an existing model handle.
-    struct { std::uint64_t item; std::uint16_t recipe{0xfffe}, padding{}; } request{item};
-    profile::ChangeItemModel.Resolve(Main)(s.controller, &request);
-    Visible(s.gridPane, false); Visible(s.scrollPane, false); Visible(s.cursorPane, false);
-    Logging.Debug("[QoL Enhancements/Crafting] DIY preview: navigated; recipe_index=%u count=%u item=%u fixed=%u\n",
-                selected, count, unsigned(item & 0xffff), unsigned(s.fixedPose));
-    return preview::NavigationProgress::Moved;
+    struct Recipes : game::RecipeNavigation {
+        NativeSession &s;
+        explicit Recipes(NativeSession &session) : s(session) {}
+        bool RendererReady() override {
+            auto context = UiContext();
+            return PhoneReady(s.phone) && context && At<void *>(context, field::Controller) == s.controller &&
+                At<void *>(context, field::Parameters) == s.parameters && s.ownsRenderer &&
+                At<unsigned>(s.controller, field::ModelMode) == DiyModelMode &&
+                At<int>(s.controller, field::ModelState) == 1 && At<unsigned>(s.controller, field::ModelHandle) &&
+                !(At<unsigned char>(s.controller, field::ModelFlags) & MaterialPending);
+        }
+        unsigned Count() override { return At<unsigned>(s.phone, field::Recipes); }
+        unsigned Selected() override { return At<unsigned>(s.phone, field::Selection); }
+        void **Rows() const { return At<void **>(s.phone, field::Recipes + 8); }
+        bool HasRecipeList() override { return Rows(); }
+        bool HasValidItem(unsigned selected) override { return Rows()[selected] && At<std::uint16_t>(Rows()[selected], 8) < 0xfffe; }
+        std::uint64_t CopyItem(unsigned selected) override { return At<std::uint64_t>(Rows()[selected], 8); }
+        void RestoreBanner() override { recipe_banner::Restore(s.hotelBanner); }
+        bool SelectRecipe(unsigned selected, unsigned count) override { return preview_internal::SelectRecipe(s, selected, count); }
+        void SetItem(std::uint64_t item) override {
+            s.item = item;
+            s.fixedPose = UsesFixedPreviewPose(static_cast<std::uint16_t>(item));
+        }
+        void ReplaceModel(unsigned selected, unsigned count) override {
+            // Preserve displayed scene/carrier ownership until native replacement
+            // completes, avoiding a capture of the old mesh with reset angles.
+            std::memcpy(static_cast<std::byte *>(s.controller) + field::ModelAngles,
+                        s.initialAngles.data(), sizeof(s.initialAngles));
+            ResetPoseOrigin(s.controller, s.item, s.fixedPose);
+            At<std::uint64_t>(s.parameters, 0x2c) = s.item;
+            At<unsigned>(s.parameters, 0x2140) = 1;
+            struct { std::uint64_t item; std::uint16_t recipe{0xfffe}, padding{}; } request{s.item};
+            // Native existing-model replacement, not CreateItemModel (which
+            // silently refuses an already allocated model handle).
+            profile::ChangeItemModel.Resolve(Main)(s.controller, &request);
+            Visible(s.gridPane, false); Visible(s.scrollPane, false); Visible(s.cursorPane, false);
+            Logging.Debug("[QoL Enhancements/Crafting] DIY preview: navigated; recipe_index=%u count=%u item=%u fixed=%u\n",
+                          selected, count, unsigned(s.item & 0xffff), unsigned(s.fixedPose));
+        }
+    } recipes{s};
+    return features::NavigateRecipePreview(s.lifecycle, recipes, direction);
 }
 bool PreviewInput(void *layout, void *snapshot, unsigned blocked) {
     for (auto &s : Sessions) if (s.layout == layout) {
-        if (s.lifecycle.State() != Phase::Showing) s.lifecycle.ClearFrameInput();
-        if (s.lifecycle.State() == Phase::Idle) s.inputRow = ShortcutInputRow(s.layout);
-        if (!snapshot || s.inputRow < 0) { s.lifecycle.CancelPendingInput(); return s.lifecycle.State() != Phase::Idle; }
-        const auto count = At<unsigned>(snapshot, 8);
-        auto rows = At<std::byte *>(snapshot, 0x10);
-        if (!rows || count > 8 || unsigned(s.inputRow) >= count) {
-            s.lifecycle.CancelPendingInput(); return s.lifecycle.State() != Phase::Idle;
-        }
-        auto row = rows + s.inputRow * 0x48;
-        const auto buttons = At<unsigned>(row);
-        const bool confirm = (buttons & ConfirmMask) != 0;
-        const bool confirmPress = confirm && !s.confirmHeld; s.confirmHeld = confirm;
-        if (s.lifecycle.State() == Phase::Idle) {
-            if (!confirmPress) return false;
-            if (s.inputReports++ < 8)
-                Logging.Debug("[QoL Enhancements/Crafting] DIY preview: A input; state=%d pending=%d/%d focus=%p blocked=%u consumed=%x\n",
-                            At<int>(s.phone, field::State), At<int>(s.phone, field::Requests), At<int>(s.phone, field::Requests + 4),
-                            s.focusedRow, unsigned(InputBlocked(s, blocked)), At<unsigned>(row, 0x3c));
-            if (InputBlocked(s, blocked) || (At<unsigned>(row, 0x3c) & ConfirmMask) || !QueuePreview(s)) return false;
-            At<unsigned>(row, 0x3c) |= ConfirmMask;
-            return true;
-        }
-        const bool held = (At<unsigned>(row) & BackMask) != 0;
-        const bool press = held && !s.backHeld; s.backHeld = held;
-        if (s.lifecycle.State() == Phase::DrainBack) {
-            if (!held) s.lifecycle.ReleaseBack();
-        } else if (press && !(blocked & 1) && !(At<unsigned>(row, 0x3c) & BackMask)) {
-            s.lifecycle.RequestClose();
-            At<unsigned>(row, 0x3c) |= BackMask;
-        }
-        // Native 03C4BAC4 reads float axis pairs at row +4 + kind*8.
-        // Kind 1 is the right stick; +40 bit 1 records its consumption.
-        if (s.lifecycle.State() == Phase::Showing) {
-            const bool inputBlocked = InputBlocked(s, blocked);
-            if (inputBlocked) s.lifecycle.CancelPendingInput();
-            else {
-                const auto unconsumed = buttons & ~At<unsigned>(row, 0x3c);
-                const auto axes = At<unsigned>(row, field::ConsumedAxes);
-                const bool left = (unconsumed & LeftMask) != 0, right = (unconsumed & RightMask) != 0;
-                // D-pad takes precedence; opposite directions cancel. Ignore
-                // vertical stick movement and diagonals dominated by Y.
-                if ((unconsumed & (LeftMask | RightMask)) || !(axes & LeftStickMask)) {
-                    const float x = At<float>(row, field::LeftStick), y = At<float>(row, field::LeftStick + 4);
-                    const bool horizontal = x >= -1 && x <= 1 && y >= -1 && y <= 1 &&
-                        (x > NavigationThreshold || x < -NavigationThreshold) && x*x > y*y;
-                    s.lifecycle.Navigate(left || right ? int(right) - int(left) :
-                        horizontal && !(axes & LeftStickMask) ? (x > 0 ? 1 : -1) : 0);
-                }
+        struct Input : game::PreviewInput {
+            NativeSession &s; void *snapshot, *row{}; unsigned blocked, buttons{};
+            Input(NativeSession &session, void *sample, unsigned suppression) : s(session), snapshot(sample), blocked(suppression) {}
+            void RefreshInputRow() override { s.inputRow = ShortcutInputRow(s.layout); }
+            bool ValidSnapshot() override {
+                if (!snapshot || s.inputRow < 0) return false;
+                const auto count = At<unsigned>(snapshot, 8);
+                auto rows = At<std::byte *>(snapshot, 0x10);
+                if (!rows || count > 8 || unsigned(s.inputRow) >= count) return false;
+                row = rows + s.inputRow * 0x48;
+                buttons = At<unsigned>(row);
+                return true;
+            }
+            bool ConfirmHeld() override { return buttons & ConfirmMask; }
+            bool BackHeld() override { return At<unsigned>(row) & BackMask; }
+            bool ConfirmConsumed() override { return At<unsigned>(row, 0x3c) & ConfirmMask; }
+            bool BackConsumed() override { return At<unsigned>(row, 0x3c) & BackMask; }
+            bool PageBlocked() override { return InputBlocked(s, blocked); }
+            bool DispatchBlocked() override { return blocked & 1; }
+            void ReportConfirm() override {
+                if (s.inputReports++ < 8)
+                    Logging.Debug("[QoL Enhancements/Crafting] DIY preview: A input; state=%d pending=%d/%d focus=%p blocked=%u consumed=%x\n",
+                                  At<int>(s.phone, field::State), At<int>(s.phone, field::Requests), At<int>(s.phone, field::Requests + 4),
+                                  s.focusedRow, unsigned(InputBlocked(s, blocked)), At<unsigned>(row, 0x3c));
+            }
+            bool QueueSelectedPreview() override { return QueuePreview(s); }
+            void ConsumeConfirm() override { At<unsigned>(row, 0x3c) |= ConfirmMask; }
+            void ConsumeBack() override { At<unsigned>(row, 0x3c) |= BackMask; }
+            unsigned UnconsumedButtons() const { return buttons & ~At<unsigned>(row, 0x3c); }
+            bool LeftUnconsumed() override { return UnconsumedButtons() & LeftMask; }
+            bool RightUnconsumed() override { return UnconsumedButtons() & RightMask; }
+            bool LeftStickConsumed() override { return At<unsigned>(row, field::ConsumedAxes) & LeftStickMask; }
+            bool RightStickConsumed() override { return At<unsigned>(row, field::ConsumedAxes) & RightStickMask; }
+            game::Stick LeftStick() override { return {At<float>(row, field::LeftStick), At<float>(row, field::LeftStick + 4)}; }
+            // Native axis kind 1 is the right stick. +40 bit 1 is consumption.
+            game::Stick RightStick() override { return {At<float>(row, field::RightStick), At<float>(row, field::RightStick + 4)}; }
+            void ConsumeNavigation() override {
                 At<unsigned>(row, 0x3c) |= buttons & (LeftMask | RightMask);
                 At<unsigned>(row, field::ConsumedAxes) |= LeftStickMask;
             }
-            const auto x = StickAxis(At<float>(row, field::RightStick));
-            const auto y = StickAxis(At<float>(row, field::RightStick + 4));
-            if ((x != 0 || y != 0) && s.stickReports++ < 4)
-                Logging.Debug("[QoL Enhancements/Crafting] DIY preview: right-stick snapshot; row=%d x=%08x y=%08x consumed=%x blocked=%u\n",
-                            s.inputRow, At<unsigned>(row, field::RightStick), At<unsigned>(row, field::RightStick + 4),
-                            At<unsigned>(row, field::ConsumedAxes), unsigned(inputBlocked));
-            if (inputBlocked) s.lifecycle.CancelRotationInput();
-            else if (!(At<unsigned>(row, field::ConsumedAxes) & RightStickMask)) {
-                s.lifecycle.Rotate(x, y);
-                At<unsigned>(row, field::ConsumedAxes) |= RightStickMask;
+            void ConsumeRotation() override { At<unsigned>(row, field::ConsumedAxes) |= RightStickMask; }
+            void ReportRotationSample(float x, float y, bool inputBlocked) override {
+                if ((x != 0 || y != 0) && s.stickReports++ < 4)
+                    Logging.Debug("[QoL Enhancements/Crafting] DIY preview: right-stick snapshot; row=%d x=%08x y=%08x consumed=%x blocked=%u\n",
+                                  s.inputRow, At<unsigned>(row, field::RightStick), At<unsigned>(row, field::RightStick + 4),
+                                  At<unsigned>(row, field::ConsumedAxes), unsigned(inputBlocked));
             }
-            // A second dispatch of the already-consumed snapshot must not
-            // erase input queued for this frame. RotatePreview drains it.
-        }
-        // Keep all native grid/category/sort input frozen. The input
-        // context remains enabled, so B can still be observed here.
-        return true;
+        } input{s, snapshot, blocked};
+        return features::HandleRecipePreviewInput(s.lifecycle, s.confirmHeld, s.backHeld, input);
     }
     return false;
 }
@@ -543,28 +537,30 @@ preview::ModelProgress CreatePreviewModel(NativeSession &s) {
     if (!At<unsigned>(s.controller, field::ModelHandle)) return preview::ModelProgress::Failed;
     std::memcpy(s.initialAngles.data(), static_cast<std::byte *>(s.controller) + field::ModelAngles, sizeof(s.initialAngles));
     ResetPoseOrigin(s.controller, s.item, s.fixedPose);
-    s.lifecycle.ResetItemRotation();
-    Visible(s.gridPane, false); Visible(s.scrollPane, false); Visible(s.cursorPane, false);
-    Visible(s.capture, true); Visible(s.surface, true);
-    if (recipe_banner::Place(s.hotelBanner, s.surface))
-        Logging.Debug("[QoL Enhancements/Crafting] DIY preview: Hotel banner over preview bottom-right\n");
-    Logging.Debug("[QoL Enhancements/Crafting] DIY preview: item model created; handle=%u\n", At<unsigned>(s.controller, field::ModelHandle));
     return preview::ModelProgress::Created;
 }
-struct PhoneRuntime {
+struct PhoneRuntime : game::PreviewRuntime {
     NativeSession &s;
-    void RefreshHints() { RefreshRecipeHints(s); }
-    bool Begin() { return preview_internal::Begin(s); }
-    void OpenDeclined() {
+    explicit PhoneRuntime(NativeSession &session) : s(session) {}
+    void RefreshHints() override { RefreshRecipeHints(s); }
+    bool AcquireRenderer() override { return preview_internal::Begin(s); }
+    void OpenDeclined() override {
         s.refreshFooter = true;
         Logging.Debug("[QoL Enhancements/Crafting] DIY preview: renderer busy/unavailable; grid retained\n");
     }
-    void Close() { preview_internal::Close(s); }
-    preview::ModelProgress CreateModel() { return CreatePreviewModel(s); }
-    preview::NavigationProgress Navigate(int direction) { return NavigatePreview(s, direction); }
-    void PlaceBanner() { recipe_banner::Place(s.hotelBanner, s.surface); }
-    void Rotate() { RotatePreview(s); }
-    void ReportShowing() {
+    void ReleaseRenderer() override { preview_internal::Close(s); }
+    preview::ModelProgress CreateItemModel() override { return CreatePreviewModel(s); }
+    void ShowPreview() override {
+        Visible(s.gridPane, false); Visible(s.scrollPane, false); Visible(s.cursorPane, false);
+        Visible(s.capture, true); Visible(s.surface, true);
+        if (recipe_banner::Place(s.hotelBanner, s.surface))
+            Logging.Debug("[QoL Enhancements/Crafting] DIY preview: Hotel banner over preview bottom-right\n");
+        Logging.Debug("[QoL Enhancements/Crafting] DIY preview: item model created; handle=%u\n", At<unsigned>(s.controller, field::ModelHandle));
+    }
+    preview::NavigationProgress Navigate(int direction) override { return NavigatePreview(s, direction); }
+    void PlaceBanner() override { recipe_banner::Place(s.hotelBanner, s.surface); }
+    void Rotate() override { RotatePreview(s); }
+    void ReportShowing() override {
         ReportRendererTrace();
         Logging.Debug("[QoL Enhancements/Crafting] DIY preview: renderer status; handle=%u flags=%u state=%d\n",
                       At<unsigned>(s.controller, field::ModelHandle), At<unsigned char>(s.controller, 0x74), At<int>(s.controller, 0x10));
@@ -580,8 +576,8 @@ void UpdatePhoneRecipes::Callback(void *phone) {
 }
 void DeactivatePhoneRecipes::Callback(void *phone){
         if (auto s = ForPhone(phone)) {
-            if (s->lifecycle.State() != Phase::Idle) Close(*s);
-            s->lifecycle.ReleaseBack(); s->backHeld = false; s->confirmHeld = true;
+            PhoneRuntime runtime{*s};
+            features::DeactivateRecipePreview(s->lifecycle, s->confirmHeld, s->backHeld, runtime);
         }
         Orig(phone);
     }

@@ -1,8 +1,9 @@
 #include "program/core/hook_plan.hpp"
 #include "lib.hpp"
-#include "settings.hpp"
+#include "../settings.hpp"
 #include "program/core/page_input.hpp"
 #include <array>
+#include "../features/crafting.hpp"
 #include <cstring>
 
 namespace qol::crafting {
@@ -36,19 +37,15 @@ template<class T> const T &At(const void *p, std::size_t offset = 0) {
 template<class F> F Native(std::uintptr_t offset) { return reinterpret_cast<F>(Main + offset); }
 struct InputState {
     void *page{}, *grid{};
-    bool armed{}, wrapPaused{};
-    std::uint64_t pauseStarted{};
+    features::QuantityHold hold;
 };
-constexpr float StickPressThreshold = 0.5f, StickReleaseThreshold = 0.15f;
-// Horizon's system timer runs at 19.2 MHz (nn::os::detail::TickManagerImpl).
-constexpr std::uint64_t WrapPauseTicks = 19'200'000 * 3 / 10; // 300 ms, independent of UI frame rate.
 std::array<InputState, 4> Inputs{};
 unsigned NextSlot{};
 unsigned WrapReports{};
 InputState &ForPage(void *page, void *grid) {
     for (auto &state : Inputs) if (state.page == page && state.grid == grid) return state;
     auto &state = Inputs[NextSlot++ % Inputs.size()];
-    state = {page, grid, false}; // Opening with a held direction cannot wrap.
+    state = {page, grid, {}}; // Opening with a held direction cannot wrap.
     return state;
 }
 constexpr unsigned LoopRows = 2;
@@ -92,8 +89,7 @@ HOOK_DEFINE_TRAMPOLINE(ResetQuantityGrid) {
         // Native cAppear (0346AEC8 / 02DE8A98) resets the list on each open.
         // Disarm a reused page/grid as well as freshly allocated instances.
         for (auto &state : Inputs) if (state.grid == grid) {
-            state.armed = state.wrapPaused = false;
-            state.pauseStarted = 0;
+            features::ResetQuantityHold(state.hold);
         }
         const auto caller = reinterpret_cast<std::uintptr_t>(__builtin_return_address(0));
         // These two cAppear call sites belong only to the native quantity
@@ -155,17 +151,12 @@ bool QuantityInput(void *page, void *snapshot, unsigned blocked) {
         resident >= At<unsigned>(snapshot, 8) || !At<void *>(snapshot, 0x10) ||
         At<unsigned>(grid, field::GridState) != 2 || At<int>(grid, field::Columns) != 1 ||
         count < 2 || count > 10) {
-        state.armed = state.wrapPaused = false;
+        features::CancelQuantityHold(state.hold);
         return false;
     }
     auto row = At<std::byte *>(snapshot, 0x10) + resident * 0x48;
     const auto buttons = At<unsigned>(row), consumed = At<unsigned>(row, 0x3c);
     const float x = At<float>(row, 4), y = At<float>(row, 8);
-    const bool validStick = x >= -1 && x <= 1 && y >= -1 && y <= 1;
-    const bool stickUp = validStick && y > StickPressThreshold;
-    const bool stickDown = validStick && y < -StickPressThreshold;
-    const bool up = (buttons & 1) || (stickUp && y*y > x*x);
-    const bool down = (buttons & 2) || (stickDown && y*y > x*x);
     auto input = At<void *>(page, field::PageInput);
     bool unavailable = (blocked & 1) || !input || At<unsigned char>(input, 0x54);
     if (!unavailable && At<unsigned>(input, 0x58)) {
@@ -173,55 +164,23 @@ bool QuantityInput(void *page, void *snapshot, unsigned blocked) {
         auto masks = app ? At<void *>(app, 0x418) : nullptr;
         unavailable = !masks || (At<unsigned>(input, 0x58) & At<unsigned>(masks, 0x10));
     }
-    const bool fresh = state.armed;
-    // Releasing means returning the stick to center, not merely easing below
-    // the press threshold. Pressure changes/diagonals must not rearm a hold.
-    const bool released = !unavailable && validStick && !(buttons & 3) &&
-                          x*x + y*y <= StickReleaseThreshold*StickReleaseThreshold;
-    if (released) {
-        state.armed = true;
-        state.wrapPaused = false;
-    } else if (unavailable || !validStick || up || down ||
-               x > StickPressThreshold || x < -StickPressThreshold || (buttons & 0x30)) {
-        state.armed = false;
-    }
-    // Preserve an armed latch while traveling from center to the press
-    // threshold. Once pressed, only the smaller release zone can rearm it.
-    if (state.wrapPaused) {
-        if (svcGetSystemTick() - state.pauseStarted < WrapPauseTicks)
-            PauseVerticalInput(row);
-        else
-            state.wrapPaused = false;
-        // After 300 ms, hand the still-held direction back to native repeat.
-        // Keep the wrap latch disarmed so the next boundary still stops.
-        return false;
-    }
-    const auto selected = At<unsigned>(grid, field::SelectedRow);
-    if (up && down) {
-        PauseVerticalInput(row);
-        return false;
-    }
-    if (selected >= count || up == down || (up ? selected != 0 : selected != count-1)) return false;
-    // Native cyclic binding supplies the transition, while our gesture latch
-    // gates endpoint motion. A held input arriving from inside the range must
-    // stay clamped, even after a wrap's pause expires or input is unavailable.
-    if (!fresh || unavailable || !validStick || (buttons & 0x30) ||
-        (consumed & (buttons & 3)) || ((stickUp || stickDown) && (At<unsigned>(row, 0x40) & 1)) ||
-        At<unsigned>(grid, field::VisibleRows) != 1 ||
-        At<unsigned>(grid, field::LastTopRow) != count-1 ||
-        !(At<unsigned char>(grid, field::GridFlags) & LoopRows)) {
-        PauseVerticalInput(row);
-        return false;
-    }
-    const unsigned target = up ? count-1 : 0;
-    AnimateWrap(state, up);
-    state.armed = false;
-    state.wrapPaused = true;
-    state.pauseStarted = svcGetSystemTick();
-    PauseVerticalInput(row);
-    if (WrapReports++ < 4)
+    struct List : game::QuantityList {
+        InputState &state; void *row;
+        List(InputState &s, void *r) : state(s), row(r) {}
+        std::uint64_t Tick() override { return svcGetSystemTick(); }
+        void StepAcrossBoundary(bool up) override { AnimateWrap(state, up); }
+        void NeutralizeVerticalInput() override { PauseVerticalInput(row); }
+    } list{state, row};
+    const features::QuantityInput gesture{x, y, bool(buttons & 1), bool(buttons & 2), bool(buttons & 0x30), unavailable,
+        bool(consumed & (buttons & 3)), bool(At<unsigned>(row, 0x40) & 1),
+        At<unsigned>(grid, field::VisibleRows) == 1 && At<unsigned>(grid, field::LastTopRow) == count-1 &&
+            (At<unsigned char>(grid, field::GridFlags) & LoopRows), At<unsigned>(grid, field::SelectedRow), count};
+    const auto motion = features::HandleQuantityEndpoints(state.hold, gesture, list);
+    if (motion != features::QuantityMotion::Native && WrapReports++ < 4) {
+        const auto target = motion == features::QuantityMotion::WrappedUp ? count-1 : 0;
         Logging.Debug("[QoL Enhancements/Crafting] quantity wrap: selected=%u maximum=%u resident=%u\n",
-                    count-target, count, resident);
+                      count-target, count, resident);
+    }
     return false; // A/B, horizontal input and ordinary repeat remain native.
 }
 core::InputOutcome QuantityPageInput(const core::PageInputContext &input) {

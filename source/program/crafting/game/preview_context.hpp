@@ -5,7 +5,7 @@
 #include "program/crafting/recipe_preview_layout.hpp"
 #include "program/crafting/recipe_preview_banner.hpp"
 #include "program/crafting/recipe_preview_hint.hpp"
-#include "program/crafting/services/preview_session.hpp"
+#include "program/crafting/features/recipe_preview.hpp"
 #include "program/core/page_input.hpp"
 #include <algorithm>
 #include <array>
@@ -29,10 +29,7 @@ constexpr unsigned ConfirmMask = 0x10, BackMask = 0x20, PhoneShortcutKind = 5;
 // Native 03C49700/03C49710 route kinds 2/3 to X, kinds 0/1 to Y.
 // These are logical UI button bits, including synthesized stick directions.
 constexpr unsigned LeftMask = 4, RightMask = 8, LeftStickMask = 1, RightStickMask = 2;
-constexpr unsigned NavigationDelay = 12, NavigationRepeat = 4; // UI updates, normally 30 Hz.
-constexpr float NavigationThreshold = 0.5f;
 constexpr unsigned TransformPending = 1, MaterialPending = 6;
-constexpr float StickDeadZone = 0.15f, DegreesPerUpdate = 6.0f, MaximumTilt = 60.0f;
 // Native 032B74F0 converts radians to Angle32 (one turn = 2^32).
 constexpr float AngleUnitsPerDegree = 4294967296.0f / 360.0f;
 constexpr int PhoneModelMode = 26, PhoneModelState = 3;

@@ -10,7 +10,7 @@ GROUPS = {
     'core': ['page_input_arm_test.py', 'feature_activation_arm_test.py', 'native_bindings_arm_test.py', 'logging_arm_test.py', 'core_arm_test.py', 'recipe_preview_arm_test.py'],
     'shopping': ['shopping_layout_test.py', 'shopping_resource_arm_test.py', 'shopping_texture_arm_test.py', 'shopping_display_arm_test.py', 'shopping_cash_arm_test.py', 'shopping_storage_arm_test.py'],
     'dialogue': ['dialogue_policy_arm_test.py', 'dialogue_baseline_arm_test.py', 'dialogue_arm_test.py', 'dialogue_names_arm_test.py'],
-    'crafting': ['crafting_arm_test.py', 'quantity_shortcut_arm_test.py'],
+    'crafting': ['crafting_baseline_arm_test.py', 'crafting_arm_test.py', 'quantity_shortcut_arm_test.py'],
     'controls': ['controls_baseline_arm_test.py', 'auto_swim_arm_test.py', 'swimming_camera_arm_test.py', 'auto_vault_arm_test.py', 'auto_ladder_arm_test.py', 'auto_placed_ladder_arm_test.py', 'auto_traversal_swap_arm_test.py', 'hold_y_arm_test.py', 'controls_dialogue_arm_test.py', 'dialogue_hurry_arm_test.py', 'dialogue_catch_hurry_arm_test.py'],
     'pockets': ['pockets_policy_registration_arm_test.py', 'pocket_registration_arm_test.py', 'pocket_lifecycle_arm_test.py', 'pocket_commands_arm_test.py', 'storage_hint_arm_test.py', 'recycling_claim_arm_test.py', 'hold_select_arm_test.py'],  # Includes inherited arm_stack_test regressions.
     'fitting': ['caption_contract_arm_test.py', 'purchase_arm_test.py', 'feedback_arm_test.py', 'fitting_hint_arm_test.py'],
@@ -26,10 +26,12 @@ def main():
     env = dict(os.environ)
     env['PYTHONPATH'] = str(ROOT.parent / 'Grab 5/working/python')
     with tempfile.TemporaryDirectory(prefix='qol-check-') as temporary:
-        for name in ('preview_publication_test', 'preview_session_test', 'shared_ui_test', 'pocket_commands_test', 'pockets_policy_test', 'settings_schema_test', 'hook_registry_test', 'native_bindings_test', 'catalog_settings_test', 'config_test', 'core_settings_test', 'controls_settings_test', 'controls_policy_test', 'pockets_settings_test', 'dialogue_settings_test', 'dialogue_policy_test', 'crafting_settings_test', 'stack_menu_test', 'storage_policy_test', 'catalog_test', 'bag_policy_test', 'shopping_payment_test'):
+        for name in ('preview_publication_test', 'preview_session_test', 'shared_ui_test', 'pocket_commands_test', 'pockets_policy_test', 'settings_schema_test', 'hook_registry_test', 'native_bindings_test', 'catalog_settings_test', 'config_test', 'core_settings_test', 'controls_settings_test', 'controls_policy_test', 'pockets_settings_test', 'dialogue_settings_test', 'dialogue_policy_test', 'crafting_settings_test', 'crafting_policy_test', 'stack_menu_test', 'storage_policy_test', 'catalog_test', 'bag_policy_test', 'shopping_payment_test'):
             exe = Path(temporary) / name
             subprocess.run(['c++', '-std=c++20', '-Wall', '-Wextra', '-Werror', '-I', str(ROOT / 'source'),
-                            str(ROOT / 'tests' / f'{name}.cpp'), '-o', str(exe)], check=True)
+                            str(ROOT / 'tests' / f'{name}.cpp'),
+                            *([str(ROOT / 'source/program/crafting/features/preview_features.cpp')] if name in ('preview_session_test', 'crafting_policy_test') else []),
+                            *([str(ROOT / 'source/program/crafting/features/crafting_features.cpp')] if name == 'crafting_policy_test' else []), '-o', str(exe)], check=True)
             arguments = [str(exe)]
             if name == 'dialogue_settings_test':
                 arguments.append(str(ROOT / 'examples/faster-dialogue.custom.ini'))
