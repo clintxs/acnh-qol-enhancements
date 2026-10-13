@@ -507,7 +507,7 @@ for base in globals().get('POCKET_TEST_BASES', (0x80000000,0x1234500000)):
         for i,a in enumerate((35,49 if eligible else 46,22)):
             h.write(desc+0x48+i*32+16,a,4)
     def pocket_item():
-        assert h.reg(0)==pocket+0x1f8 and h.reg(1)==selected_slot
+        assert h.read(h.reg(0),1)==h.read(pocket+0x1f8,1) and h.reg(1)==selected_slot
         return item
     def store_item():
         assert h.reg(0)==pocket+0x1f8

@@ -17,6 +17,10 @@ static_assert(ValidShortcuts(rules));
 static_assert(!std::is_convertible_v<UiButton, unsigned>);
 static_assert(!std::is_convertible_v<PocketAction, int>);
 static_assert(!std::is_convertible_v<qol_pockets::game::v303::quick_store::MenuRowId, int>);
+template<class View> concept UncheckedItemAccess = requires(const View &view) { view.ItemAt(0); };
+static_assert(!UncheckedItemAccess<qol::game::inventory::ResidentView>);
+static_assert(!UncheckedItemAccess<qol::game::inventory::PocketSlots>);
+static_assert(!std::is_constructible_v<qol::game::inventory::ResidentView, std::uintptr_t, const unsigned char *>);
 int main() {
     assert(!ValidShortcuts({}));
     const ShortcutRule duplicate[]{{UiButton::Y, PocketAction::PutInStorage},

@@ -61,3 +61,25 @@ Validation: normal build, 16 host suites and six Pockets scripts passed,
 including successful production registration at two bases and the remaining
 1,088 extended callback cases. The two remapping cases now live in the stronger
 production registration test. Logs: `dist/refactor-boundaries/ownership-*.log`.
+
+## Inventory view safety
+
+The verified Capacity/ItemAt/IsEquipped/Held native functions read the first
+resident byte as an identifier. Their disassembly copies that byte into local
+resident arguments before registry lookup; Held retains its nontrivial X8 result
+ABI. `ResidentView` now owns the byte instead of borrowing a caller pointer.
+This does not establish resident/player/controller lifetime.
+
+Unchecked `ItemAt` is no longer exposed. `Slots()` snapshots native capacity
+once per synchronous callback traversal; `TryItemAt` and `IsEquipped` reject
+slots outside that capacity or the 40-slot limit before native access. Quick
+store and traversal reuse this snapshot rather than rechecking capacity for
+every item. Exact eight-byte copies and native read-lock behavior are retained.
+The callback fixture now checks resident-byte contents rather than requiring
+the old controller-interior pointer, matching the verified ABI contract.
+
+Validation: normal build, all 16 host suites and all Pockets/Controls scripts
+passed, including capacity shrinkage, exact bits, tool restoration, X8 held-item
+returns and 978 preserved pocket callbacks. Compile-time checks reject pointer
+construction and unchecked inventory access. Logs:
+`dist/refactor-boundaries/inventory-*.log`.

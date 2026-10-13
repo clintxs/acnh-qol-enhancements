@@ -33,11 +33,11 @@ Item Held(void *player) {
 unsigned Kind(Item item) { return qol::game::inventory::ToolKind(Main, item); }
 ToolSelection FindTool(void *player, unsigned kind, Item exact = EmptyItem, bool requireEquipped = false) {
     auto resident = Read<unsigned char>(player, field::Resident);
-    const auto pockets = qol::game::inventory::ForResident(Main, resident);
+    const auto pockets = qol::game::inventory::ForResident(Main, resident).Slots();
     const auto capacity = pockets.Capacity();
     if (capacity > 40) return {};
     for (unsigned i = 0; i < capacity; ++i) {
-        const auto value = pockets.ItemAt(i);
+        const auto value = pockets.TryItemAt(i);
         if (!value.present) continue;
         const Item item = value.value;
         if (!((exact != EmptyItem && item == exact) || (exact == EmptyItem && Kind(item) == kind))) continue;
@@ -125,7 +125,7 @@ void RestoreTool(void *player, BorrowedTool &swap) {
     // removed, return to empty hands instead of recreating a stale item value.
     if (previous.slot >= 0) {
         auto resident = Read<unsigned char>(player, field::Resident);
-        const auto item = qol::game::inventory::ForResident(Main, resident).ItemAt(previous.slot);
+        const auto item = qol::game::inventory::ForResident(Main, resident).Slots().TryItemAt(previous.slot);
         if (!item.present || item.value != previous.item) previous = FindTool(player, 0, previous.item);
     }
     swap = {};

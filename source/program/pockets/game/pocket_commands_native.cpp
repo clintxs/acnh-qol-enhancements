@@ -217,7 +217,7 @@ bool CanUseShortcut(void *pocket, int slot, int state, Action requested, int &ac
     // During ENTRY the previous phase still holds the state being entered.
     if (activeQueue != -1 || (otherQueue != -1 &&
         !(enteringMenu && state == state::SelectingCommand && otherQueue == state))) return false;
-    const auto inventory = game::quick_store_native::InventoryForPocket(pocket);
+    const auto inventory = game::quick_store_native::InventoryForPocket(pocket).Slots();
     eligibilityReason = "capacity";
     if (slot >= static_cast<int>(inventory.Capacity())) {
         return false;
@@ -227,7 +227,7 @@ bool CanUseShortcut(void *pocket, int slot, int state, Action requested, int &ac
         !game::quick_store_native::OwnHome(pocket)) {
         return false;
     }
-    const auto item = inventory.ItemAt(slot);
+    const auto item = inventory.TryItemAt(slot);
     eligibilityReason = "empty-item";
     if (!item.present || static_cast<std::uint16_t>(item.value) == 0xfffe) {
         return false;
