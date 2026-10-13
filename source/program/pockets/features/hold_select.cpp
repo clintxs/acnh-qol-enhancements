@@ -3,6 +3,7 @@
 #include "program/pockets/settings.hpp"
 #include "program/pockets/game/pocket_input.hpp"
 #include "program/core/page_input.hpp"
+#include "program/pockets/services/pocket_lifecycle.hpp"
 #include "program/pockets/game/stack_bindings.hpp"
 #include <array>
 #include <cstring>
@@ -238,6 +239,7 @@ bool InstallHoldSelect() {
         qol::core::Site<HoldSelectFeedback>("HoldSelectFeedback", address::ButtonFeedback, {0xd102c3ff, 0xa9077bfd, 0xf90043f7, 0xa90957f6, 0xa90a4ff4}, true),
     };
     if (!hookPlan) return false;
+    if (!lifecycle::RegisterBeforePlayEntry(ResetHoldSelect)) return false;
     if (!qol::core::RegisterPageInputObserver(BeforeHoldSelectInput, AfterHoldSelectInput)) {
         Logging.Error("[QoL Enhancements/Pockets] HOLD_SELECT_DISABLED shared input unavailable\n");
         return false;

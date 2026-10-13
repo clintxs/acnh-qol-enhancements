@@ -1,7 +1,7 @@
 #include "pocket_commands.hpp"
 #include "lib.hpp"
 #include "program/pockets/game/pocket_commands_native.hpp"
-#include "program/pockets/features/hold_select.hpp"
+#include "pocket_lifecycle.hpp"
 #include <optional>
 
 namespace qol_pockets::commands {
@@ -122,7 +122,7 @@ public:
             pendingTap = {owner, request.slot, request.inputRow, generation, request.evidence.resident};
     }
     static void EnterPlay(void *owner, native::NativeCallback original) {
-        features::ResetHoldSelect(owner);
+        lifecycle::BeforePlayEntry(owner);
         const auto tap = pendingTap;
         const bool canTap = tap.owner == owner && tap.generation == generation &&
                             tap.resident == native::Resident(owner);

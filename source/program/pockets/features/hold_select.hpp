@@ -1,6 +1,6 @@
 #pragma once
 namespace qol_pockets::features {
 bool InstallHoldSelect();
-// Called by the existing pockets Play-entry hook; a reopened screen starts fresh.
+// Registered with the shared lifecycle service; runs before native Play entry.
 void ResetHoldSelect(void *owner);
 }

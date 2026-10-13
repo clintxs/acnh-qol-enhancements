@@ -24,3 +24,18 @@ scripts passed, including the original 978 and extended 1,090 pocket cases,
 storage hints, recycling and 96 hold-select scenarios. Logs are in ignored
 `dist/refactor-boundaries/input-*.log`. Native services/rendering remain modeled;
 no live Eden validation is claimed.
+
+## Pocket lifecycle dependency
+
+Before, command Play entry called hold-select directly. Now hold-select
+registers its own reset with `pocket_lifecycle`, a startup-only one-listener
+notification. Shared services include no feature implementations. Identical
+registration is idempotent; a different listener fails before hold-select
+publishes input/feedback behavior. Timing is unchanged: notify/reset first,
+then invalidate pending commands and input edges, call native Play, and finally
+resolve/emit a valid cursor tap. This is deliberately not a general event bus.
+
+Validation: normal build, 16 host suites and inherited Pockets scripts passed;
+a focused compiled test verifies listener identity/capacity and no dependent
+publication when the slot is unavailable at two bases. Logs are
+`dist/refactor-boundaries/lifecycle-*.log`.
