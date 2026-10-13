@@ -226,6 +226,10 @@ bool QuantityShortcutInput(void *page, void *snapshot, unsigned blocked) {
     }
     return false;
 }
+core::InputOutcome QuantityShortcutPageInput(const core::PageInputContext &input) {
+    return QuantityShortcutInput(input.page, input.snapshot, input.blocked) ? core::InputOutcome::Consume : core::InputOutcome::PassThrough;
+}
+
 } // namespace
 bool InstallCraftingQuantityShortcut() {
     struct Fingerprint { std::uintptr_t offset; std::uint32_t words[5]; };
@@ -254,7 +258,7 @@ bool InstallCraftingQuantityShortcut() {
         qol::core::Site<ResolveQuantityShortcutCaption>("ResolveQuantityShortcutCaption", address::ResolveCaption, {0xf90213e8, 0x9000e6e8, 0xf945f908, 0x91004108, 0xf9004be8}, true),
     };
     if (!hookPlan) return false;
-    if (!core::RegisterPageInput(QuantityShortcutInput)) return false;
+    if (!core::RegisterPageInput<QuantityShortcutPageInput>(core::InputPriority::QuantityShortcut)) return false;
     const auto vtable = *reinterpret_cast<const std::uintptr_t *>(Main + address::SafeStringVtableGot) + 16;
     QuantityBank = {vtable, "DIYDialogConfirmNum"}; QuantityCaption = {vtable, "0001"};
     if (!hookPlan.Publish<EnterQuantityShortcutPreview>(address::EnterPreview)) return false;

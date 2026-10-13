@@ -56,7 +56,7 @@ bool InstallShortcuts(std::span<const ShortcutRule> rules) {
         qol::core::Site<UpdatePocketMenu>("UpdatePocketMenu", address::UpdateMenu, profile::HookWords(address::UpdateMenu), true),
     };
     if (!hookPlan) return false;
-    if (!qol::core::RegisterPageInput(QuickStoreInput)) {
+    if (!qol::core::RegisterPageInput<PocketPageInput>(qol::core::InputPriority::Pockets)) {
         Logging.Error("[QoL Enhancements/Pockets] QUICK_STORE_DISABLED shared input unavailable\n");
         return false;
     }

@@ -209,6 +209,9 @@ void AfterHoldSelectInput(void *page, void *, unsigned) {
     capture = {};
     FlushHoldFeedback(QueueHeldSelection(page, input), input.row);
 }
+void BeforeHoldSelectPageInput(const qol::core::PageInputContext &input) { BeforeHoldSelectInput(input.page, input.snapshot, input.blocked); }
+void AfterHoldSelectPageInput(const qol::core::PageInputContext &input) { AfterHoldSelectInput(input.page, input.snapshot, input.blocked); }
+
 }
 
 void ResetHoldSelect(void *owner) {
@@ -240,7 +243,7 @@ bool InstallHoldSelect() {
     };
     if (!hookPlan) return false;
     if (!lifecycle::RegisterBeforePlayEntry(ResetHoldSelect)) return false;
-    if (!qol::core::RegisterPageInputObserver(BeforeHoldSelectInput, AfterHoldSelectInput)) {
+    if (!qol::core::RegisterPageObserver<BeforeHoldSelectPageInput, AfterHoldSelectPageInput>(qol::core::InputPriority::Pockets)) {
         Logging.Error("[QoL Enhancements/Pockets] HOLD_SELECT_DISABLED shared input unavailable\n");
         return false;
     }

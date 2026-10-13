@@ -1,13 +1,40 @@
 #pragma once
-
+#include "registration.hpp"
 namespace qol::core {
-// Return true when this page owns input and native dispatch must be suppressed.
-// Registration occurs once during module activation, before pages receive input.
-using PageInputHandler = bool (*)(void *page, void *snapshot, unsigned blocked);
-bool RegisterPageInput(PageInputHandler handler);
-using PageInputCallback = void (*)(void *page, void *snapshot, unsigned blocked);
-// Observers bracket native dispatch. Suppression sends only a blocked before
-// callback, allowing observers to cancel gestures. Capture eligibility before
-// dispatch: native processing blanket-consumes input rows.
-bool RegisterPageInputObserver(PageInputCallback before, PageInputCallback after);
+enum class InputOutcome { PassThrough, Consume };
+enum class InputReason { Dispatch, Suppressed };
+// Callback-scoped native objects. Domain adapters interpret snapshots; contexts
+// and their pointers must not survive the synchronous input pass.
+struct PageInputContext {
+    void *page, *snapshot;
+    unsigned blocked;
+    InputReason reason = InputReason::Dispatch;
+    bool Cancelled() const { return reason == InputReason::Suppressed; }
+};
+// Preserve the shipped module order explicitly, including workbench before
+// quantity handlers. Equal priorities use stable registration order.
+enum class InputPriority : unsigned { Pockets = 10, Preview = 20, Workbench = 30, QuantityWrap = 40, QuantityShortcut = 50, LegacyAdapter = 60 };
+using PageInputHandler = bool (*)(void *, void *, unsigned);
+using PageInputCallback = void (*)(void *, void *, unsigned);
+// Native adapter bridge for the single bounded registry. Features use the
+// typed registration templates below.
+RegistrationResult RegisterInputAdapter(PageInputHandler handler, InputPriority priority, PageInputHandler cancel);
+RegistrationResult RegisterObserverAdapter(PageInputCallback before, PageInputCallback after, InputPriority priority, bool typed);
+inline constexpr unsigned SuppressedInput = 1u << 31; // Internal bridge flag; never sent to native dispatch.
+inline PageInputContext InputContext(void *page, void *snapshot, unsigned blocked) {
+    return {page, snapshot, blocked & ~SuppressedInput,
+            blocked & SuppressedInput ? InputReason::Suppressed : InputReason::Dispatch};
+}
+template<auto Handler> bool TypedPageInput(void *page, void *snapshot, unsigned blocked) {
+    return Handler(InputContext(page, snapshot, blocked)) == InputOutcome::Consume;
+}
+template<auto Handler> RegistrationResult RegisterPageInput(InputPriority priority) {
+    return RegisterInputAdapter(TypedPageInput<Handler>, priority, TypedPageInput<Handler>);
+}
+template<auto Callback> void TypedPageObserver(void *page, void *snapshot, unsigned blocked) {
+    Callback(InputContext(page, snapshot, blocked));
+}
+template<auto Before, auto After> RegistrationResult RegisterPageObserver(InputPriority priority) {
+    return RegisterObserverAdapter(TypedPageObserver<Before>, TypedPageObserver<After>, priority, true);
+}
 }

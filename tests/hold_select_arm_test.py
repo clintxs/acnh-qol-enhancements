@@ -191,7 +191,7 @@ for base in (0x80000000, 0x1234500000):
     reset(); feedback_events.clear()
     h.write(rows + 0x48, 16, 4); h.write(rows + 0x48 + 0x3c, 0, 4)
     h.put(0, page); h.put(1, snapshot); h.put(2, 0)
-    h.run(h.mod + symbol('BeforeHoldSelectInput'))
+    h.run(h.mod + symbol('TypedPageObserver', 'BeforeHoldSelectPageInput'))
     for event in (b'Select', b'Decide'):
         h.u.mem_write(sound_text, event + b'\0')
         h.put(0, widgets + 0x400); h.put(1, sound_string); h.put(2, 123)
@@ -201,7 +201,7 @@ for base in (0x80000000, 0x1234500000):
     h.write(controller + 0x10, panes + 16)
     h.write(pocket + 0x1c518, 1, 1); h.write(pocket + 0x1c51a, 4, 2)
     h.put(0, page); h.put(1, snapshot); h.put(2, 0)
-    h.run(h.mod + symbol('AfterHoldSelectInput'))
+    h.run(h.mod + symbol('TypedPageObserver', 'AfterHoldSelectPageInput'))
     assert len(feedback_events) == 2
     cases += 1
     # Outside an eligible held-input pass, every event passes through unchanged.

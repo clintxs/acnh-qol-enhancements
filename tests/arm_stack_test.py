@@ -87,7 +87,8 @@ class Machine:
                          ('BuildPocketStorageHint',0x3094fb4)]:
             self.write(self.mod+symbol(name,'s_FnPtr'),base+off)
         if register_fixture:
-            self.write(self.mod+symbol('InputHandlers'),self.mod+symbol('15QuickStoreInput'))
+            handler = symbol('15QuickStoreInput') if any('15QuickStoreInput' in name for name in symbols) else symbol('TypedPageInput', 'PocketPageInput')
+            self.write(self.mod+symbol('InputHandlers'),self.mod+handler)
         # This callback-only fixture models startup registration, just as it
         # models InputHandlers above. Use the actual feature declaration from
         # the ELF; baseline ELFs predate the registered shortcut table.

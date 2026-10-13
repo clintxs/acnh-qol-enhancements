@@ -6,8 +6,16 @@ from unicorn.arm64_const import UC_ARM64_REG_X0, UC_ARM64_REG_X1
 def call(m, name, *args):
     for index, value in enumerate(args):
         m.u.reg_write(UC_ARM64_REG_X0 + index, value)
-    m.call(m.module.find(name, 'EPFb') if name == 'RegisterPageInput' else m.module.find(name))
-    return m.reg(0)
+    if name == 'RegisterPageInput':
+        m.u.reg_write(UC_ARM64_REG_X1, 60)
+        m.u.reg_write(UC_ARM64_REG_X0 + 2, 0)
+        name = 'RegisterInputAdapter'
+    elif name == 'RegisterPageInputObserver':
+        m.u.reg_write(UC_ARM64_REG_X0 + 2, 60)
+        m.u.reg_write(UC_ARM64_REG_X0 + 3, 0)
+        name = 'RegisterObserverAdapter'
+    m.call(m.module.find(name))
+    return int(m.reg(0) in (0, 1)) if name in ('RegisterInputAdapter', 'RegisterObserverAdapter') else m.reg(0)
 
 def outcome(m, name):
     # Read the bounded production result table: an AArch64 entry has an id

@@ -224,6 +224,10 @@ bool QuantityInput(void *page, void *snapshot, unsigned blocked) {
                     count-target, count, resident);
     return false; // A/B, horizontal input and ordinary repeat remain native.
 }
+core::InputOutcome QuantityPageInput(const core::PageInputContext &input) {
+    return QuantityInput(input.page, input.snapshot, input.blocked) ? core::InputOutcome::Consume : core::InputOutcome::PassThrough;
+}
+
 }
 bool InstallCraftingQuantityWrap() {
     struct Fingerprint { std::uintptr_t offset; std::uint32_t words[5]; };
@@ -247,7 +251,7 @@ bool InstallCraftingQuantityWrap() {
         qol::core::Site<ResetQuantityGrid>("ResetQuantityGrid", address::ResetGrid, {0xd10203ff, 0xfd001be8, 0xf90027f9, 0xa903fbfd, 0xa9055ff8}, true),
     };
     if (!hookPlan) return false;
-    if (!core::RegisterPageInput(QuantityInput)) {
+    if (!core::RegisterPageInput<QuantityPageInput>(core::InputPriority::QuantityWrap)) {
         Logging.Error("[QoL Enhancements/Crafting] quantity wrap: DISABLED; shared input unavailable\n");
         return false;
     }

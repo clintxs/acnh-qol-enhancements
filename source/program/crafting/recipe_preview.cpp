@@ -888,6 +888,10 @@ bool WorkbenchTiltInput(void *page, void *snapshot, unsigned blocked) {
     // recipe switching and crafting remain owned by the workbench.
     return false;
 }
+core::InputOutcome WorkbenchPageInput(const core::PageInputContext &input) {
+    return WorkbenchTiltInput(input.page, input.snapshot, input.blocked) ? core::InputOutcome::Consume : core::InputOutcome::PassThrough;
+}
+
 void RotatePreview(Session &s) {
     const auto x = s.stickX, y = s.stickY;
     s.stickX = s.stickY = 0; // A missing/blocked snapshot must never keep spinning.
@@ -1076,6 +1080,10 @@ bool PreviewInput(void *layout, void *snapshot, unsigned blocked) {
     }
     return false;
 }
+core::InputOutcome PreviewPageInput(const core::PageInputContext &input) {
+    return PreviewInput(input.page, input.snapshot, input.blocked) ? core::InputOutcome::Consume : core::InputOutcome::PassThrough;
+}
+
 bool Begin(Session &s) {
     if (!PhoneReady(s.phone)) return false;
     if (s.gridPane) s.gridFlags = At<unsigned char>(s.gridPane, field::PaneFlags);
@@ -1225,7 +1233,7 @@ bool InstallRecipePreview() {
     // Pockets may already own the shared trampoline. Its manager validates
     // pristine instructions on first registration and reuses that owned hook;
     // checking the original bytes again here would reject our own Pockets patch.
-    if (!core::RegisterPageInput(PreviewInput)) {
+    if (!core::RegisterPageInput<PreviewPageInput>(core::InputPriority::Preview)) {
         Logging.Error("[QoL Enhancements/Crafting] DIY preview: DISABLED; shared page input unavailable\n");
         return false;
     }
@@ -1280,7 +1288,7 @@ bool InstallWorkbenchPreviewTilt() {
     }
     if (!game::preview_native::GlobalsAvailable()) return false;
     Main = main.m_Text.m_Start;
-    if (!core::RegisterPageInput(WorkbenchTiltInput)) return false;
+    if (!core::RegisterPageInput<WorkbenchPageInput>(core::InputPriority::Workbench)) return false;
     WorkbenchTiltEnabled.store(true, std::memory_order_release);
     if (!hookPlan.Publish<UpdatePreviewActor>(address::UpdateItemActor)) return false;
     Logging.Debug("[QoL Enhancements/Crafting] workbench tilt: READY; native-selected item profile; input binding probes; right-stick up/down\n");

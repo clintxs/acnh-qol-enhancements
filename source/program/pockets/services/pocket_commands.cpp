@@ -1,4 +1,5 @@
 #include "pocket_commands.hpp"
+#include "program/core/page_input.hpp"
 #include "shortcut_declarations.hpp"
 #include "lib.hpp"
 #include "program/pockets/game/pocket_commands_native.hpp"
@@ -140,6 +141,10 @@ public:
 bool QuickStoreInput(void *page, void *snapshot, unsigned blocked) {
     PocketCommands::HandleQuickStoreInput(page, snapshot, blocked);
     return false;
+}
+qol::core::InputOutcome PocketPageInput(const qol::core::PageInputContext &input) {
+    QuickStoreInput(input.page, input.snapshot, input.blocked);
+    return qol::core::InputOutcome::PassThrough;
 }
 DeclarationMatch CompareShortcutRules(std::span<const ShortcutRule> rules) { return PocketCommands::CompareRules(rules); }
 void SetShortcutRules(std::span<const ShortcutRule> rules) { PocketCommands::SetRules(rules); }

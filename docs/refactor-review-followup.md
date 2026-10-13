@@ -83,3 +83,23 @@ passed, including capacity shrinkage, exact bits, tool restoration, X8 held-item
 returns and 978 preserved pocket callbacks. Compile-time checks reject pointer
 construction and unchecked inventory access. Logs:
 `dist/refactor-boundaries/inventory-*.log`.
+
+## Typed shared input
+
+Handlers now register typed callback-scoped contexts and return `PassThrough`
+or `Consume`. Explicit priorities preserve the shipped Pockets, Preview,
+Workbench, Quantity Wrap and Quantity Shortcut order, independent of activation
+order. Equal priorities preserve registration order. Observer callbacks bracket
+native dispatch; consumption instead sends blocked/suppressed cancellation to
+skipped typed consumers and before-observers, with no native/after call.
+
+The same bounded five-handler/five-observer registry reports invalid, conflict,
+capacity and native-unavailable registration results. Identical registrations
+revalidate hook ownership. Existing domain adapters drain blocked snapshots,
+so held edges, preview motion and selection gestures do not become delayed
+operations. No internal suppression flag reaches native input.
+
+Validation: build, 16 host suites, Pockets/Crafting scripts, the activation suite
+and a focused production ordering/cancellation test passed at two bases.
+Fixtures invoke the typed bridges rather than discarded legacy wrappers. Logs:
+`dist/refactor-stage5/input-*.log`.
