@@ -64,7 +64,7 @@ if baseline:
         return {address - base for address in m.hooks}, m.text
 
     for base in BASES:
-        for slugs in (('pockets',), ('controls',), ('crafting',), ('pockets', 'controls', 'crafting'), ('catalog',), ('pockets', 'controls', 'crafting', 'catalog'), ('fitting',), ('pockets', 'controls', 'crafting', 'catalog', 'fitting')):
+        for slugs in (('pockets',), ('controls',), ('crafting',), ('pockets', 'controls', 'crafting'), ('catalog',), ('pockets', 'controls', 'crafting', 'catalog'), ('fitting-room',), ('pockets', 'controls', 'crafting', 'catalog', 'fitting-room')):
             files = dict.fromkeys(slugs, DEFAULT)
             current_sites, current_log = installed(base, files)
             with patch.object(Path, 'read_bytes', baseline_read):
