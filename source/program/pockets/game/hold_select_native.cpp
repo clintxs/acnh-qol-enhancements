@@ -1,5 +1,6 @@
 #include "program/core/hook_plan.hpp"
-#include "hold_select.hpp"
+#include "program/pockets/features/hold_select.hpp"
+#include "program/pockets/features/pockets.hpp"
 #include "program/pockets/settings.hpp"
 #include "program/pockets/game/pocket_input.hpp"
 #include "program/core/page_input.hpp"
@@ -43,7 +44,7 @@ template <typename T> T &Field(void *object, std::size_t offset) {
 struct HoldGesture {
     void *page{}, *owner{};
     int row{-1}, mode{};
-    bool released{}, holding{}, selecting{};
+    HoldSelection selection{};
 };
 HoldGesture gesture{};
 struct InputCapture {
@@ -110,8 +111,9 @@ bool IsMultiSelection(void *owner) {
     const int limit = Field<int>(owner, layout::SelectionLimit);
     // 00d0fd10 -> 02d1e950 -> 033598a0: cItemSelect is mode 1 and
     // cPutInStorage is mode 9. Do not enable ordinary pockets or single picks.
-    return (mode == ItemSelectMode || mode == PutInStorageMode) &&
-           (limit == -1 || limit > 1) && Field<int>(owner, layout::State) == Browsing &&
+    const auto context = mode == ItemSelectMode ? game::SelectionContext::ItemSelection :
+        mode == PutInStorageMode ? game::SelectionContext::HomeStorage : game::SelectionContext::Other;
+    return CanHoldSelect(context, limit) && Field<int>(owner, layout::State) == Browsing &&
            Field<int>(owner, layout::TransitionA) == -1 &&
            Field<int>(owner, layout::TransitionB) == -1;
 }
@@ -140,7 +142,7 @@ void BeforeHoldSelectInput(void *page, void *snapshot, unsigned blocked) {
     }
     const int mode = Field<int>(owner, layout::Mode);
     if (gesture.page != page || gesture.owner != owner || gesture.row != row || gesture.mode != mode)
-        gesture = {page, owner, row, mode, false, false};
+        gesture = {page, owner, row, mode, {}};
     auto *input = rows + row * layout::RowBytes;
     const unsigned buttons = Field<unsigned>(input, 0);
     auto *context = Field<void *>(page, layout::InputContext);
@@ -149,29 +151,23 @@ void BeforeHoldSelectInput(void *page, void *snapshot, unsigned blocked) {
     if (!context || !masks || (blocked & 1) || Field<std::uint8_t>(context, layout::InputBlocked) ||
         (Field<unsigned>(context, layout::InputMask) & Field<unsigned>(masks, layout::GlobalInputMask)) ||
         (Field<unsigned>(input, layout::Consumed) & NativeA) || (buttons & OtherActionButtons)) {
-        gesture.released = gesture.holding = false;
+        gesture.selection.Block();
         return;
     }
     if (!(buttons & NativeA)) {
-        gesture.released = true;
-        gesture.holding = false;
+        gesture.selection.Release();
         return;
     }
     // An A press carried into a new/blocked picker must be released first.
     const int slot = game::pocket_input::FindFocusedItemSlot(page, row);
-    if (!gesture.released || slot < 0) return;
-    const bool starting = !gesture.holding;
-    if (starting) {
-        // Read before the native A toggle, then retain this target until release.
-        gesture.selecting = !(Field<std::uint64_t>(owner, layout::SelectedSlots) &
-                              (std::uint64_t{1} << slot));
-    }
-    gesture.holding = true;
+    if (!gesture.selection.CanStart() || slot < 0) return;
+    const bool starting = gesture.selection.Begin(
+        (Field<std::uint64_t>(owner, layout::SelectedSlots) & (std::uint64_t{1} << slot)) != 0);
     capture = {owner, row, slot, starting};
 }
 
 void *QueueHeldSelection(void *page, const InputCapture &input) {
-    if (!input.owner || !gesture.holding) return nullptr;
+    if (!input.owner || !gesture.selection.Holding()) return nullptr;
     auto *owner = game::pocket_input::FindPocketController(page);
     if (owner != input.owner || !IsMultiSelection(owner) ||
         Field<int>(owner, layout::Mode) != gesture.mode) {
@@ -183,14 +179,14 @@ void *QueueHeldSelection(void *page, const InputCapture &input) {
         // identifies which item actually receives that press, before toggling.
         const int clickedSlot = Field<std::int8_t>(owner, layout::ClickSlot);
         if (clickedSlot >= 0 && clickedSlot < 40)
-            gesture.selecting = !(Field<std::uint64_t>(owner, layout::SelectedSlots) &
-                                  (std::uint64_t{1} << clickedSlot));
+            gesture.selection.InitialClick((Field<std::uint64_t>(owner, layout::SelectedSlots) &
+                                  (std::uint64_t{1} << clickedSlot)) != 0);
     }
     const int slot = game::pocket_input::FindFocusedItemSlot(page, input.row);
-    if (slot < 0 || slot == input.previousSlot) return nullptr;
+    if (slot < 0) return nullptr;
     const auto bit = std::uint64_t{1} << slot;
     const bool selected = (Field<std::uint64_t>(owner, layout::SelectedSlots) & bit) != 0;
-    if (selected == gesture.selecting ||
+    if (!gesture.selection.WantsToggle(selected, slot != input.previousSlot) ||
         (Field<std::uint64_t>(owner, layout::BlockedSlots) & bit) ||
         Field<std::uint16_t>(owner, layout::LogicalInput) != 0) return nullptr;
     auto *widget = Field<void *>(page, layout::ItemWidgets + sizeof(void *) * slot);

@@ -32,6 +32,16 @@ class PocketCommands {
     static inline CursorTapRequest pendingTap{};
     static inline std::uint64_t generation{};
     static inline ShortcutDeclarations declarations{};
+    static inline MenuPolicies policies{};
+    static MenuPolicy PolicyFor(PocketAction action) {
+        switch (action) {
+        case PocketAction::PutInStorage: return policies.store;
+        case PocketAction::DropOrRelease: return policies.drop;
+        case PocketAction::EquipOrConsume: return policies.use;
+        case PocketAction::OpenContainer: return policies.open;
+        }
+        return {};
+    }
 
     static unsigned Buttons() {
         unsigned mask = 0;
@@ -46,7 +56,7 @@ class PocketCommands {
     static std::optional<Request> FindEligible(void *owner, int slot, native::Phase phase,
                                               PocketAction action, int inputRow, bool trace = false,
                                               bool enteringMenu = false) {
-        const auto evidence = native::Probe(owner, slot, phase, action, trace, enteringMenu);
+        const auto evidence = native::Probe(owner, slot, phase, action, PolicyFor(action).choose, trace, enteringMenu);
         if (!evidence) return std::nullopt;
         return Request{owner, slot, inputRow, action, phase, *evidence, generation};
     }
@@ -77,6 +87,8 @@ public:
         native::ConsumeShortcut(*input);
     }
 
+    static bool AcceptsPolicies(MenuPolicies value) { return value.Valid() && (!policies.Valid() || policies == value); }
+    static void SetPolicies(MenuPolicies value) { policies = value; }
     static void SetRules(std::span<const ShortcutRule> shortcuts) { declarations.Own(shortcuts); }
     static DeclarationMatch CompareRules(std::span<const ShortcutRule> shortcuts) { return declarations.Compare(shortcuts); }
     static void EnterMenu(void *owner, native::NativeCallback original) {
@@ -117,11 +129,11 @@ public:
         // Revalidate once before starting, then continue without restarting it.
         pending->started = true;
         const auto progress = native::Dispatch(owner, request.evidence.row, request.slot, request.inputRow, original,
-            !request.started && request.action != PocketAction::PutInStorage && request.action != PocketAction::OpenContainer,
-            request.action == PocketAction::PutInStorage);
+            !request.started && PolicyFor(request.action).feedback == game::FeedbackTiming::BeforeExecution,
+            PolicyFor(request.action).feedback == game::FeedbackTiming::AfterSuccess);
         if (!progress.transitioned) return;
         pending.reset();
-        if (progress.success && progress.returnsToBrowsing && request.action != PocketAction::OpenContainer)
+        if (progress.success && progress.returnsToBrowsing && PolicyFor(request.action).cursorTap)
             pendingTap = {owner, request.slot, request.inputRow, generation, request.evidence.resident};
     }
     static void EnterPlay(void *owner, native::NativeCallback original) {
@@ -147,6 +159,8 @@ qol::core::InputOutcome PocketPageInput(const qol::core::PageInputContext &input
     return qol::core::InputOutcome::PassThrough;
 }
 DeclarationMatch CompareShortcutRules(std::span<const ShortcutRule> rules) { return PocketCommands::CompareRules(rules); }
+bool AcceptsMenuPolicies(MenuPolicies policies) { return PocketCommands::AcceptsPolicies(policies); }
+void SetMenuPolicies(MenuPolicies policies) { PocketCommands::SetPolicies(policies); }
 void SetShortcutRules(std::span<const ShortcutRule> rules) { PocketCommands::SetRules(rules); }
 void EnterMenu(void *owner, native::NativeCallback original) { PocketCommands::EnterMenu(owner, original); }
 void UpdateMenu(void *owner, native::NativeCallback original, native::NativeCallback enterOriginal) {

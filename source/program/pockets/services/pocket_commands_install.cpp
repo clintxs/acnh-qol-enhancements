@@ -29,7 +29,8 @@ HOOK_DEFINE_TRAMPOLINE(QuickStorePlay) {
 // Instruction fingerprints are exact 3.0.3 ARM words, intentionally left as
 // hex. They guard hook locations and native assumptions; do not edit them to
 // silence a mismatch without re-checking the game's disassembly.
-bool InstallShortcuts(std::span<const ShortcutRule> rules) {
+bool InstallCommandHandlers(std::span<const ShortcutRule> rules, MenuPolicies policies) {
+    if (!AcceptsMenuPolicies(policies)) return false;
     if (!ValidShortcuts(rules)) return false;
     const auto match = CompareShortcutRules(rules);
     if (match == DeclarationMatch::Conflict) {
@@ -61,6 +62,7 @@ bool InstallShortcuts(std::span<const ShortcutRule> rules) {
         return false;
     }
     SetShortcutRules(rules);
+    SetMenuPolicies(policies);
     if (!hookPlan.Publish<QuickStoreCommand>(address::Command)) return false;
     if (!hookPlan.Publish<QuickStorePlay>(address::Play)) return false;
     if (!hookPlan.Publish<EnterPocketMenu>(address::EnterMenu)) return false;

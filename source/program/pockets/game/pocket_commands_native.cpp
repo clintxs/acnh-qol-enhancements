@@ -31,15 +31,6 @@ namespace open_action {
 constexpr int Present = int(MenuRowId::Present), Treasure = int(MenuRowId::Treasure), Bottle = int(MenuRowId::Bottle);
 }
 const char *eligibilityReason = "not-checked";
-constexpr bool IsConsume(int row) {
-    return row == int(MenuRowId::Eat) || row == int(MenuRowId::EatOne) || row == int(MenuRowId::Drink);
-}
-constexpr bool Matches(Action action, int row) {
-    return (action == Action::PutInStorage && row == int(MenuRowId::PutInStorage)) ||
-           (action == Action::DropOrRelease && (row == int(MenuRowId::DropItem) || row == int(MenuRowId::Release))) ||
-           (action == Action::EquipOrConsume && (row == int(MenuRowId::Hold) || row == int(MenuRowId::Wear) ||
-                                                row == int(MenuRowId::PutAway) || IsConsume(row)));
-}
 struct ItemFeedback {
     void *widget{};
     int validity{}, inputRow{};
@@ -141,7 +132,7 @@ void QueueControllerState(void *controllerObject, int state) {
 
 // Build exactly the game's menu for the selected slot. The temporary selection
 // is restored before returning; no item is moved by this eligibility probe.
-bool FindNativeShortcut(void *pocket, int slot, Action requested, int &action, bool trace) {
+bool FindNativeShortcut(void *pocket, int slot, game::ChooseMenuEntry choose, int &action, bool trace) {
     // Ask the full native menu builder, including item/unlock restrictions.
     // Its error field may be nonzero even for valid menus; inspect actual rows.
     MenuDescription description{};
@@ -167,7 +158,8 @@ bool FindNativeShortcut(void *pocket, int slot, Action requested, int &action, b
         return false;
     }
     eligibilityReason = "no-unflagged-native-shortcut-row";
-    bool found = false;
+    if (!choose) return false;
+    std::array<game::MenuEntry, 7> entries{};
     for (int i = 0; i < description.count; ++i) {
         const auto &row = description.rows[i];
         if (trace) {
@@ -178,28 +170,38 @@ bool FindNativeShortcut(void *pocket, int slot, Action requested, int &action, b
                         description.callbacks[i].fields[0], description.callbacks[i].fields[1],
                         description.callbacks[i].fields[2]);
         }
-        const bool soleOpen = description.count == 1 && row.bank && row.key &&
-            std::strcmp(row.bank, "CmnSubWin") == 0 &&
+        auto meaning = game::ItemAction::Unknown;
+        switch (static_cast<MenuRowId>(row.action)) {
+        case MenuRowId::PutInStorage: meaning = game::ItemAction::Store; break;
+        case MenuRowId::DropItem: meaning = game::ItemAction::Drop; break;
+        case MenuRowId::Release: meaning = game::ItemAction::Release; break;
+        case MenuRowId::Hold: meaning = game::ItemAction::Hold; break;
+        case MenuRowId::Wear: meaning = game::ItemAction::Wear; break;
+        case MenuRowId::PutAway: meaning = game::ItemAction::PutAway; break;
+        case MenuRowId::Eat: meaning = game::ItemAction::Eat; break;
+        case MenuRowId::EatOne: meaning = game::ItemAction::EatOne; break;
+        case MenuRowId::Drink: meaning = game::ItemAction::Drink; break;
+        default: break;
+        }
+        const bool open = row.bank && row.key && std::strcmp(row.bank, "CmnSubWin") == 0 &&
             ((row.action == open_action::Present && std::strcmp(row.key, "0113") == 0) ||
              (row.action == open_action::Treasure && std::strcmp(row.key, "0144") == 0) ||
              (row.action == open_action::Bottle && std::strcmp(row.key, "0148") == 0));
-        if ((requested == Action::OpenContainer ? soleOpen : Matches(requested, row.action)) &&
-            row.flags == 0 && row.extra == 0 &&
-            description.callbacks[i].vtable == game::MainAddress(address::EmptyCallbackVtable) &&
-            description.callbacks[i].fields[0] == 0 && description.callbacks[i].fields[1] == 0 &&
-            description.callbacks[i].fields[2] == 0) {
-            eligibilityReason = "eligible";
-            // Equipment actions are less destructive: prefer them over eating
-            // or drinking. Keep the first valid consume row only as fallback.
-            if (!found || !IsConsume(row.action)) action = row.action;
-            found = true;
-            if (requested != Action::EquipOrConsume || !IsConsume(row.action)) return true;
-        }
+        if (open) meaning = game::ItemAction::Open;
+        const auto &callback = description.callbacks[i];
+        entries[i] = {meaning, meaning != game::ItemAction::Unknown && row.flags == 0 && row.extra == 0 &&
+            callback.vtable == game::MainAddress(address::EmptyCallbackVtable) &&
+            callback.fields[0] == 0 && callback.fields[1] == 0 && callback.fields[2] == 0};
     }
-    return found;
+    const auto selectedEntry = choose({entries.data(), static_cast<std::size_t>(description.count)});
+    if (!selectedEntry || *selectedEntry >= static_cast<std::size_t>(description.count) ||
+        !entries[*selectedEntry].executable) return false;
+    action = description.rows[*selectedEntry].action;
+    eligibilityReason = "eligible";
+    return true;
 }
 bool CanUseShortcut(void *pocket, int slot, int state, Action requested, int &action,
-                    ItemIdentity &itemIdentity, bool trace = false, bool enteringMenu = false) {
+                    ItemIdentity &itemIdentity, game::ChooseMenuEntry choose, bool trace = false, bool enteringMenu = false) {
     if (requested == Action::OpenContainer && !GetSettings().bypassMenuOpenContainers) return false;
     // Callers allow browsing (3), first-level A menu (5), or dispatch (7).
     // Drag states 8/9 and second-level menu 6 are never automatic actions.
@@ -252,7 +254,7 @@ bool CanUseShortcut(void *pocket, int slot, int state, Action requested, int &ac
         return false;
     }
 
-    return FindNativeShortcut(pocket, slot, requested, action, trace);
+    return FindNativeShortcut(pocket, slot, choose, action, trace);
 }
 
 } // namespace
@@ -423,11 +425,11 @@ void ResetInputEdges() { hasPreviousInput = false; previousButtons = 0; }
 const char *EligibilityReason() { return eligibilityReason; }
 int SelectedSlot(void *pocket) { return Field<std::int8_t>(pocket, layout::SelectedSlot); }
 unsigned char Resident(void *pocket) { return Field<unsigned char>(pocket, layout::PocketInventory); }
-std::optional<Eligibility> Probe(void *pocket, int slot, Phase phase, Action requested,
+std::optional<Eligibility> Probe(void *pocket, int slot, Phase phase, Action requested, game::ChooseMenuEntry choose,
                                  bool trace, bool enteringMenu) {
     int row = -1;
     ItemIdentity item{};
-    if (!CanUseShortcut(pocket, slot, (phase == Phase::Browsing ? state::Browsing : phase == Phase::SelectingCommand ? state::SelectingCommand : state::Command), requested, row, item, trace, enteringMenu)) return std::nullopt;
+    if (!CanUseShortcut(pocket, slot, (phase == Phase::Browsing ? state::Browsing : phase == Phase::SelectingCommand ? state::SelectingCommand : state::Command), requested, row, item, choose, trace, enteringMenu)) return std::nullopt;
     return Eligibility{item, static_cast<RowToken>(row), Resident(pocket)};
 }
 void QueueCommand(void *pocket) { QueueControllerState(pocket, state::Command); }

@@ -30,7 +30,7 @@ void TraceEligibility(void *owner, bool trace);
 struct CommandProgress { bool transitioned, success, returnsToBrowsing; };
 // Borrow only within a supported UI callback. Probe copies inventory values;
 // neither it nor dispatch exposes a native inventory item pointer.
-std::optional<Eligibility> Probe(void *pocket, int slot, Phase phase, Action action,
+std::optional<Eligibility> Probe(void *pocket, int slot, Phase phase, Action action, game::ChooseMenuEntry choose,
                                  bool trace = false, bool enteringMenu = false);
 const char *EligibilityReason();
 int SelectedSlot(void *pocket);

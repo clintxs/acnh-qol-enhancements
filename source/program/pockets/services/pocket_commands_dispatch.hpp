@@ -6,6 +6,8 @@ namespace qol_pockets::commands {
 // Internal callback/installation bridge, not a feature-facing execution API.
 DeclarationMatch CompareShortcutRules(std::span<const ShortcutRule> rules);
 void SetShortcutRules(std::span<const ShortcutRule> rules);
+bool AcceptsMenuPolicies(MenuPolicies policies);
+void SetMenuPolicies(MenuPolicies policies);
 qol::core::InputOutcome PocketPageInput(const qol::core::PageInputContext &input);
 bool QuickStoreInput(void *, void *, unsigned);
 void EnterMenu(void *, game::pocket_commands_native::NativeCallback);

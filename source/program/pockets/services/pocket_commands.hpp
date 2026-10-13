@@ -1,5 +1,6 @@
 #pragma once
 #include <span>
+#include "program/pockets/game/item_menu.hpp"
 
 namespace qol_pockets::commands {
 // These are UI snapshot bits, deliberately not HID button masks.
@@ -22,5 +23,22 @@ constexpr bool ValidShortcuts(std::span<const ShortcutRule> rules) {
 // Valid declarations are copied into three owned slots at startup. Identical
 // repeats revalidate hooks; conflicts leave the active table unchanged.
 // Installation owns its common input loop and verified native phase hooks.
+struct MenuPolicy {
+    game::ChooseMenuEntry choose{};
+    game::FeedbackTiming feedback{};
+    bool cursorTap{};
+    bool operator==(const MenuPolicy &) const = default;
+    bool Valid() const {
+        return choose && (feedback == game::FeedbackTiming::None ||
+            feedback == game::FeedbackTiming::BeforeExecution || feedback == game::FeedbackTiming::AfterSuccess);
+    }
+};
+struct MenuPolicies {
+    MenuPolicy store{}, drop{}, use{}, open{};
+    bool operator==(const MenuPolicies &) const = default;
+    bool Valid() const { return store.Valid() && drop.Valid() && use.Valid() && open.Valid(); }
+};
+// Feature composition supplies policy; the service owns deferred execution.
+bool InstallCommandHandlers(std::span<const ShortcutRule> rules, MenuPolicies policies);
 bool InstallShortcuts(std::span<const ShortcutRule> rules);
 } // namespace qol_pockets::commands

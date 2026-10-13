@@ -1,6 +1,6 @@
 #include "program/core/hook_plan.hpp"
 #include "menu_text.hpp"
-#include "stack_menu.hpp"
+#include "program/pockets/game/stack_menu.hpp"
 #include "program/pockets/game/stack_bindings.hpp"
 #include "program/pockets/text/catalog.hpp"
 #include <nn/fs/fs_files.hpp>
@@ -54,7 +54,7 @@ HOOK_DEFINE_INLINE(ReplaceMenuCaption) {
         // +0x168. FP-0xf0 is the allocated UTF-16 message-buffer object:
         // vtable +0, data +8, capacity (UTF-16 units) +0x10.
         const auto action = *reinterpret_cast<const int *>(registers->X[19] + layout::RowAction);
-        const auto quantity = QuantityForAction(action);
+        const auto quantity = game::QuantityForAction(action);
         if (!quantity) {
             return;
         }

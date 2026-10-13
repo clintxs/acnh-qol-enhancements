@@ -1,6 +1,6 @@
 #pragma once
 #include "lib.hpp"
-#include "program/pockets/features/stack_menu.hpp"
+#include "program/pockets/game/stack_menu.hpp"
 
 namespace qol_pockets::game {
 namespace stack_offsets {

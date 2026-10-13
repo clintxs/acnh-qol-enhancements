@@ -101,6 +101,19 @@ class Machine:
             rules = self.mod + symbol('PocketCommands5rulesE')
             self.write(rules, self.mod + symbol('InstallQuickStore', 'shortcuts'))
             self.write(rules + 8, 3)
+        if register_fixture and any('PocketCommands8policiesE' in name for name in symbols):
+            storage = self.mod + symbol('PocketCommands8policiesE')
+            for i, name in enumerate(('StoreAtHome', 'DropOrRelease', 'EquipOrConsume', 'OpenContainerDirectly')):
+                self.write(storage + i * 16, self.mod + symbol(name))
+                self.write(storage + i * 16 + 8, (2, 1, 1, 0)[i], 4)
+                self.write(storage + i * 16 + 12, int(i != 3), 1)
+        if register_fixture and any('extendMenuE' in name for name in symbols):
+            self.write(self.mod + symbol('extendMenuE'), self.mod + symbol('AddGrabFiveAndTen'))
+        if register_fixture and any('extendFooterE' in name for name in symbols):
+            self.write(self.mod + symbol('extendFooterE'), self.mod + symbol('AddShortcutHints'))
+        if register_fixture and any('chooseWithdrawalE' in name for name in symbols):
+            self.write(self.mod + symbol('chooseWithdrawalE'), self.mod + symbol('WithdrawDirectly', 'span'))
+            self.write(self.mod + symbol('chooseClaimE'), self.mod + symbol('ClaimDirectly', 'span'))
         self.adapter(0x3076480,'AdjustSourceCount',0x51000401,0x3076484,self.adapter_offset+0x0)
         self.adapter(0x30764f0,'AdjustDestinationCount',None,0x30764f4,self.adapter_offset+0x200,0x19f2bc0)
         self.adapter(0x308c764,'DispatchStackAction',0xd63f0100,0x308c768,self.adapter_offset+0x400)

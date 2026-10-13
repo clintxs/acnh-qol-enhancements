@@ -13,14 +13,8 @@
 #include "program/catalog/features/catalog_stars.hpp"
 #include "program/catalog/features/catalog_badges.hpp"
 #include "program/catalog/features/catalog_variation_labels.hpp"
-#include "program/pockets/game/build_profile.hpp"
+#include "program/pockets/features/pockets.hpp"
 #include "program/pockets/settings.hpp"
-#include "program/pockets/features/stack_splitting.hpp"
-#include "program/pockets/features/storage_withdrawal.hpp"
-#include "program/pockets/features/recycling_claim.hpp"
-#include "program/pockets/features/quick_store.hpp"
-#include "program/pockets/features/hold_select.hpp"
-#include "program/pockets/features/storage_hint.hpp"
 #include <nn/fs/fs_files.hpp>
 #include <atomic>
 #include <cstdio>
@@ -43,25 +37,6 @@ InstallResult InstallCatalog() {
         {"catalog.item_dialogue", true, InstallDialogueItemStars, {"catalog.profile"}},
         {"catalog.badges", true, InstallCatalogBadges, {"catalog.profile"}},
         {"catalog.variation_labels", true, InstallCatalogVariationLabels, {"catalog.profile"}},
-    };
-    return ActivateFeatures(features);
-}
-bool ValidatePockets() {
-    const auto result = qol_pockets::game::ValidateExpectedCode(native::MainExecutable());
-    if (!result) native::ReportMismatch(result);
-    return bool(result);
-}
-InstallResult InstallPockets() {
-    using namespace qol_pockets::features;
-    const FeatureDescription features[]{
-        {"pockets.profile", true, ValidatePockets},
-        {"pockets.stacks", true, InstallStackSplitting, {"pockets.profile"}},
-        {"pockets.storage_withdrawal", true, InstallStorageWithdrawal, {"pockets.profile"}},
-        {"pockets.quick_store", true, InstallQuickStore, {"pockets.profile"}},
-        {"pockets.hold_select", qol_pockets::GetSettings().enableMultiselect, InstallHoldSelect, {"pockets.quick_store"}},
-        {"pockets.recycling", true, InstallRecyclingClaim, {"pockets.profile"}},
-        {"pockets.hints", true, InstallStorageHint, {"pockets.quick_store"}},
-        {"pockets.withdrawal_hint", true, InstallStorageWithdrawalHint, {"pockets.storage_withdrawal", "pockets.hints"}},
     };
     return ActivateFeatures(features);
 }
@@ -135,7 +110,7 @@ bool ActivateCoreSettings() {
 // stop being compatible; release versions still advance with the whole suite.
 const std::array<ModuleDescription, 7> Modules{{
     {"Catalog", "catalog", {0, 1, 0}, InstallCatalog, catalog_aware_shops::Configure, nullptr, catalog_aware_shops::ReportSettings},
-    {"Pockets", "pockets", {0, 1, 0}, InstallPockets, qol_pockets::Configure, nullptr, qol_pockets::ReportSettings},
+    {"Pockets", "pockets", {0, 1, 0}, qol_pockets::features::InstallPockets, qol_pockets::Configure, nullptr, qol_pockets::ReportSettings},
     {"Faster Dialogue", "faster-dialogue", {0, 1, 0}, InstallDialogue, dialogue::Configure, nullptr, dialogue::ReportSettings},
     {"Fitting Room", "fitting-room", {0, 1, 0}, InstallFitting, nullptr, PrepareFittingResources},
     {"Shopping Card", "shopping-card", {0, 3, 2}, InstallShopping, nullptr, shopping::PrepareResources},
