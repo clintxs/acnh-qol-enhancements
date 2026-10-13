@@ -1,7 +1,7 @@
 #include "program/core/hook_plan.hpp"
 #include "hold_select.hpp"
 #include "program/pockets/settings.hpp"
-#include "pocket_input.hpp"
+#include "program/pockets/game/pocket_input.hpp"
 #include "program/core/page_input.hpp"
 #include "program/pockets/game/stack_bindings.hpp"
 #include <array>
@@ -123,7 +123,7 @@ void BeforeHoldSelectInput(void *page, void *snapshot, unsigned blocked) {
         // not interrupt a pockets gesture; Play entry handles reopening.
         return;
     }
-    auto *owner = pocket_input::FindPocketController(page);
+    auto *owner = game::pocket_input::FindPocketController(page);
     auto *hint = Field<void *>(page, layout::BackHint);
     auto *unit = hint ? Field<void *>(hint, layout::HintInput) : nullptr;
     if (!owner || !IsMultiSelection(owner) || !unit || Field<int>(unit, layout::ButtonId) != 5) {
@@ -157,7 +157,7 @@ void BeforeHoldSelectInput(void *page, void *snapshot, unsigned blocked) {
         return;
     }
     // An A press carried into a new/blocked picker must be released first.
-    const int slot = pocket_input::FindFocusedItemSlot(page, row);
+    const int slot = game::pocket_input::FindFocusedItemSlot(page, row);
     if (!gesture.released || slot < 0) return;
     const bool starting = !gesture.holding;
     if (starting) {
@@ -171,7 +171,7 @@ void BeforeHoldSelectInput(void *page, void *snapshot, unsigned blocked) {
 
 void *QueueHeldSelection(void *page, const InputCapture &input) {
     if (!input.owner || !gesture.holding) return nullptr;
-    auto *owner = pocket_input::FindPocketController(page);
+    auto *owner = game::pocket_input::FindPocketController(page);
     if (owner != input.owner || !IsMultiSelection(owner) ||
         Field<int>(owner, layout::Mode) != gesture.mode) {
         gesture = {};
@@ -185,7 +185,7 @@ void *QueueHeldSelection(void *page, const InputCapture &input) {
             gesture.selecting = !(Field<std::uint64_t>(owner, layout::SelectedSlots) &
                                   (std::uint64_t{1} << clickedSlot));
     }
-    const int slot = pocket_input::FindFocusedItemSlot(page, input.row);
+    const int slot = game::pocket_input::FindFocusedItemSlot(page, input.row);
     if (slot < 0 || slot == input.previousSlot) return nullptr;
     const auto bit = std::uint64_t{1} << slot;
     const bool selected = (Field<std::uint64_t>(owner, layout::SelectedSlots) & bit) != 0;

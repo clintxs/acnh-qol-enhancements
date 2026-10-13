@@ -1,4 +1,6 @@
 #include "pocket_commands_native.hpp"
+#include "quick_store_native.hpp"
+#include "pocket_input.hpp"
 #include "program/pockets/settings.hpp"
 #include <cstring>
 
@@ -10,11 +12,17 @@ namespace layout = profile::layout;
 namespace cursor_layout = profile::cursor_layout;
 using quick_store_native::Field;
 using quick_store_native::MenuDescription;
+using MenuRowId = profile::MenuRowId;
 namespace state {
 constexpr int Browsing = 3, Command = 7, Refresh = 14, NoQueuedTransition = -1;
 constexpr int SelectingCommand = 5;
 }
-constexpr int PocketSlotLimit = 40;
+constexpr int PocketSlotLimit = 40, InputRowLimit = 8, NativeBackButtonId = 5;
+constexpr unsigned OtherActionButtons = 0x37f;
+void *lastPage{};
+int lastRow = -1;
+unsigned previousButtons{};
+bool hasPreviousInput = false;
 namespace open_action {
 constexpr int Present = int(MenuRowId::Present), Treasure = int(MenuRowId::Treasure), Bottle = int(MenuRowId::Bottle);
 }
@@ -245,6 +253,169 @@ bool CanUseShortcut(void *pocket, int slot, int state, Action requested, int &ac
 
 } // namespace
 
+// Independent of the action's edge detector: report a shortcut press even if resolving
+// the native owner/button binding fails. Bounded, and never changes eligibility.
+static bool TracePress(void *page, void *inputSnapshot, unsigned shortcutButtons) {
+static void *tracePage{};
+static unsigned previous{}, reports{};
+    if (tracePage != page) {
+        tracePage = page;
+        previous = 0;
+    }
+    const int count = Field<int>(inputSnapshot, layout::SnapshotRowCount);
+    auto *rows = Field<std::byte *>(inputSnapshot, layout::SnapshotRows);
+    if (!rows || count < 1 || count > InputRowLimit) {
+        return false;
+    }
+    unsigned shortcutRows = 0;
+    for (int i = 0; i < count; ++i) {
+        if (Field<unsigned>(rows + i * layout::InputRowBytes, 0) & shortcutButtons) {
+            shortcutRows |= 1u << i;
+        }
+    }
+    const bool fresh = (shortcutRows & ~previous) != 0;
+    previous = shortcutRows;
+    if (!fresh || reports >= 64) {
+        return false;
+    }
+    ++reports;
+    Logging.Debug("[QoL Enhancements/Pockets] QUICK_STORE_TRACE press=%u shortcut_rows=%x\n", reports,
+                shortcutRows);
+    return true;
+}
+
+// Diagnostics are observational; keep them separate from input/eligibility.
+static void TracePocketBinding(void *page, void *owner, void *backButtonInput) {
+
+    Logging.Debug("[QoL Enhancements/Pockets] QUICK_STORE_TRACE binding owner=%lx cols=%d rows=%d "
+                "unit=%lx button=%d input_row=%d\n",
+                reinterpret_cast<std::uintptr_t>(owner),
+                Field<int>(page, layout::BindingColumnCount),
+                Field<int>(page, layout::BindingRowCount),
+                reinterpret_cast<std::uintptr_t>(backButtonInput),
+                backButtonInput ? Field<int>(backButtonInput, layout::HintButtonId) : -1,
+                backButtonInput ? Field<int>(backButtonInput, layout::HintInputRow) : -1);
+    auto *first = Field<void *>(page, layout::InputBindings);
+    if (!owner && first && Field<int>(page, layout::BindingColumnCount) > 0 &&
+        Field<int>(page, layout::BindingRowCount) > 0) {
+        Logging.Debug(
+            "[QoL Enhancements/Pockets] QUICK_STORE_TRACE first_binding vt=%lx fn=%lx adjust=%lx\n",
+            Field<std::uintptr_t>(first, 0) - game::MainAddress(0),
+            Field<std::uintptr_t>(first, layout::BindingFunction) - game::MainAddress(0),
+            Field<std::uintptr_t>(first, layout::BindingAdjustment));
+    }
+    if (owner) {
+        Logging.Debug("[QoL Enhancements/Pockets] QUICK_STORE_TRACE pocket state=%d mode=%d phase=%u "
+                    "queues=%d,%d equipped_slot=%d selected_mask=%lx blocked_mask=%lx error=%d "
+                    "hover=%d logical=%x\n",
+                    Field<int>(owner, layout::CurrentState), Field<int>(owner, layout::PocketMode),
+                    unsigned(Field<std::uint8_t>(owner, layout::TransitionSlot)),
+                    Field<int>(owner, layout::TransitionA), Field<int>(owner, layout::TransitionB),
+                    int(Field<std::int8_t>(owner, layout::EquippedSlot)),
+                    Field<std::uint64_t>(owner, layout::SelectedSlots),
+                    Field<std::uint64_t>(owner, layout::BlockedSlots),
+                    Field<int>(owner, layout::PocketError),
+                    int(Field<std::int8_t>(owner, layout::TransientHoverSlot)),
+                    unsigned(Field<std::uint16_t>(owner, layout::LogicalInput)));
+    }
+}
+
+static unsigned FreshShortcutButtons(void *page, int row, unsigned buttons, unsigned shortcutButtons) {
+    if (lastPage != page || lastRow != row) {
+        lastPage = page;
+        lastRow = row;
+        hasPreviousInput = false;
+    }
+    const unsigned fresh = hasPreviousInput ? buttons & ~previousButtons & shortcutButtons : 0;
+    previousButtons = buttons;
+    hasPreviousInput = true; // Track even when blocked: no delayed held press.
+    return fresh;
+}
+
+std::optional<PocketInput> ReadPocketInput(void *page, void *inputSnapshot, unsigned blocked,
+                                          unsigned shortcutButtons, bool pending) {
+    if (!inputSnapshot ||
+        Field<std::uintptr_t>(page, 0) != game::MainAddress(address::PocketPageVtable)) {
+        return std::nullopt;
+    }
+    const bool trace = TracePress(page, inputSnapshot, shortcutButtons);
+    auto *owner = pocket_input::FindPocketController(page);
+    auto *backButtonHint = Field<void *>(page, layout::BackButtonHint);
+    auto *backButtonInput =
+        backButtonHint ? Field<void *>(backButtonHint, layout::HintInputUnit) : nullptr;
+    if (trace) {
+        TracePocketBinding(page, owner, backButtonInput);
+    }
+    // Use the same controller row as the native B binding, not arbitrary row 0.
+    if (!owner || !backButtonInput ||
+        Field<int>(backButtonInput, layout::HintButtonId) != NativeBackButtonId) {
+        return std::nullopt;
+    }
+    const int row = Field<int>(backButtonInput, layout::HintInputRow),
+              count = Field<int>(inputSnapshot, layout::SnapshotRowCount);
+    auto *rows = Field<std::byte *>(inputSnapshot, layout::SnapshotRows);
+    if (!rows || count < 1 || count > InputRowLimit || row < 0 || row >= count) {
+        return std::nullopt;
+    }
+    auto *inputRow = rows + row * layout::InputRowBytes;
+    const unsigned buttons = Field<unsigned>(inputRow, 0);
+    const unsigned pressed = FreshShortcutButtons(page, row, buttons, shortcutButtons);
+    const unsigned heldShortcuts = buttons & shortcutButtons;
+    // Require exactly one held shortcut. Never choose an arbitrary destructive
+    // action when two triggers (or Y plus a trigger) arrive together.
+    const bool freshSingleShortcut = pressed && pressed == heldShortcuts &&
+                            (pressed & (pressed - 1)) == 0;
+    auto *context = Field<void *>(page, layout::InputContext);
+    auto *application = *reinterpret_cast<void **>(game::MainAddress(address::ApplicationGlobal));
+    auto *globalInputMasks =
+        application ? Field<void *>(application, layout::GlobalInputMasks) : nullptr;
+    if (trace) {
+        Logging.Debug(
+            "[QoL Enhancements/Pockets] QUICK_STORE_TRACE input fresh=%u held=%x consumed=%x "
+            "parent=%u local=%u global=%x mask=%x pending=%u\n",
+            unsigned(freshSingleShortcut), buttons, Field<unsigned>(inputRow, layout::ConsumedButtons),
+            blocked & 1, context ? unsigned(Field<std::uint8_t>(context, layout::InputBlocked)) : 1,
+            globalInputMasks ? Field<unsigned>(globalInputMasks, layout::GlobalInputMask) : ~0u,
+            context ? Field<unsigned>(context, layout::InputMask) : ~0u,
+            unsigned(pending));
+    }
+    if (!freshSingleShortcut || !context || !globalInputMasks || (blocked & 1) ||
+        Field<std::uint8_t>(context, layout::InputBlocked) ||
+        (Field<unsigned>(context, layout::InputMask) &
+         Field<unsigned>(globalInputMasks, layout::GlobalInputMask)) ||
+        (Field<unsigned>(inputRow, layout::ConsumedButtons) & pressed) ||
+        (buttons & OtherActionButtons) || Field<std::uint16_t>(owner, layout::LogicalInput) != 0) {
+        return std::nullopt;
+    }
+    const int slot = pocket_input::FindFocusedItemSlot(page, row);
+    if (trace) {
+        Logging.Debug("[QoL Enhancements/Pockets] QUICK_STORE_TRACE focused_slot=%d\n", slot);
+    }
+    return PocketInput{owner, slot, row, pressed, trace, inputRow};
+}
+void TraceEligibility(void *owner, bool trace) {
+    if (trace) {
+        Logging.Debug("[QoL Enhancements/Pockets] QUICK_STORE_TRACE eligibility=%s\n",
+                    EligibilityReason());
+        auto *menu = Field<void *>(owner, layout::PocketMenu);
+        if (menu) {
+            Logging.Debug(
+                "[QoL Enhancements/Pockets] QUICK_STORE_TRACE menu state=%d queues=%d,%d "
+                "builder_vt=%lx builder_fn=%lx owner_match=%u adjust=%lx\n",
+                Field<int>(menu, layout::CurrentState), Field<int>(menu, layout::TransitionA),
+                Field<int>(menu, layout::TransitionB),
+                Field<std::uintptr_t>(menu, layout::MenuBuilderVtable) - game::MainAddress(0),
+                Field<std::uintptr_t>(menu, layout::MenuBuilderFunction) - game::MainAddress(0),
+                unsigned(Field<void *>(menu, layout::MenuBuilderOwner) == owner),
+                Field<std::uintptr_t>(menu, layout::MenuBuilderAdjustment));
+        }
+    }
+}
+void ConsumeShortcut(const PocketInput &input) {
+    Field<unsigned>(input.nativeRow, layout::ConsumedButtons) |= input.freshShortcut;
+}
+void ResetInputEdges() { hasPreviousInput = false; previousButtons = 0; }
+
 const char *EligibilityReason() { return eligibilityReason; }
 int SelectedSlot(void *pocket) { return Field<std::int8_t>(pocket, layout::SelectedSlot); }
 unsigned char Resident(void *pocket) { return Field<unsigned char>(pocket, layout::PocketInventory); }
@@ -252,8 +423,8 @@ std::optional<Eligibility> Probe(void *pocket, int slot, Phase phase, Action req
                                  bool trace, bool enteringMenu) {
     int row = -1;
     ItemIdentity item{};
-    if (!CanUseShortcut(pocket, slot, int(phase), requested, row, item, trace, enteringMenu)) return std::nullopt;
-    return Eligibility{item, static_cast<MenuRowId>(row), Resident(pocket)};
+    if (!CanUseShortcut(pocket, slot, (phase == Phase::Browsing ? state::Browsing : phase == Phase::SelectingCommand ? state::SelectingCommand : state::Command), requested, row, item, trace, enteringMenu)) return std::nullopt;
+    return Eligibility{item, static_cast<RowToken>(row), Resident(pocket)};
 }
 void QueueCommand(void *pocket) { QueueControllerState(pocket, state::Command); }
 void QueueCommand(void *pocket, int slot) {
@@ -270,7 +441,7 @@ void BlockMenuInput(void *pocket) {
     if (context) Field<std::uint8_t>(context, layout::InputBlocked) = 1;
 }
 void PlayCursorTap(void *pocket, int slot, int inputRow) { PlayCursorTapNow(pocket, slot, inputRow); }
-CommandProgress Dispatch(void *owner, MenuRowId selectedRow, int slot, int inputRow,
+CommandProgress Dispatch(void *owner, RowToken selectedRow, int slot, int inputRow,
                          NativeCallback original, bool feedbackBefore, bool feedbackAfter) {
     auto *menu = Field<void *>(owner, layout::PocketMenu);
     auto &count = Field<int>(menu, layout::MenuRowCount);

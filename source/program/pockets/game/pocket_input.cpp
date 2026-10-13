@@ -1,7 +1,7 @@
 #include "pocket_input.hpp"
 #include "program/pockets/game/stack_bindings.hpp"
 
-namespace qol_pockets::features::pocket_input {
+namespace qol_pockets::game::pocket_input {
 namespace {
 namespace address {
 constexpr std::uintptr_t InputBindingVtable = 0x04a070d8;
