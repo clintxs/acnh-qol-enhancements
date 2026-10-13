@@ -1,7 +1,8 @@
 #include "program/core/hook_plan.hpp"
 #include "lib.hpp"
-#include "dialogue_hurry.hpp"
+#include "../dialogue_hurry.hpp"
 #include "program/dialogue/reveal_hooks.hpp"
+#include "../features/controls.hpp"
 #include <cstring>
 
 namespace qol::controls {
@@ -47,24 +48,6 @@ HurryInput ReadHurryInput() {
     }
     return {controller, controller ? Read<std::uint16_t>(controller, layout::HeldButtons) : 0u};
 }
-// A null reason means eligible. Log rejected frames too, rather than only
-// successful hurry frames (the first build's diagnostic blind spot).
-const char *HurryContextBlock(std::uintptr_t manager, std::uintptr_t text, unsigned state) {
-    if (!manager || !text) return "missing-owner";
-    if (Read<std::uintptr_t>(manager, layout::ManagerText) != text) return "manager-text";
-    if (Read<std::uintptr_t>(text, layout::TextManager) != manager) return "text-manager";
-    if (Read<unsigned>(manager, layout::ManagerState) != state) return "manager-state";
-    const auto context = Read<std::uintptr_t>(manager, layout::TalkContext);
-    if (!context) return "missing-context";
-    if (Read<std::uintptr_t>(text, layout::TextContext) != context) return "text-context";
-    if (Read<unsigned>(context, layout::ContextPhase) != 2) return "context-phase";
-    if (Read<unsigned>(context, layout::WindowKind) > layout::BalloonWindow) return "window";
-    const auto choices = Read<std::uintptr_t>(context, layout::ChoiceController);
-    // A choice can open on the final advance, but never advance while its
-    // controller is opening, active or closing. No synthetic confirm input.
-    if (!choices) return "missing-choices";
-    return Read<unsigned>(choices, layout::ControllerState) == 0 ? nullptr : "choice-active";
-}
 bool CopyMessageId(std::uintptr_t manager, std::size_t field, char *output) {
     output[0] = 0;
     const auto data = Read<std::uintptr_t>(manager, field);
@@ -84,34 +67,47 @@ bool IsNewCatchAnnouncement(std::uintptr_t manager) {
     // cannot leak into the species message or a later conversation.
     char bank[layout::MessageBankBytes]{}, label[layout::MessageBankBytes]{};
     if (!CopyMessageId(manager, layout::ActiveMessageBank, bank) ||
-        !CopyMessageId(manager, layout::ActiveMessageLabel, label) ||
-        std::strcmp(label, "001")) return false;
-    return !std::strcmp(bank, "SYS_Get_Fish") ||
-           !std::strcmp(bank, "SYS_Get_Insect") ||
-           !std::strcmp(bank, "SYS_Get_DiveFish");
+        !CopyMessageId(manager, layout::ActiveMessageLabel, label)) return false;
+    return features::IsNewCatchAnnouncement(bank, label);
+}
+// These operations translate validated 3.0.3 phases into game facts. Objects
+// are borrowed only for this synchronous callback; no message/context is saved.
+struct HurryContext {
+    std::uintptr_t manager, text; unsigned state;
+    std::uintptr_t context{}, choices{}, message{};
+    bool HasOwners() const { return manager && text; }
+    bool ManagerOwnsText() const { return Read<std::uintptr_t>(manager, layout::ManagerText) == text; }
+    bool TextOwnsManager() const { return Read<std::uintptr_t>(text, layout::TextManager) == manager; }
+    bool InRequestedPhase() const { return Read<unsigned>(manager, layout::ManagerState) == state; }
+    bool HasContext() { context = Read<std::uintptr_t>(manager, layout::TalkContext); return context; }
+    bool TextSharesContext() const { return Read<std::uintptr_t>(text, layout::TextContext) == context; }
+    bool ContextReady() const { return Read<unsigned>(context, layout::ContextPhase) == 2; }
+    bool SupportedWindow() const { return Read<unsigned>(context, layout::WindowKind) <= layout::BalloonWindow; }
+    bool HasChoices() { choices = Read<std::uintptr_t>(context, layout::ChoiceController); return choices; }
+    bool ChoicesInactive() const { return Read<unsigned>(choices, layout::ControllerState) == 0; }
+    bool AtPageEndOrInputPause() const {
+        // Reveal 4 is the explicit <10:4> input pause; native Advance resumes
+        // Print without clearing the page. 2/3 are page/message completion.
+        const auto reveal = Read<unsigned>(text, layout::RevealState);
+        return reveal == 2 || reveal == 3 || reveal == 4;
+    }
+    bool WaitingForManualAdvance() const {
+        const auto timer = Read<int>(manager, layout::AdvanceTimer);
+        return timer == -1 || timer == 0;
+    }
+    bool HasMessage() { message = Read<std::uintptr_t>(context, layout::MessageController); return message; }
+    // NPC pages wait in phase 1; the separate choices guard excludes choices
+    // opening/active/closing even though message phase 1 is accepted here.
+    bool MessageReady() const { return Read<unsigned>(message, layout::ControllerState) <= 2; }
+    bool NewCatchAnnouncement() const { return IsNewCatchAnnouncement(manager); }
+};
+const char *HurryContextBlock(std::uintptr_t manager, std::uintptr_t text, unsigned state) {
+    HurryContext context{manager, text, state};
+    return features::DialogueHurryBlock(context);
 }
 const char *AdvanceHurryBlock(std::uintptr_t manager, std::uintptr_t text) {
-    if (const auto block = HurryContextBlock(manager, text, 5)) return block;
-    const auto reveal = Read<unsigned>(text, layout::RevealState);
-    // Reveal 4 is the explicit input pause (<10:4>), e.g. the Sunday turnip
-    // message. Native Advance resumes Print without clearing the page, and
-    // Print entry changes 4 back to revealing=1. Held Y can supply that local
-    // advance request just as it does for a page break or completed message.
-    if (reveal != 2 && reveal != 3 && reveal != 4) return "text-not-ready";
-    const auto timer = Read<int>(manager, layout::AdvanceTimer);
-    if (timer != -1 && timer != 0) return "scripted-timer";
-    const auto context = Read<std::uintptr_t>(manager, layout::TalkContext);
-    const auto message = Read<std::uintptr_t>(context, layout::MessageController);
-    if (!message) return "missing-message";
-    const auto phase = Read<unsigned>(message, layout::ControllerState);
-    // The message wrapper does not share the choice controller's animation
-    // states: live NPC pages wait for input in phase 1. Allow that state in
-    // addition to the existing 0/2 paths; the separate choice guard still
-    // blocks opening, active and closing menus.
-    if (phase > 2) return "message-transition";
-    // Only suppress our synthetic advance request. Native manual input and
-    // text speed remain unchanged, including localized pages within label 001.
-    return IsNewCatchAnnouncement(manager) ? "new-catch" : nullptr;
+    HurryContext context{manager, text, 5};
+    return features::DialogueAdvanceBlock(context);
 }
 #if CAS_VERBOSE_HURRY_TRACE
 enum class HurryStage { Input, Speed, Advance };
@@ -181,7 +177,7 @@ HOOK_DEFINE_INLINE(DialogueAdvanceInput) {
 #else
         const auto input = block ? HurryInput{} : ReadHurryInput();
 #endif
-        if (!block && input.Held()) registers->W[22] = 1;
+        if (features::HurryRequested(block, input.Held())) registers->W[22] = 1;
 #if CAS_VERBOSE_HURRY_TRACE
         TraceHurry(HurryStage::Advance, manager, text, input, block, registers->W[22]);
 #endif
@@ -201,7 +197,7 @@ unsigned SelectDialogueHurry(std::uintptr_t text, unsigned currentFlag) {
 #else
     const auto input = block ? HurryInput{} : ReadHurryInput();
 #endif
-    const auto flag = !block && input.Held() ? DialogueHurryFlag : currentFlag;
+    const auto flag = features::HurryRequested(block, input.Held()) ? DialogueHurryFlag : currentFlag;
 #if CAS_VERBOSE_HURRY_TRACE
     TraceHurry(HurryStage::Speed, manager, text, input, block, flag);
 #endif

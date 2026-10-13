@@ -1,4 +1,6 @@
 #include "lib.hpp"
+// Player-facing policy starts at features/controls.hpp. Native hooks call those
+// handlers directly; no dynamic binding or borrowed declaration storage.
 #include "settings.hpp"
 #include "hold_y.hpp"
 #include "dialogue_hurry.hpp"

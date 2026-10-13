@@ -1,8 +1,9 @@
 #include "program/core/hook_plan.hpp"
 #include "lib.hpp"
-#include "auto_vault.hpp"
-#include "game/traversal_native.hpp"
+#include "../auto_vault.hpp"
+#include "traversal_native.hpp"
 #include "program/core/native/runtime.hpp"
+#include "../features/traversal.hpp"
 #include <cstring>
 #include <array>
 
@@ -74,7 +75,7 @@ bool ChangeTool(void *player, ToolSelection selection) {
     request.animate = 0;
     return profile::RequestAction.Resolve(Main)(player, ToolChangeAction, &request);
 }
-enum class SwapStage { None, Equipping, Traversing };
+using SwapStage = features::BorrowStage;
 struct BorrowedTool {
     SwapStage stage{};
     void *player{};
@@ -103,34 +104,37 @@ void TraceSwap(const char *event, unsigned kind, int slot, unsigned detail = 0) 
 #endif
 }
 bool BorrowTool(void *player, unsigned kind, ToolSelection selection, unsigned heldKind) {
-    auto swap = SwapFor(player);
-    if (!swap || swap->stage != SwapStage::None || selection.slot < 0) return false;
-    ToolSelection previous{};
-    if (heldKind) {
-        previous = FindTool(player, 0, Held(player), true);
-        // A temporary/event item with no pocket association is not ours to swap.
-        if (previous.slot < 0) return false;
-    }
-    auto actor = Read<void *>(player, field::Actor);
-    *swap = {SwapStage::Equipping, player, Read<unsigned>(player, field::PlayerHandle), kind,
-             Read<unsigned>(actor, field::Facing), selection, previous,
-             Read<std::array<float, 3>>(actor, field::Position)};
-    if (!ChangeTool(player, selection)) { *swap = {}; return false; }
-    TraceSwap("borrowed", kind, selection.slot);
-    return true;
+    struct Equipment {
+        void *player; unsigned kind; BorrowedTool *swap;
+        bool CanBeginBorrow() const { return swap && swap->stage == SwapStage::None; }
+        ToolSelection EmptySelection() const { return {}; }
+        ToolSelection FindEquippedItem() const { return FindTool(player, 0, Held(player), true); }
+        void RecordBorrow(ToolSelection selection, ToolSelection previous) {
+            auto actor = Read<void *>(player, field::Actor);
+            *swap = {SwapStage::Equipping, player, Read<unsigned>(player, field::PlayerHandle), kind,
+                     Read<unsigned>(actor, field::Facing), selection, previous,
+                     Read<std::array<float, 3>>(actor, field::Position)};
+        }
+        bool RequestToolChange(ToolSelection selection) const { return ChangeTool(player, selection); }
+        void ClearBorrow() { *swap = {}; }
+        void TraceBorrow() const { TraceSwap("borrowed", kind, swap->borrowed.slot); }
+    } equipment{player, kind, SwapFor(player)};
+    return features::BorrowTraversalTool(equipment, selection, heldKind != 0);
 }
 void RestoreTool(void *player, BorrowedTool &swap) {
-    auto previous = swap.previous;
-    // Resolve the exact item again in case pockets were reordered. If it was
-    // removed, return to empty hands instead of recreating a stale item value.
-    if (previous.slot >= 0) {
-        auto resident = Read<unsigned char>(player, field::Resident);
-        const auto item = qol::game::inventory::ForResident(Main, resident).Slots().TryItemAt(previous.slot);
-        if (!item.present || item.value != previous.item) previous = FindTool(player, 0, previous.item);
-    }
-    swap = {};
-    ChangeTool(player, previous);
-    TraceSwap("restored", 0, previous.slot);
+    struct Equipment {
+        void *player; BorrowedTool &swap;
+        bool SameItemAtSlot(ToolSelection selection) const {
+            const auto resident = Read<unsigned char>(player, field::Resident);
+            const auto item = qol::game::inventory::ForResident(Main, resident).Slots().TryItemAt(selection.slot);
+            return item.present && item.value == selection.item;
+        }
+        ToolSelection FindExactItem(Item item) const { return FindTool(player, 0, item); }
+        void ClearBorrow() { swap = {}; }
+        bool RequestToolChange(ToolSelection selection) const { return ChangeTool(player, selection); }
+        void TraceRestore(ToolSelection previous) const { TraceSwap("restored", 0, previous.slot); }
+    } equipment{player, swap};
+    features::RestoreTraversalTool(equipment, swap.previous);
 }
 
 // Shared native hop geometry request, constructed by HopDirection. The first
@@ -256,6 +260,7 @@ struct VaultProbe {
     void *player;
     bool landingValidated = false, transferred = false;
     unsigned nativeResult = 0;
+    bool Valid() const { return transferred || (nativeResult && landingValidated); }
 #if CAS_AUTO_VAULT_DIAGNOSTIC
     unsigned failedCandidates = 0, failureMask = 0, lastCall = 0, integerResult = 0, floatBits = 0;
 #endif
@@ -450,121 +455,133 @@ HOOK_DEFINE_TRAMPOLINE(AutoVaultGeometry) {
         return Orig(player, request, output);
     }
 };
+using game::TraversalKind;
+using game::Crossing;
+TraversalKind DecodeTool(unsigned kind) {
+    if (kind == VaultingPoleKind) return TraversalKind::Pole;
+    if (kind == LadderKind) return TraversalKind::Ladder;
+    if (kind == PlacedLadderTraversal) return TraversalKind::PlacedLadder;
+    return kind ? TraversalKind::Other : TraversalKind::None;
+}
+unsigned EncodeTool(TraversalKind kind) {
+    switch (kind) {
+    case TraversalKind::Pole: return VaultingPoleKind;
+    case TraversalKind::Ladder: return LadderKind;
+    case TraversalKind::PlacedLadder: return PlacedLadderTraversal;
+    default: return 0;
+    }
+}
+Crossing DecodeCrossing(unsigned result) {
+    return static_cast<Crossing>(result);
+}
+unsigned EncodeCrossing(Crossing result) {
+    return static_cast<unsigned>(result);
+}
 HOOK_DEFINE_TRAMPOLINE(AutoVaultEntry) {
     static unsigned Callback(void *player, unsigned probe, unsigned automatic) {
         if (!(automatic & 1)) {
-            // The complete ordinary automatic-hop search already failed.
-            // A check-only current-position vault must not commit a nested hop.
+            // A current-position vault probe must not commit a nested short
+            // hop after the complete ordinary hop search has already failed.
             if (CurrentVaultProbe && CurrentVaultProbe->player == player) return NoCrossing;
             ConsumeProof(player);
             const auto result = Orig(player, probe, automatic);
             TraceEntry(player, probe, automatic, result, false);
             return result;
         }
-        const auto movementProof = ConsumeProof(player);
-        if (AutoEquipEnabled) {
-            const auto swap = SwapFor(player);
-            if (swap && swap->stage != SwapStage::None) return Orig(player, probe, automatic);
-        }
-        HopAttempt attempt{player};
-        auto previous = CurrentAttempt;
-        CurrentAttempt = &attempt;
-        auto hop = Orig(player, probe, automatic);
-        CurrentAttempt = previous;
-        if (hop == NoCrossing && !attempt.eligible && LadderEnabled &&
-            (PlacedLadderEnabled || AutoEquipEnabled || profile::EquippedToolKind.Resolve(Main)(player) == LadderKind)) {
-            attempt.includeWalls = true;
+        struct Traversal {
+            void *player; unsigned probe, automatic;
+            HopAttempt attempt;
+            // Search scopes never survive Orig; native alternatives and output
+            // requests retain their ordering. Wall retry changes contact class
+            // only inside this attempt and preserves the request's input fields.
+            Crossing SearchNativeHop(bool walls) {
+                attempt.includeWalls = walls;
 #if CAS_AUTO_VAULT_DIAGNOSTIC
-            attempt.geometry |= 32u; // Ladder-only wall-contact retry.
+                if (walls) attempt.geometry |= 32u;
 #endif
-            CurrentAttempt = &attempt;
-            hop = Orig(player, probe, automatic);
-            CurrentAttempt = previous;
-        }
-        // Keep the complete ordinary-hop search, including adjusted landings
-        // and its pending hold, first. Eligibility was observed only AFTER
-        // native stick strength, low speed, contact and direction checks.
-        if (hop != NoCrossing || !attempt.eligible) {
-            TraceEntry(player, probe, automatic, hop, attempt.geometry);
-            return hop;
-        }
-        // World ladders have their own native object search (including its
-        // orientation and placement metadata), followed by the shared climb
-        // validator. Prefer that path before borrowing a handheld ladder.
-        // As with tools, only the stable phase searches; movement consumes a
-        // one-use proof to advance the existing native hold timer.
-        if (PlacedLadderEnabled) {
-            VaultProbe placed{player};
-            if (probe & 1) {
-                placed.transferred = MatchesMovementStart(movementProof, player, PlacedLadderTraversal);
-            } else {
-                placed = ProbeCurrentPositionLadder(player, true);
+                const auto previous = CurrentAttempt;
+                CurrentAttempt = &attempt;
+                const auto hop = Orig(player, probe, automatic);
+                CurrentAttempt = previous;
+                return DecodeCrossing(hop);
             }
-            if (placed.transferred || (placed.nativeResult && placed.landingValidated)) {
-                if (!HoldComplete(player)) {
-                    if (!(probe & 1)) RememberBank(player, PlacedLadderTraversal);
-                    return Waiting;
-                }
-                if (probe & 1) return CrossingReady;
-                const auto result = profile::TryPlacedLadder.Resolve(Main)(player, 0) & 1;
-                Logging.Debug("[QoL Enhancements/Controls] auto placed ladder: native result=%u\n", result);
-                return result;
+            Crossing OrdinaryHop() const { return DecodeCrossing(Orig(player, probe, automatic)); }
+            MovementProof ConsumeMovementProof() const { return ConsumeProof(player); }
+            bool ToolBorrowActive() const { const auto swap = SwapFor(player); return swap && swap->stage != SwapStage::None; }
+            bool IntentObserved() const { return attempt.eligible; }
+            bool IncludesWalls() const { return attempt.includeWalls; }
+            TraversalKind HeldTool() const { return DecodeTool(profile::EquippedToolKind.Resolve(Main)(player)); }
+            TraversalKind ProvenTool(const MovementProof &proof) const { return DecodeTool(proof.tool); }
+            ToolSelection EmptySelection() const { return {}; }
+            VaultProbe EmptyCheck() const { return {player}; }
+            VaultProbe TransferProof(const MovementProof &proof, TraversalKind tool) const {
+                VaultProbe check{player};
+                check.transferred = MatchesMovementStart(proof, player, EncodeTool(tool));
+                return check;
             }
-        }
-        const auto heldKind = profile::EquippedToolKind.Resolve(Main)(player);
-        unsigned tool = heldKind;
-        bool ladder = LadderEnabled && tool == LadderKind;
-        ToolSelection selection{};
-        VaultProbe check{player};
-        if (probe & 1) {
-            tool = movementProof.tool;
-            ladder = tool == LadderKind;
-            check.transferred = MatchesMovementStart(movementProof, player, tool) &&
-                (AutoEquipEnabled || tool == heldKind);
-        } else {
-            if (ladder) check = ProbeCurrentPositionLadder(player);
-            else if (!attempt.includeWalls && VaultEnabled && tool == VaultingPoleKind) check = ProbeCurrentPositionVault(player);
-            if (AutoEquipEnabled && !(check.nativeResult && check.landingValidated)) {
-                ladder = false;
-                tool = 0;
-                if (LadderEnabled && heldKind != LadderKind) {
-                    selection = FindTool(player, LadderKind);
-                    if (selection.slot >= 0) {
-                        check = ProbeCurrentPositionLadder(player);
-                        if (check.nativeResult && check.landingValidated) { tool = LadderKind; ladder = true; }
-                    }
-                }
-                if (!ladder && !attempt.includeWalls && VaultEnabled && heldKind != VaultingPoleKind) {
-                    selection = FindTool(player, VaultingPoleKind);
-                    if (selection.slot >= 0) { tool = VaultingPoleKind; check = ProbeCurrentPositionVault(player); }
-                }
+            VaultProbe CheckLanding(TraversalKind tool) const {
+                return tool == TraversalKind::Pole ? ProbeCurrentPositionVault(player)
+                    : ProbeCurrentPositionLadder(player, tool == TraversalKind::PlacedLadder);
             }
-        }
-        // The wider wall-contact retry is for climbing only. A failed placed
-        // climb must not grant pole traversal eligibility through a solid wall.
-        if (attempt.includeWalls && !ladder) return hop;
-        if (!(ladder || (VaultEnabled && tool == VaultingPoleKind))) return hop;
-        auto traverse = (ladder ? profile::TryLadder : profile::TryVault).Resolve(Main);
-        const unsigned valid = check.transferred || (check.nativeResult && check.landingValidated);
-        const bool complete = valid && HoldComplete(player);
-        if (!valid || !complete || (probe & 1)) {
-            const auto result = !valid ? NoCrossing : complete ? CrossingReady : Waiting;
-            if (valid && !complete && !(probe & 1)) RememberBank(player, tool);
-            TraceEntry(player, probe, automatic, hop, attempt.geometry, valid, result, &check);
-            return result;
-        }
+            bool HoldComplete() const { return qol::controls::HoldComplete(player); }
+            void RememberBank(TraversalKind tool) const { qol::controls::RememberBank(player, EncodeTool(tool)); }
+            ToolSelection FindTool(TraversalKind tool) const { return qol::controls::FindTool(player, EncodeTool(tool)); }
+            bool BorrowTool(TraversalKind tool, ToolSelection selection, TraversalKind held) const {
+                return qol::controls::BorrowTool(player, EncodeTool(tool), selection,
+                    held != TraversalKind::None);
+            }
+            Crossing RequestTraversal(TraversalKind tool) const {
+                const auto traverse = tool == TraversalKind::PlacedLadder ? profile::TryPlacedLadder
+                    : tool == TraversalKind::Ladder ? profile::TryLadder : profile::TryVault;
+                const auto result = traverse.Resolve(Main)(player, 0) & 1;
+                if (tool == TraversalKind::PlacedLadder)
+                    Logging.Debug("[QoL Enhancements/Controls] auto placed ladder: native result=%u\n", result);
 
-        if (tool != heldKind) {
-            return AutoEquipEnabled && BorrowTool(player, tool, selection, heldKind) ? CrossingReady : NoCrossing;
-        }
-        // Re-run native validation against the current position and let the
-        // game reserve landing space and enter its normal tool-ready state.
-        const auto result = traverse(player, 0) & 1;
-        TraceEntry(player, probe, automatic, hop, attempt.geometry, valid, result, &check);
-        if (result) Logging.Debug("[QoL Enhancements/Controls] auto %s: native traversal requested\n",
-                                  ladder ? "ladder" : "vault");
-        return result;
+                return DecodeCrossing(result);
+            }
+            void TraceRequestedTraversal(TraversalKind tool, Crossing result) const {
+                if (result != Crossing::None)
+                    Logging.Debug("[QoL Enhancements/Controls] auto %s: native traversal requested\n",
+                                  tool == TraversalKind::Ladder ? "ladder" : "vault");
+            }
+            void TraceHop(Crossing hop) const { TraceEntry(player, probe, automatic, EncodeCrossing(hop), attempt.geometry); }
+            void TraceCheck(Crossing hop, bool valid, Crossing result, const VaultProbe &check) const {
+                TraceEntry(player, probe, automatic, EncodeCrossing(hop), attempt.geometry, valid, EncodeCrossing(result), &check);
+            }
+        } traversal{player, probe, automatic, {player}};
+        return EncodeCrossing(features::TraverseWhileHeld(traversal,
+            {VaultEnabled, LadderEnabled, AutoEquipEnabled, PlacedLadderEnabled}, probe & 1));
     }
+};
+// Borrow state is correlated by resident, player pointer and generation in
+// SwapFor. Exact full-item equality protects manual equipment ownership.
+struct BorrowedEquipment {
+    void *player; BorrowedTool &swap;
+    bool StillOwnsBorrowedTool() const { return Held(player) == swap.borrowed.item; }
+    void RestorePreviousTool() { RestoreTool(player, swap); }
+    void ReleaseOwnership() { TraceSwap("ownership lost", swap.kind, swap.borrowed.slot); swap = {}; }
+    struct StickPosition { float x, y; };
+    StickPosition Stick() const { return {Read<float>(player, field::StickX), Read<float>(player, field::StickY)}; }
+    bool FacingMatchesBorrow() const {
+        const auto actor = Read<void *>(player, field::Actor);
+        return Read<unsigned>(actor, field::Facing) == swap.facing;
+    }
+    bool AtBorrowedBank() const {
+        const auto actor = Read<void *>(player, field::Actor);
+        return Read<std::array<float, 3>>(actor, field::Position) == swap.bank;
+    }
+    VaultProbe CheckLanding() const {
+        return swap.kind == LadderKind ? ProbeCurrentPositionLadder(player) : ProbeCurrentPositionVault(player);
+    }
+    unsigned RequestTraversal() const {
+        const auto traversal = swap.kind == LadderKind ? profile::TryLadder : profile::TryVault;
+        return traversal.Resolve(Main)(player, 0) & 1;
+    }
+    void TraceCancellation(bool intent, const VaultProbe &check) const {
+        TraceSwap("cancelled", swap.kind, swap.borrowed.slot,
+                  unsigned(intent) | (check.nativeResult << 1) | (unsigned(check.landingValidated) << 2));
+    }
+    void TraceTraversal() const { TraceSwap("traversing", swap.kind, swap.borrowed.slot); }
 };
 // State entry finishes even while the stick is released. Observe its native
 // finalizer after all entry setup, rather than waiting for the walking-only
@@ -574,20 +591,10 @@ HOOK_DEFINE_TRAMPOLINE(AutoTraversalActionFinished) {
         Orig(player, action);
         const bool locomotion = action == IdleAction || action == MoveAction;
         if (auto swap = SwapFor(player); swap && swap->stage != SwapStage::None) {
-            if (swap->stage == SwapStage::Equipping) {
-                if (action == ToolChangeAction) swap->equipEntered = true;
-                if (locomotion && swap->equipEntered) swap->equipFinished = true;
-            } else {
-                const bool traversal = swap->kind == LadderKind ? action >= 0x8a && action <= 0x8c
-                                                               : action >= 0xb4 && action <= 0xb7;
-                if (traversal) swap->traversalEntered = true;
-                if (locomotion && swap->traversalEntered) {
-                    // Preserve manual equipment ownership, then schedule the
-                    // same native silent ToolChange immediately after landing.
-                    if (Held(player) == swap->borrowed.item) RestoreTool(player, *swap);
-                    else { TraceSwap("ownership lost", swap->kind, swap->borrowed.slot); *swap = {}; }
-                }
-            }
+            BorrowedEquipment equipment{player, *swap};
+            const bool traversal = swap->kind == LadderKind ? action >= 0x8a && action <= 0x8c
+                                                           : action >= 0xb4 && action <= 0xb7;
+            features::FinishTraversalAction(*swap, equipment, locomotion, action == ToolChangeAction, traversal);
         }
     }
 };
@@ -600,27 +607,9 @@ HOOK_DEFINE_TRAMPOLINE(AutoTraversalSwap) {
         auto actor = Read<void *>(player, field::Actor);
         if (!controller || !actor || Read<unsigned>(controller, field::Action) != MoveAction ||
             !Read<unsigned char>(player, field::InputValid)) return result;
-        if (swap->stage == SwapStage::Equipping && !swap->equipFinished) return result;
-        // Manual tool changes take ownership away from this transaction.
-        if (Held(player) != swap->borrowed.item) { TraceSwap("ownership lost", swap->kind, swap->borrowed.slot); *swap = {}; return result; }
-        // A queued traversal may still report Move. Its completed native
-        // locomotion entry owns restoration, independently of this dispatcher.
-        if (swap->stage == SwapStage::Traversing) return result;
-        const auto x = Read<float>(player, field::StickX), y = Read<float>(player, field::StickY);
-        const bool intent = x*x+y*y >= .81f && Read<unsigned>(actor, field::Facing) == swap->facing &&
-            Read<std::array<float, 3>>(actor, field::Position) == swap->bank;
-        const auto check = swap->kind == LadderKind ? ProbeCurrentPositionLadder(player) : ProbeCurrentPositionVault(player);
-        if (!intent || !check.nativeResult || !check.landingValidated) {
-            TraceSwap("cancelled", swap->kind, swap->borrowed.slot,
-                      unsigned(intent) | (check.nativeResult << 1) | (unsigned(check.landingValidated) << 2));
-            RestoreTool(player, *swap);
-            return CrossingReady;
-        }
-        TraceSwap("traversing", swap->kind, swap->borrowed.slot);
-        swap->stage = SwapStage::Traversing;
-        const auto traversal = swap->kind == LadderKind ? profile::TryLadder : profile::TryVault;
-        if (!(traversal.Resolve(Main)(player, 0) & 1)) RestoreTool(player, *swap);
-        return CrossingReady;
+        BorrowedEquipment equipment{player, *swap};
+        const auto continuation = features::ContinueBorrowedTraversal(*swap, equipment);
+        return continuation == Crossing::None ? result : EncodeCrossing(continuation);
     }
 };
 

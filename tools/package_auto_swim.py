@@ -72,7 +72,7 @@ def main():
         assert all(hashlib.sha256(archive.read(name)).hexdigest() == digest for name, digest in manifest.items())
     with ZipFile(source) as archive:
         assert archive.testzip() is None
-        for source_file in ('auto_swim.cpp', 'camera_tilt.cpp', 'settings.hpp'):
+        for source_file in ('game/swimming_native.cpp', 'game/camera_native.cpp', 'features/swimming.hpp', 'settings.hpp'):
             assert any(name.endswith('/source/program/controls/' + source_file) for name in archive.namelist())
     print(binary)
     print(source)

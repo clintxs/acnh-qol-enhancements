@@ -62,6 +62,12 @@ class Module:
         if len(matches)>1:
             functions=[(k,v) for k,v in matches if not k.startswith('_ZZ') and '.part.' not in k]
             if len(functions)==1:matches=functions
+        if len(matches)>1 and 'Callback' in needles:
+            # A policy instantiated with a callback-local context contains the
+            # enclosing callback's name as an Itanium template argument (IZ...).
+            # Select the callback itself, preserving ambiguity checks otherwise.
+            callbacks=[(k,v) for k,v in matches if 'IZ' not in k]
+            if len(callbacks)==1:matches=callbacks
         found=[v for k,v in matches]
         assert len(found)==1,(needles,found)
         return found[0]

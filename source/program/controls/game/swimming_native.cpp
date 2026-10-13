@@ -1,6 +1,7 @@
 #include "program/core/hook_plan.hpp"
 #include "lib.hpp"
-#include "auto_swim.hpp"
+#include "../auto_swim.hpp"
+#include "../features/swimming.hpp"
 #include <array>
 #include <cstring>
 
@@ -22,25 +23,9 @@ constexpr std::size_t LeftStick = 0xeec, HeldActions = 0xec8, PressedActions = 0
 constexpr std::size_t HeldAFrames = 0x13d8, Resident = 0x1ee8, Handle = 0x230;
 constexpr std::size_t Speed = 0x1820, TargetSpeed = 0x1844;
 }
-// Small neutral zone, then a linear analog speed range. Native steering still
-// uses the game's own stick handling; this only sets swimming propulsion.
-constexpr float StickDeadZone = .15f;
-constexpr float QuietStrideScale = .8f; // Native FlapFoot speed multiplier.
-constexpr float BoostFraction = .625f;
+// Identity is native-owned; stroke timing/animation policy is mod-owned.
+struct SwimState : features::StrokeState { const void *player{}; unsigned handle{}; };
 bool StrokeBoost = true;
-constexpr std::uint64_t TicksPerSecond = 19'200'000ull;
-constexpr std::uint64_t StrokeInterval = TicksPerSecond * 2;
-constexpr std::uint64_t BoostDelay = TicksPerSecond / 2;
-constexpr std::uint64_t BoostDuration = TicksPerSecond * 3 / 2;
-constexpr std::uint64_t SessionGap = TicksPerSecond / 2;
-struct SwimState {
-    const void *player{};
-    unsigned handle{};
-    std::uint64_t lastStroke{}, lastUpdate{};
-    float cruiseSpeed{};
-    bool moving{}, underwater{}, armPending{}, pendingManual{};
-    bool hasStroke{}, armAnimation{};
-};
 std::array<SwimState, 8> Swimmers{};
 struct MovementScope {
     void *player{};
@@ -56,22 +41,6 @@ template<class T> T Read(const void *object, std::size_t offset) {
 template<class T> void Write(void *object, std::size_t offset, T value) {
     std::memcpy(static_cast<std::byte *>(object) + offset, &value, sizeof(value));
 }
-float StickThrottle(const void *player) {
-    const auto x = Read<float>(player, field::LeftStick);
-    const auto y = Read<float>(player, field::LeftStick + sizeof(float));
-    const float squared = x*x + y*y;
-    // Reject corrupt/nonfinite inputs before sqrt; clamp diagonal overtravel.
-    if (!(squared > StickDeadZone*StickDeadZone && squared <= 2.f)) return 0.f;
-    const float magnitude = __builtin_sqrtf(squared);
-    return magnitude >= 1.f ? 1.f : (magnitude - StickDeadZone) / (1.f - StickDeadZone);
-}
-float BoostEnvelope(const SwimState &state, std::uint64_t now) {
-    const auto elapsed = now - state.lastStroke;
-    // Match the arm push rather than the start of the animation. Keep the
-    // full 1.5-second fade after this delay, independent of stroke cooldown.
-    if (!state.hasStroke || elapsed < BoostDelay || elapsed >= BoostDelay + BoostDuration) return 0.f;
-    return 1.f - float(elapsed - BoostDelay) / float(BoostDuration);
-}
 void Update(void *player, void (*original)(void *), bool underwater, bool entry) {
     if (!player || Read<unsigned>(player, field::UpdateMode) != 0 ||
         !Read<unsigned char>(player, field::InputEnabled) ||
@@ -86,58 +55,20 @@ void Update(void *player, void (*original)(void *), bool underwater, bool entry)
         state.handle = handle;
     }
     const auto now = svcGetSystemTick();
-    // Preserve the boost cooldown across diving/surfacing, but relearn each
-    // mode's native cruise speed. A gap identifies a new swimming session.
-    if (state.underwater != underwater || now - state.lastUpdate > SessionGap) {
-        state.cruiseSpeed = 0.f;
-        state.moving = state.armPending = state.pendingManual = state.armAnimation = false;
-    }
-    state.underwater = underwater;
-    state.lastUpdate = now;
     const auto held = Read<std::uint64_t>(player, field::HeldActions);
     const auto pressed = Read<std::uint64_t>(player, field::PressedActions);
-    const float throttle = StickThrottle(player);
-    const bool moving = throttle > 0.f;
-    const bool nested = Scope.player == player;
-    const bool ready = !state.hasStroke || now - state.lastStroke >= StrokeInterval;
-    if (!nested && !entry) {
-        if (!moving && !state.pendingManual) state.armPending = false;
-        const bool manual = ((held | pressed) & 1) != 0;
-        if (ready && (manual || (moving && !state.moving))) {
-            state.armPending = true;
-            state.pendingManual = manual;
-        }
-        state.moving = moving;
-    }
-    // Y keeps priority over a queued stroke when diving/surfacing/catching.
-    const bool transition = (pressed & 8) != 0;
-    if (transition) state.armPending = state.pendingManual = false;
-    const bool armEntry = entry && state.armPending;
-    // Consume before native entry so a nested movement helper can see the
-    // boost immediately. Entries between requests select quiet foot kicking.
-    if (entry) {
-        state.armAnimation = armEntry;
-        if (armEntry) {
-            state.armPending = false;
-            state.pendingManual = false;
-            state.hasStroke = true;
-            state.lastStroke = now;
-        }
-    }
-    const float boost = BoostEnvelope(state, now);
-    // Keep a neutral-stick stroke active through its wind-up as well as the
-    // impulse, so manual A does not lose its animation before propulsion.
-    const bool strokeActive = state.hasStroke && now - state.lastStroke < BoostDelay + BoostDuration;
-    const bool active = !transition && (moving || state.armPending || strokeActive);
-    const bool pulse = !entry && state.armPending && !transition;
+    const auto throttle = features::StickThrottle(Read<float>(player, field::LeftStick),
+                                                 Read<float>(player, field::LeftStick + sizeof(float)));
+    const auto stroke = features::SwimWithStick(state, now, underwater, entry, Scope.player == player,
+                                               throttle, ((held | pressed) & 1) != 0, (pressed & 8) != 0);
     const auto frames = Read<unsigned>(player, field::HeldAFrames);
     // A is an input to our cooldown policy. Hide physical A from the native
     // stroke gates during cooldown; restore it after this synchronous scope.
-    Write(player, field::HeldActions, (held & ~1ull) | std::uint64_t(active));
-    Write(player, field::PressedActions, (pressed & ~1ull) | std::uint64_t(pulse));
-    Write(player, field::HeldAFrames, (armEntry || state.armPending) ? 0u : 31u);
+    Write(player, field::HeldActions, (held & ~1ull) | std::uint64_t(stroke.active));
+    Write(player, field::PressedActions, (pressed & ~1ull) | std::uint64_t(stroke.pulse));
+    Write(player, field::HeldAFrames, (stroke.armEntry || state.armPending) ? 0u : 31u);
     const auto previous = Scope;
-    Scope = {player, &state, throttle, boost};
+    Scope = {player, &state, throttle, stroke.boost};
     original(player);
     Scope = previous;
     Write(player, field::HeldActions, (Read<std::uint64_t>(player, field::HeldActions) & ~1ull) | (held & 1));
@@ -152,11 +83,11 @@ void AdjustMovement(void *player, const void *parameters, bool stride) {
         // animation does not change analog speed or introduce diving pauses.
         const float nativeSpeed = Read<float>(parameters, 0);
         if (nativeSpeed > 0.f && nativeSpeed < 10.f)
-            Scope.state->cruiseSpeed = nativeSpeed * (Scope.state->armAnimation ? QuietStrideScale : 1.f);
+            Scope.state->cruiseSpeed = features::LearnCruiseSpeed(nativeSpeed, Scope.state->armAnimation);
     }
     // Replace the animation's start/stop speed curve with analog propulsion
     // plus a time-based stroke impulse. Neutral A boosts use facing.
-    const float speed = Scope.state->cruiseSpeed * (Scope.throttle + (StrokeBoost ? BoostFraction * Scope.boost : 0.f));
+    const float speed = features::SwimmingPropulsion(Scope.state->cruiseSpeed, Scope.throttle, Scope.boost, StrokeBoost);
     Write(player, field::Speed, speed);
     Write(player, field::TargetSpeed, speed);
 }

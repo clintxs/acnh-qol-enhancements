@@ -1,6 +1,7 @@
 #include "program/core/hook_plan.hpp"
 #include "lib.hpp"
-#include "hold_y.hpp"
+#include "../hold_y.hpp"
+#include "../features/controls.hpp"
 #include <array>
 #include <cstring>
 
@@ -26,7 +27,7 @@ constexpr std::size_t ParameterCount = 0x1d8, ParameterRows = 0x1e0, ParameterFi
 // before context mapping, and extend only the pickup branch after mapping.
 constexpr std::uint64_t HeldY = 1ull << 38;
 constexpr unsigned PickupAction = 1u << 3;
-enum class Action { None, Item, Crop, Weed, Moss };
+using Action = features::PickupCategory;
 struct Hold {
     void *player{};
     unsigned handle{};
@@ -90,10 +91,10 @@ HOOK_DEFINE_TRAMPOLINE(HooverInput) {
         const auto handle = Read<unsigned>(player, field::PlayerHandle);
         const bool held = Read<std::uint64_t>(input, field::HeldActions) & HeldY;
         const bool pressed = Read<std::uint64_t>(input, field::PressedActions) & HeldY;
-        if (hold.player != player || hold.handle != handle || !held || pressed)
-            hold = {player, handle, Action::None, held && pressed};
-        else
-            hold.firstPress = false;
+        features::ObservePickupHold(hold.action, hold.firstPress,
+                                    hold.player != player || hold.handle != handle, held, pressed);
+        hold.player = player;
+        hold.handle = handle;
         return result;
     }
 };
@@ -103,7 +104,7 @@ HOOK_DEFINE_INLINE(HooverPressGate) {
         const auto hold = ForPlayer(player);
         // Preserve the native fresh-press value. Only this Y branch sees a
         // repeated request; no controller snapshot or other action is edited.
-        if (hold && hold->action != Action::None && !hold->firstPress &&
+        if (hold && features::RepeatPickup(hold->action, hold->firstPress, false) &&
             (Read<std::uint64_t>(static_cast<std::byte *>(player) + field::PlayerInput, field::HeldActions) & HeldY))
             ctx->W[8] |= 1;
     }
@@ -115,9 +116,9 @@ HOOK_DEFINE_TRAMPOLINE(HooverReservation) {
         // Reject before the native service reserves a field object, writes a
         // request or performs any inventory work. Recheck the ACTUAL source:
         // the picker's probe and commit can choose different nearby targets.
-        if (Scope.repeating && (action == Action::None || action != Scope.hold->action)) return 0;
+        if (Scope.repeating && !features::RepeatMatches(Scope.hold->action, action)) return 0;
         const auto result = Orig(service, request, source, resultItem, position, flags);
-        if ((result & 1) && Scope.hold && Scope.hold->firstPress && !Scope.repeating)
+        if (Scope.hold && features::LatchPickup(result & 1, Scope.hold->firstPress, Scope.repeating))
             Scope.hold->action = action;
         return result;
     }
@@ -134,28 +135,28 @@ HOOK_DEFINE_TRAMPOLINE(HooverPickup) {
     static unsigned Callback(void *player, unsigned probe, void *item, void *position, unsigned flags) {
         auto hold = ForPlayer(player);
         const auto previous = Scope;
-        const bool repeat = hold && !hold->firstPress && hold->action != Action::None &&
-                            !(Read<unsigned>(static_cast<std::byte *>(player) + field::PlayerInput,
-                                             field::PressedActions) & PickupAction);
+        const bool repeat = hold && features::RepeatPickup(hold->action, hold->firstPress,
+                            Read<unsigned>(static_cast<std::byte *>(player) + field::PlayerInput,
+                                           field::PressedActions) & PickupAction);
         if (probe || !hold || (!repeat && !hold->firstPress))
             return Orig(player, probe, item, position, flags);
         Scope = {hold, repeat};
-        unsigned result;
-        if (repeat) {
-            // Native dry-run returns the current source and position without
-            // reserving it. The final argument excludes furniture/fence fallback paths.
-            std::uint64_t candidate = 0xfffe;
-            std::array<float, 3> target{};
-            if ((Orig(player, 1, &candidate, target.data(), 1) & 1) &&
-                ClassifySource(&candidate) == hold->action)
-                Orig(player, 0, nullptr, nullptr, 1);
-            // Consume this private repeat even if nothing matches. Native
-            // Y fallbacks (such as erasing a ground design) must not run.
-            result = 1;
-        } else {
-            result = Orig(player, probe, item, position, flags);
-            hold->firstPress = false; // Only the first attempted Y action can latch.
-        }
+        struct Picker {
+            void *player; Hold &hold;
+            unsigned probe; void *item; void *position; unsigned flags;
+            bool ProbeMatchesLockedCategory() {
+                // Native dry-run excludes furniture/fence fallbacks and does
+                // not reserve; copied item/position stay in this call only.
+                std::uint64_t candidate = 0xfffe;
+                std::array<float, 3> target{};
+                return (Orig(player, 1, &candidate, target.data(), 1) & 1) &&
+                    features::RepeatMatches(hold.action, ClassifySource(&candidate));
+            }
+            void RequestGroundPickup() { Orig(player, 0, nullptr, nullptr, 1); }
+            unsigned RequestInitialPickup() { return Orig(player, probe, item, position, flags); }
+            void FinishInitialAttempt() { hold.firstPress = false; }
+        } picker{player, *hold, probe, item, position, flags};
+        const auto result = features::PickUpWhileHeld(picker, repeat);
         Scope = previous;
         return result;
     }

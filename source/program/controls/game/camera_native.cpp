@@ -1,6 +1,7 @@
 #include "program/core/hook_plan.hpp"
 #include "lib.hpp"
-#include "camera_tilt.hpp"
+#include "../camera_tilt.hpp"
+#include "../features/controls.hpp"
 #include <cstring>
 
 namespace qol::controls {
@@ -24,15 +25,17 @@ template<class T> T Read(std::uintptr_t pointer) {
 }
 HOOK_DEFINE_TRAMPOLINE(SwimmingCameraTiltEligibility) {
     static bool Callback() {
-        if (Orig()) return true;
-        // ACNH 3.0.3 has exactly two false exits here: global camera lock bit 9,
-        // or the validated active resident's surface SwimStride (action 0xf7).
-        // Recheck the lock after native snapshot/initialization handling, so only
-        // the swimming rejection is relaxed. Native right-stick handling still
-        // chooses the three tilt positions and applies its other camera locks.
-        const auto service = Read<std::uintptr_t>(Main + address::ActionService);
-        const auto flags = service ? service + ActionFlagsOffset : Main + address::FallbackActionFlags;
-        return !(Read<unsigned>(flags) & CameraLocked);
+        struct Camera {
+            bool NativeTiltAllowed() const { return Orig(); }
+            bool GloballyLocked() const {
+                // Recheck after native snapshot/initialization. Exactly two
+                // false exits are fingerprinted: bit 9 and surface SwimStride.
+                const auto service = Read<std::uintptr_t>(Main + address::ActionService);
+                const auto flags = service ? service + ActionFlagsOffset : Main + address::FallbackActionFlags;
+                return Read<unsigned>(flags) & CameraLocked;
+            }
+        } camera;
+        return features::AllowSwimmingCameraTilt(camera);
     }
 };
 }
