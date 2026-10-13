@@ -60,6 +60,9 @@ For the Pockets refactor, start with [the actual feature policies](source/progra
 and [the reading-order handoff](docs/native-first-pockets.md). The latter maps
 every behavior to its native execution path and records verification limits.
 
+Faster Dialogue now has [readable speed and message policies](source/program/dialogue/features/faster_dialogue.hpp)
+and a [native-phase/verification handoff](docs/native-first-dialogue.md).
+
 See the [internal architecture guide](docs/internal-architecture.md) for current
 feature/service/adapter boundaries, contributor rules and remaining migration
 candidates. The [stage 7 handoff](docs/stage7-live-validation.md) identifies the
