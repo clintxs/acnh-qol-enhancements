@@ -1,5 +1,11 @@
 # Able Sisters Bag — prototype 0.3.7
 
+These are historical standalone notes. For the unified refactor, start with
+[the actual feature policy](../source/program/fitting/features/fitting_features.cpp)
+and [the current reading-order/native-checkout handoff](native-first-fitting.md).
+Native mechanics now live under `source/program/fitting/game/`; earlier paths
+below describe their original locations. Assets and baseline behavior are retained.
+
 Bulk-purchase prototype for ACNH 3.0.3 on Eden. Y toggles exact clothing variants
 in a shopping bag; A retains the native try-on behavior. The displayed price
 includes the tried-on outfit and bag extras, counting an item present in both

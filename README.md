@@ -75,6 +75,9 @@ and a [reading-order/native-contract handoff](docs/native-first-crafting.md).
 Catalog now has [surface, history and marker policy](source/program/catalog/features/catalog_features.cpp)
 and a [reading-order/native-contract handoff](docs/native-first-catalog.md).
 
+Fitting Room now has [bag, checkout and choice policy](source/program/fitting/features/fitting_features.cpp)
+and a [reading-order/native-checkout handoff](docs/native-first-fitting.md).
+
 See the [internal architecture guide](docs/internal-architecture.md) for current
 feature/service/adapter boundaries, contributor rules and remaining migration
 candidates. The [stage 7 handoff](docs/stage7-live-validation.md) identifies the
