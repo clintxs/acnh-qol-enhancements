@@ -1,6 +1,7 @@
 #pragma once
 #include "lib.hpp"
 #include "preview_native.hpp"
+#include "preview_publication.hpp"
 #include "program/crafting/recipe_preview_layout.hpp"
 #include "program/crafting/recipe_preview_banner.hpp"
 #include "program/crafting/recipe_preview_hint.hpp"
@@ -101,11 +102,14 @@ void *PhoneRoot(void *);
 void Visible(void *, bool);
 const void *ItemLayerClearColor();
 void PublishPose(void *);
-void ResetPoseOrigin(void *, std::uint64_t);
-std::array<unsigned,3> PoseDelta();
+extern PublicationClock PosePublication, WorkbenchPublication;
+void ResetPoseOrigin(void *, std::uint64_t, bool requestedFixed);
+void ClearPublishedPose();
+std::optional<PublishedPose> ReadPublishedPose();
+std::optional<WorkbenchPoseSnapshot> ReadWorkbenchPose();
 std::array<unsigned,3> NativePoseAngles(void *);
 void PublishCarriers(void *);
-void *WorkbenchActor(void *);
+std::optional<WorkbenchPoseSnapshot> WorkbenchActor(void *);
 void TraceWorkbenchModel(void *);
 void *PreviewCarrier(void *, unsigned);
 void RestoreWorkbenchPose(void *);

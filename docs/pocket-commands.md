@@ -1,5 +1,9 @@
 # Inventory values and pocket commands (stage 4)
 
+This records the initial stage 4 implementation. The current owned declaration,
+input, lifecycle and inventory contracts are documented in
+[refactor-review-followup.md](refactor-review-followup.md).
+
 This stage starts from `d82c5a5` on `refactor/internal-feature-interfaces`.
 `features/quick_store.cpp` now declares three semantic shortcuts and installs
 them once through `services/pocket_commands.hpp`:

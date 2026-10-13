@@ -136,3 +136,19 @@ cover waiting/failure/120-frame timeout, navigation retry/repeat, close/drain an
 20 repeated cycles. Existing native assertions for matrix/hidden-result ABI,
 entity identity, restoration, phone/workbench coexistence and hook conflicts
 remain. Logs: `dist/refactor-stage6/session-*.log`.
+
+## Coherent publication and preview lease correction
+
+UI pose/identity/origin/recipe values and workbench bindings now use bounded,
+single-writer publication clocks. Readers accept a complete packet only across
+an unchanged even version; overlapping writes retain native behavior without
+spinning. Synchronous store scopes are separate from model/deferred cleanup.
+Starting model work rechecks its acquired controller/parameters/mode, and actor
+workbench access compares the supported current context before dereferencing a
+cached controller. These correctness changes are separate from extraction.
+
+Validation: the normal build, all 19 host suites and all 46 ARM/resource scripts
+passed in the final stage 6 Core/features runs. This includes 978 identical
+preserved pocket scenarios, combined-module activation, new concurrent packet
+stress and six native starting-context replacement cases. Thread ownership,
+scene/render limits and native restoration contracts are in `preview-sessions.md`.

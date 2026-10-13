@@ -48,14 +48,16 @@ meaning; they are not interchangeable with code addresses or input bits.
 Fingerprints are compatibility evidence, not full build-ID, object-layout or
 ABI verification. Existing build preparation still checks the source build ID.
 
-`program/game/inventory.hpp` supplies a borrowed `ResidentView` used by both
-quick-store and traversal. Obtain it only from a supported callback's verified
-resident byte; the view must not outlive that byte or callback. Temporary
-resident arguments are rejected. Callers retain their existing capacity,
-slot, controller, state and identity checks. `ItemAt` immediately copies the
-complete eight-byte item, including customization/durability bits, and reports
-whether native lookup returned a value. No native item pointer is exposed or
-retained. `Held`, `IsEquipped` and `ToolKind` preserve their original native calls.
+`program/game/inventory.hpp` now owns its resident-byte argument, following
+inspection of the native accessor contract during the review follow-up. Obtain
+it only in a supported callback; copying the identifier does not establish
+player/controller lifetime. `Slots()` snapshots native capacity once for a
+synchronous traversal; `TryItemAt` rejects out-of-range slots before calling
+native accessors and immediately copies the full eight-byte value. No unchecked
+item accessor or native item pointer is exposed. `Held`, `IsEquipped` and
+`ToolKind` preserve their native calls and the held-item X8 ABI. See
+[refactor-review-followup.md](refactor-review-followup.md) for the subsequent
+boundary changes and [preview-sessions.md](preview-sessions.md) for stage 6.
 
 The domain-specific native headers contain the low-level field access helpers.
 Stage 4 moves quick-store lifecycle mechanics into the pocket-command service

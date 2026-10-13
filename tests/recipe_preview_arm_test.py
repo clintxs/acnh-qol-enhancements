@@ -2042,3 +2042,29 @@ for base in (0x7100000000, 0x7200000000):
     m.input(page,0); m.confirm(page); m.frame(phone); assert flush() == native
     m.frame(phone); assert flush() == native+[select]
 print('PASS: native DIY A/Select footer, category/empty-list scope, preview open/close, renderer contention, pending batches and capacity at two bases')
+
+# Starting work belongs to the acquired renderer context, not its raw cached
+# address. Losing any part of that lease must cancel before model creation.
+for base in (0x7100000000, 0x7200000000):
+    for replacement in ('controller', 'parameters', 'mode'):
+        m=PreviewMachine(base)
+        phone,page,row,panes=m.phone()
+        flags=m.read(panes['L_BtnList_00']+0x58,1)
+        m.confirm(page);m.frame(phone)
+        assert not any(event[0]=='spawn' for event in m.events)
+        if replacement=='controller':
+            foreign=m.alloc(0x1200);m.u.mem_write(foreign,b'\x5a'*0x1200)
+            m.write(m.context+0x30,foreign)
+        elif replacement=='parameters':
+            foreign=m.alloc(0x2200);m.u.mem_write(foreign,b'\x5a'*0x2200)
+            m.write(m.context+0x28,foreign)
+        else:
+            foreign=m.controller;m.write(foreign+0x50,7,4)
+        before=bytes(m.u.mem_read(foreign,0x400))
+        m.hook(0x2e9fbb0,phone)
+        assert not any(event[0]=='spawn' for event in m.events)
+        assert bytes(m.u.mem_read(foreign,0x400))==before
+        assert m.read(m.module.find('PreviewHandle'),4)==0
+        assert m.read(panes['L_BtnList_00']+0x58,1)==flags
+        assert not m.read(panes['N_QolPreview_00']+0x58,1)&1
+print('PASS: starting preview cancels on controller/parameter/mode replacement before model creation, preserves foreign context bytes and restores owned UI at two bases')

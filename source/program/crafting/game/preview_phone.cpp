@@ -108,7 +108,7 @@ void Close(NativeSession &s) {
     if (s.ownsRenderer) {
         ReportRendererTrace();
         PreviewScenePose.store(false, std::memory_order_release);
-        PreviewHandle.store(0, std::memory_order_release);
+        ClearPublishedPose();
         for (auto &carrier : PreviewCarriers) carrier.store(0, std::memory_order_release);
         PreviewController.store(nullptr, std::memory_order_release);
         PreviewFixedPose.store(false, std::memory_order_release);
@@ -260,10 +260,13 @@ bool WorkbenchTiltInput(void *page, void *snapshot, unsigned blocked) {
         state.mode != mode || (!pending && state.item != item);
     if (bindingChanged || !handle)
         state = {controller, page, handle, mode, item, 0, 0};
-    WorkbenchTiltAngle.store(static_cast<unsigned>(static_cast<std::int32_t>(state.tilt * AngleUnitsPerDegree)), std::memory_order_relaxed);
-    WorkbenchHandle.store(handle, std::memory_order_relaxed);
-    WorkbenchMode.store(mode, std::memory_order_relaxed);
-    WorkbenchController.store(controller, std::memory_order_release);
+    {
+        PublicationClock::Write publish{WorkbenchPublication};
+        WorkbenchTiltAngle.store(static_cast<unsigned>(static_cast<std::int32_t>(state.tilt * AngleUnitsPerDegree)), std::memory_order_seq_cst);
+        WorkbenchHandle.store(handle, std::memory_order_seq_cst);
+        WorkbenchMode.store(mode, std::memory_order_seq_cst);
+        WorkbenchController.store(controller, std::memory_order_seq_cst);
+    }
     auto hint = At<void *>(page, field::ShortcutHint);
     auto key = hint ? At<void *>(hint, field::HintInput) : nullptr;
     const auto rowIndex = key ? At<unsigned>(key, field::InputRow) : 8;
@@ -281,7 +284,10 @@ bool WorkbenchTiltInput(void *page, void *snapshot, unsigned blocked) {
     if (At<unsigned>(row, field::ConsumedAxes) & RightStickMask) return false;
     const float y = StickAxis(At<float>(row, field::RightStick + 4));
     state.tilt = std::clamp(state.tilt - y * DegreesPerUpdate, -MaximumTilt, MaximumTilt);
-    WorkbenchTiltAngle.store(static_cast<unsigned>(static_cast<std::int32_t>(state.tilt * AngleUnitsPerDegree)), std::memory_order_release);
+    {
+        PublicationClock::Write publish{WorkbenchPublication};
+        WorkbenchTiltAngle.store(static_cast<unsigned>(static_cast<std::int32_t>(state.tilt * AngleUnitsPerDegree)));
+    }
     if (y && state.rotationReports++ < 4)
         Logging.Debug("[QoL Enhancements/Crafting] workbench tilt: input; row=%u pitch=%08x handle=%u\n",
                     rowIndex, WorkbenchTiltAngle.load(std::memory_order_relaxed), handle);
@@ -372,12 +378,10 @@ preview::NavigationProgress NavigatePreview(NativeSession &s, int direction) {
     // Keep the displayed scene pose and carrier identities until native item
     // replacement completes. Dropping scene ownership here renders the old
     // mesh with the reset controller pose for one capture (a visible snap).
-    PreviewRequestedFixedPose.store(s.fixedPose, std::memory_order_release);
     s.lifecycle.rotation.tilt = s.lifecycle.rotation.x = s.lifecycle.rotation.y = 0;
     std::memcpy(static_cast<std::byte *>(s.controller) + field::ModelAngles,
                 s.initialAngles.data(), sizeof(s.initialAngles));
-    ResetPoseOrigin(s.controller, item);
-    PublishPose(s.controller);
+    ResetPoseOrigin(s.controller, item, s.fixedPose);
     At<std::uint64_t>(s.parameters, 0x2c) = item;
     At<unsigned>(s.parameters, 0x2140) = 1;
     // Workbench 0348DE80 changes the existing actor with this item/recipe
@@ -436,8 +440,8 @@ bool PreviewInput(void *layout, void *snapshot, unsigned blocked) {
                     const float x = At<float>(row, field::LeftStick), y = At<float>(row, field::LeftStick + 4);
                     const bool horizontal = x >= -1 && x <= 1 && y >= -1 && y <= 1 &&
                         (x > NavigationThreshold || x < -NavigationThreshold) && x*x > y*y;
-                    s.lifecycle.navigation.sample = left || right ? int(right) - int(left) :
-                        horizontal && !(axes & LeftStickMask) ? (x > 0 ? 1 : -1) : 0;
+                    s.lifecycle.Navigate(left || right ? int(right) - int(left) :
+                        horizontal && !(axes & LeftStickMask) ? (x > 0 ? 1 : -1) : 0);
                 }
                 At<unsigned>(row, 0x3c) |= buttons & (LeftMask | RightMask);
                 At<unsigned>(row, field::ConsumedAxes) |= LeftStickMask;
@@ -450,7 +454,7 @@ bool PreviewInput(void *layout, void *snapshot, unsigned blocked) {
                             At<unsigned>(row, field::ConsumedAxes), unsigned(inputBlocked));
             if (inputBlocked) s.lifecycle.rotation.x = s.lifecycle.rotation.y = 0;
             else if (!(At<unsigned>(row, field::ConsumedAxes) & RightStickMask)) {
-                s.lifecycle.rotation.x = x; s.lifecycle.rotation.y = y;
+                s.lifecycle.Rotate(x, y);
                 At<unsigned>(row, field::ConsumedAxes) |= RightStickMask;
             }
             // A second dispatch of the already-consumed snapshot must not
@@ -514,7 +518,10 @@ bool Begin(NativeSession &s) {
     s.fixedPose = UsesFixedPreviewPose(static_cast<std::uint16_t>(s.item));
     PreviewScenePose.store(false, std::memory_order_release);
     PreviewFixedPose.store(s.fixedPose, std::memory_order_release);
-    PreviewRequestedFixedPose.store(s.fixedPose, std::memory_order_release);
+    {
+        PublicationClock::Write publish{PosePublication};
+        PreviewRequestedFixedPose.store(s.fixedPose);
+    }
     PreviewController.store(controller, std::memory_order_release);
     Logging.Debug("[QoL Enhancements/Crafting] DIY preview: native fixed pose=%u item=%u\n",
                 unsigned(s.fixedPose), unsigned(s.item & 0xffff));
@@ -527,14 +534,17 @@ bool Begin(NativeSession &s) {
     return true;
 }
 preview::ModelProgress CreatePreviewModel(NativeSession &s) {
+    auto context = UiContext();
+    if (!s.ownsRenderer || !context || At<void *>(context, field::Controller) != s.controller ||
+        At<void *>(context, field::Parameters) != s.parameters ||
+        At<unsigned>(s.controller, field::ModelMode) != DiyModelMode) return preview::ModelProgress::Failed;
     if (At<int>(s.controller, 0x10) != 1) return preview::ModelProgress::Waiting;
     ItemRequest request;
     request.itemLow = s.item; request.itemHigh = s.item >> 32;
     profile::CreateItemModel.Resolve(Main)(s.controller, &request);
     if (!At<unsigned>(s.controller, field::ModelHandle)) return preview::ModelProgress::Failed;
     std::memcpy(s.initialAngles.data(), static_cast<std::byte *>(s.controller) + field::ModelAngles, sizeof(s.initialAngles));
-    ResetPoseOrigin(s.controller, s.item);
-    PublishPose(s.controller);
+    ResetPoseOrigin(s.controller, s.item, s.fixedPose);
     s.lifecycle.rotation.tilt = s.lifecycle.rotation.x = s.lifecycle.rotation.y = 0;
     Visible(s.gridPane, false); Visible(s.scrollPane, false); Visible(s.cursorPane, false);
     Visible(s.capture, true); Visible(s.surface, true);

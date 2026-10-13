@@ -31,23 +31,42 @@ const void *ItemLayerClearColor() {
     if (count <= ItemRenderLayer || count > 64 || !layers || !layers[ItemRenderLayer]) return nullptr;
     return static_cast<std::byte *>(layers[ItemRenderLayer]) + field::LayerClearColor;
 }
-void PublishPose(void *controller) {
+PublicationClock PosePublication, WorkbenchPublication;
+namespace {
+void StorePose(void *controller) {
     const auto angles = static_cast<std::byte *>(controller) + field::ModelAngles;
-    PreviewAngleZ.store(At<unsigned>(angles, 8), std::memory_order_relaxed);
-    PreviewAngleXY.store(At<std::uint64_t>(angles), std::memory_order_release);
-    PreviewHandle.store(At<unsigned>(controller, field::ModelHandle), std::memory_order_release);
+    PreviewAngleZ.store(At<unsigned>(angles, 8));
+    PreviewAngleXY.store(At<std::uint64_t>(angles));
+    PreviewHandle.store(At<unsigned>(controller, field::ModelHandle));
 }
-void ResetPoseOrigin(void *controller, std::uint64_t item) {
-    PreviewOriginXY.store(At<std::uint64_t>(controller, field::ModelAngles), std::memory_order_relaxed);
-    PreviewOriginZ.store(At<unsigned>(controller, field::ModelAngles + 8), std::memory_order_relaxed);
-    PreviewItem.store(item, std::memory_order_relaxed);
-    PreviewPoseEpoch.fetch_add(1, std::memory_order_release);
 }
-std::array<unsigned, 3> PoseDelta() {
-    const auto xy = PreviewAngleXY.load(std::memory_order_acquire);
-    const auto origin = PreviewOriginXY.load(std::memory_order_relaxed);
-    return {unsigned(xy) - unsigned(origin), unsigned(xy >> 32) - unsigned(origin >> 32),
-            PreviewAngleZ.load(std::memory_order_relaxed) - PreviewOriginZ.load(std::memory_order_relaxed)};
+void PublishPose(void *controller) {
+    PublicationClock::Write publish{PosePublication};
+    StorePose(controller);
+}
+void ResetPoseOrigin(void *controller, std::uint64_t item, bool requestedFixed) {
+    PublicationClock::Write publish{PosePublication};
+    PreviewOriginXY.store(At<std::uint64_t>(controller, field::ModelAngles));
+    PreviewOriginZ.store(At<unsigned>(controller, field::ModelAngles + 8));
+    PreviewItem.store(item);
+    PreviewPoseEpoch.fetch_add(1);
+    PreviewRequestedFixedPose.store(requestedFixed);
+    StorePose(controller);
+}
+void ClearPublishedPose() {
+    PublicationClock::Write publish{PosePublication};
+    PreviewHandle.store(0);
+}
+std::optional<PublishedPose> ReadPublishedPose() {
+    return PosePublication.Read([] {
+        return PublishedPose{PreviewHandle.load(), PreviewAngleZ.load(), PreviewOriginZ.load(), PreviewPoseEpoch.load(),
+                             PreviewAngleXY.load(), PreviewOriginXY.load(), PreviewItem.load(), PreviewRequestedFixedPose.load()};
+    });
+}
+std::optional<WorkbenchPoseSnapshot> ReadWorkbenchPose() {
+    return WorkbenchPublication.Read([] {
+        return WorkbenchPoseSnapshot{WorkbenchController.load(), WorkbenchHandle.load(), WorkbenchMode.load(), WorkbenchTiltAngle.load()};
+    });
 }
 void ReportRendererTrace() {
     Logging.Debug("[QoL Enhancements/Crafting] DIY preview: render trace; native_updates=%u pending_attempts=%u applied=%u layer_draws=%u matched_layers=%u matrices=%u matched_matrices=%u backgrounds=%u\n",
@@ -93,14 +112,16 @@ void DrawPreviewContents::Callback(void *renderer, void *command, unsigned view,
     }
 
 ModelMatrix BuildPreviewMatrix::Callback(void *component){
-        const auto handle = PreviewHandle.load(std::memory_order_acquire);
         // Native 0192A590 derives carrier angles/framing from item preview
         // parameters (including mRemakeFence). Preserve those matrices for
         // flat surfaces/fences instead of replacing them with controller XYZ.
         // Once the scene owns the pose, render that exact pose too. Using a
         // newer UI angle here would put the mesh one update ahead of its bones.
-        if (!handle || !component || PreviewFixedPose.load(std::memory_order_acquire) ||
+        if (!component || PreviewFixedPose.load(std::memory_order_acquire) ||
             PreviewScenePose.load(std::memory_order_acquire)) return Orig(component);
+        const auto published = ReadPublishedPose();
+        if (!published || !published->handle) return Orig(component);
+        const auto handle = published->handle;
         MatrixCalls.fetch_add(1, std::memory_order_relaxed);
         auto owner = At<void *>(component, field::ComponentOwner);
         if (!owner) return Orig(component);
@@ -117,7 +138,7 @@ ModelMatrix BuildPreviewMatrix::Callback(void *component){
         // native starting pose and add only user movement until scene capture.
         alignas(16) std::array<std::byte, field::ComponentPoseSize> pose{};
         std::memcpy(pose.data(), component, pose.size());
-        const auto delta = PoseDelta();
+        const auto delta = published->Delta();
         for (unsigned axis = 0; axis < delta.size(); ++axis)
             At<unsigned>(pose.data(), field::ComponentAngles + axis * sizeof(unsigned)) += delta[axis];
         if (PreviewHandle.load(std::memory_order_acquire) != handle) return Orig(component);

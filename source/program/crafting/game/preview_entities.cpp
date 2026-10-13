@@ -84,17 +84,23 @@ void PublishCarriers(void *controller) {
             Logging.Debug("[QoL Enhancements/Crafting] DIY preview: mesh carrier published; slot=%u handle=%u\n", i, child);
     }
 }
-void *WorkbenchActor(void *actor) {
-    auto controller = WorkbenchController.load(std::memory_order_acquire);
-    const auto handle = WorkbenchHandle.load(std::memory_order_acquire);
-    if (!actor || !controller || !handle || At<unsigned>(actor, field::EntityHandle) != handle ||
+std::optional<WorkbenchPoseSnapshot> WorkbenchActor(void *actor) {
+    const auto publication = ReadWorkbenchPose();
+    if (!publication) return std::nullopt;
+    const auto controller = publication->controller;
+    const auto handle = publication->handle;
+    auto context = UiContext();
+    // Compare the supported current context before dereferencing a cached
+    // controller address. A copied publication is not a controller lifetime.
+    if (!actor || !controller || !handle || !context || At<void *>(context, field::Controller) != controller ||
+        At<unsigned>(actor, field::EntityHandle) != handle ||
         At<unsigned>(actor, field::EntityKind) != PreviewActorKind ||
         (At<unsigned>(actor, field::EntityFlags) & 2) ||
         At<unsigned>(controller, field::ModelHandle) != handle ||
-        At<unsigned>(controller, field::ModelMode) != WorkbenchMode.load(std::memory_order_acquire) ||
+        At<unsigned>(controller, field::ModelMode) != publication->mode ||
         At<int>(controller, field::ModelState) != 1 ||
-        controller == PreviewController.load(std::memory_order_acquire)) return nullptr;
-    return controller;
+        controller == PreviewController.load(std::memory_order_acquire)) return std::nullopt;
+    return publication;
 }
 void TraceWorkbenchModel(void *actor) {
     if (!WorkbenchTiltEnabled.load(std::memory_order_acquire) || !actor ||
@@ -129,7 +135,8 @@ void *PreviewCarrier(void *actor, unsigned index) {
     return component && At<void *>(component, field::ComponentOwner) == child ? component : nullptr;
 }
 void RestoreWorkbenchPose(void *actor) {
-    auto controller = WorkbenchActor(actor);
+    const auto ownership = WorkbenchActor(actor);
+    auto controller = ownership ? ownership->controller : nullptr;
     if (!controller || (At<unsigned char>(controller, field::ModelFlags) & MaterialPending)) return;
     for (unsigned i = 0; i < WorkbenchPoses.size(); ++i) {
         auto &pose = WorkbenchPoses[i];
@@ -166,10 +173,11 @@ void HoldWorkbenchPose(void *actor) {
     }
 }
 void ApplyWorkbenchTilt(void *actor) {
-    auto controller = WorkbenchActor(actor);
+    const auto ownership = WorkbenchActor(actor);
+    auto controller = ownership ? ownership->controller : nullptr;
     if (!controller || At<unsigned>(actor, field::ItemPoseState) != 0 ||
         (At<unsigned char>(controller, field::ModelFlags) & MaterialPending)) return;
-    const auto tilt = WorkbenchTiltAngle.load(std::memory_order_acquire);
+    const auto tilt = ownership->tilt;
     if (!tilt || UsesFixedPreviewPose(At<std::uint16_t>(actor, field::ItemData))) return;
     for (unsigned i = 0; i < WorkbenchPoses.size(); ++i) {
         auto component = PreviewCarrier(actor, i);
@@ -196,23 +204,25 @@ void UpdatePreviewActor::Callback(void *actor){
         const bool framing = actor && At<unsigned>(actor, field::ItemPoseState) == 2;
         auto workbench = WorkbenchActor(actor);
         const bool holdWorkbench = workbench && !framing &&
-            (At<unsigned char>(workbench, field::ModelFlags) & MaterialPending);
+            (At<unsigned char>(workbench->controller, field::ModelFlags) & MaterialPending);
         RestoreWorkbenchPose(actor);
         Orig(actor); // Finish native item/category framing and child creation first.
         if (holdWorkbench) HoldWorkbenchPose(actor);
         else ApplyWorkbenchTilt(actor);
-        const auto handle = PreviewHandle.load(std::memory_order_acquire);
+        const auto published = ReadPublishedPose();
+        if (!published) return;
+        const auto handle = published->handle;
         if (!handle || !actor ||
             At<unsigned>(actor, field::EntityHandle) != handle ||
             At<unsigned>(actor, field::EntityKind) != PreviewActorKind ||
             (At<unsigned>(actor, field::EntityFlags) & 2)) return;
         const auto count = At<unsigned>(actor, field::ItemChildCount);
         if (count > PreviewCarriers.size()) return;
-        const auto epoch = PreviewPoseEpoch.load(std::memory_order_acquire);
+        const auto epoch = published->epoch;
         // State 1 loads children; state 2 applies category poses/bounds, then
         // becomes 0. Never capture an unframed child or the previous recipe.
         if (At<unsigned>(actor, field::ItemPoseState) != 0 ||
-            At<std::uint64_t>(actor, field::ItemData) != PreviewItem.load(std::memory_order_relaxed)) {
+            At<std::uint64_t>(actor, field::ItemData) != published->item) {
             // Native replacement may reset a still-visible carrier before its
             // old capture disappears. Keep that carrier's last displayed pose;
             // generation/parent/component checks exclude newly allocated items.
@@ -233,7 +243,7 @@ void UpdatePreviewActor::Callback(void *actor){
         }
         // Navigation publishes a request while the previous mesh can still be
         // drawn. Switch its pose policy only after native framing catches up.
-        const bool fixed = PreviewRequestedFixedPose.load(std::memory_order_acquire);
+        const bool fixed = published->requestedFixed;
         PreviewFixedPose.store(fixed, std::memory_order_release);
         if (fixed) return;
         auto storage = game::preview_native::EntityManager(Main);
@@ -241,7 +251,7 @@ void UpdatePreviewActor::Callback(void *actor){
         auto registry = manager ? At<void *>(manager, field::EntityRegistry) : nullptr;
         auto entries = registry ? At<void *>(registry, field::RegistryEntries) : nullptr;
         if (!entries) return;
-        const auto delta = PoseDelta();
+        const auto delta = published->Delta();
         bool applied = false;
         for (unsigned i = 0; i < count; ++i) {
             const auto childHandle = At<unsigned>(actor, field::ItemChildren + i * sizeof(unsigned));
