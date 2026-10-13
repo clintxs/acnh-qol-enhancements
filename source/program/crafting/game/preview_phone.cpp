@@ -103,8 +103,8 @@ bool InputBlocked(NativeSession &s, unsigned blocked) {
 }
 void Close(NativeSession &s) {
     recipe_banner::Restore(s.hotelBanner);
-    s.lifecycle.rotation.x = s.lifecycle.rotation.y = 0;
-    s.lifecycle.navigation.sample = s.lifecycle.navigation.held = s.lifecycle.navigation.pending = 0; s.lifecycle.navigation.wait = 0;
+    s.lifecycle.ResetNavigation();
+    s.lifecycle.CancelRotationInput();
     if (s.ownsRenderer) {
         ReportRendererTrace();
         PreviewScenePose.store(false, std::memory_order_release);
@@ -299,8 +299,7 @@ core::InputOutcome WorkbenchPageInput(const core::PageInputContext &input) {
     return WorkbenchTiltInput(input.page, input.snapshot, input.blocked) ? core::InputOutcome::Consume : core::InputOutcome::PassThrough;
 }
 void RotatePreview(NativeSession &s) {
-    const auto x = s.lifecycle.rotation.x, y = s.lifecycle.rotation.y;
-    s.lifecycle.rotation.x = s.lifecycle.rotation.y = 0; // A missing/blocked snapshot must never keep spinning.
+    const auto [x, y] = s.lifecycle.TakeRotationInput();
     if (s.fixedPose || (x == 0 && y == 0)) return;
     auto context = UiContext();
     if (!s.ownsRenderer || !context || At<void *>(context, field::Controller) != s.controller ||
@@ -309,7 +308,7 @@ void RotatePreview(NativeSession &s) {
         (At<unsigned char>(s.controller, field::ModelFlags) & MaterialPending)) return;
     std::array<std::uint32_t, 3> angles{};
     std::memcpy(angles.data(), static_cast<std::byte *>(s.controller) + field::ModelAngles, sizeof(angles));
-    const float tilt = std::clamp(s.lifecycle.rotation.tilt - y * DegreesPerUpdate, -MaximumTilt, MaximumTilt);
+    const float tilt = s.lifecycle.TiltBy(-y * DegreesPerUpdate);
     angles[0] = s.initialAngles[0] + static_cast<std::uint32_t>(static_cast<std::int32_t>(tilt * AngleUnitsPerDegree));
     angles[1] += static_cast<std::uint32_t>(static_cast<std::int32_t>(x * DegreesPerUpdate * AngleUnitsPerDegree));
     // Queue for the native late entity phase. The setter hook also protects
@@ -317,7 +316,6 @@ void RotatePreview(NativeSession &s) {
     // the material-publication gate (+398); it is not a transform dirty flag.
     std::memcpy(static_cast<std::byte *>(s.controller) + field::ModelAngles, angles.data(), sizeof(angles));
     At<unsigned char>(s.controller, field::ModelFlags) |= TransformPending;
-    s.lifecycle.rotation.tilt = tilt;
     PublishPose(s.controller);
     if (s.rotationReports++ < 4)
         Logging.Debug("[QoL Enhancements/Crafting] DIY preview: rotation queued; yaw=%08x pitch=%08x ready=%u flags=%u\n",
@@ -378,7 +376,7 @@ preview::NavigationProgress NavigatePreview(NativeSession &s, int direction) {
     // Keep the displayed scene pose and carrier identities until native item
     // replacement completes. Dropping scene ownership here renders the old
     // mesh with the reset controller pose for one capture (a visible snap).
-    s.lifecycle.rotation.tilt = s.lifecycle.rotation.x = s.lifecycle.rotation.y = 0;
+    s.lifecycle.ResetItemRotation();
     std::memcpy(static_cast<std::byte *>(s.controller) + field::ModelAngles,
                 s.initialAngles.data(), sizeof(s.initialAngles));
     ResetPoseOrigin(s.controller, item, s.fixedPose);
@@ -395,13 +393,13 @@ preview::NavigationProgress NavigatePreview(NativeSession &s, int direction) {
 }
 bool PreviewInput(void *layout, void *snapshot, unsigned blocked) {
     for (auto &s : Sessions) if (s.layout == layout) {
-        if (s.lifecycle.State() != Phase::Showing) { s.lifecycle.rotation.x = s.lifecycle.rotation.y = 0; s.lifecycle.navigation.sample = 0; }
+        if (s.lifecycle.State() != Phase::Showing) s.lifecycle.ClearFrameInput();
         if (s.lifecycle.State() == Phase::Idle) s.inputRow = ShortcutInputRow(s.layout);
-        if (!snapshot || s.inputRow < 0) { s.lifecycle.rotation.x = s.lifecycle.rotation.y = 0; s.lifecycle.navigation.sample = s.lifecycle.navigation.pending = 0; return s.lifecycle.State() != Phase::Idle; }
+        if (!snapshot || s.inputRow < 0) { s.lifecycle.CancelPendingInput(); return s.lifecycle.State() != Phase::Idle; }
         const auto count = At<unsigned>(snapshot, 8);
         auto rows = At<std::byte *>(snapshot, 0x10);
         if (!rows || count > 8 || unsigned(s.inputRow) >= count) {
-            s.lifecycle.rotation.x = s.lifecycle.rotation.y = 0; s.lifecycle.navigation.sample = s.lifecycle.navigation.pending = 0; return s.lifecycle.State() != Phase::Idle;
+            s.lifecycle.CancelPendingInput(); return s.lifecycle.State() != Phase::Idle;
         }
         auto row = rows + s.inputRow * 0x48;
         const auto buttons = At<unsigned>(row);
@@ -429,7 +427,7 @@ bool PreviewInput(void *layout, void *snapshot, unsigned blocked) {
         // Kind 1 is the right stick; +40 bit 1 records its consumption.
         if (s.lifecycle.State() == Phase::Showing) {
             const bool inputBlocked = InputBlocked(s, blocked);
-            if (inputBlocked) s.lifecycle.navigation.sample = s.lifecycle.navigation.pending = 0;
+            if (inputBlocked) s.lifecycle.CancelPendingInput();
             else {
                 const auto unconsumed = buttons & ~At<unsigned>(row, 0x3c);
                 const auto axes = At<unsigned>(row, field::ConsumedAxes);
@@ -452,7 +450,7 @@ bool PreviewInput(void *layout, void *snapshot, unsigned blocked) {
                 Logging.Debug("[QoL Enhancements/Crafting] DIY preview: right-stick snapshot; row=%d x=%08x y=%08x consumed=%x blocked=%u\n",
                             s.inputRow, At<unsigned>(row, field::RightStick), At<unsigned>(row, field::RightStick + 4),
                             At<unsigned>(row, field::ConsumedAxes), unsigned(inputBlocked));
-            if (inputBlocked) s.lifecycle.rotation.x = s.lifecycle.rotation.y = 0;
+            if (inputBlocked) s.lifecycle.CancelRotationInput();
             else if (!(At<unsigned>(row, field::ConsumedAxes) & RightStickMask)) {
                 s.lifecycle.Rotate(x, y);
                 At<unsigned>(row, field::ConsumedAxes) |= RightStickMask;
@@ -545,7 +543,7 @@ preview::ModelProgress CreatePreviewModel(NativeSession &s) {
     if (!At<unsigned>(s.controller, field::ModelHandle)) return preview::ModelProgress::Failed;
     std::memcpy(s.initialAngles.data(), static_cast<std::byte *>(s.controller) + field::ModelAngles, sizeof(s.initialAngles));
     ResetPoseOrigin(s.controller, s.item, s.fixedPose);
-    s.lifecycle.rotation.tilt = s.lifecycle.rotation.x = s.lifecycle.rotation.y = 0;
+    s.lifecycle.ResetItemRotation();
     Visible(s.gridPane, false); Visible(s.scrollPane, false); Visible(s.cursorPane, false);
     Visible(s.capture, true); Visible(s.surface, true);
     if (recipe_banner::Place(s.hotelBanner, s.surface))

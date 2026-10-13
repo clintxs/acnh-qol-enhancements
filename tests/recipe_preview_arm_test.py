@@ -725,6 +725,14 @@ for base in (0x7100000000, 0x7200000000):
     assert not m.read(m.controller+0x74,1)&1
     assert changed[0]==pose[0] and changed[2]==pose[2]
     assert abs(((changed[1]-pose[1])&0xffffffff)/2**32*360-6)<.0001
+    # Cancellation after a valid sample drains queued rotation in production,
+    # unlike a second unblocked dispatch of the consumed snapshot above.
+    m.input(page,0,right=(1,1)); m.hook(0x3c58d24,page,0,0)
+    m.frame(phone); assert angles()==changed
+    m.input(page,0,right=(1,1))
+    m.write(duplicate+0x10,m.last_input_row)
+    m.hook(0x3c58d24,page,duplicate,1)
+    m.frame(phone); assert angles()==changed
     m.input(page,0,right=(0,1)); m.frame(phone)
     tilted=angles()
     assert abs(((changed[0]-tilted[0])&0xffffffff)/2**32*360-6)<.0001
