@@ -164,4 +164,9 @@ inline constexpr native::FunctionBinding<void (*)(void *, bool)> FocusRecipeGrid
 inline constexpr native::FunctionBinding<void *(*)(void *, unsigned)> GridRowForIndex{"preview.GridRowForIndex", address::GridRowForIndex};
 inline constexpr native::FunctionBinding<void (*)(void *, const void *)> ChangeItemModel{"preview.ChangeItemModel", address::ChangeItemModel};
 inline constexpr native::FunctionBinding<void (*)(void *, const ItemRequest *)> CreateItemModel{"preview.CreateItemModel", address::CreateItemModel};
+constexpr std::array<std::uint32_t, 5> HookWords(std::uintptr_t offset) {
+    for (const auto &check : DiyChecks) if (check.offset == offset) return check.words;
+    for (const auto &check : WorkbenchChecks) if (check.offset == offset) return check.words;
+    return {}; // Unknown sites fail compatibility checks; never infer code.
+}
 } // namespace qol::crafting::game::v303::preview

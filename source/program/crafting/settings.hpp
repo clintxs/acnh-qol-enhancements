@@ -1,4 +1,5 @@
 #pragma once
+#include "program/core/feature_activation.hpp"
 #include "program/core/config.hpp"
 
 namespace qol::crafting {
@@ -64,7 +65,7 @@ inline unsigned ApplySettings(std::string_view input, Settings &output) {
 
 unsigned Configure(std::string_view input);
 void ReportSettings();
-bool Install();
+core::InstallResult Install();
 bool InstallFasterCrafting(unsigned maximumSpeed);
 bool InstallCraftingQuantityWrap();
 bool InstallCraftingQuantityShortcut();

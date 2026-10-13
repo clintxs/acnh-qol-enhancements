@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "lib.hpp"
 #include "fitting_hint.hpp"
 #include "program/core/hint_text.hpp"
@@ -112,12 +113,19 @@ bool ValidateFittingHint() {
     }
     return true;
 }
-void InstallFittingHint() {
+bool InstallFittingHint() {
+
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<AppendBagFooterHint>("AppendBagFooterHint", address::AppendFittingFooter, {0xb9401fa8, 0x7100051f, 0x54000520, 0xf9410a89, 0xf942c129}, true),
+    };
+    if (!hookPlan) return false;
     if (!qol::core::RegisterHintText(FittingHintText)) {
         Logging.Error("[QoL Enhancements/Fitting Room] HINT_DISABLED shared text unavailable\n");
-        return;
+        return false;
     }
-    AppendBagFooterHint::InstallAtOffset(address::AppendFittingFooter);
+    if (!hookPlan.Publish<AppendBagFooterHint>(address::AppendFittingFooter)) return false;
     Logging.Debug("[QoL Enhancements/Fitting Room] HINT_READY Y / Bag\n");
+
+    return true;
 }
 } // namespace able_bag

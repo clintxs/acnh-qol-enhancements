@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "stack_splitting.hpp"
 #include "stack_menu.hpp"
 #include "menu_text.hpp"
@@ -157,14 +158,25 @@ bool InstallStackSplitting() {
         }
     }
     // Install the menu last so no new action can appear before its handlers exist.
-    InstallMenuText();
-    AdjustSourceCount::InstallAtOffset(address::SubtractOne);
-    AdjustDestinationCount::InstallAtOffset(address::SetDestinationCount);
-    DispatchStackAction::InstallAtOffset(address::DispatchCall);
-    MapStackAction::InstallAtOffset(address::MapAction);
-    ResolveStackCaption::InstallAtOffset(address::ResolveCaption);
-    ResolveStackPostAction::InstallAtOffset(address::PostAction);
-    BuildStackMenu::InstallAtOffset(address::BuildMenu);
+
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<AdjustSourceCount>("AdjustSourceCount", address::SubtractOne, {0x51000401, 0x910023e0, 0x97a5f1ce, 0x294227e8, 0x290027e8}, true),
+        qol::core::Site<AdjustDestinationCount>("AdjustDestinationCount", address::SetDestinationCount, {0x97a5f1b4, 0x294227e8, 0xaa1403e0, 0x290027e8, 0x97d405dc}, true),
+        qol::core::Site<DispatchStackAction>("DispatchStackAction", address::DispatchCall, {0xd63f0100, 0x3607fd80, 0xf9410e68, 0x5284d929, 0x38696909}, true),
+        qol::core::Site<MapStackAction>("MapStackAction", address::MapAction, {0xd10083ff, 0xa9017bfd, 0x910043fd, 0xb81fc3a0, 0xd0012c08}, true),
+        qol::core::Site<ResolveStackCaption>("ResolveStackCaption", address::ResolveCaption, {0xd10043ff, 0xb001c1a9, 0xb9000fe0, 0xf943f12b, 0xb9800fe9}, true),
+        qol::core::Site<ResolveStackPostAction>("ResolveStackPostAction", address::PostAction, {0xd10043ff, 0xb001c1a8, 0xb9000fe0, 0xf943f10a, 0xb9800fe8}, true),
+        qol::core::Site<BuildStackMenu>("BuildStackMenu", address::BuildMenu, {0xd10203ff, 0xa9027bfd, 0xa9036ffc, 0xa90467fa, 0xa9055ff8}, true),
+    };
+    if (!hookPlan) return false;
+    if (!InstallMenuText()) return false;
+    if (!hookPlan.Publish<AdjustSourceCount>(address::SubtractOne)) return false;
+    if (!hookPlan.Publish<AdjustDestinationCount>(address::SetDestinationCount)) return false;
+    if (!hookPlan.Publish<DispatchStackAction>(address::DispatchCall)) return false;
+    if (!hookPlan.Publish<MapStackAction>(address::MapAction)) return false;
+    if (!hookPlan.Publish<ResolveStackCaption>(address::ResolveCaption)) return false;
+    if (!hookPlan.Publish<ResolveStackPostAction>(address::PostAction)) return false;
+    if (!hookPlan.Publish<BuildStackMenu>(address::BuildMenu)) return false;
     Logging.Debug("[QoL Enhancements/Pockets] STACKS_READY Grab 1 -> Grab 5 -> Grab 10\n");
     Logging.Debug("[QoL Enhancements/Pockets] IDS actions=0x4F550001/0x4F550002 "
                 "callbacks=0x4F551001/0x4F551002\n");

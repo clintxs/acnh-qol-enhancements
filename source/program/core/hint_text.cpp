@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "lib.hpp"
 #include "hint_text.hpp"
 #include <array>
@@ -11,7 +12,6 @@ constexpr std::uintptr_t NotifyTextChanged = 0x03c7dd80;
 constexpr std::uintptr_t TextOperationVtableGot = 0x04ac0878;
 struct SafeString { std::uintptr_t vtable; const char *text; };
 std::array<HintTextProvider, 4> HintProviders{};
-bool Installed{};
 template<class T> T &Field(std::uintptr_t object, unsigned offset) {
     return *reinterpret_cast<T *>(object + offset);
 }
@@ -55,26 +55,27 @@ HOOK_DEFINE_TRAMPOLINE(InitializeHintCaption) {
 }
 bool RegisterHintText(HintTextProvider provider) {
     if (!provider) return false;
-    for (auto existing : HintProviders) if (existing == provider) return true;
-    for (auto &slot : HintProviders) if (!slot) {
-        if (!Installed) {
-            constexpr std::array<std::uint32_t, 5> words{
-                0xa9bc7bfd, 0xa9015ff8, 0xa90257f6, 0xa9034ff4, 0x910003fd};
-            const auto &main = exl::util::GetMainModuleInfo();
-            if (InitializeMessage + sizeof(words) > main.m_Text.m_Size ||
-                std::memcmp(reinterpret_cast<const void *>(main.m_Text.m_Start + InitializeMessage),
-                            words.data(), sizeof(words))) return false;
-            constexpr std::array<std::uint32_t, 5> notifyWords{
-                0xd10103ff, 0xa9017bfd, 0xf90013f5, 0xa9034ff4, 0x910043fd};
-            if (NotifyTextChanged + sizeof(notifyWords) > main.m_Text.m_Size ||
-                std::memcmp(reinterpret_cast<const void *>(main.m_Text.m_Start + NotifyTextChanged),
-                            notifyWords.data(), sizeof(notifyWords))) return false;
-            InitializeHintCaption::InstallAtOffset(InitializeMessage);
-            Installed = true;
-        }
-        slot = provider;
-        return true;
+    // Reserve callback capacity before publishing the shared hook. Startup is
+    // synchronous and Exlaunch never invokes registered callbacks here.
+    HintTextProvider *destination = nullptr;
+    bool duplicate = false;
+    for (auto &slot : HintProviders) if (slot == provider) { destination = &slot; duplicate = true; break; }
+    if (!destination) for (auto &slot : HintProviders) if (!slot) { destination = &slot; break; }
+    if (!destination) {
+        ReportActivationFailure(FeatureState::DependencyUnavailable, "hint provider capacity");
+        return false;
     }
-    return false;
+    HookPlan plan{Site<InitializeHintCaption>("InitializeHintCaption", InitializeMessage,
+        {0xa9bc7bfd, 0xa9015ff8, 0xa90257f6, 0xa9034ff4, 0x910003fd})};
+    if (!plan) return false;
+    constexpr native::Fingerprint<> notify{NotifyTextChanged,
+        {0xd10103ff, 0xa9017bfd, 0xf90013f5, 0xa9034ff4, 0x910043fd}, "caption.NotifyTextChanged"};
+    if (const auto result = native::MainExecutable().Check(notify); !result) {
+        native::ReportMismatch(result);
+        return false;
+    }
+    if (!plan.Publish<InitializeHintCaption>(InitializeMessage)) return false;
+    if (!duplicate) { *destination = provider; RecordMutation(); }
+    return true;
 }
 }

@@ -18,14 +18,18 @@ void ReportSettings() {
                      Preferences.autoSwim ? "true" : "false",
                      Preferences.swimStrokeBoost ? "true" : "false");
 }
-bool Install() {
-    // A conflict in one feature must not suppress the other independent features.
-    const bool pickup = !Preferences.holdToHoover || InstallHoldYPickup();
-    const bool dialogue = !Preferences.holdToAdvanceDialogue || InstallHoldToAdvanceDialogue();
-    const bool vault = !(Preferences.autoVault || Preferences.autoLadder) ||
-        InstallAutoTraversal(Preferences.autoVault, Preferences.autoLadder, Preferences.autoEquipTraversal);
-    const bool swimming = !Preferences.autoSwim || InstallAutoSwim(Preferences.swimStrokeBoost);
-    const bool camera = InstallSwimmingCameraTilt(); // Native camera restriction fix, even with vanilla swimming.
-    return pickup && dialogue && vault && swimming && camera;
+namespace {
+bool InstallConfiguredTraversal() { return InstallAutoTraversal(Preferences.autoVault, Preferences.autoLadder, Preferences.autoEquipTraversal); }
+bool InstallConfiguredSwim() { return InstallAutoSwim(Preferences.swimStrokeBoost); }
+}
+core::InstallResult Install() {
+    const core::FeatureDescription features[]{
+        {"controls.pickup", Preferences.holdToHoover, InstallHoldYPickup},
+        {"controls.dialogue_hurry", Preferences.holdToAdvanceDialogue, InstallHoldToAdvanceDialogue},
+        {"controls.traversal", Preferences.autoVault || Preferences.autoLadder, InstallConfiguredTraversal},
+        {"controls.swimming", Preferences.autoSwim, InstallConfiguredSwim},
+        {"controls.swimming_camera", true, InstallSwimmingCameraTilt},
+    };
+    return core::ActivateFeatures(features);
 }
 }

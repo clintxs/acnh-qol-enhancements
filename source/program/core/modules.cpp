@@ -29,33 +29,53 @@ namespace able_bag { bool Install(); }
 
 namespace qol::core {
 namespace {
-bool InstallCatalog() {
-    if (const auto result = catalog_aware_shops::game::ValidateExpectedCode(native::MainExecutable()); !result) {
-        native::ReportMismatch(result);
-        return false;
-    }
-    using namespace catalog_aware_shops::features;
-    const bool stars = InstallCatalogStars();
-    const bool shopDialogue = InstallNookCatalogStars();
-    const bool generalDialogue = InstallDialogueItemStars();
-    const bool badges = InstallCatalogBadges();
-    const bool variations = InstallCatalogVariationLabels();
-    return stars && shopDialogue && generalDialogue && badges && variations;
+bool ValidateCatalog() {
+    const auto result = catalog_aware_shops::game::ValidateExpectedCode(native::MainExecutable());
+    if (!result) native::ReportMismatch(result);
+    return bool(result);
 }
-bool InstallPockets() {
-    if (const auto result = qol_pockets::game::ValidateExpectedCode(native::MainExecutable()); !result) {
-        native::ReportMismatch(result);
-        return false;
-    }
+InstallResult InstallCatalog() {
+    using namespace catalog_aware_shops::features;
+    const FeatureDescription features[]{
+        {"catalog.profile", true, ValidateCatalog},
+        {"catalog.item_names", true, InstallCatalogStars, {"catalog.profile"}},
+        {"catalog.shop_dialogue", true, InstallNookCatalogStars, {"catalog.profile"}},
+        {"catalog.item_dialogue", true, InstallDialogueItemStars, {"catalog.profile"}},
+        {"catalog.badges", true, InstallCatalogBadges, {"catalog.profile"}},
+        {"catalog.variation_labels", true, InstallCatalogVariationLabels, {"catalog.profile"}},
+    };
+    return ActivateFeatures(features);
+}
+bool ValidatePockets() {
+    const auto result = qol_pockets::game::ValidateExpectedCode(native::MainExecutable());
+    if (!result) native::ReportMismatch(result);
+    return bool(result);
+}
+InstallResult InstallPockets() {
     using namespace qol_pockets::features;
-    const bool stacks = InstallStackSplitting();
-    const bool storage = InstallStorageWithdrawal();
-    const bool quickStore = InstallQuickStore();
-    const bool holdSelect = quickStore && InstallHoldSelect();
-    const bool claim = InstallRecyclingClaim();
-    const bool hint = quickStore && InstallStorageHint();
-    const bool withdrawalHint = storage && hint && InstallStorageWithdrawalHint();
-    return stacks && storage && quickStore && holdSelect && claim && hint && withdrawalHint;
+    const FeatureDescription features[]{
+        {"pockets.profile", true, ValidatePockets},
+        {"pockets.stacks", true, InstallStackSplitting, {"pockets.profile"}},
+        {"pockets.storage_withdrawal", true, InstallStorageWithdrawal, {"pockets.profile"}},
+        {"pockets.quick_store", true, InstallQuickStore, {"pockets.profile"}},
+        {"pockets.hold_select", qol_pockets::GetSettings().enableMultiselect, InstallHoldSelect, {"pockets.quick_store"}},
+        {"pockets.recycling", true, InstallRecyclingClaim, {"pockets.profile"}},
+        {"pockets.hints", true, InstallStorageHint, {"pockets.quick_store"}},
+        {"pockets.withdrawal_hint", true, InstallStorageWithdrawalHint, {"pockets.storage_withdrawal", "pockets.hints"}},
+    };
+    return ActivateFeatures(features);
+}
+InstallResult InstallDialogue() {
+    const FeatureDescription features[]{{"dialogue.speed", true, dialogue::Install}};
+    return ActivateFeatures(features);
+}
+InstallResult InstallFitting() {
+    const FeatureDescription features[]{{"fitting.bag", true, able_bag::Install}};
+    return ActivateFeatures(features);
+}
+InstallResult InstallShopping() {
+    const FeatureDescription features[]{{"shopping.card", true, shopping::Install}};
+    return ActivateFeatures(features);
 }
 
 enum class LoadResult { Absent, Invalid, Ready };
@@ -94,6 +114,7 @@ LoadResult LoadConfig(const ModuleDescription &module, Config *metadata, ConfigL
 std::atomic<bool> ActivationStarted{false};
 Settings CorePreferences{};
 unsigned ConfigureCore(std::string_view input) { return ApplyCoreSettings(input, CorePreferences); }
+bool InstallCoreTimeout() { return InstallAmiiboTimeout(CorePreferences.amiiboTimeoutFrames); }
 bool ActivateCoreSettings() {
     const ModuleDescription core{"Core", "core", {}, nullptr, ConfigureCore};
     for (const auto layer : {ConfigLayer::Module, ConfigLayer::Custom}) {
@@ -106,7 +127,7 @@ bool ActivateCoreSettings() {
     Logging.Settings("[QoL Enhancements/Core] settings: amiibo_timeout_frames=%u log_versions=%s log_settings=%s log_debug=%s\n",
                      CorePreferences.amiiboTimeoutFrames, CorePreferences.logging.versions ? "true" : "false",
                      CorePreferences.logging.settings ? "true" : "false", CorePreferences.logging.debug ? "true" : "false");
-    return InstallAmiiboTimeout(CorePreferences.amiiboTimeoutFrames);
+    return ActivateFeature({"core.amiibo_timeout", CorePreferences.amiiboTimeoutFrames != 0, InstallCoreTimeout}).Complete();
 }
 } // namespace
 
@@ -115,9 +136,9 @@ bool ActivateCoreSettings() {
 const std::array<ModuleDescription, 7> Modules{{
     {"Catalog", "catalog", {0, 1, 0}, InstallCatalog, catalog_aware_shops::Configure, nullptr, catalog_aware_shops::ReportSettings},
     {"Pockets", "pockets", {0, 1, 0}, InstallPockets, qol_pockets::Configure, nullptr, qol_pockets::ReportSettings},
-    {"Faster Dialogue", "faster-dialogue", {0, 1, 0}, dialogue::Install, dialogue::Configure, nullptr, dialogue::ReportSettings},
-    {"Fitting Room", "fitting-room", {0, 1, 0}, able_bag::Install, nullptr, PrepareFittingResources},
-    {"Shopping Card", "shopping-card", {0, 3, 2}, shopping::Install, nullptr, shopping::PrepareResources},
+    {"Faster Dialogue", "faster-dialogue", {0, 1, 0}, InstallDialogue, dialogue::Configure, nullptr, dialogue::ReportSettings},
+    {"Fitting Room", "fitting-room", {0, 1, 0}, InstallFitting, nullptr, PrepareFittingResources},
+    {"Shopping Card", "shopping-card", {0, 3, 2}, InstallShopping, nullptr, shopping::PrepareResources},
     {"Crafting", "crafting", {0, 3, 46}, crafting::Install, crafting::Configure, nullptr, crafting::ReportSettings},
     {"Controls", "controls", {0, 4, 14}, controls::Install, controls::Configure, nullptr, controls::ReportSettings},
 }};
@@ -129,16 +150,26 @@ void ActivateModules() {
         Config config{};
         const auto loaded = LoadConfig(module, &config, ConfigLayer::Module);
         if (loaded == LoadResult::Absent) {
+            ActivationResults.Store(module.slug, {});
             Logging.Debug("[QoL Enhancements] %s: not installed\n", module.name);
             continue;
         }
-        if (module.prepareResources && !module.prepareResources()) {
+        const auto beforeResourceMutation = MutationCount();
+        const char *resourceId = module.prepareResources == PrepareFittingResources ? "resources.fitting" : "resources.shopping";
+        const auto resourceResult = module.prepareResources
+            ? ActivateFeature({resourceId, true, module.prepareResources}) : FeatureResult{};
+        const bool resourcesReady = resourceResult.Complete();
+        const bool resourcesPublished = MutationCount() != beforeResourceMutation;
+        ActivationResults.Store(module.slug, {FeatureState::Disabled, resourcesPublished, "package resources only"});
+        if (!resourcesReady) {
+            ActivationResults.Store(module.slug, {FeatureState::DependencyUnavailable, resourcesPublished, "resource preparation unavailable"});
             Logging.Error("[QoL Enhancements] ERROR: %s resource support unavailable; feature code disabled\n",
                         module.name);
             ++errors;
             continue;
         }
         if (loaded == LoadResult::Invalid) {
+            ActivationResults.Store(module.slug, {FeatureState::Failed, resourcesPublished, "invalid package configuration"});
             Logging.Error("[QoL Enhancements] ERROR: %s config invalid/unreadable; feature code disabled\n", module.name);
             ++errors;
             continue;
@@ -155,9 +186,13 @@ void ActivateModules() {
                     module.minimum.patch);
         Logging.Settings("[QoL Enhancements/%s] settings: enabled=%s\n", module.name, config.enabled ? "true" : "false");
         if (module.reportSettings) module.reportSettings();
-        if (!config.enabled) continue;
+        if (!config.enabled) {
+            Logging.Debug("[QoL Enhancements] module=%s state=Disabled published=%s resource_support=%s\n", module.slug, resourcesPublished ? "true" : "false", module.prepareResources && resourcesReady ? "true" : "false");
+            continue;
+        }
         const auto compatibility = CheckCompatibility(config.version, module.minimum, CoreVersion);
         if (compatibility == Compatibility::TooOld) {
+            ActivationResults.Store(module.slug, {FeatureState::Unsupported, resourcesPublished, "package below minimum"});
             Logging.Error("[QoL Enhancements] ERROR: %s package is below minimum; feature code disabled. "
                         "Update the suite or disable the module in Eden and restart.\n", module.name);
             ++errors;
@@ -167,9 +202,12 @@ void ActivateModules() {
             Logging.Warning("[QoL Enhancements] WARNING: %s package is newer than Core %s. "
                         "Update Core to the same suite release.\n", module.name, ReleaseVersion);
         }
-        const bool complete = module.install();
+        const auto activation = module.install();
+        const bool complete = activation.complete;
+        ActivationResults.Store(module.slug, {complete ? FeatureState::Ready : FeatureState::Failed,
+            resourcesPublished || activation.published, complete ? "features ready" : "one or more features unavailable"});
         if (complete) Logging.Debug("[QoL Enhancements] %s: ENABLED\n", module.name);
-        else Logging.Error("[QoL Enhancements] %s: ERROR installation failed or partial; inspect feature logs\n", module.name);
+        else Logging.Error("[QoL Enhancements] %s: ERROR installation failed or partial; published=%s ready_features=%u unavailable_features=%u; inspect feature results\n", module.name, resourcesPublished || activation.published ? "true" : "false", activation.ready, activation.unavailable);
         installed += complete;
         errors += !complete;
     }

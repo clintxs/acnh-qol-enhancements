@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "lib.hpp"
 #include "core/modules.hpp"
 #include "core/release.hpp"
@@ -27,7 +28,12 @@ extern "C" void exl_main(void *, void *) {
         return;
     }
     exl::hook::Initialize();
-    AfterContentMount::InstallAtOffset(ContentMounted);
+
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<AfterContentMount>("AfterContentMount", ContentMounted, {0xf94002d5, 0xb5fff9f5, 0x52801100, 0x972a4914, 0xaa1403e1}, true),
+    };
+    if (!hookPlan) return;
+    if (!hookPlan.Publish<AfterContentMount>(ContentMounted)) return;
     Logging.Debug("[QoL Enhancements] WAITING_FOR_CONTENT: module configs load after the game mounts RomFS\n");
 }
 extern "C" NORETURN void exl_exception_entry() {

@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "lib.hpp"
 #include "settings.hpp"
 #include <cstring>
@@ -30,7 +31,12 @@ bool InstallAmiiboTimeout(unsigned frames) {
         return false;
     }
     TimeoutFrames = frames;
-    ScanTimeout::InstallAtOffset(ScanTimeoutAssignment);
+
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<ScanTimeout>("ScanTimeout", ScanTimeoutAssignment, {0xb900f67f, 0x7901f268, 0xf94002a8, 0xb4000048, 0xf9401508}, true),
+    };
+    if (!hookPlan) return false;
+    if (!hookPlan.Publish<ScanTimeout>(ScanTimeoutAssignment)) return false;
     Logging.Debug("[QoL Enhancements/Core] Amiibo timeout: READY; C++ hook; frames=%u\n", TimeoutFrames);
     return true;
 }

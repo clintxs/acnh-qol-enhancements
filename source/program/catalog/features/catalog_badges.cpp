@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "catalog_badges.hpp"
 #include "program/catalog/game/bindings.hpp"
 #include "program/catalog/game/catalog_ownership.hpp"
@@ -357,10 +358,18 @@ bool InstallCatalogBadges() {
     if (!game::ValidateCatalogBindings() || !game::ValidateRecipeBindings()) {
         return false;
     }
-    MilesCatalogBadge::InstallAtOffset(address::MilesUpdateRow);
-    NookCatalogBadge::InstallAtOffset(address::NookItemReady);
-    HhpCatalogBadge::InstallAtOffset(address::HhpUpdateRow);
-    HotelCatalogBadge::InstallAtOffset(address::HotelUpdateRow);
+
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<MilesCatalogBadge>("MilesCatalogBadge", address::MilesUpdateRow, {0xfc190fe8, 0xa9017bfd, 0x910043fd, 0xa9026ffc, 0xa90367fa}, true),
+        qol::core::Site<NookCatalogBadge>("NookCatalogBadge", address::NookItemReady, {0x79400168, 0x529fffcc, 0x6b0c011f, 0x39400969, 0x39400d6a}, true),
+        qol::core::Site<HhpCatalogBadge>("HhpCatalogBadge", address::HhpUpdateRow, {0x6db923e9, 0xa9017bfd, 0x910043fd, 0xa9026ffc, 0xa90367fa}, true),
+        qol::core::Site<HotelCatalogBadge>("HotelCatalogBadge", address::HotelUpdateRow, {0xfc190fe8, 0xa9017bfd, 0x910043fd, 0xa9026ffc, 0xa90367fa}, true),
+    };
+    if (!hookPlan) return false;
+    if (!hookPlan.Publish<MilesCatalogBadge>(address::MilesUpdateRow)) return false;
+    if (!hookPlan.Publish<NookCatalogBadge>(address::NookItemReady)) return false;
+    if (!hookPlan.Publish<HhpCatalogBadge>(address::HhpUpdateRow)) return false;
+    if (!hookPlan.Publish<HotelCatalogBadge>(address::HotelUpdateRow)) return false;
     Logging.Debug("[QoL Enhancements/Catalog] CATALOG_BADGES_READY Nook/HHP/Hotel/Miles item-family and "
                 "recipe stars\n");
     return true;

@@ -1,12 +1,13 @@
 #pragma once
 #include "config.hpp"
+#include "feature_activation.hpp"
 #include <array>
 namespace qol::core {
 struct ModuleDescription {
     const char *name;
     const char *slug;
     Version minimum;
-    bool (*install)();
+    InstallResult (*install)();
     // Optional per-module parser, used identically for regular and custom INIs.
     unsigned (*configure)(std::string_view) = nullptr;
     // RomFS overrides still load when behavior is disabled or config is invalid.

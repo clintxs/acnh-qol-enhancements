@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "storage_withdrawal.hpp"
 #include "program/pockets/settings.hpp"
 #include "storage_policy.hpp"
@@ -221,8 +222,14 @@ bool InstallStorageWithdrawal() {
             return false;
         }
     }
-    EnterStorageCommand::InstallAtOffset(address::EnterCommand);
-    UpdateStorageCommand::InstallAtOffset(address::ProcessSelection);
+
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<EnterStorageCommand>("EnterStorageCommand", address::EnterCommand, {0xd10143ff, 0xa9027bfd, 0xf9001bf5, 0xa9044ff4, 0x910083fd}, true),
+        qol::core::Site<UpdateStorageCommand>("UpdateStorageCommand", address::ProcessSelection, {0xd10143ff, 0xa9017bfd, 0xf90013f7, 0xa90357f6, 0xa9044ff4}, true),
+    };
+    if (!hookPlan) return false;
+    if (!hookPlan.Publish<EnterStorageCommand>(address::EnterCommand)) return false;
+    if (!hookPlan.Publish<UpdateStorageCommand>(address::ProcessSelection)) return false;
     Logging.Debug("[QoL Enhancements/Pockets] STORAGE_READY single Move to Pockets bypass\n");
     return true;
 }

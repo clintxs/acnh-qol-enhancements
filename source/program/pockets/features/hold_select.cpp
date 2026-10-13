@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "hold_select.hpp"
 #include "program/pockets/settings.hpp"
 #include "pocket_input.hpp"
@@ -232,11 +233,16 @@ bool InstallHoldSelect() {
             return false;
         }
     }
+
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<HoldSelectFeedback>("HoldSelectFeedback", address::ButtonFeedback, {0xd102c3ff, 0xa9077bfd, 0xf90043f7, 0xa90957f6, 0xa90a4ff4}, true),
+    };
+    if (!hookPlan) return false;
     if (!qol::core::RegisterPageInputObserver(BeforeHoldSelectInput, AfterHoldSelectInput)) {
         Logging.Error("[QoL Enhancements/Pockets] HOLD_SELECT_DISABLED shared input unavailable\n");
         return false;
     }
-    HoldSelectFeedback::InstallAtOffset(address::ButtonFeedback);
+    if (!hookPlan.Publish<HoldSelectFeedback>(address::ButtonFeedback)) return false;
     Logging.Debug("[QoL Enhancements/Pockets] HOLD_SELECT_READY select/deselect with Decide feedback; selling / put in storage\n");
     return true;
 }

@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "lib.hpp"
 #include "resource_budget.hpp"
 #include <array>
@@ -6,10 +7,7 @@
 namespace qol::core {
 namespace {
 constexpr std::uintptr_t ResourceSizeQuery = 0x03e3cad0;
-bool resourcesPrepared{}, shoppingResources{}, fittingResources{};
-std::uintptr_t Main(std::uintptr_t offset) {
-    return exl::util::modules::GetTargetStart() + offset;
-}
+bool shoppingResources{}, fittingResources{};
 template<class T> T Read(std::uintptr_t pointer, std::uintptr_t offset = 0) {
     return *reinterpret_cast<const T *>(pointer + offset);
 }
@@ -42,30 +40,25 @@ HOOK_DEFINE_TRAMPOLINE(CounterResourceBudget) {
     }
 };
 bool InstallResourceBudget() {
-    if (resourcesPrepared) return true;
-    // Validate independently: feature hooks may be disabled while RomFS still
-    // supplies the larger layout. Never install financial/UI behavior here.
-    constexpr std::array<std::uint32_t, 4> expected{
-        0xa9bb7bfd, 0xa90167fa, 0xa9025ff8, 0xa90357f6};
-    const auto &text = exl::util::GetMainModuleInfo().m_Text;
-    if (ResourceSizeQuery + sizeof(expected) > text.m_Size ||
-        std::memcmp(reinterpret_cast<const void *>(Main(ResourceSizeQuery)),
-                    expected.data(), sizeof(expected))) {
+    HookPlan plan{Site<CounterResourceBudget>("CounterResourceBudget", ResourceSizeQuery,
+        {0xa9bb7bfd, 0xa90167fa, 0xa9025ff8, 0xa90357f6, 0xa9044ff4})};
+    if (!plan || !plan.Publish<CounterResourceBudget>(ResourceSizeQuery)) {
         Logging.Error("[QoL Enhancements/Resources] DISABLED: resource size instruction mismatch\n");
         return false;
     }
-    CounterResourceBudget::InstallAtOffset(ResourceSizeQuery);
-    resourcesPrepared = true;
     return true;
 }
+
 } // namespace
 bool PrepareShoppingResources() {
     if (!InstallResourceBudget()) return false;
+    if (!shoppingResources) RecordMutation();
     shoppingResources = true;
     return true;
 }
 bool PrepareFittingResources() {
     if (!InstallResourceBudget()) return false;
+    if (!fittingResources) RecordMutation();
     fittingResources = true;
     return true;
 }

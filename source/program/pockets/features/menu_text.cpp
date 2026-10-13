@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "menu_text.hpp"
 #include "stack_menu.hpp"
 #include "program/pockets/game/stack_bindings.hpp"
@@ -90,7 +91,14 @@ bool ValidateMenuText() {
            std::memcmp(reinterpret_cast<const void *>(game::MainAddress(GetActiveLocale)),
                        localeExpected.data(), sizeof(localeExpected)) == 0;
 }
-void InstallMenuText() {
-    ReplaceMenuCaption::InstallAtOffset(CaptionLoaded);
+bool InstallMenuText() {
+
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<ReplaceMenuCaption>("ReplaceMenuCaption", CaptionLoaded, {0x91002280, 0x2a1f03e1, 0x52803c02, 0x9491a129, 0xf00180bc}, true),
+    };
+    if (!hookPlan) return false;
+    if (!hookPlan.Publish<ReplaceMenuCaption>(CaptionLoaded)) return false;
+
+    return true;
 }
 } // namespace qol_pockets::features

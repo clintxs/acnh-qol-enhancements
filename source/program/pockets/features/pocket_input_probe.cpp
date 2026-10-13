@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "pocket_input_probe.hpp"
 #include "program/pockets/game/stack_bindings.hpp"
 #include <array>
@@ -73,7 +74,12 @@ bool InstallPocketInputProbe() {
         Logging.Error("[QoL Enhancements/Pockets] POCKET_INPUT_DISABLED code mismatch\n");
         return false;
     }
-    ProbePocketInput::InstallAtOffset(PageInputUpdate);
+
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<ProbePocketInput>("ProbePocketInput", PageInputUpdate, {0xf9410800, 0xb4000060, 0x12000042, 0x17ffcad4, 0xd65f03c0}, true),
+    };
+    if (!hookPlan) return false;
+    if (!hookPlan.Publish<ProbePocketInput>(PageInputUpdate)) return false;
     Logging.Debug(
         "[QoL Enhancements/Pockets] POCKET_INPUT_READY read-only probe; Y-to-store not enabled\n");
     return true;

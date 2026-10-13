@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "lib.hpp"
 #include "settings.hpp"
 #include <cstring>
@@ -81,8 +82,14 @@ bool InstallFasterCrafting(unsigned maximumSpeed) {
         }
     }
     MaximumSpeed = maximumSpeed;
-    AutomaticMashBoost::InstallAtOffset(address::CraftingMashRate);
-    AutomaticMashBoost::InstallAtOffset(address::CookingMashRate);
+
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<AutomaticMashBoost>("AutomaticMashBoost", address::CraftingMashRate, {0xbd192a60, 0xf9401108, 0x34000089, 0xf000e3e9, 0x913aed29}, true),
+        qol::core::Site<AutomaticMashBoost>("AutomaticMashBoost", address::CookingMashRate, {0xbd192260, 0xf9403274, 0xb50000f4, 0xb0017668, 0x91070108}, true),
+    };
+    if (!hookPlan) return false;
+    if (!hookPlan.Publish<AutomaticMashBoost>(address::CraftingMashRate)) return false;
+    if (!hookPlan.Publish<AutomaticMashBoost>(address::CookingMashRate)) return false;
     Logging.Debug("[QoL Enhancements/Crafting] READY: C++ hooks; logarithmic crafting/cooking ramp=1..%ux over %u updates\n", MaximumSpeed, RampFrames);
     return true;
 }

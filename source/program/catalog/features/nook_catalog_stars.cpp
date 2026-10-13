@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "catalog_stars.hpp"
 #include "catalog_star_text.hpp"
 #include "program/catalog/game/catalog_ownership.hpp"
@@ -265,10 +266,17 @@ bool InstallNookCatalogStars() {
         Logging.Error("[QoL Enhancements/Catalog] NOOK_CATALOG_STARS_DISABLED fingerprint mismatch\n");
         return false;
     }
+    qol::core::HookPlan hookPlan{
 #if CAS_VERBOSE_DIALOGUE_TRACE
-    NookMessageTrace::InstallAtOffset(address::SplitMessageId);
+        qol::core::Site<NookMessageTrace>("NookMessageTrace", address::SplitMessageId, {0xd10603ff, 0xa9127bfd, 0xa9136ffc, 0xa91467fa, 0xa9155ff8}, true),
 #endif
-    NookDisplayCatalogStar::InstallAtOffset(address::DispatchMessage);
+        qol::core::Site<NookDisplayCatalogStar>("NookDisplayCatalogStar", address::DispatchMessage, {0xd105c3ff, 0xa9137bfd, 0xa9145ffc, 0xa91557f6, 0xa9164ff4}, true),
+    };
+    if (!hookPlan) return false;
+#if CAS_VERBOSE_DIALOGUE_TRACE
+    if (!hookPlan.Publish<NookMessageTrace>(address::SplitMessageId)) return false;
+#endif
+    if (!hookPlan.Publish<NookDisplayCatalogStar>(address::DispatchMessage)) return false;
     Logging.Debug(
         "[QoL Enhancements/Catalog] NOOK_CATALOG_STARS_READY SP_rcm_00_common:101 direct-context\n");
     Logging.Debug("[QoL Enhancements/Catalog] SHOP_CATALOG_STARS_READY hhp:001 hotel:151 able:051/052\n");

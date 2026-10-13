@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "lib.hpp"
 #include "settings.hpp"
 #include "program/core/page_input.hpp"
@@ -241,11 +242,16 @@ bool InstallCraftingQuantityWrap() {
         return false;
     }
     Main = main.m_Text.m_Start;
+
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<ResetQuantityGrid>("ResetQuantityGrid", address::ResetGrid, {0xd10203ff, 0xfd001be8, 0xf90027f9, 0xa903fbfd, 0xa9055ff8}, true),
+    };
+    if (!hookPlan) return false;
     if (!core::RegisterPageInput(QuantityInput)) {
         Logging.Error("[QoL Enhancements/Crafting] quantity wrap: DISABLED; shared input unavailable\n");
         return false;
     }
-    ResetQuantityGrid::InstallAtOffset(address::ResetGrid);
+    if (!hookPlan.Publish<ResetQuantityGrid>(address::ResetGrid)) return false;
     Logging.Debug("[QoL Enhancements/Crafting] quantity wrap: READY; native slide/sound; crafting/cooking limits; release before endpoint wrap\n");
     return true;
 }

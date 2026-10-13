@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "lib.hpp"
 #include "settings.hpp"
 #include "reveal_hooks.hpp"
@@ -31,7 +32,7 @@ constexpr unsigned NpcEntity = 10, PlayerEntity = 0x4f, DialogWindow = 1, Balloo
 constexpr std::uint16_t BoostButtons = 0x4002; // B/R; L is deliberately excluded.
 } // namespace layout
 Settings Preferences{};
-bool FasterDialogueEnabled = false, RevealHooksInstalled = false;
+bool FasterDialogueEnabled = false;
 // Odd flags retain native fast mode. Bits 1/2 select configured boost / hurry;
 // native renderer gates test nonzero and forward the whole byte. Nominal 2x
 // is the native fast rate, so scale both text paths by the desired tier / 2.
@@ -406,9 +407,20 @@ bool Matches(const Fingerprint &expected, const char *owner) {
 }
 }
 bool InstallRevealHooks() {
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<DialogueHeldInput>("DialogueHeldInput", address::HeldInput, {0xa9422269, 0x8b140275, 0x911be114, 0xf9401128, 0xb4000308}, true),
+        qol::core::Site<DialogueSelectSpeed>("DialogueSelectSpeed", address::EligibleFast, {0x52843508, 0x8b080268, 0x3934dec9, 0x340006e9, 0x52800034}, true),
+        qol::core::Site<DialogueForwardSpeed>("DialogueForwardSpeed", address::ForwardFast, {0xb900011f, 0x394832c8, 0x340007c8, 0x3961f2c8, 0x340008c8}, true),
+        qol::core::Site<DialogueMainRate>("DialogueMainRate", address::MainRate, {0x14000054, 0x52829108, 0x52a7f017, 0x3934dedf, 0x8b080274}, true),
+        qol::core::Site<DialogueRendererRate>("DialogueRendererRate", address::RendererRate, {0x14000002, 0xbd421400, 0xbd420801, 0xbd420c02, 0x5e21d821}, true),
+    };
+    if (!hookPlan) {
+        Logging.Error("[QoL Enhancements/Dialogue reveal] DISABLED: instruction mismatch or hook ownership conflict\n");
+        return false;
+    }
+
     // Shared reveal sites install once, whether Controls or Faster Dialogue
     // requests them first. Their policies remain separately enabled.
-    if (RevealHooksInstalled) return true;
     constexpr Fingerprint fingerprints[]{
         {address::HeldInput, {0xa9422269, 0x8b140275, 0x911be114, 0xf9401128, 0xb4000308}},
         {address::EligibleFast, {0x52843508, 0x8b080268, 0x3934dec9, 0x340006e9, 0x52800034}},
@@ -419,13 +431,13 @@ bool InstallRevealHooks() {
         {0x01af9fec, {0x79401008, 0x528c0049, 0x6a09011f, 0x540000a0, 0xf9401668}},
         {0x01afdeac, {0x350002a9, 0x35000768, 0x3974dac8, 0x35000728, 0x3974d2c9}},
     };
-    for (const auto &expected : fingerprints) if (!Matches(expected, "Dialogue reveal")) return false;
-    DialogueHeldInput::InstallAtOffset(address::HeldInput);
-    DialogueSelectSpeed::InstallAtOffset(address::EligibleFast);
-    DialogueForwardSpeed::InstallAtOffset(address::ForwardFast);
-    DialogueMainRate::InstallAtOffset(address::MainRate);
-    DialogueRendererRate::InstallAtOffset(address::RendererRate);
-    RevealHooksInstalled = true;
+    for (const auto &expected : fingerprints)
+        if (!hookPlan.Contains(expected.offset) && !Matches(expected, "Dialogue reveal")) return false;
+    if (!hookPlan.Publish<DialogueHeldInput>(address::HeldInput)) return false;
+    if (!hookPlan.Publish<DialogueSelectSpeed>(address::EligibleFast)) return false;
+    if (!hookPlan.Publish<DialogueForwardSpeed>(address::ForwardFast)) return false;
+    if (!hookPlan.Publish<DialogueMainRate>(address::MainRate)) return false;
+    if (!hookPlan.Publish<DialogueRendererRate>(address::RendererRate)) return false;
     return true;
 }
 bool Install() {
@@ -442,12 +454,18 @@ bool Install() {
         {0x01d9e244, {0xb905ce88, 0x91004128, 0xb00168a9, 0x52800814, 0xf93fb268}},
     };
     for (const auto &expected : fingerprints) if (!Matches(expected, "Faster Dialogue")) return false;
+
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<DialogueNameBegin>("DialogueNameBegin", address::NameBegin, {0xf9400008, 0x9105e3f4, 0xf9406118, 0xf9401008, 0xf9410d16}, true),
+        qol::core::Site<DialogueNameReady>("DialogueNameReady", address::NameReady, {0xb4001153, 0x34001120, 0x79400268, 0x340010e8, 0xf94186c8}, true),
+    };
+    if (!hookPlan) return false;
     if (!InstallRevealHooks()) return false;
 #if CAS_VERBOSE_DIALOGUE_TRACE
     Logging.Debug("[QoL Enhancements/Faster Dialogue] DIAGNOSTIC: unnamed-v1; current-message native name-tag classification\n");
 #endif
-    DialogueNameBegin::InstallAtOffset(address::NameBegin);
-    DialogueNameReady::InstallAtOffset(address::NameReady);
+    if (!hookPlan.Publish<DialogueNameBegin>(address::NameBegin)) return false;
+    if (!hookPlan.Publish<DialogueNameReady>(address::NameReady)) return false;
     FasterDialogueEnabled = true;
     Logging.Debug("[QoL Enhancements/Faster Dialogue] READY: C++ hooks; configured dialogue speed\n");
     return true;

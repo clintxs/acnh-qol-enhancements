@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "recycling_claim.hpp"
 #include "program/pockets/settings.hpp"
 #include "program/pockets/game/stack_bindings.hpp"
@@ -184,8 +185,14 @@ bool InstallRecyclingClaim() {
             return false;
         }
     }
-    EnterRecyclingMenu::InstallAtOffset(address::EnterMenu);
-    UpdateRecyclingMenu::InstallAtOffset(address::ProcessSelection);
+
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<EnterRecyclingMenu>("EnterRecyclingMenu", address::EnterMenu, {0xd10103ff, 0xa9027bfd, 0xa9034ff4, 0x910083fd, 0xf9410808}, true),
+        qol::core::Site<UpdateRecyclingMenu>("UpdateRecyclingMenu", address::ProcessSelection, {0xd10183ff, 0xa9027bfd, 0xf9001bf7, 0xa90457f6, 0xa9054ff4}, true),
+    };
+    if (!hookPlan) return false;
+    if (!hookPlan.Publish<EnterRecyclingMenu>(address::EnterMenu)) return false;
+    if (!hookPlan.Publish<UpdateRecyclingMenu>(address::ProcessSelection)) return false;
     Logging.Debug("[QoL Enhancements/Pockets] CLAIM_READY single-action recycling box bypass\n");
     return true;
 }

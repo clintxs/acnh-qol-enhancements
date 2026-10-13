@@ -19,10 +19,18 @@ for base in (0x80000000, 0x1234500000):
     prepare, animate, suppress = [h.ram + o for o in (0x85000, 0x85010, 0x85020)]
     h.u.mem_write(h.mod + symbol('InputHandlers'), bytes(5 * 8))
     h.stubs[h.mod + symbol('SvcLogger', 'LogRaw')] = lambda: None
-    h.stubs[h.mod + symbol('nx64', '4HookEmmb')] = lambda: h.reg(0)
-    # Shared trampoline is already installed by the harness. Use real feature
-    # registration, including its producer/consumer fingerprint checks.
-    h.write(h.mod + symbol('3qol4core', '9Installed'), 1, 1)
+    # Supply the real text segment metadata required by bounded preparation;
+    # the inherited callback-only fixture previously needed just the module base.
+    main_info = h.mod + symbol('s_ModuleInfos') + 72
+    h.write(main_info + 16, base)
+    h.write(main_info + 24, 0x3f07000)
+    # Model Exlaunch publication and register through the real ownership path.
+    # Native input/feedback calls are still intercepted by the service stubs below.
+    def install_hook():
+        target = h.reg(0)
+        h.u.mem_write(target, b'\xff' * 20)
+        return target
+    h.stubs[h.mod + symbol('nx64', '4HookEmmb')] = install_hook
     h.run(h.mod + symbol('InstallHoldSelect'))
     assert h.reg(0) == 1
     h.write(pocket, base + 0x4a06e28)

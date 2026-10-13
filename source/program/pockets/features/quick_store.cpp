@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "quick_store.hpp"
 #include "program/pockets/game/quick_store_native.hpp"
 #include "program/core/native/runtime.hpp"
@@ -590,14 +591,22 @@ bool InstallQuickStore() {
             return false;
         }
     }
+
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<QuickStoreCommand>("QuickStoreCommand", address::Command, profile::HookWords(address::Command), true),
+        qol::core::Site<QuickStorePlay>("QuickStorePlay", address::Play, profile::HookWords(address::Play), true),
+        qol::core::Site<EnterPocketMenu>("EnterPocketMenu", address::EnterMenu, profile::HookWords(address::EnterMenu), true),
+        qol::core::Site<UpdatePocketMenu>("UpdatePocketMenu", address::UpdateMenu, profile::HookWords(address::UpdateMenu), true),
+    };
+    if (!hookPlan) return false;
     if (!qol::core::RegisterPageInput(QuickStoreInput)) {
         Logging.Error("[QoL Enhancements/Pockets] QUICK_STORE_DISABLED shared input unavailable\n");
         return false;
     }
-    QuickStoreCommand::InstallAtOffset(address::Command);
-    QuickStorePlay::InstallAtOffset(address::Play);
-    EnterPocketMenu::InstallAtOffset(address::EnterMenu);
-    UpdatePocketMenu::InstallAtOffset(address::UpdateMenu);
+    if (!hookPlan.Publish<QuickStoreCommand>(address::Command)) return false;
+    if (!hookPlan.Publish<QuickStorePlay>(address::Play)) return false;
+    if (!hookPlan.Publish<EnterPocketMenu>(address::EnterMenu)) return false;
+    if (!hookPlan.Publish<UpdatePocketMenu>(address::UpdateMenu)) return false;
     Logging.Debug("[QoL Enhancements/Pockets] OPEN_READY single-action A menu bypass\n");
     Logging.Debug("[QoL Enhancements/Pockets] QUICK_STORE_READY Y storage; ZL drop/release; ZR hold/wear/put-away\n");
     return true;

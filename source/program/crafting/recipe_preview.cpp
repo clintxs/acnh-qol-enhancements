@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "lib.hpp"
 #include "recipe_preview.hpp"
 #include "game/preview_native.hpp"
@@ -75,7 +76,6 @@ struct LayerDrawScope {
 std::array<LayerDrawScope, 8> LayerDrawScopes{};
 std::atomic<unsigned> TransformCalls{}, TransformAttempts{}, TransformApplied{}, ClearCalls{}, ClearMatches{};
 
-bool ActorHookInstalled{}, DiyHooksInstalled{};
 std::atomic<void *> WorkbenchController{};
 std::atomic<unsigned> WorkbenchHandle{}, WorkbenchTiltAngle{}, WorkbenchMode{};
 std::atomic<unsigned> WorkbenchAppliedReports{};
@@ -1190,9 +1190,27 @@ HOOK_DEFINE_TRAMPOLINE(DeactivatePhoneRecipes) {
 };
 } // namespace
 bool InstallRecipePreview() {
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<BuildRecipeLayout>("BuildRecipeLayout", address::BuildLayout, profile::HookWords(address::BuildLayout), true),
+        qol::core::Site<BuildPhoneRecipeHints>("BuildPhoneRecipeHints", recipe_hint::BuildFooter, profile::HookWords(recipe_hint::BuildFooter), true),
+        qol::core::Site<BindPhoneRecipes>("BindPhoneRecipes", address::PhoneBind, profile::HookWords(address::PhoneBind), true),
+        qol::core::Site<UpdatePhoneRecipes>("UpdatePhoneRecipes", address::PhoneFrame, profile::HookWords(address::PhoneFrame), true),
+        qol::core::Site<DeactivatePhoneRecipes>("DeactivatePhoneRecipes", address::PhoneDeactivate, profile::HookWords(address::PhoneDeactivate), true),
+        qol::core::Site<DrawPreviewLayer>("DrawPreviewLayer", address::DrawModelLayer, profile::HookWords(address::DrawModelLayer), true),
+        qol::core::Site<SetPreviewRotation>("SetPreviewRotation", address::SetModelRotation, profile::HookWords(address::SetModelRotation), true),
+        qol::core::Site<TraceModelTransform>("TraceModelTransform", address::UpdateModelTransform, profile::HookWords(address::UpdateModelTransform), true),
+        qol::core::Site<UpdatePreviewActor>("UpdatePreviewActor", address::UpdateItemActor, profile::HookWords(address::UpdateItemActor), true),
+        qol::core::Site<BuildPreviewMatrix>("BuildPreviewMatrix", address::BuildModelMatrix, profile::HookWords(address::BuildModelMatrix), true),
+        qol::core::Site<DrawPreviewContents>("DrawPreviewContents", address::DrawLayerContents, profile::HookWords(address::DrawLayerContents), true),
+    };
+    if (!hookPlan) {
+        Logging.Error("[QoL Enhancements/Crafting] DIY preview: DISABLED; hook preparation rejected\n");
+        return false;
+    }
+
     const auto &main = exl::util::GetMainModuleInfo();
     const auto executable = native::MainExecutable();
-    for (const auto &f : profile::DiyChecks) if (const auto result = executable.Check(f); !result) {
+    for (const auto &f : profile::DiyChecks) if (const auto result = executable.Check(f); !hookPlan.Contains(f.offset) && !result) {
         native::ReportMismatch(result);
         Logging.Error("[QoL Enhancements/Crafting] DIY preview: DISABLED; instruction mismatch at main+0x%lx\n", f.offset); return false;
     }
@@ -1213,34 +1231,47 @@ bool InstallRecipePreview() {
     }
     auto slot = reinterpret_cast<volatile std::uintptr_t *>(modeSlot);
     const auto replacement = reinterpret_cast<std::uintptr_t>(&PhoneRendererMode);
+    qol::core::RecordMutation();
     *slot = replacement;
     if (*slot != replacement) {
+        qol::core::ReportActivationFailure(qol::core::FeatureState::Failed, "renderer mode slot write failed");
         Logging.Error("[QoL Enhancements/Crafting] DIY preview: DISABLED; renderer mode slot write failed\n");
         return false;
     }
-    BuildRecipeLayout::InstallAtOffset(address::BuildLayout);
-    BuildPhoneRecipeHints::InstallAtOffset(recipe_hint::BuildFooter);
-    BindPhoneRecipes::InstallAtOffset(address::PhoneBind);
-    UpdatePhoneRecipes::InstallAtOffset(address::PhoneFrame);
-    DeactivatePhoneRecipes::InstallAtOffset(address::PhoneDeactivate);
-    DrawPreviewLayer::InstallAtOffset(address::DrawModelLayer);
-    SetPreviewRotation::InstallAtOffset(address::SetModelRotation);
-    TraceModelTransform::InstallAtOffset(address::UpdateModelTransform);
-    if (!ActorHookInstalled) UpdatePreviewActor::InstallAtOffset(address::UpdateItemActor);
-    ActorHookInstalled = true;
-    BuildPreviewMatrix::InstallAtOffset(address::BuildModelMatrix);
-    DrawPreviewContents::InstallAtOffset(address::DrawLayerContents);
-    DiyHooksInstalled = true;
+    if (!hookPlan.Publish<BuildRecipeLayout>(address::BuildLayout)) return false;
+    if (!hookPlan.Publish<BuildPhoneRecipeHints>(recipe_hint::BuildFooter)) return false;
+    if (!hookPlan.Publish<BindPhoneRecipes>(address::PhoneBind)) return false;
+    if (!hookPlan.Publish<UpdatePhoneRecipes>(address::PhoneFrame)) return false;
+    if (!hookPlan.Publish<DeactivatePhoneRecipes>(address::PhoneDeactivate)) return false;
+    if (!hookPlan.Publish<DrawPreviewLayer>(address::DrawModelLayer)) return false;
+    if (!hookPlan.Publish<SetPreviewRotation>(address::SetModelRotation)) return false;
+    if (!hookPlan.Publish<TraceModelTransform>(address::UpdateModelTransform)) return false;
+    if (!hookPlan.Publish<UpdatePreviewActor>(address::UpdateItemActor)) return false;
+    if (!hookPlan.Publish<BuildPreviewMatrix>(address::BuildModelMatrix)) return false;
+    if (!hookPlan.Publish<DrawPreviewContents>(address::DrawLayerContents)) return false;
     Logging.Debug("[QoL Enhancements/Crafting] DIY preview: READY; native starting poses; primary scene rotation; horizontal recipe navigation; A opens, B returns\n");
     return true;
 }
 bool InstallWorkbenchPreviewTilt() {
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<UpdatePreviewActor>("UpdatePreviewActor", address::UpdateItemActor, profile::HookWords(address::UpdateItemActor), true),
+    };
+    if (!hookPlan) {
+        Logging.Error("[QoL Enhancements/Crafting] workbench tilt: DISABLED; hook preparation rejected\n");
+        return false;
+    }
+
     const auto &main = exl::util::GetMainModuleInfo();
     const auto executable = native::MainExecutable();
     for (const auto &f : profile::WorkbenchChecks) {
-        // These trampolines may already belong to our DIY installer.
-        if ((f.offset == address::UpdateItemActor && ActorHookInstalled) ||
-            (f.offset == address::BuildModelMatrix && DiyHooksInstalled)) continue;
+        // The plan verified our actor hook's identity and installed bytes.
+        if (hookPlan.Contains(f.offset)) continue;
+        if (f.offset == address::BuildModelMatrix && qol::core::OwnedHooks.Contains(f.offset)) {
+            if (qol::core::OwnedHooks.Owned(qol::core::Site<BuildPreviewMatrix>("BuildPreviewMatrix", f.offset, f.words), executable)) continue;
+            qol::core::ReportActivationFailure(qol::core::FeatureState::Unsupported, "shared preview matrix hook changed");
+            Logging.Error("[QoL Enhancements/Crafting] workbench tilt: DISABLED; shared matrix ownership mismatch\n");
+            return false;
+        }
         if (const auto result = executable.Check(f); !result) {
             native::ReportMismatch(result);
             Logging.Error("[QoL Enhancements/Crafting] workbench tilt: DISABLED; instruction mismatch at main+0x%lx\n", f.offset);
@@ -1251,8 +1282,7 @@ bool InstallWorkbenchPreviewTilt() {
     Main = main.m_Text.m_Start;
     if (!core::RegisterPageInput(WorkbenchTiltInput)) return false;
     WorkbenchTiltEnabled.store(true, std::memory_order_release);
-    if (!ActorHookInstalled) UpdatePreviewActor::InstallAtOffset(address::UpdateItemActor);
-    ActorHookInstalled = true;
+    if (!hookPlan.Publish<UpdatePreviewActor>(address::UpdateItemActor)) return false;
     Logging.Debug("[QoL Enhancements/Crafting] workbench tilt: READY; native-selected item profile; input binding probes; right-stick up/down\n");
     return true;
 }

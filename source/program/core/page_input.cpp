@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "lib.hpp"
 #include "page_input.hpp"
 #include <array>
@@ -11,7 +12,6 @@ struct PageInputObserver {
     PageInputCallback before{}, after{};
 };
 std::array<PageInputObserver, 5> InputObservers{};
-bool Installed{};
 HOOK_DEFINE_TRAMPOLINE(SharedPageInput) {
     static void Callback(void *page, void *snapshot, unsigned blocked) {
         for (auto handler : InputHandlers)
@@ -28,38 +28,40 @@ HOOK_DEFINE_TRAMPOLINE(SharedPageInput) {
     }
 };
 bool InstallPageInput() {
-    if (!Installed) {
-        constexpr std::array<std::uint32_t, 5> words{
-            0xf9410800, 0xb4000060, 0x12000042, 0x17ffcad4, 0xd65f03c0};
-        const auto &main = exl::util::GetMainModuleInfo();
-        if (InputAddress + sizeof(words) > main.m_Text.m_Size ||
-            std::memcmp(reinterpret_cast<const void *>(main.m_Text.m_Start + InputAddress),
-                        words.data(), sizeof(words))) return false;
-        SharedPageInput::InstallAtOffset(InputAddress);
-        Installed = true;
-    }
-    return true;
+    HookPlan plan{Site<SharedPageInput>("SharedPageInput", InputAddress,
+        {0xf9410800, 0xb4000060, 0x12000042, 0x17ffcad4, 0xd65f03c0})};
+    return plan && plan.Publish<SharedPageInput>(InputAddress);
 }
+
 }
 bool RegisterPageInput(PageInputHandler handler) {
     if (!handler) return false;
-    for (auto existing : InputHandlers) if (existing == handler) return true;
+    for (auto existing : InputHandlers) if (existing == handler) return InstallPageInput();
     for (auto &slot : InputHandlers) if (!slot) {
         if (!InstallPageInput()) return false;
         slot = handler;
+        RecordMutation();
         return true;
     }
+    ReportActivationFailure(FeatureState::DependencyUnavailable, "input registration capacity");
     return false;
 }
 bool RegisterPageInputObserver(PageInputCallback before, PageInputCallback after) {
     if (!before || !after) return false;
     for (const auto &existing : InputObservers)
-        if (existing.before == before && existing.after == after) return true;
+        if (existing.before == before && existing.after == after) return InstallPageInput();
+    for (const auto &existing : InputObservers)
+        if (existing.before == before || existing.after == after) {
+            ReportActivationFailure(FeatureState::DependencyUnavailable, "incompatible input observer registration");
+            return false;
+        }
     for (auto &slot : InputObservers) if (!slot.before) {
         if (!InstallPageInput()) return false;
         slot = {before, after};
+        RecordMutation();
         return true;
     }
+    ReportActivationFailure(FeatureState::DependencyUnavailable, "input registration capacity");
     return false;
 }
 }

@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "lib.hpp"
 #include "auto_vault.hpp"
 #include "game/traversal_native.hpp"
@@ -625,6 +626,18 @@ HOOK_DEFINE_TRAMPOLINE(AutoTraversalSwap) {
 
 }
 
+namespace {
+void TraversalResult(const char *id, bool requested, bool available, const char *reason) {
+    const core::FeatureResult result{!requested ? core::FeatureState::Disabled :
+        available ? core::FeatureState::Ready : core::FeatureState::Unsupported,
+        requested && available, reason};
+    core::ActivationResults.Store(id, result);
+    if (result.Complete()) Logging.Debug("[QoL Enhancements] feature=%s state=%s published=%s reason=%s\n",
+        id, core::FeatureStateName(result.state), result.published ? "true" : "false", reason);
+    else Logging.Error("[QoL Enhancements] feature=%s state=%s published=false reason=%s\n",
+        id, core::FeatureStateName(result.state), reason);
+}
+}
 bool InstallAutoTraversal(bool vault, bool ladder, bool autoEquip) {
     // Feature bits: 1 pole, 2 ladder, 3 shared dependency.
 
@@ -644,7 +657,11 @@ bool InstallAutoTraversal(bool vault, bool ladder, bool autoEquip) {
             enabled &= ~f.features;
         }
     }
-    if (!enabled) return false;
+    if (!enabled) {
+        TraversalResult("controls.auto_vault", vault, false, "native traversal bindings unavailable");
+        TraversalResult("controls.auto_ladder", ladder, false, "native traversal bindings unavailable");
+        return false;
+    }
     VaultEnabled = enabled & 1;
     LadderEnabled = enabled & 2;
     Main = main.m_Text.m_Start;
@@ -670,29 +687,53 @@ bool InstallAutoTraversal(bool vault, bool ladder, bool autoEquip) {
             Logging.Error("[QoL Enhancements/Controls] auto equip: DISABLED; instruction mismatch at main+0x%lx\n", f.offset);
         }
     }
+
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<AutoTraversalActionFinished>("AutoTraversalActionFinished", address::ActionEntryFinished, profile::HookWords(address::ActionEntryFinished), AutoEquipEnabled),
+        qol::core::Site<AutoTraversalSwap>("AutoTraversalSwap", address::StableActions, profile::HookWords(address::StableActions), AutoEquipEnabled),
+#if CAS_AUTO_VAULT_DIAGNOSTIC
+        qol::core::Site<AutoVaultRejectedTrace>("AutoVaultRejectedTrace", address::VaultCandidateRejected, profile::HookWords(address::VaultCandidateRejected), VaultEnabled),
+#endif
+#if CAS_AUTO_VAULT_DIAGNOSTIC
+        qol::core::Site<AutoVaultExitTrace>("AutoVaultExitTrace", address::VaultSearchExit, profile::HookWords(address::VaultSearchExit), VaultEnabled),
+#endif
+#if CAS_AUTO_VAULT_DIAGNOSTIC
+        qol::core::Site<AutoVaultMovementTrace>("AutoVaultMovementTrace", address::MovementGuards, profile::HookWords(address::MovementGuards), true),
+#endif
+        qol::core::Site<AutoVaultPrepare>("AutoVaultPrepare", address::PrepareVault, profile::HookWords(address::PrepareVault), VaultEnabled),
+        qol::core::Site<AutoLadderContact>("AutoLadderContact", address::ContactNormals, profile::HookWords(address::ContactNormals), LadderEnabled),
+        qol::core::Site<AutoLadderLanding>("AutoLadderLanding", address::ValidLadderLanding, profile::HookWords(address::ValidLadderLanding), LadderEnabled),
+        qol::core::Site<AutoVaultGeometry>("AutoVaultGeometry", address::HopGeometry, profile::HookWords(address::HopGeometry), true),
+        qol::core::Site<AutoVaultEntry>("AutoVaultEntry", address::HopEntry, profile::HookWords(address::HopEntry), true),
+    };
+    if (!hookPlan) return false;
     if (AutoEquipEnabled) {
-        AutoTraversalActionFinished::InstallAtOffset(address::ActionEntryFinished);
-        AutoTraversalSwap::InstallAtOffset(address::StableActions);
+        if (!hookPlan.Publish<AutoTraversalActionFinished>(address::ActionEntryFinished)) return false;
+        if (!hookPlan.Publish<AutoTraversalSwap>(address::StableActions)) return false;
     }
 #if CAS_AUTO_VAULT_DIAGNOSTIC
     if (VaultEnabled) {
-        AutoVaultRejectedTrace::InstallAtOffset(address::VaultCandidateRejected);
-        AutoVaultExitTrace::InstallAtOffset(address::VaultSearchExit);
+        if (!hookPlan.Publish<AutoVaultRejectedTrace>(address::VaultCandidateRejected)) return false;
+        if (!hookPlan.Publish<AutoVaultExitTrace>(address::VaultSearchExit)) return false;
     }
-    AutoVaultMovementTrace::InstallAtOffset(address::MovementGuards);
+    if (!hookPlan.Publish<AutoVaultMovementTrace>(address::MovementGuards)) return false;
     Logging.Log("[QoL Enhancements/Controls] DIAGNOSTIC: auto-vault-v4; bounded movement and entry traces\n");
 #endif
-    if (VaultEnabled) AutoVaultPrepare::InstallAtOffset(address::PrepareVault);
+    if (VaultEnabled) if (!hookPlan.Publish<AutoVaultPrepare>(address::PrepareVault)) return false;
     if (LadderEnabled) {
-        AutoLadderContact::InstallAtOffset(address::ContactNormals);
-        AutoLadderLanding::InstallAtOffset(address::ValidLadderLanding);
+        if (!hookPlan.Publish<AutoLadderContact>(address::ContactNormals)) return false;
+        if (!hookPlan.Publish<AutoLadderLanding>(address::ValidLadderLanding)) return false;
     }
-    AutoVaultGeometry::InstallAtOffset(address::HopGeometry);
-    AutoVaultEntry::InstallAtOffset(address::HopEntry);
+    if (!hookPlan.Publish<AutoVaultGeometry>(address::HopGeometry)) return false;
+    if (!hookPlan.Publish<AutoVaultEntry>(address::HopEntry)) return false;
     if (LadderEnabled) Logging.Debug("[QoL Enhancements/Controls] auto ladder: READY; prototype 2; equipped ladder; native hop timer\n");
     if (PlacedLadderEnabled) Logging.Debug("[QoL Enhancements/Controls] auto placed ladder: READY; prototype 1; native object search\n");
     if (VaultEnabled) Logging.Debug("[QoL Enhancements/Controls] auto vault: READY; prototype 3; equipped pole; native hop timer\n");
     if (AutoEquipEnabled) Logging.Debug("[QoL Enhancements/Controls] auto equip: READY; prototype 2; pocket tool and restore\n");
-    return enabled == requested && (!autoEquip || AutoEquipEnabled);
+    TraversalResult("controls.auto_vault", vault, VaultEnabled, "pole traversal validation");
+    TraversalResult("controls.auto_ladder", ladder, LadderEnabled, "handheld ladder validation");
+    TraversalResult("controls.placed_ladder", ladder, PlacedLadderEnabled, "placed ladder validation");
+    TraversalResult("controls.auto_equip", autoEquip, AutoEquipEnabled, "tool swap validation");
+    return enabled == requested && (!ladder || PlacedLadderEnabled) && (!autoEquip || AutoEquipEnabled);
 }
 }

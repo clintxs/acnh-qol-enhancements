@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "catalog_variation_labels.hpp"
 #include "program/catalog/game/bindings.hpp"
 #include "program/catalog/game/catalog_ownership.hpp"
@@ -171,10 +172,18 @@ bool InstallCatalogVariationLabels() {
     if (!game::ValidateCatalogBindings()) return false;
     // Install after badges: their validation also inspects the unpatched typed
     // setter prologues. No existing hook targets these four addresses.
-    NookVariationLabel::InstallAtOffset(address::NookUpdateColorLabel);
-    HhpVariationLabel::InstallAtOffset(address::HhpUpdateColorLabel);
-    VariationPaneText::InstallAtOffset(address::SetPaneText);
-    VariationGroupText::InstallAtOffset(address::SetGroupText);
+
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<NookVariationLabel>("NookVariationLabel", address::NookUpdateColorLabel, {0xa9ba7bfd, 0xa9016ffc, 0x910003fd, 0xa90267fa, 0xa9035ff8}, true),
+        qol::core::Site<HhpVariationLabel>("HhpVariationLabel", address::HhpUpdateColorLabel, {0xa9bb7bfd, 0xf9000bfc, 0x910003fd, 0xa9025ff8, 0xa90357f6}, true),
+        qol::core::Site<VariationPaneText>("VariationPaneText", address::SetPaneText, {0xa9be7bfd, 0xf9000bf3, 0x910003fd, 0xf9400008, 0xaa0003f3}, true),
+        qol::core::Site<VariationGroupText>("VariationGroupText", address::SetGroupText, {0xf9400408, 0xeb00011f, 0x54000380, 0xa9bc7bfd, 0xa9015ff8}, true),
+    };
+    if (!hookPlan) return false;
+    if (!hookPlan.Publish<NookVariationLabel>(address::NookUpdateColorLabel)) return false;
+    if (!hookPlan.Publish<HhpVariationLabel>(address::HhpUpdateColorLabel)) return false;
+    if (!hookPlan.Publish<VariationPaneText>(address::SetPaneText)) return false;
+    if (!hookPlan.Publish<VariationGroupText>(address::SetGroupText)) return false;
     Logging.Debug("[QoL Enhancements/Catalog] CATALOG_VARIATIONS_READY Nook/HHP hollow color-label stars\n");
     return true;
 }

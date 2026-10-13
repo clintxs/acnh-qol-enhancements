@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "catalog_stars.hpp"
 #include "catalog_star_text.hpp"
 #include "program/catalog/game/recipe_knowledge.hpp"
@@ -312,8 +313,14 @@ bool InstallCatalogStars() {
         Logging.Error("[QoL Enhancements/Catalog] CATALOG_STARS_DISABLED fingerprint mismatch\n");
         return false;
     }
-    CabinetCatalogStar::InstallAtOffset(address::NameReadyHook);
-    GroundCatalogStar::InstallAtOffset(address::GroundNameReadyHook);
+
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<CabinetCatalogStar>("CabinetCatalogStar", address::NameReadyHook, {0xf000d568, 0xd10183ab, 0xf9428908, 0x29412aa9, 0x91002160}, true),
+        qol::core::Site<GroundCatalogStar>("GroundCatalogStar", address::GroundNameReadyHook, {0xd000e6a8, 0x90009029, 0x912e9129, 0xf9401108, 0x911683e0}, true),
+    };
+    if (!hookPlan) return false;
+    if (!hookPlan.Publish<CabinetCatalogStar>(address::NameReadyHook)) return false;
+    if (!hookPlan.Publish<GroundCatalogStar>(address::GroundNameReadyHook)) return false;
     Logging.Debug("[QoL Enhancements/Catalog] CATALOG_STARS_READY shared shop list: all ordinary items\n");
     Logging.Debug("[QoL Enhancements/Catalog] FITTING_CATALOG_STARS_READY highlighted clothing balloon\n");
     Logging.Debug("[QoL Enhancements/Catalog] POCKET_RECIPE_STARS_READY learned-recipe balloons\n");

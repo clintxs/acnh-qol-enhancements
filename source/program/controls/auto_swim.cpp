@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "lib.hpp"
 #include "auto_swim.hpp"
 #include <array>
@@ -216,14 +217,26 @@ bool InstallAutoSwim(bool strokeBoost) {
         Logging.Error("[QoL Enhancements/Controls] auto swim: DISABLED; instruction mismatch at main+0x%lx\n", f.offset);
         return false;
     }
-    AutoSwimSurfaceWait::InstallAtOffset(address::SurfaceWait);
-    AutoSwimSurfaceStride::InstallAtOffset(address::SurfaceStride);
-    AutoSwimSurfaceEntry::InstallAtOffset(address::SurfaceEntry);
-    AutoSwimDiveWait::InstallAtOffset(address::DiveWait);
-    AutoSwimDiveStride::InstallAtOffset(address::DiveStride);
-    AutoSwimDiveEntry::InstallAtOffset(address::DiveEntry);
-    AutoSwimWaitMovement::InstallAtOffset(address::WaitMovement);
-    AutoSwimStrideMovement::InstallAtOffset(address::StrideMovement);
+
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<AutoSwimSurfaceWait>("AutoSwimSurfaceWait", address::SurfaceWait, {0xd104c3ff, 0xfd0073e8, 0xa90f7bfd, 0xa9105ffc, 0xa91157f6}, true),
+        qol::core::Site<AutoSwimSurfaceStride>("AutoSwimSurfaceStride", address::SurfaceStride, {0xd101c3ff, 0xfd001be8, 0xa9047bfd, 0xa90557f6, 0xa9064ff4}, true),
+        qol::core::Site<AutoSwimSurfaceEntry>("AutoSwimSurfaceEntry", address::SurfaceEntry, {0xd10143ff, 0xfd0013e8, 0xf9001ff5, 0xa902fbfd, 0xa9044ff4}, true),
+        qol::core::Site<AutoSwimDiveWait>("AutoSwimDiveWait", address::DiveWait, {0xd10503ff, 0x6d0f23e9, 0xa9107bfd, 0xa9115ffc, 0xa91257f6}, true),
+        qol::core::Site<AutoSwimDiveStride>("AutoSwimDiveStride", address::DiveStride, {0xd101c3ff, 0x6d0323e9, 0xa9047bfd, 0xa90557f6, 0xa9064ff4}, true),
+        qol::core::Site<AutoSwimDiveEntry>("AutoSwimDiveEntry", address::DiveEntry, {0xd101c3ff, 0x6d0123e9, 0xf9001bf9, 0xa9027bfd, 0xa9045ff8}, true),
+        qol::core::Site<AutoSwimWaitMovement>("AutoSwimWaitMovement", address::WaitMovement, {0xd105c3ff, 0x6d1023e9, 0xa9117bfd, 0xa9126ffc, 0xa91367fa}, true),
+        qol::core::Site<AutoSwimStrideMovement>("AutoSwimStrideMovement", address::StrideMovement, {0xd10683ff, 0x6d1423e9, 0xf900b3fc, 0xa9157bfd, 0xa9175ff8}, true),
+    };
+    if (!hookPlan) return false;
+    if (!hookPlan.Publish<AutoSwimSurfaceWait>(address::SurfaceWait)) return false;
+    if (!hookPlan.Publish<AutoSwimSurfaceStride>(address::SurfaceStride)) return false;
+    if (!hookPlan.Publish<AutoSwimSurfaceEntry>(address::SurfaceEntry)) return false;
+    if (!hookPlan.Publish<AutoSwimDiveWait>(address::DiveWait)) return false;
+    if (!hookPlan.Publish<AutoSwimDiveStride>(address::DiveStride)) return false;
+    if (!hookPlan.Publish<AutoSwimDiveEntry>(address::DiveEntry)) return false;
+    if (!hookPlan.Publish<AutoSwimWaitMovement>(address::WaitMovement)) return false;
+    if (!hookPlan.Publish<AutoSwimStrideMovement>(address::StrideMovement)) return false;
     Logging.Debug("[QoL Enhancements/Controls] auto swim: READY; analog speed; delayed 1.5s 62.5 percent boosts=%s; interruptible strokes\n",
                   StrokeBoost ? "true" : "false");
     return true;

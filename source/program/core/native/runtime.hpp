@@ -1,6 +1,7 @@
 #pragma once
 #include "lib.hpp"
 #include "executable_view.hpp"
+#include "program/core/feature_activation.hpp"
 
 namespace qol::native {
 inline ExecutableView MainExecutable() {
@@ -17,6 +18,7 @@ inline bool MainDataContains(std::uintptr_t moduleOffset, std::size_t bytes) {
                          address - main.m_Data.m_Start, bytes);
 }
 inline void ReportMismatch(const CodeResult &result) {
+    core::ReportActivationFailure(core::FeatureState::Unsupported, "native instruction mismatch/range");
     Logging.Error("[QoL Enhancements] native binding=%s main+0x%lx: %s\n",
                   result.binding, result.offset,
                   result.status == CodeStatus::OutOfRange ? "outside executable text" : "instruction mismatch");

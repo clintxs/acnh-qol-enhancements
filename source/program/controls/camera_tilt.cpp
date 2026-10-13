@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "lib.hpp"
 #include "camera_tilt.hpp"
 #include <cstring>
@@ -51,7 +52,12 @@ bool InstallSwimmingCameraTilt() {
         return false;
     }
     Main = main.m_Text.m_Start;
-    SwimmingCameraTiltEligibility::InstallAtOffset(address::CameraTiltEligibility);
+
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<SwimmingCameraTiltEligibility>("SwimmingCameraTiltEligibility", address::CameraTiltEligibility, {0xa9be7bfd, 0xf9000bf3, 0x910003fd, 0x90017ec8, 0xf9439d09}, true),
+    };
+    if (!hookPlan) return false;
+    if (!hookPlan.Publish<SwimmingCameraTiltEligibility>(address::CameraTiltEligibility)) return false;
     Logging.Debug("[QoL Enhancements/Controls] camera tilt: READY; native tilt positions while swimming forward\n");
     return true;
 }

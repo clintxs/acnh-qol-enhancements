@@ -119,4 +119,8 @@ inline constexpr qol::native::Fingerprint<> Checks[]{
         qol::game::v303::inventory::CapacityCode,
         qol::game::v303::inventory::ItemAtCode,
 };
+constexpr std::array<std::uint32_t, 5> HookWords(std::uintptr_t offset) {
+    for (const auto &check : Checks) if (check.offset == offset) return check.words;
+    return {}; // Unknown sites fail compatibility checks; never infer code.
+}
 } // namespace qol_pockets::game::v303::quick_store

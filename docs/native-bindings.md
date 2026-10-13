@@ -60,8 +60,8 @@ retained. `Held`, `IsEquipped` and `ToolKind` preserve their original native cal
 The domain-specific native headers contain the low-level field access helpers.
 Existing feature lifecycle code still uses those helpers pending stages 4 and
 6; this stage does not claim to have completed the pocket-command or preview
-session abstractions. Shared-hook ownership and activation reporting remain
-stage 2 work, including the existing preview shared-hook installation flags.
+session abstractions. Stage 2's verified hook ownership and explicit activation
+results build on this foundation; see [feature-activation.md](feature-activation.md).
 
 ## Additional compatibility guards
 

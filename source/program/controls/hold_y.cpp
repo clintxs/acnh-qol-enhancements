@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "lib.hpp"
 #include "hold_y.hpp"
 #include <array>
@@ -178,11 +179,20 @@ bool InstallHoldYPickup() {
         return false;
     }
     Main = main.m_Text.m_Start;
-    HooverInput::InstallAtOffset(address::InputUpdate);
-    HooverPressGate::InstallAtOffset(address::PickupPressGate);
-    HooverPickup::InstallAtOffset(address::TryPickup);
-    HooverReservation::InstallAtOffset(address::ReservePickup);
-    HooverFurniture::InstallAtOffset(address::CheckFurniture);
+
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<HooverInput>("HooverInput", address::InputUpdate, {0xd10343ff, 0xfd002bea, 0x6d0623e9, 0xa9077bfd, 0xa9086ffc}, true),
+        qol::core::Site<HooverPressGate>("HooverPressGate", address::PickupPressGate, {0x36001388, 0xf9400308, 0xb4000248, 0xb9415d09, 0x34000209}, true),
+        qol::core::Site<HooverPickup>("HooverPickup", address::TryPickup, {0xfc180fea, 0x6d0123e9, 0xa9027bfd, 0x910083fd, 0xa9036ffc}, true),
+        qol::core::Site<HooverReservation>("HooverReservation", address::ReservePickup, {0xd10503ff, 0xa90e7bfd, 0xa90f6ffc, 0xa91067fa, 0xa9115ff8}, true),
+        qol::core::Site<HooverFurniture>("HooverFurniture", address::CheckFurniture, {0xa9ba7bfd, 0xa9016ffc, 0x910003fd, 0xa90267fa, 0xa9035ff8}, true),
+    };
+    if (!hookPlan) return false;
+    if (!hookPlan.Publish<HooverInput>(address::InputUpdate)) return false;
+    if (!hookPlan.Publish<HooverPressGate>(address::PickupPressGate)) return false;
+    if (!hookPlan.Publish<HooverPickup>(address::TryPickup)) return false;
+    if (!hookPlan.Publish<HooverReservation>(address::ReservePickup)) return false;
+    if (!hookPlan.Publish<HooverFurniture>(address::CheckFurniture)) return false;
     Logging.Debug("[QoL Enhancements/Controls] hold Y: READY; item/crop/weed/moss lock; native pickup rules\n");
     return true;
 }

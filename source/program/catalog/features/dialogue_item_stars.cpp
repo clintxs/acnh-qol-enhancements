@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "catalog_stars.hpp"
 #include "catalog_star_text.hpp"
 #include "program/catalog/game/bindings.hpp"
@@ -232,14 +233,26 @@ bool InstallDialogueItemStars() {
             return false;
         }
     }
-    DialogueCatchCreatureStar::InstallAtOffset(0x00c57aec);
-    DialogueCatchCreatureStar::InstallAtOffset(0x00c57b40);
-    DialogueCatchCreatureStar::InstallAtOffset(0x00c58800);
-    DialogueValueItemStar::InstallAtOffset(0x00c592c8);
-    DialogueStoredItemStar::InstallAtOffset(0x00c59bb4);
-    DialogueInventoryItemStar::InstallAtOffset(0x00c59bdc);
-    DialogueUiResultItemStar::InstallAtOffset(0x00c5e138);
-    DialogueScriptItemStar::InstallAtOffset(0x00a465d0);
+
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<DialogueCatchCreatureStar>("DialogueCatchCreatureStar", 0x00c57aec, {0xf9400688, 0x911003e1, 0x2a1b03e2, 0xf9414908, 0xf9401108}, true),
+        qol::core::Site<DialogueCatchCreatureStar>("DialogueCatchCreatureStar", 0x00c57b40, {0xf9400688, 0x911003e1, 0x2a1b03e2, 0xf9414908, 0xf9401108}, true),
+        qol::core::Site<DialogueCatchCreatureStar>("DialogueCatchCreatureStar", 0x00c58800, {0xf9400688, 0x911003e1, 0x2a1b03e2, 0xf9414908, 0xf9401108}, true),
+        qol::core::Site<DialogueValueItemStar>("DialogueValueItemStar", 0x00c592c8, {0xf9400688, 0xf9414908, 0xf9401108, 0xf9400108, 0x911003e1}, true),
+        qol::core::Site<DialogueStoredItemStar>("DialogueStoredItemStar", 0x00c59bb4, {0xf94012a8, 0x17fffdc7, 0x51029109, 0x7100093f, 0x54000982}, true),
+        qol::core::Site<DialogueInventoryItemStar>("DialogueInventoryItemStar", 0x00c59bdc, {0xf9400688, 0x911003e1, 0x2a1b03e2, 0xf9414908, 0xf9401108}, true),
+        qol::core::Site<DialogueUiResultItemStar>("DialogueUiResultItemStar", 0x00c5e138, {0xf9400688, 0x910563e1, 0x2a1303e2, 0xf9414908, 0xf9401108}, true),
+        qol::core::Site<DialogueScriptItemStar>("DialogueScriptItemStar", 0x00a465d0, {0x911fe021, 0x9441a2a7, 0x140001b7, 0x52800033, 0xa94b2688}, true),
+    };
+    if (!hookPlan) return false;
+    if (!hookPlan.Publish<DialogueCatchCreatureStar>(0x00c57aec)) return false;
+    if (!hookPlan.Publish<DialogueCatchCreatureStar>(0x00c57b40)) return false;
+    if (!hookPlan.Publish<DialogueCatchCreatureStar>(0x00c58800)) return false;
+    if (!hookPlan.Publish<DialogueValueItemStar>(0x00c592c8)) return false;
+    if (!hookPlan.Publish<DialogueStoredItemStar>(0x00c59bb4)) return false;
+    if (!hookPlan.Publish<DialogueInventoryItemStar>(0x00c59bdc)) return false;
+    if (!hookPlan.Publish<DialogueUiResultItemStar>(0x00c5e138)) return false;
+    if (!hookPlan.Publish<DialogueScriptItemStar>(0x00a465d0)) return false;
     Logging.Debug("[QoL Enhancements/Catalog] DIALOGUE_ITEM_STARS_READY event item substitutions\n");
     return true;
 }

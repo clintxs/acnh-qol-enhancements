@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "storage_hint.hpp"
 #include "program/pockets/settings.hpp"
 #include "menu_text.hpp"
@@ -225,9 +226,15 @@ bool InstallStorageHint() {
     StorageCaption = {vtable, "0121"};
     WithdrawalCaption = {vtable, "0202"};
     DropCaption = {vtable, "0110"};
+
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<ResolveStorageHintCaption>("ResolveStorageHintCaption", address::ResolveFooterCaptionCall, {0x97b4162f, 0x910243e0, 0x97b4181b, 0x910243e0, 0x97b41555}, true),
+        qol::core::Site<BuildPocketStorageHint>("BuildPocketStorageHint", address::BuildPocketFooter, {0xd10343ff, 0xa9087bfd, 0xf9004bf9, 0xa90a5ff8, 0xa90b57f6}, true),
+    };
+    if (!hookPlan) return false;
     if (!qol::core::RegisterHintText(PocketHintText)) return false;
-    ResolveStorageHintCaption::InstallAtOffset(address::ResolveFooterCaptionCall);
-    BuildPocketStorageHint::InstallAtOffset(address::BuildPocketFooter);
+    if (!hookPlan.Publish<ResolveStorageHintCaption>(address::ResolveFooterCaptionCall)) return false;
+    if (!hookPlan.Publish<BuildPocketStorageHint>(address::BuildPocketFooter)) return false;
     Logging.Debug("[QoL Enhancements/Pockets] STORAGE_HINT_READY native Y / Put in Storage\n");
     return true;
 }
@@ -240,7 +247,12 @@ bool InstallStorageWithdrawalHint() {
         Logging.Error("[QoL Enhancements/Pockets] WITHDRAWAL_HINT_DISABLED fingerprint mismatch\n");
         return false;
     }
-    RenameStorageSelectHint::InstallAtOffset(address::AppendStorageSelectCall);
+
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<RenameStorageSelectHint>("RenameStorageSelectHint", address::AppendStorageSelectCall, {0x97f1cd9c, 0x360ffe97, 0xf9400ff5, 0x528000a8, 0xb90003e8}, true),
+    };
+    if (!hookPlan) return false;
+    if (!hookPlan.Publish<RenameStorageSelectHint>(address::AppendStorageSelectCall)) return false;
     Logging.Debug("[QoL Enhancements/Pockets] WITHDRAWAL_HINT_READY native A / Move to Pockets\n");
     return true;
 }

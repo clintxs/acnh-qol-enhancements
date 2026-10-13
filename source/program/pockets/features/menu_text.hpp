@@ -3,5 +3,5 @@
 namespace qol_pockets::features {
 const char16_t *PocketMessage(std::string_view key);
 bool ValidateMenuText();
-void InstallMenuText();
+bool InstallMenuText();
 } // namespace qol_pockets::features

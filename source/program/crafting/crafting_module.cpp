@@ -16,14 +16,17 @@ void ReportSettings() {
                 Preferences.craftingQuantityWrap ? "true" : "false");
 }
 
-bool Install() {
-    // Install independently so a preview conflict cannot suppress speed support,
-    // or a speed-hook conflict suppress the already-working preview feature.
-    const bool speed = InstallFasterCrafting(Preferences.craftingSpeed);
-    const bool preview = !Preferences.diyAppPreview || InstallRecipePreview();
-    const bool tilt = !Preferences.workbenchPreviewTilt || InstallWorkbenchPreviewTilt();
-    const bool quantity = !Preferences.craftingQuantityWrap || InstallCraftingQuantityWrap();
-    const bool shortcut = InstallCraftingQuantityShortcut();
-    return speed && preview && tilt && quantity && shortcut;
+namespace {
+bool InstallConfiguredSpeed() { return InstallFasterCrafting(Preferences.craftingSpeed); }
+}
+core::InstallResult Install() {
+    const core::FeatureDescription features[]{
+        {"crafting.speed", Preferences.craftingSpeed != 0, InstallConfiguredSpeed},
+        {"crafting.diy_preview", Preferences.diyAppPreview, InstallRecipePreview},
+        {"crafting.workbench_tilt", Preferences.workbenchPreviewTilt, InstallWorkbenchPreviewTilt},
+        {"crafting.quantity_wrap", Preferences.craftingQuantityWrap, InstallCraftingQuantityWrap},
+        {"crafting.quantity_shortcut", true, InstallCraftingQuantityShortcut},
+    };
+    return core::ActivateFeatures(features);
 }
 } // namespace qol::crafting

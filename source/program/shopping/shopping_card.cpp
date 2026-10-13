@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "lib.hpp"
 #include "shopping_card.hpp"
 #include "program/core/resource_budget.hpp"
@@ -606,22 +607,41 @@ bool Install() {
             return false;
         }
     }
+
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<StorageAffordability>("StorageAffordability", address::DispatchQuery, {0xd10183ff, 0xa9027bfd, 0xa9035ff8, 0xa90457f6, 0xa9054ff4}, true),
+        qol::core::Site<StorageCommand>("StorageCommand", address::DispatchAction, {0xd101c3ff, 0xa9027bfd, 0xf9001bf9, 0xa9045ff8, 0xa90557f6}, true),
+        qol::core::Site<StoragePayment>("StoragePayment", address::BellCountDown, {0x39440009, 0x7100013f, 0xb940d808, 0x5a880501, 0xf9400408}, true),
+        qol::core::Site<StorageEventDestroyed>("StorageEventDestroyed", address::DestroyEvent, {0xa9bd7bfd, 0xf9000bf5, 0xa9024ff4, 0x910003fd, 0xf0020f68}, true),
+        qol::core::Site<ShopWallet>("ShopWallet", address::Wallet, {0xa9bd7bfd, 0xf9000bf5, 0xa9024ff4, 0x910003fd, 0x39400008}, true),
+        qol::core::Site<ShopDebit>("ShopDebit", address::Debit, {0x39400008, 0x71001d1f, 0x54000ea8, 0xd10143ff, 0xa9027bfd}, true),
+        qol::core::Site<ShopCapacity>("ShopCapacity", address::Capacity, {0xa9bd7bfd, 0xf9000bf5, 0xa9024ff4, 0x910003fd, 0x39400008}, true),
+        qol::core::Site<ShopPurchaseSpace>("ShopPurchaseSpace", address::PurchaseSpace, {0xd10103ff, 0xa9017bfd, 0xa90257f6, 0xa9034ff4, 0x910043fd}, true),
+        qol::core::Site<SaleMessage>("SaleMessage", address::MoneyCapacityQuery, {0xd10183ff, 0xa9027bfd, 0xf9001bf7, 0xa90457f6, 0xa9054ff4}, true),
+        qol::core::Site<ShopBalanceDisplay>("ShopBalanceDisplay", address::BellDisplayUpdate, {0xf9410808, 0xb40020c8, 0xa9bd7bfd, 0xa90157fc, 0x910003fd}, true),
+        qol::core::Site<BellPageBalanceDisplay>("BellPageBalanceDisplay", address::BellPageUpdate, {0xf9410808, 0xb40020a8, 0xa9bc7bfd, 0xf9000bfc, 0x910003fd}, true),
+        qol::core::Site<CatalogOpened>("CatalogOpened", catalog::Open, {0xa9be7bfd, 0xf9000bf3, 0x910003fd, 0xf9411401, 0xaa0003f3}, true),
+        qol::core::Site<CatalogClosed>("CatalogClosed", catalog::Close, {0xb941f008, 0x3100051f, 0xb941f409, 0xb941b00a, 0x3a410920}, true),
+        qol::core::Site<CatalogDestroyed>("CatalogDestroyed", catalog::Destroy, {0xa9bc7bfd, 0xf9000bf7, 0xa90257f6, 0xa9034ff4, 0x910003fd}, true),
+        qol::core::Site<CashNumberFeedback>("CashNumberFeedback", address::NumberFeedback, {0xd10303ff, 0x6d0823e9, 0xa9097bfd, 0xa90a57f6, 0xa90b4ff4}, true),
+    };
+    if (!hookPlan) return false;
     if (!PrepareResources()) return false;
-    StorageAffordability::InstallAtOffset(address::DispatchQuery);
-    StorageCommand::InstallAtOffset(address::DispatchAction);
-    StoragePayment::InstallAtOffset(address::BellCountDown);
-    StorageEventDestroyed::InstallAtOffset(address::DestroyEvent);
-    ShopWallet::InstallAtOffset(address::Wallet);
-    ShopDebit::InstallAtOffset(address::Debit);
-    ShopCapacity::InstallAtOffset(address::Capacity);
-    ShopPurchaseSpace::InstallAtOffset(address::PurchaseSpace);
-    SaleMessage::InstallAtOffset(address::MoneyCapacityQuery);
-    ShopBalanceDisplay::InstallAtOffset(address::BellDisplayUpdate);
-    BellPageBalanceDisplay::InstallAtOffset(address::BellPageUpdate);
-    CatalogOpened::InstallAtOffset(catalog::Open);
-    CatalogClosed::InstallAtOffset(catalog::Close);
-    CatalogDestroyed::InstallAtOffset(catalog::Destroy);
-    CashNumberFeedback::InstallAtOffset(address::NumberFeedback);
+    if (!hookPlan.Publish<StorageAffordability>(address::DispatchQuery)) return false;
+    if (!hookPlan.Publish<StorageCommand>(address::DispatchAction)) return false;
+    if (!hookPlan.Publish<StoragePayment>(address::BellCountDown)) return false;
+    if (!hookPlan.Publish<StorageEventDestroyed>(address::DestroyEvent)) return false;
+    if (!hookPlan.Publish<ShopWallet>(address::Wallet)) return false;
+    if (!hookPlan.Publish<ShopDebit>(address::Debit)) return false;
+    if (!hookPlan.Publish<ShopCapacity>(address::Capacity)) return false;
+    if (!hookPlan.Publish<ShopPurchaseSpace>(address::PurchaseSpace)) return false;
+    if (!hookPlan.Publish<SaleMessage>(address::MoneyCapacityQuery)) return false;
+    if (!hookPlan.Publish<ShopBalanceDisplay>(address::BellDisplayUpdate)) return false;
+    if (!hookPlan.Publish<BellPageBalanceDisplay>(address::BellPageUpdate)) return false;
+    if (!hookPlan.Publish<CatalogOpened>(catalog::Open)) return false;
+    if (!hookPlan.Publish<CatalogClosed>(catalog::Close)) return false;
+    if (!hookPlan.Publish<CatalogDestroyed>(catalog::Destroy)) return false;
+    if (!hookPlan.Publish<CashNumberFeedback>(address::NumberFeedback)) return false;
     installed = true;
     Logging.Debug("[QoL Enhancements/Shopping Card] READY: scoped counter resource budget; combined Bells display; savings -> pocket Bell bags -> wallet in Nook's Cranny/Able Sisters/Nook Shopping/Tom Nook storage upgrades\n");
     return true;

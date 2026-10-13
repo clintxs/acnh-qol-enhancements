@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "lib.hpp"
 #include "bag_policy.hpp"
 #include "fitting_hint.hpp"
@@ -739,28 +740,46 @@ bool Install() {
     if (!module.m_Data.InRange(dialogSlot) ||
         !module.m_Data.InRange(dialogSlot + sizeof(std::uintptr_t) - 1) ||
         At<std::uintptr_t>(dialogSlot) != Main(address::OriginalInput)) return false;
+
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<Begin>("Begin", address::Begin, {0xa9ba7bfd, 0xa9016ffc, 0x910003fd, 0xa90267fa, 0xa9035ff8}, true),
+        qol::core::Site<Destroy>("Destroy", address::Destroy, {0xa9bd7bfd, 0xa90157f6, 0xa9024ff4, 0x910003fd, 0x91407008}, true),
+        qol::core::Site<Focus>("Focus", address::Focus, {0xd10303ff, 0xa9087bfd, 0xf9004bf7, 0xa90a57f6, 0xa90b4ff4}, true),
+        qol::core::Site<Row>("Row", address::Row, {0xa9ba7bfd, 0xf9000bfc, 0x910003fd, 0xa90267fa, 0xa9035ff8}, true),
+        qol::core::Site<Price>("Price", address::Price, {0xd102c3ff, 0xa9057bfd, 0xa9066ffc, 0xa90767fa, 0xa9085ff8}, true),
+        qol::core::Site<Play>("Play", address::Play, {0xd106c3ff, 0xa9157bfd, 0xa9166ffc, 0xa91767fa, 0xa9185ff8}, true),
+        qol::core::Site<Checkout>("Checkout", address::Checkout, {0xa9ba7bfd, 0xa9016ffc, 0x910003fd, 0xa90267fa, 0xa9035ff8}, true),
+        qol::core::Site<Collect>("Collect", address::Collect, {0xd10543ff, 0xa90f7bfd, 0xa9106ffc, 0xa91167fa, 0xa9125ff8}, true),
+        qol::core::Site<Dialog>("Dialog", address::Dialog, {0xd10403ff, 0xa90c7bfd, 0xa90d5ff8, 0xa90e57f6, 0xa90f4ff4}, true),
+        qol::core::Site<GrossPrice>("GrossPrice", address::GrossPrice, {0xd102c3ff, 0xa9057bfd, 0xa9066ffc, 0xa90767fa, 0xa9085ff8}, true),
+        qol::core::Site<PurchaseRecord>("PurchaseRecord", address::PurchaseRecord, {0xd10103ff, 0xa9017bfd, 0xa90257f6, 0xa9034ff4, 0x910043fd}, true),
+    };
+    if (!hookPlan) return false;
+    if (!InstallFittingHint()) return false;
     auto *inputSlot = reinterpret_cast<volatile std::uintptr_t *>(slot);
     const auto replacement = reinterpret_cast<std::uintptr_t>(&Input);
+    qol::core::RecordMutation();
     *inputSlot = replacement;
     if (*inputSlot != replacement) {
+        qol::core::ReportActivationFailure(qol::core::FeatureState::Failed, "fitting input slot readback failed");
         Logging.Error("[QoL Enhancements/Fitting Room] INPUT_HOOK_FAILED readback\n");
         return false;
     }
     Logging.Debug("[QoL Enhancements/Fitting Room] INPUT_HOOK_OK writable-data readback\n");
     originalInput = Fn<InputFn>(address::OriginalInput);
+    qol::core::RecordMutation();
     At<std::uintptr_t>(dialogSlot) = reinterpret_cast<std::uintptr_t>(&WearChoiceInput);
-    InstallFittingHint();
-    Begin::InstallAtOffset(address::Begin);
-    Destroy::InstallAtOffset(address::Destroy);
-    Focus::InstallAtOffset(address::Focus);
-    Row::InstallAtOffset(address::Row);
-    Price::InstallAtOffset(address::Price);
-    Play::InstallAtOffset(address::Play);
-    Checkout::InstallAtOffset(address::Checkout);
-    Collect::InstallAtOffset(address::Collect);
-    Dialog::InstallAtOffset(address::Dialog);
-    GrossPrice::InstallAtOffset(address::GrossPrice);
-    PurchaseRecord::InstallAtOffset(address::PurchaseRecord);
+    if (!hookPlan.Publish<Begin>(address::Begin)) return false;
+    if (!hookPlan.Publish<Destroy>(address::Destroy)) return false;
+    if (!hookPlan.Publish<Focus>(address::Focus)) return false;
+    if (!hookPlan.Publish<Row>(address::Row)) return false;
+    if (!hookPlan.Publish<Price>(address::Price)) return false;
+    if (!hookPlan.Publish<Play>(address::Play)) return false;
+    if (!hookPlan.Publish<Checkout>(address::Checkout)) return false;
+    if (!hookPlan.Publish<Collect>(address::Collect)) return false;
+    if (!hookPlan.Publish<Dialog>(address::Dialog)) return false;
+    if (!hookPlan.Publish<GrossPrice>(address::GrossPrice)) return false;
+    if (!hookPlan.Publish<PurchaseRecord>(address::PurchaseRecord)) return false;
     return true;
 }
 } // namespace able_bag

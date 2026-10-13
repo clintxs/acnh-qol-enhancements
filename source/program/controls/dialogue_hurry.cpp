@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "lib.hpp"
 #include "dialogue_hurry.hpp"
 #include "program/dialogue/reveal_hooks.hpp"
@@ -230,8 +231,13 @@ bool InstallHoldToAdvanceDialogue() {
             return false;
         }
     }
+
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<DialogueAdvanceInput>("DialogueAdvanceInput", address::AdvanceInput, {0xb964666b, 0x37f801ab, 0x3400024b, 0x5100096c, 0x7100057f}, true),
+    };
+    if (!hookPlan) return false;
     if (!dialogue::InstallRevealHooks()) return false;
-    DialogueAdvanceInput::InstallAtOffset(address::AdvanceInput);
+    if (!hookPlan.Publish<DialogueAdvanceInput>(address::AdvanceInput)) return false;
     Enabled = true;
 #if CAS_VERBOSE_HURRY_TRACE
     Logging.Log("[QoL Enhancements/Controls] DIAGNOSTIC: hurry-v1; raw held input and every hurry gate; log_debug override not required\n");

@@ -84,4 +84,10 @@ inline constexpr native::FunctionBinding<unsigned (*)(void *, unsigned)> TryVaul
 inline constexpr native::FunctionBinding<unsigned (*)(void *, unsigned)> TryLadder{"traversal.TryLadder", address::TryLadder};
 inline constexpr native::FunctionBinding<unsigned (*)(void *, unsigned)> TryPlacedLadder{"traversal.TryPlacedLadder", address::TryPlacedLadder};
 inline constexpr native::FunctionBinding<void *(*)(unsigned)> PlayerParameters{"traversal.PlayerParameters", address::PlayerParameters};
+constexpr std::array<std::uint32_t, 5> HookWords(std::uintptr_t offset) {
+    for (const auto &check : Checks) if (check.offset == offset) return check.words;
+    for (const auto &check : PlacedChecks) if (check.offset == offset) return check.words;
+    for (const auto &check : SwapChecks) if (check.offset == offset) return check.words;
+    return {}; // Unknown sites fail compatibility checks; never infer code.
+}
 } // namespace qol::controls::game::v303::traversal

@@ -1,3 +1,4 @@
+#include "program/core/hook_plan.hpp"
 #include "lib.hpp"
 #include "settings.hpp"
 #include "program/core/page_input.hpp"
@@ -244,14 +245,23 @@ bool InstallCraftingQuantityShortcut() {
         Logging.Error("[QoL Enhancements/Crafting] quantity shortcut: DISABLED fingerprint at %lx\n", check.offset);
         return false;
     }
+
+    qol::core::HookPlan hookPlan{
+        qol::core::Site<EnterQuantityShortcutPreview>("EnterQuantityShortcutPreview", address::EnterPreview, {0xd10143ff, 0xa9027bfd, 0xf9001bf5, 0xa9044ff4, 0x910083fd}, true),
+        qol::core::Site<LeaveQuantityShortcutPreview>("LeaveQuantityShortcutPreview", address::LeavePreview, {0xd10103ff, 0xa9027bfd, 0xa9034ff4, 0x910083fd, 0xf9400008}, true),
+        qol::core::Site<BuildQuantityShortcutHint>("BuildQuantityShortcutHint", address::BuildFooter, {0xd102c3ff, 0xa9087bfd, 0xa90957f6, 0xa90a4ff4, 0x910203fd}, true),
+        qol::core::Site<BuildCookingQuantityShortcutHint>("BuildCookingQuantityShortcutHint", address::KitchenBuildFooter, {0xd102c3ff, 0xa9087bfd, 0xa90957f6, 0xa90a4ff4, 0x910203fd}, true),
+        qol::core::Site<ResolveQuantityShortcutCaption>("ResolveQuantityShortcutCaption", address::ResolveCaption, {0xf90213e8, 0x9000e6e8, 0xf945f908, 0x91004108, 0xf9004be8}, true),
+    };
+    if (!hookPlan) return false;
     if (!core::RegisterPageInput(QuantityShortcutInput)) return false;
     const auto vtable = *reinterpret_cast<const std::uintptr_t *>(Main + address::SafeStringVtableGot) + 16;
     QuantityBank = {vtable, "DIYDialogConfirmNum"}; QuantityCaption = {vtable, "0001"};
-    EnterQuantityShortcutPreview::InstallAtOffset(address::EnterPreview);
-    LeaveQuantityShortcutPreview::InstallAtOffset(address::LeavePreview);
-    BuildQuantityShortcutHint::InstallAtOffset(address::BuildFooter);
-    BuildCookingQuantityShortcutHint::InstallAtOffset(address::KitchenBuildFooter);
-    ResolveQuantityShortcutCaption::InstallAtOffset(address::ResolveCaption);
+    if (!hookPlan.Publish<EnterQuantityShortcutPreview>(address::EnterPreview)) return false;
+    if (!hookPlan.Publish<LeaveQuantityShortcutPreview>(address::LeavePreview)) return false;
+    if (!hookPlan.Publish<BuildQuantityShortcutHint>(address::BuildFooter)) return false;
+    if (!hookPlan.Publish<BuildCookingQuantityShortcutHint>(address::KitchenBuildFooter)) return false;
+    if (!hookPlan.Publish<ResolveQuantityShortcutCaption>(address::ResolveCaption)) return false;
     Logging.Debug("[QoL Enhancements/Crafting] quantity shortcut: READY; workbench/cooking preview Y / Set quantity; X / Favorite\n");
     return true;
 }
