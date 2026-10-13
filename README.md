@@ -56,6 +56,10 @@ Version 1.0.0 is reserved for the initial release.
 
 ## Architecture
 
+For the Pockets refactor, start with [the actual feature policies](source/program/pockets/features/pockets.hpp)
+and [the reading-order handoff](docs/native-first-pockets.md). The latter maps
+every behavior to its native execution path and records verification limits.
+
 See the [internal architecture guide](docs/internal-architecture.md) for current
 feature/service/adapter boundaries, contributor rules and remaining migration
 candidates. The [stage 7 handoff](docs/stage7-live-validation.md) identifies the
