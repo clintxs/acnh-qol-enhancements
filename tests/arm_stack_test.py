@@ -49,7 +49,11 @@ class Machine:
         self.u.mem_map(base,(len(raw)+4095)&~4095);self.u.mem_write(base,raw)
         image_size=max(va+memsz for typ,flags,off,va,pa,sz,memsz,align in
                        (struct.unpack_from('<IIQQQQQQ',elf,u64(elf,32)+i*u16(elf,54)) for i in range(u16(elf,56))) if typ==1)
-        self.u.mem_map(self.mod,(image_size+4095)&~4095)
+        # Keep generated inline adapters outside every loaded segment, including
+        # .bss. The former fixed +80000 page overlapped message storage after
+        # ordinary module growth and made that buffer RX during caption tests.
+        self.adapter_offset = (image_size + 4095) & ~4095
+        self.u.mem_map(self.mod, self.adapter_offset + 0x1000)
         self.imports={}
         for i in range(u16(elf,56)):
             typ,flags,off,va,pa,sz,memsz,align=struct.unpack_from('<IIQQQQQQ',elf,u64(elf,32)+i*u16(elf,54))
@@ -83,18 +87,18 @@ class Machine:
                          ('BuildPocketStorageHint',0x3094fb4)]:
             self.write(self.mod+symbol(name,'s_FnPtr'),base+off)
         self.write(self.mod+symbol('InputHandlers'),self.mod+symbol('15QuickStoreInput'))
-        self.adapter(0x3076480,'AdjustSourceCount',0x51000401,0x3076484,0x80000)
-        self.adapter(0x30764f0,'AdjustDestinationCount',None,0x30764f4,0x80200,0x19f2bc0)
-        self.adapter(0x308c764,'DispatchStackAction',0xd63f0100,0x308c768,0x80400)
-        self.adapter(0x1a9bfa0,'ReplaceMenuCaption',0x91002280,0x1a9bfa4,0x80600)
+        self.adapter(0x3076480,'AdjustSourceCount',0x51000401,0x3076484,self.adapter_offset+0x0)
+        self.adapter(0x30764f0,'AdjustDestinationCount',None,0x30764f4,self.adapter_offset+0x200,0x19f2bc0)
+        self.adapter(0x308c764,'DispatchStackAction',0xd63f0100,0x308c768,self.adapter_offset+0x400)
+        self.adapter(0x1a9bfa0,'ReplaceMenuCaption',0x91002280,0x1a9bfa4,self.adapter_offset+0x600)
         if withdrawal_hint:
-            self.adapter(0x316f490,'RenameStorageSelectHint',None,0x316f494,0x80800,0x2de2b00)
+            self.adapter(0x316f490,'RenameStorageSelectHint',None,0x316f494,self.adapter_offset+0x800,0x2de2b00)
         # Loader writes complete. Keep both module and main executable text RX.
         self.u.mem_protect(base,0x3f07000,UC_PROT_READ|UC_PROT_EXEC)
         for i in range(u16(elf,56)):
             typ,flags,off,va,pa,sz,memsz,align=struct.unpack_from('<IIQQQQQQ',elf,u64(elf,32)+i*u16(elf,54))
             if typ==1 and flags&1:self.u.mem_protect(self.mod+va,(memsz+4095)&~4095,UC_PROT_READ|UC_PROT_EXEC)
-        self.u.mem_protect(self.mod+0x80000,0x1000,UC_PROT_READ|UC_PROT_EXEC)
+        self.u.mem_protect(self.mod+self.adapter_offset,0x1000,UC_PROT_READ|UC_PROT_EXEC)
     def read(self,p,n=8):return int.from_bytes(self.u.mem_read(p,n),'little')
     def write(self,p,v,n=8):self.u.mem_write(p,int(v).to_bytes(n,'little'))
     def reg(self,i):return self.u.reg_read(UC_ARM64_REG_X0+i) if i<29 else self.u.reg_read((UC_ARM64_REG_FP,UC_ARM64_REG_LR)[i-29])
