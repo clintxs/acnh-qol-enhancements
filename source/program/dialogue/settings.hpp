@@ -1,5 +1,5 @@
 #pragma once
-#include "program/core/config.hpp"
+#include "program/core/settings_schema.hpp"
 #include "localized_name.hpp"
 #include <array>
 
@@ -69,64 +69,40 @@ inline unsigned SelectSpeed(const Settings &settings, MessageKind kind,
 // Nominal whole-number multipliers. The game's live fast rate represents 2x;
 // rate hooks scale it by the selected multiplier / 2, preserving locale/FPS.
 inline bool ParseSpeed(std::string_view value, unsigned &speed) {
-    if (value.empty() || value.front() == '0') return false;
-    unsigned parsed = 0;
-    for (char digit : value) {
-        if (digit < '0' || digit > '9') return false;
-        parsed = parsed * 10 + unsigned(digit - '0');
-        if (parsed > MaxSpeed) return false;
-    }
-    speed = parsed;
-    return true;
+    return core::settings::ParseUnsigned(value, speed,
+        {MinSpeed, MaxSpeed, core::settings::Overflow::Reject,
+         core::settings::LeadingZeros::Reject});
 }
 // Both files use this parser. Missing/invalid values inherit the earlier layer;
 // duplicates restore that key's earlier value. A supplied NPC list replaces
 // the earlier list, while invalid entries leave its other entries usable.
-inline unsigned ApplySettings(std::string_view input, Settings &output) {
-    if (input.size() > core::MaxConfigBytes || !core::ValidUtf8(input, true)) return 1;
-    const Settings previous = output;
-    if (input.starts_with("\xef\xbb\xbf")) input.remove_prefix(3);
-    unsigned warnings = 0, seen = 0, duplicate = 0;
-    while (!input.empty()) {
-        const auto end = input.find('\n');
-        const auto line = core::Trim(input.substr(0, end));
-        input = end == std::string_view::npos ? std::string_view{} : input.substr(end + 1);
-        if (line.empty() || line.front() == '#' || line.front() == ';') continue;
-        const auto equals = line.find('=');
-        if (equals == std::string_view::npos) { ++warnings; continue; }
-        const auto key = core::Trim(line.substr(0, equals));
-        const auto value = core::Trim(line.substr(equals + 1));
-        if (key == "enabled" || key == "version") continue; // Validated by Core.
-        const unsigned bit = key == "base_speed" ? 1 : key == "boost_speed" ? 2 :
-                             key == "boost_ui_messages" ? 4 : key == "boost_npc_list" ? 8 : key == "boost_unnamed_messages" ? 16 : 0;
-        if (!bit) { ++warnings; continue; }
-        if (seen & bit) { duplicate |= bit; ++warnings; continue; }
-        seen |= bit;
-        if (bit == 1 || bit == 2) {
-            if (!ParseSpeed(value, bit == 1 ? output.baseSpeed : output.boostSpeed)) ++warnings;
-        } else if (bit == 4 || bit == 16) {
-            if (value == "true" || value == "false")
-                (bit == 4 ? output.boostUiMessages : output.boostUnnamedMessages) = value == "true";
-            else ++warnings;
-        } else {
-            output.npcCount = 0;
-            output.npcs = {};
-            auto list = value;
-            while (!list.empty()) {
-                const auto comma = list.find(',');
-                if (!AddNpc(output, list.substr(0, comma))) ++warnings;
-                if (comma == std::string_view::npos) break;
-                list.remove_prefix(comma + 1);
-                if (list.empty()) ++warnings;
-            }
-        }
+inline unsigned ApplyNpcList(std::string_view list, Settings &output) {
+    output.npcCount = 0;
+    output.npcs = {};
+    unsigned warnings = 0;
+    while (!list.empty()) {
+        const auto comma = list.find(',');
+        if (!AddNpc(output, list.substr(0, comma))) ++warnings;
+        if (comma == std::string_view::npos) break;
+        list.remove_prefix(comma + 1);
+        if (list.empty()) ++warnings;
     }
-    if (duplicate & 1) output.baseSpeed = previous.baseSpeed;
-    if (duplicate & 2) output.boostSpeed = previous.boostSpeed;
-    if (duplicate & 4) output.boostUiMessages = previous.boostUiMessages;
-    if (duplicate & 16) output.boostUnnamedMessages = previous.boostUnnamedMessages;
-    if (duplicate & 8) { output.npcCount = previous.npcCount; output.npcs = previous.npcs; }
     return warnings;
+}
+inline void RestoreNpcList(Settings &output, const Settings &previous) {
+    output.npcCount = previous.npcCount;
+    output.npcs = previous.npcs;
+}
+inline constexpr std::array SettingsSchema{
+    qol::core::settings::Boolean<Settings, &Settings::boostUiMessages>("boost_ui_messages"),
+    qol::core::settings::Boolean<Settings, &Settings::boostUnnamedMessages>("boost_unnamed_messages"),
+    qol::core::settings::Number<Settings, &Settings::baseSpeed, ParseSpeed>("base_speed"),
+    qol::core::settings::Number<Settings, &Settings::boostSpeed, ParseSpeed>("boost_speed"),
+    qol::core::settings::Field<Settings>{"boost_npc_list", ApplyNpcList, RestoreNpcList}
+};
+static_assert(qol::core::settings::ValidSchema(SettingsSchema));
+inline unsigned ApplySettings(std::string_view input, Settings &output) {
+    return qol::core::settings::Apply(input, output, SettingsSchema);
 }
 // Normalize only after both layers: a custom lower base can make a regular
 // boost valid without having that inherited boost changed prematurely.
