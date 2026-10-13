@@ -87,6 +87,13 @@ class Machine:
                          ('BuildPocketStorageHint',0x3094fb4)]:
             self.write(self.mod+symbol(name,'s_FnPtr'),base+off)
         self.write(self.mod+symbol('InputHandlers'),self.mod+symbol('15QuickStoreInput'))
+        # This callback-only fixture models startup registration, just as it
+        # models InputHandlers above. Use the actual feature declaration from
+        # the ELF; baseline ELFs predate the registered shortcut table.
+        if any('PocketCommands5rulesE' in name for name in symbols):
+            rules = self.mod + symbol('PocketCommands5rulesE')
+            self.write(rules, self.mod + symbol('InstallQuickStore', 'shortcuts'))
+            self.write(rules + 8, 3)
         self.adapter(0x3076480,'AdjustSourceCount',0x51000401,0x3076484,self.adapter_offset+0x0)
         self.adapter(0x30764f0,'AdjustDestinationCount',None,0x30764f4,self.adapter_offset+0x200,0x19f2bc0)
         self.adapter(0x308c764,'DispatchStackAction',0xd63f0100,0x308c768,self.adapter_offset+0x400)
@@ -929,5 +936,85 @@ for base in (0x80000000,0x1234500000):
         assert transferred==[item_bytes] and events==['helper-close','store','remove-refresh']
         update();assert h.read(event_queue+0x50,4)==1 and transferred==[item_bytes]
         cases+=1
+    if globals().get('CHECK_POCKET_COMMANDS', False):
+        # Stage 4-only safety cases are separate from the unchanged baseline
+        # comparison. Exercise the actual service through its compiled hooks.
+        h.stubs[base+0x3c66950] = confirmation
+        for bit in range(16, 64):
+            reset_pocket();y_input();y_input(0x80);transition()
+            h.write(item, int.from_bytes(item_bytes, 'little') ^ (1 << bit))
+            update()
+            assert events == ['helper-close'] and not transferred and not confirmations
+            assert h.read(pocket+0x1f4,4) == 3
+            cases += 1
+        reset_pocket();y_input();y_input(0x80);transition()
+        resident = h.read(pocket+0x1f8,1)
+        h.write(pocket+0x1f8,resident ^ 1,1);update()
+        assert not transferred and not confirmations and h.read(pocket+0x1f4,4) == 3
+        h.write(pocket+0x1f8,resident,1);cases += 1
+        reset_pocket();y_input();y_input(0x80);transition()
+        capacity=0;update()
+        assert not transferred and not confirmations and h.read(pocket+0x1f4,4) == 3
+        capacity=40;cases += 1
+        # Same owner/page addresses across a verified reopening: the old
+        # request and held edge cannot survive the Play entry boundary.
+        reset_pocket();y_input();y_input(0x80)
+        assert h.read(pocket+0x1f0,4) == 7
+        reset_pocket();y_input(0x80);y_input(0x80)
+        assert h.read(pocket+0x1f0,4) == 0xffffffff and not transferred
+        y_input();y_input(0x80);transition();update()
+        assert transferred == [item_bytes] and confirmations == [selected_slot]
+        cases += 1
+        # Resolve a replacement widget at feedback completion, not a pointer
+        # captured at queue time or dispatch time.
+        reset_pocket();y_input();y_input(0x80);transition();update()
+        widget_slot=page+0x590+8*selected_slot
+        old_widget=h.read(widget_slot);new_widget=h.ram+0x92000;new_pane=h.ram+0x93000
+        h.write(new_widget+0x218,new_pane);h.write(widget_slot,new_widget)
+        h.write(cursor+0x218,new_pane)
+        transition();update();transition()
+        assert transferred == [item_bytes] and taps == tap_prepares == [selected_slot]
+        h.write(widget_slot,old_widget);cases += 1
+        # A resident takeover also suppresses a delayed cursor tap.
+        reset_pocket();y_input();y_input(0x80);transition();update()
+        h.write(pocket+0x1f8,resident ^ 1,1)
+        transition();update();transition()
+        assert transferred == [item_bytes] and not taps
+        h.write(pocket+0x1f8,resident,1);cases += 1
+        old_stubs=dict(h.stubs)
+        h.stubs[base+0x3088df0]=shortcut_menu
+        h.stubs[base+0x307d490]=lambda:action_map[h.reg(0)]
+        h.stubs[base+0x3c66950]=lambda:trigger_feedback.append(selected_slot)
+        for change in ('item-and-menu', 'resident'):
+            offered=[30];native_updates=5;reset_pocket();dispatched.clear();trigger_feedback.clear()
+            y_input();y_input(0x400);transition();update()
+            assert dispatched == [30] and trigger_feedback == [selected_slot]
+            if change == 'item-and-menu':
+                # A started action can legitimately modify its item and menu.
+                h.write(item,0xfffe);offered=[]
+                for _ in range(5):update()
+                assert dispatched == [30]*6 and trigger_feedback == [selected_slot]
+                assert h.read(pocket+0x1f4,4) == 14
+            else:
+                h.write(pocket+0x1f8,resident ^ 1,1);update()
+                assert dispatched == [30] and h.read(pocket+0x1f4,4) == 3
+                h.write(pocket+0x1f8,resident,1)
+            cases += 1
+        # Model registering a different declaration: Y now requests Drop.
+        # The common service still defers and completes the multi-frame action.
+        registered=h.mod+symbol('PocketCommands5rulesE')
+        original_rules=h.read(registered);original_count=h.read(registered+8)
+        remapped=h.ram+0x91000;h.write(remapped,0x80,4);h.write(remapped+4,1,4)
+        h.write(registered,remapped);h.write(registered+8,1)
+        offered=[30];native_updates=2;reset_pocket();dispatched.clear();trigger_feedback.clear()
+        y_input();y_input(0x80)
+        assert not dispatched and not trigger_feedback
+        transition()
+        for _ in range(3):update()
+        assert dispatched == [30]*3 and trigger_feedback == [selected_slot]
+        assert h.read(pocket+0x1f4,4) == 14
+        h.write(registered,original_rules);h.write(registered+8,original_count)
+        h.stubs=old_stubs;cases += 1
+        print(f'PASS {base:#x}: exact upper item bits, resident/lifecycle cancellation, capacity revalidation, fresh widget resolution and reusable shortcut declarations')
 print(f'PASS {cases} compiled ARM cases at two ASLR bases, RX code: stacks, text, withdrawal, Y quick store and native dispatch/state lifecycle.')
 print('Engine services and inline adapters mocked; Exlaunch installer and Eden integration still require testing.')

@@ -2,7 +2,18 @@
 #include "v303/inventory.hpp"
 namespace qol::game::inventory {
 using Item = v303::inventory::Item;
-struct ItemValue { bool present{}; Item value{}; };
+// Exact native value, including customization, count and durability bits.
+// This identity owns bytes, never a borrowed ItemAt pointer or just an item ID.
+struct ItemIdentity {
+    Item value{};
+    constexpr bool operator==(const ItemIdentity &) const = default;
+};
+static_assert(sizeof(ItemIdentity) == 8);
+struct ItemValue {
+    bool present{};
+    Item value{};
+    constexpr ItemIdentity Identity() const { return {value}; }
+};
 // Borrowed resident identity, valid only during the caller's supported game/UI
 // callback. Callers supply the resident byte from a verified controller or a
 // local copy. No view or native item pointer may survive that callback.

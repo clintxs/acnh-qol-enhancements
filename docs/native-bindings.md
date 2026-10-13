@@ -58,9 +58,9 @@ whether native lookup returned a value. No native item pointer is exposed or
 retained. `Held`, `IsEquipped` and `ToolKind` preserve their original native calls.
 
 The domain-specific native headers contain the low-level field access helpers.
-Existing feature lifecycle code still uses those helpers pending stages 4 and
-6; this stage does not claim to have completed the pocket-command or preview
-session abstractions. Stage 2's verified hook ownership and explicit activation
+Stage 4 moves quick-store lifecycle mechanics into the pocket-command service
+and its native adapter; see [pocket-commands.md](pocket-commands.md). Preview
+session extraction remains planned for stage 6. Stage 2's verified hook ownership and explicit activation
 results build on this foundation; see [feature-activation.md](feature-activation.md).
 
 ## Additional compatibility guards

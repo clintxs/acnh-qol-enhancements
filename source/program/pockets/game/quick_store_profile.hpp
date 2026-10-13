@@ -76,6 +76,13 @@ constexpr std::size_t ClickAnimation = 0x208;
 constexpr std::size_t AnimationTarget = 8, AnimationImplementation = 0x18;
 constexpr std::size_t PrepareOperationVirtual = 0x18, PlayVirtual = 0x190;
 }
+// Original ItemUIContextMenu row IDs, not the operation enum returned by
+// MapStackAction. Features request semantic PocketAction values instead.
+enum class MenuRowId : int {
+    Wear = 5, Hold = 6, DropItem = 30, Present = 32, Treasure = 33,
+    PutAway = 35, Eat = 37, EatOne = 38, Drink = 40, Release = 41,
+    PutInStorage = 49, Bottle = 54,
+};
 struct MenuRow {
     const char *bank{};
     const char *key{};
