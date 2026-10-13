@@ -81,6 +81,9 @@ and a [reading-order/native-checkout handoff](docs/native-first-fitting.md).
 Shopping Card now has [payment, routing and balance policy](source/program/shopping/features/shopping_features.cpp)
 and a [reading-order/native-payment handoff](docs/native-first-shopping.md).
 
+Core now has [module assembly and amiibo enablement policy](source/program/core/features/core_features.cpp)
+and a [reading-order/native-timeout handoff](docs/native-first-core.md).
+
 See the [internal architecture guide](docs/internal-architecture.md) for current
 feature/service/adapter boundaries, contributor rules and remaining migration
 candidates. The [stage 7 handoff](docs/stage7-live-validation.md) identifies the

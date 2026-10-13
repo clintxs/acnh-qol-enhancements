@@ -38,6 +38,8 @@ services do not include individual feature implementations.
 
 | [Shopping Card policy](../source/program/shopping/features/shopping_features.cpp) | Reviewed purchase contexts, combined affordability, savings-first payment/native cash change order, sale proceeds/message, conservative purchase space and capped balance formatting. | `shopping/game/card_payment.hpp` exposes callback-local native money paths; `shopping_card_native.cpp` owns exact caller/room/EventFlow scope, encrypted access, original debit/deposit branches, resource preparation and native HUD/auxiliary lifecycle/feedback. Void money actions do not promise atomic completion. [Current handoff](native-first-shopping.md). |
 
+| [Core assembly](../source/program/core/features/core_features.cpp) | Seven optional module declarations, package minimums, explicit resource dependency IDs, Catalog feature dependencies and nonzero amiibo timeout enablement. | `modules.cpp` owns post-mount once-only loading/overlays/compatibility/status; `native/core_native.cpp` validates Catalog code and changes only the native amiibo initialization register. Countdown and expiry remain native. Shared activation/hook/input/resource services retain their boundaries. [Current handoff](native-first-core.md). |
+
 A short feature file alone does not establish a boundary. For example, quick-store
 is safe because deferred identity checks and native command completion live in
 its service/adapter, and preview is safe only within the documented native lease
@@ -86,7 +88,7 @@ make the entire mod declarative or engine-independent.
 | Quantity native scaffolding | Gesture/priority/timing decisions are in `crafting/features/crafting_features.cpp`; `game/quantity_*_native.cpp` retains verified page/sequence identity, native cyclic row binding, footer descriptors and FSM request fields. The binder normalization is supported adapter scaffolding, not a universal native-list capability. |
 | Shopping display mechanics | Payment/routing/balance policy is in `shopping/features/shopping_features.cpp`; `game/shopping_card_native.cpp` retains pane/controller/number-transition handling, catalog/storage presentation correlation and native feedback. These remain engine-specific adapter mechanics, not a general renderer or transaction service. |
 
-Stage 7 left these areas unchanged; the subsequent Pockets, Faster Dialogue, Controls, Crafting, Catalog, Fitting Room and Shopping Card passes separated their actual policies. Workbench
+Stage 7 left these areas unchanged; the subsequent Pockets, Faster Dialogue, Controls, Crafting, Catalog, Fitting Room, Shopping Card and Core passes separated their actual policies. Workbench
 binding/tilt state is still adapter-owned; the encapsulated Session is the phone
 lifecycle, not a new universal preview framework.
 
