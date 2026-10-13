@@ -31,8 +31,16 @@ HOOK_DEFINE_TRAMPOLINE(QuickStorePlay) {
 // silence a mismatch without re-checking the game's disassembly.
 bool InstallShortcuts(std::span<const ShortcutRule> rules) {
     if (!ValidShortcuts(rules)) return false;
+    const auto match = CompareShortcutRules(rules);
+    if (match == DeclarationMatch::Conflict) {
+        qol::core::ReportActivationFailure(qol::core::FeatureState::DependencyUnavailable, "incompatible pocket shortcuts");
+        return false;
+    }
     const auto executable = qol::native::MainExecutable();
     for (const auto &check : profile::Checks) {
+        // HookPlan verifies already-owned instructions on identical repeats.
+        if (match == DeclarationMatch::Identical && (check.offset == address::Command ||
+            check.offset == address::Play || check.offset == address::EnterMenu || check.offset == address::UpdateMenu)) continue;
         const auto result = executable.Check(check);
         if (!result) {
             Logging.Error("[QoL Enhancements/Pockets] QUICK_STORE_DISABLED code mismatch at 0x%lx\n", check.offset);

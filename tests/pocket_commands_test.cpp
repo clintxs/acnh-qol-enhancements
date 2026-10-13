@@ -1,4 +1,4 @@
-#include "program/pockets/services/pocket_commands.hpp"
+#include "program/pockets/services/shortcut_declarations.hpp"
 #include "program/game/inventory.hpp"
 #include "program/pockets/game/quick_store_profile.hpp"
 #include <cassert>
@@ -32,6 +32,16 @@ int main() {
     }
     const ShortcutRule remapped[]{{UiButton::Y, PocketAction::DropOrRelease}};
     assert(ValidShortcuts(remapped));
+    ShortcutDeclarations owned;
+    {
+        ShortcutRule local[]{{UiButton::Y, PocketAction::DropOrRelease}};
+        assert(owned.Own(local));
+        local[0].action = PocketAction::PutInStorage;
+    }
+    assert(owned.Rules().size() == 1 && owned.Rules()[0].action == PocketAction::DropOrRelease);
+    assert(owned.Compare(remapped) == DeclarationMatch::Identical && owned.Own(remapped));
+    assert(owned.Compare(rules) == DeclarationMatch::Conflict && !owned.Own(rules));
+    assert(owned.Rules().size() == 1 && owned.Rules()[0].action == PocketAction::DropOrRelease);
     const ItemValue item{true, 0x123456789abc4321ull};
     const auto identity = item.Identity();
     assert(identity == ItemIdentity{item.value});

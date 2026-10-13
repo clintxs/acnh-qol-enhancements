@@ -39,3 +39,25 @@ Validation: normal build, 16 host suites and inherited Pockets scripts passed;
 a focused compiled test verifies listener identity/capacity and no dependent
 publication when the slot is unavailable at two bases. Logs are
 `dist/refactor-boundaries/lifecycle-*.log`.
+
+## Owned shortcut registration
+
+Before, `InstallShortcuts` retained a caller-owned span. It now copies at most
+three validated rules into service storage. Caller storage may be temporary or
+changed immediately after installation. Identical declarations in the same
+order revalidate owned hooks without resetting state or allocating more slots;
+incompatible declarations fail before changing the table. Partial publication
+keeps the declaration locked to the same rules for a compatible retry.
+
+The private-span remapping test was removed. A fresh-module integration fixture
+now installs Y-to-Drop through production `InstallShortcuts`, destroys caller
+data, verifies identical reuse/conflict/foreign-hook rejection, then executes
+registered input and real native command entry/update across three updates
+with exactly one feedback. Only native-world UI data is reused by this fixture;
+no service or module state is copied. The callback-only fixtures still model
+registration for the preserved 978-case baseline comparison.
+
+Validation: normal build, 16 host suites and six Pockets scripts passed,
+including successful production registration at two bases and the remaining
+1,088 extended callback cases. The two remapping cases now live in the stronger
+production registration test. Logs: `dist/refactor-boundaries/ownership-*.log`.

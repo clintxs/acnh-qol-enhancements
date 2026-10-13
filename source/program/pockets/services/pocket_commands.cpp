@@ -1,4 +1,5 @@
 #include "pocket_commands.hpp"
+#include "shortcut_declarations.hpp"
 #include "lib.hpp"
 #include "program/pockets/game/pocket_commands_native.hpp"
 #include "pocket_lifecycle.hpp"
@@ -29,15 +30,15 @@ class PocketCommands {
     static inline std::optional<Request> pending{};
     static inline CursorTapRequest pendingTap{};
     static inline std::uint64_t generation{};
-    static inline std::span<const ShortcutRule> rules{};
+    static inline ShortcutDeclarations declarations{};
 
     static unsigned Buttons() {
         unsigned mask = 0;
-        for (const auto &rule : rules) mask |= static_cast<unsigned>(rule.button);
+        for (const auto &rule : declarations.Rules()) mask |= static_cast<unsigned>(rule.button);
         return mask;
     }
     static std::optional<PocketAction> ActionFor(unsigned press) {
-        for (const auto &rule : rules)
+        for (const auto &rule : declarations.Rules())
             if (static_cast<unsigned>(rule.button) == press) return rule.action;
         return std::nullopt;
     }
@@ -75,7 +76,8 @@ public:
         native::ConsumeShortcut(*input);
     }
 
-    static void SetRules(std::span<const ShortcutRule> shortcuts) { rules = shortcuts; }
+    static void SetRules(std::span<const ShortcutRule> shortcuts) { declarations.Own(shortcuts); }
+    static DeclarationMatch CompareRules(std::span<const ShortcutRule> shortcuts) { return declarations.Compare(shortcuts); }
     static void EnterMenu(void *owner, native::NativeCallback original) {
         pending.reset();
         pendingTap = {};
@@ -139,6 +141,7 @@ bool QuickStoreInput(void *page, void *snapshot, unsigned blocked) {
     PocketCommands::HandleQuickStoreInput(page, snapshot, blocked);
     return false;
 }
+DeclarationMatch CompareShortcutRules(std::span<const ShortcutRule> rules) { return PocketCommands::CompareRules(rules); }
 void SetShortcutRules(std::span<const ShortcutRule> rules) { PocketCommands::SetRules(rules); }
 void EnterMenu(void *owner, native::NativeCallback original) { PocketCommands::EnterMenu(owner, original); }
 void UpdateMenu(void *owner, native::NativeCallback original, native::NativeCallback enterOriginal) {

@@ -19,7 +19,8 @@ constexpr bool ValidShortcuts(std::span<const ShortcutRule> rules) {
     }
     return true;
 }
-// The table must have static lifetime. Installation owns its common input loop
-// and verified native phase hooks; callers cannot dispatch arbitrary menu rows.
+// Valid declarations are copied into three owned slots at startup. Identical
+// repeats revalidate hooks; conflicts leave the active table unchanged.
+// Installation owns its common input loop and verified native phase hooks.
 bool InstallShortcuts(std::span<const ShortcutRule> rules);
 } // namespace qol_pockets::commands
