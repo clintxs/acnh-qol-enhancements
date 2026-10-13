@@ -364,8 +364,8 @@ the original transaction routines. Space checks no longer assume spending
 Bell bags frees pocket slots. Harv's Island, other vendors, the drop-off box,
 ABD transfers and ordinary pocket-money actions retain their existing paths.
 
-The top-right currency display defaults to Island Inverted, with a lighter teal
-card, teal oval and cream balance, outlines and backing. It shows a separate
+The top-right currency display defaults to Island Inverted, with a lighter blue
+card, blue oval and cream balance, outlines and backing. It shows a separate
 combined balance inside the two shops and while the catalog is open. The display
 saturates at **999,999,999**, while purchases still use the full combined funds;
 the label is English (“Bells”). Optional Files supplies five alternative colors.

@@ -119,7 +119,7 @@ if palette.balance is not None:
     else:
         island = card.PALETTES['island']
         assert palette.balance == palette.rim == island.background
-        print('PASS: Island Inverted pocket-balloon teal oval/Bells text, cream balance/outline/badge; native cash text unchanged')
+        print('PASS: Island Inverted blue oval/Bells text, cream balance/outline/badge; native cash text unchanged')
 else:
     assert number_material == native_number_material
 

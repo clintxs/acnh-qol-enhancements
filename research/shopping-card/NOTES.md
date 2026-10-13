@@ -755,3 +755,17 @@ updates, interrupted animation, fresh Play panes and native resource fallback.
 The previous ELF fails the new entry-feedback assertion; a separate definition-
 only fixture reproduced its stale combined Up animation. These establish the
 code paths, not the exact live trigger. Live 0.4.30 sound confirmation is pending.
+
+
+## Restore the original Island Inverted palette (2026-10-13)
+
+Reverted the default Island Inverted colors to 10bb948, immediately before
+the #51BCAB item-name balloon change. Restored counter/oval/caption #6ABDC4
+and card face #9BD4D9; retained #FFF9E3 cream balance, outlines and card backing.
+This also undoes the subsequent #97D7CD card-face tint. Island Inverted stays
+the main-suite default; the five optional palettes are unchanged.
+
+Compared all palette fields to the historical source and generated the same
+layout with both definitions, byte for byte. Existing structure/material/texture
+checks pass. Core behavior, compiled version and configuration markers remain
+0.4.32; package revision 3 preserves earlier archives.

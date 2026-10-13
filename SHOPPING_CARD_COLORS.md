@@ -23,5 +23,5 @@ ADB Teal retains the original green design. Bell Gold uses the Bells counter's
 gold with a peach-gold card. Hotel Blue uses the hotel ticket counter's blue,
 navy edges and a red stripe. Poki Red uses coral red, cream details and a gold
 chip. Island pairs the ACNH Switch's turquoise blue with pockets cream.
-The default Island Inverted pairs the pockets balloon's teal with a lighter
-teal card and cream balance, outlines and backing.
+The default Island Inverted pairs the ACNH Switch's turquoise blue with a lighter
+blue card and cream balance, outlines and backing.

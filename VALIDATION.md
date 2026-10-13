@@ -3026,3 +3026,14 @@ and the new default's native texture-name lookup/relocation at two load bases.
 The supplied README is byte-identical to the attachment. Final ZIP integrity,
 exact content, manifests and source exclusions are checked after generation.
 Native GPU appearance remains a live-game validation boundary.
+
+
+## 0.4.32 packaging revision 3: original Island Inverted colors (2026-10-13)
+
+Restore the exact 10bb948 palette before #51BCAB: #6ABDC4 oval/Bells text,
+#9BD4D9 card face and #FFF9E3 cream balance/outline/backing. Island Inverted
+remains the default. All palette fields match the historical definition, and
+the generated default layout matches byte for byte. The existing Island Inverted
+structure/material/texture checks pass. No runtime or configuration change;
+Core stays 0.4.32. Generate revision 3 main/source/Optional Files archives and
+a standalone Island Inverted module, preserving older downloads.

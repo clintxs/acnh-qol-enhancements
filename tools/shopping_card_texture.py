@@ -49,8 +49,6 @@ def linear_rgba(red, green, blue):
 ISLAND_BLUE = linear_rgba(106, 189, 196)  # #6ABDC4
 ISLAND_CARD_BLUE = linear_rgba(155, 212, 217)  # #9BD4D9, visibly lighter than the outline.
 ISLAND_CREAM = linear_rgba(255, 249, 227)  # #FFF9E3, sampled from the pockets UI screenshot.
-POCKET_BALLOON_TEAL = linear_rgba(81, 188, 171)  # #51BCAB, user's item-name balloon sample.
-INVERTED_CARD_TEAL = linear_rgba(151, 215, 205)  # #97D7CD, balloon teal blended 40% toward white.
 
 
 # Linear RGBA, as used by the native materials and RGBA8_UNORM textures.
@@ -75,10 +73,10 @@ PALETTES = {
                       caption=ISLAND_CREAM),
 }
 
-# The inverted UI pairs the pockets balloon teal with a lighter card face.
+# Keep the card face identical; its outer backing follows the inverted rim.
 PALETTES['island-inverted'] = replace(
-    PALETTES['island'], counter=POCKET_BALLOON_TEAL, rim=ISLAND_CREAM, face=INVERTED_CARD_TEAL,
-    background=POCKET_BALLOON_TEAL, balance=ISLAND_CREAM, caption=POCKET_BALLOON_TEAL)
+    PALETTES['island'], rim=ISLAND_CREAM, background=ISLAND_BLUE,
+    balance=ISLAND_CREAM, caption=ISLAND_BLUE)
 
 
 def inside(x, y, width, height, radius=0):
