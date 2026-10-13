@@ -19,6 +19,10 @@ constexpr int SelectingCommand = 5;
 }
 constexpr int PocketSlotLimit = 40, InputRowLimit = 8, NativeBackButtonId = 5;
 constexpr unsigned OtherActionButtons = 0x37f;
+// Even a sparse declaration must reject Y/trigger chords. Unregistered known
+// shortcut buttons are conflicting input, not permission to choose an action.
+constexpr unsigned AllShortcutButtons = unsigned(commands::UiButton::Y) |
+    unsigned(commands::UiButton::ZL) | unsigned(commands::UiButton::ZR);
 void *lastPage{};
 int lastRow = -1;
 unsigned previousButtons{};
@@ -334,10 +338,8 @@ static unsigned FreshShortcutButtons(void *page, int row, unsigned buttons, unsi
 
 std::optional<PocketInput> ReadPocketInput(void *page, void *inputSnapshot, unsigned blocked,
                                           unsigned shortcutButtons, bool pending) {
-    if (!inputSnapshot ||
-        Field<std::uintptr_t>(page, 0) != game::MainAddress(address::PocketPageVtable)) {
-        return std::nullopt;
-    }
+    if (!page || Field<std::uintptr_t>(page, 0) != game::MainAddress(address::PocketPageVtable)) return std::nullopt;
+    if (!inputSnapshot) { ResetInputEdges(); return std::nullopt; }
     const bool trace = TracePress(page, inputSnapshot, shortcutButtons);
     auto *owner = pocket_input::FindPocketController(page);
     auto *backButtonHint = Field<void *>(page, layout::BackButtonHint);
@@ -349,18 +351,20 @@ std::optional<PocketInput> ReadPocketInput(void *page, void *inputSnapshot, unsi
     // Use the same controller row as the native B binding, not arbitrary row 0.
     if (!owner || !backButtonInput ||
         Field<int>(backButtonInput, layout::HintButtonId) != NativeBackButtonId) {
+        ResetInputEdges();
         return std::nullopt;
     }
     const int row = Field<int>(backButtonInput, layout::HintInputRow),
               count = Field<int>(inputSnapshot, layout::SnapshotRowCount);
     auto *rows = Field<std::byte *>(inputSnapshot, layout::SnapshotRows);
     if (!rows || count < 1 || count > InputRowLimit || row < 0 || row >= count) {
+        ResetInputEdges();
         return std::nullopt;
     }
     auto *inputRow = rows + row * layout::InputRowBytes;
     const unsigned buttons = Field<unsigned>(inputRow, 0);
     const unsigned pressed = FreshShortcutButtons(page, row, buttons, shortcutButtons);
-    const unsigned heldShortcuts = buttons & shortcutButtons;
+    const unsigned heldShortcuts = buttons & AllShortcutButtons;
     // Require exactly one held shortcut. Never choose an arbitrary destructive
     // action when two triggers (or Y plus a trigger) arrive together.
     const bool freshSingleShortcut = pressed && pressed == heldShortcuts &&

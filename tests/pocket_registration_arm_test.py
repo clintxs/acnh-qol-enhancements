@@ -70,6 +70,20 @@ for base in (0x80000000, 0x1234500000):
     h.write(base + 0x4a06740 + index * 16, target)
     h.stubs[target] = drop
     h.stubs[base + 0x3c66950] = lambda: feedback.append(h.reg(0))
+    for other in (0x400, 0x800):
+        scope['reset_pocket']()
+        scope['y_input'](); scope['y_input'](0x80 | other)
+        assert h.read(pocket + 0x1f0, 4) == 0xffffffff and not observed and not feedback
+        scope['y_input'](0x80)  # Releasing the conflicting trigger cannot fire held Y late.
+        assert h.read(pocket + 0x1f0, 4) == 0xffffffff and not observed and not feedback
+    for address, width, invalid in ((scope['binding']+0x10,8,0), (scope['unit']+0x10,4,8)):
+        scope['reset_pocket']();scope['y_input']()
+        previous=h.read(address,width);h.write(address,invalid,width)
+        scope['y_input'](0x80)
+        assert h.read(pocket+0x1f0,4)==0xffffffff
+        h.write(address,previous,width)
+        scope['y_input'](0x80)  # Unknown binding/row cannot arm a delayed held press.
+        assert h.read(pocket+0x1f0,4)==0xffffffff and not observed and not feedback
     scope['reset_pocket']()
     scope['y_input'](); scope['y_input'](0x80)
     assert h.read(pocket + 0x1f0, 4) == 7 and not observed and not feedback
@@ -82,4 +96,4 @@ for base in (0x80000000, 0x1234500000):
         assert h.read(pocket + 0x1f4, 4) == (14 if count == 3 else 0xffffffff)
     scope['update']()
     assert observed == [30] * 3 and len(feedback) == 1
-    print(f'PASS {base:#x}: production alternate registration, owned caller data, identical reuse, conflict/foreign rejection and deferred multi-frame Drop with single feedback')
+    print(f'PASS {base:#x}: production alternate registration, owned caller data, identical reuse, conflict/foreign rejection, chord/held rejection and deferred multi-frame Drop with single feedback')

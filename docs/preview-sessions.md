@@ -105,3 +105,9 @@ The final normal publication build passed all 19 host suites and 46 ARM/resource
 scripts, including the preserved baseline comparison. No compiler warnings or
 errors were reported. The independently saved publication build remains under
 `dist/refactor-stage6/coherent-build/` with its checksums.
+
+A subsequent independent pocket input correction was checked with all 19 host
+suites, six Pockets scripts and the stage 0 comparison again. It changes no
+preview behavior. Those final outputs and hashes are saved separately under
+`dist/refactor-stage6/final-build/`; the complete 46-script integration evidence
+for the publication build remains retained alongside it.

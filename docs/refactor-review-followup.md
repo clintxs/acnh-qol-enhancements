@@ -152,3 +152,27 @@ passed in the final stage 6 Core/features runs. This includes 978 identical
 preserved pocket scenarios, combined-module activation, new concurrent packet
 stress and six native starting-context replacement cases. Thread ownership,
 scene/render limits and native restoration contracts are in `preview-sessions.md`.
+
+## Final pocket input correction
+
+The production alternate-registration test exposed a declaration-dependent
+chord gap: with only Y registered, held unregistered ZL/ZR could escape the
+single-shortcut check. The native adapter now rejects chords across all three
+known shortcut buttons. Recognized Pocket pages with an unavailable snapshot,
+binding or input row invalidate edge history; recovery with Y still held cannot
+start a delayed action. Unrelated pages leave Pocket history alone.
+
+Validation: all 19 host suites and all six Pockets scripts passed after this
+correction. The production Y-to-Drop fixture now exercises both trigger chords,
+held recovery, lost binding and invalid row recovery at two bases before its
+normal deferred/multi-frame/single-feedback assertions. The final build again
+passed identical 978-pocket-scenario and migrated hook/readiness comparisons
+against stage 0. Logs: `dist/refactor-stage6/chord-*.log`.
+
+All 2,988 files in the stage 0–5 and independently saved coherent-stage-6
+preservation manifests still match; main remains at
+`35ec0c865065dda9f4b09660434370d90ac57373`. Final ELF/NSO/NPDM copies and
+hashes are in `dist/refactor-stage6/final-build/`. Older coherent-stage-6 outputs
+remain separate. No merge, publication, release replacement or installed Eden
+mod update was performed. Offline boundary/stage 5/stage 6 work is complete;
+live engine/audio/rendering qualification remains pending.
