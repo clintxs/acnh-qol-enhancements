@@ -1,6 +1,7 @@
 #pragma once
 #include "program/core/settings_schema.hpp"
 #include "localized_name.hpp"
+#include "game/dialogue_context.hpp"
 #include <array>
 
 namespace qol::dialogue {
@@ -12,23 +13,11 @@ struct Settings {
     unsigned npcCount = 0;
     std::array<std::array<char, NpcNameBytes>, MaxNpcs> npcs{};
 };
-enum class MessageKind { Unknown, Npc, Ui, Unnamed };
 constexpr char Lower(char c) { return c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c; }
 inline bool Equal(std::string_view a, std::string_view b) {
     if (a.size() != b.size()) return false;
     for (unsigned i = 0; i < a.size(); ++i) if (Lower(a[i]) != Lower(b[i])) return false;
     return true;
-}
-// Reviewed self-message banks from the supplied 3.0.3 resources. Matching
-// exact basenames avoids treating NPC banks or all SYS_/FTR_ messages as self.
-inline bool IsUnnamedMessageBank(std::string_view bank) {
-    const auto slash = bank.find_last_of('/');
-    if (slash != std::string_view::npos) bank.remove_prefix(slash + 1);
-    if (bank.ends_with(".msbt")) bank.remove_suffix(5);
-    constexpr std::string_view banks[]{"FTR_WorkingTable", "SYS_Player", "SYS_Get_Fish",
-                                       "SYS_Get_Insect", "SYS_Get_DiveFish"};
-    for (auto known : banks) if (Equal(bank, known)) return true;
-    return false;
 }
 inline std::string_view NpcAlias(std::string_view name) {
     constexpr std::string_view names[]{"Timmy", "Tommy", "Orville", "Wilbur", "Kapp'n"};
@@ -55,16 +44,6 @@ inline bool AddNpc(Settings &settings, std::string_view name) {
     auto &id = settings.npcs[settings.npcCount++];
     for (unsigned i = 0; i < name.size(); ++i) id[i] = Lower(name[i]);
     return true;
-}
-inline unsigned SelectSpeed(const Settings &settings, MessageKind kind,
-                            std::string_view npc, bool held, std::string_view localizedName = {}) {
-    bool automatic = (kind == MessageKind::Ui && settings.boostUiMessages) ||
-                     (kind == MessageKind::Unnamed && settings.boostUnnamedMessages);
-    if (kind == MessageKind::Npc)
-        for (unsigned i = 0; i < settings.npcCount; ++i)
-            automatic |= Equal(npc, settings.npcs[i].data()) ||
-                         (!localizedName.empty() && Equal(localizedName, settings.npcs[i].data()));
-    return held || automatic ? settings.boostSpeed : settings.baseSpeed;
 }
 // Nominal whole-number multipliers. The game's live fast rate represents 2x;
 // rate hooks scale it by the selected multiplier / 2, preserving locale/FPS.

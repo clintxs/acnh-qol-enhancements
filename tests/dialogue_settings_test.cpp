@@ -1,4 +1,4 @@
-#include "program/dialogue/settings.hpp"
+#include "program/dialogue/features/faster_dialogue.hpp"
 #include <cassert>
 #include <string>
 #include <cstdio>
