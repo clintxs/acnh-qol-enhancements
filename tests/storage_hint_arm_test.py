@@ -132,7 +132,7 @@ for base in (0x80000000, 0x1234500000):
             assert h.read(regs + 16) == bank and h.read(regs + 24) == key
         cases += 1
     h.u.mem_write(source, b'qol_pockets.hold_wear\0')
-    h.put(0, source); h.run(h.mod + symbol('PocketHintText'))
+    h.run(h.mod + symbol('UseItemCaption'))
     assert bytes(h.u.mem_read(h.reg(0), 18)).decode('utf-16-le') == 'Use Item\0'
     cases += 1
     # Run the real storage footer builder through its patched A append call.

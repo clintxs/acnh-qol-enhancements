@@ -1,13 +1,14 @@
 #include "program/core/hook_plan.hpp"
 #include "lib.hpp"
 #include "resource_budget.hpp"
+#include "resource_requirements.hpp"
 #include <array>
 #include <cstring>
 
 namespace qol::core {
 namespace {
 constexpr std::uintptr_t ResourceSizeQuery = 0x03e3cad0;
-bool shoppingResources{}, fittingResources{};
+ResourceRequirements<> Requirements;
 template<class T> T Read(std::uintptr_t pointer, std::uintptr_t offset = 0) {
     return *reinterpret_cast<const T *>(pointer + offset);
 }
@@ -25,10 +26,7 @@ HOOK_DEFINE_TRAMPOLINE(CounterResourceBudget) {
         const bool found = Orig(manager, size, path);
         const auto text = path ? Read<const char *>(path, 8) : nullptr;
         if (!size || !text) return found;
-        const auto minimum = shoppingResources && !std::strcmp(text, CounterResourcePath)
-            ? CounterResourceMinimumBytes
-            : fittingResources && !std::strcmp(text, FittingResourcePath)
-            ? FittingResourceMinimumBytes : 0;
+        const auto minimum = Requirements.MinimumFor(text);
         if (!minimum) return found;
         if (!found) {
             size->bytes = minimum;
@@ -50,16 +48,17 @@ bool InstallResourceBudget() {
 }
 
 } // namespace
-bool PrepareShoppingResources() {
-    if (!InstallResourceBudget()) return false;
-    if (!shoppingResources) RecordMutation();
-    shoppingResources = true;
-    return true;
+RegistrationResult RequireMinimum(std::string_view path, std::uint32_t bytes) {
+    const auto check = Requirements.CanRequire(path, bytes);
+    if (!check) {
+        ReportActivationFailure(FeatureState::DependencyUnavailable, "resource requirement invalid or full");
+        return check;
+    }
+    if (!InstallResourceBudget()) return {RegistrationStatus::Unavailable};
+    const auto result = Requirements.Require(path, bytes);
+    if (result.status == RegistrationStatus::Ready) RecordMutation();
+    return result;
 }
-bool PrepareFittingResources() {
-    if (!InstallResourceBudget()) return false;
-    if (!fittingResources) RecordMutation();
-    fittingResources = true;
-    return true;
-}
+bool PrepareShoppingResources() { return bool(RequireMinimum(CounterResourcePath, CounterResourceMinimumBytes)); }
+bool PrepareFittingResources() { return bool(RequireMinimum(FittingResourcePath, FittingResourceMinimumBytes)); }
 } // namespace qol::core

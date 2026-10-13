@@ -38,13 +38,8 @@ constexpr char WithdrawalHintKey[] = "qol_pockets.move_to_pockets";
 constexpr char DropHintKey[] = "qol_pockets.drop_release";
 constexpr char EquipHintKey[] = "qol_pockets.hold_wear";
 
-const char16_t *PocketHintText(const char *key) {
-    const bool drop = std::strcmp(key, DropHintKey) == 0;
-    if (!drop && std::strcmp(key, EquipHintKey) != 0) return nullptr;
-    // Use Item has an editable caption and English fallback. Drop still uses
-    // the native localized caption unless the user supplies an override.
-    return PocketMessage(key);
-}
+const char16_t *UseItemCaption() { return PocketMessage(EquipHintKey); }
+const char16_t *DropItemCaption() { return PocketMessage(DropHintKey); }
 
 template <typename T> T &Field(void *object, std::size_t offset) {
     return *reinterpret_cast<T *>(static_cast<std::byte *>(object) + offset);
@@ -232,7 +227,8 @@ bool InstallStorageHint() {
         qol::core::Site<BuildPocketStorageHint>("BuildPocketStorageHint", address::BuildPocketFooter, {0xd10343ff, 0xa9087bfd, 0xf9004bf9, 0xa90a5ff8, 0xa90b57f6}, true),
     };
     if (!hookPlan) return false;
-    if (!qol::core::RegisterHintText(PocketHintText)) return false;
+    if (!qol::core::RegisterCaption(qol::core::CaptionKey::UseItem, UseItemCaption) ||
+        !qol::core::RegisterCaption(qol::core::CaptionKey::DropOrRelease, DropItemCaption)) return false;
     if (!hookPlan.Publish<ResolveStorageHintCaption>(address::ResolveFooterCaptionCall)) return false;
     if (!hookPlan.Publish<BuildPocketStorageHint>(address::BuildPocketFooter)) return false;
     Logging.Debug("[QoL Enhancements/Pockets] STORAGE_HINT_READY native Y / Put in Storage\n");

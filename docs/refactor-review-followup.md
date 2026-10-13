@@ -103,3 +103,12 @@ Validation: build, 16 host suites, Pockets/Crafting scripts, the activation suit
 and a focused production ordering/cancellation test passed at two bases.
 Fixtures invoke the typed bridges rather than discarded legacy wrappers. Logs:
 `dist/refactor-stage5/input-*.log`.
+
+## Caption and resource declarations
+
+Wildcard caption-provider searches are replaced by exclusive typed keys with
+bounded text/fallback behavior. Resource flags are replaced by owned exact-path
+minimum requirements. Native prepare/set/notify, metadata preservation and
+allocation floors remain in Core. The deliberate missing-adapter MSBT
+suppression policy is documented and tested. See `shared-input-ui.md` for
+ownership, lifetime, limits, ordering and all stage 5 validation evidence.

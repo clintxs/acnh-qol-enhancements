@@ -52,13 +52,15 @@ for base in (0x7100000000, 0x7200000000):
         assert call(m, 'RegisterPageInputObserver', before_cb + i * 4, after_cb + i * 4) == 1
     assert call(m, 'RegisterPageInputObserver', before_cb + 20, after_cb + 20) == 0
 
-    # Caption capacity and reuse also validate the shared native owner.
+    # Explicit caption key ownership rejects incompatible providers, while
+    # identical reuse still checks native hook ownership.
     m = Machine(base, {})
-    for i in range(4): assert call(m, 'RegisterHintText', m.ram + 0x1000 + i * 4) == 1
-    assert call(m, 'RegisterHintText', m.ram + 0x1000) == 1
-    assert call(m, 'RegisterHintText', m.ram + 0x2000) == 0
+    for i in range(3): assert call(m, 'RegisterCaption', i, m.ram + 0x1000 + i * 4) == 0
+    assert call(m, 'RegisterCaption', 0, m.ram + 0x1000) == 1
+    assert call(m, 'RegisterCaption', 0, m.ram + 0x2000) == 3
+    assert call(m, 'RegisterCaption', 3, m.ram + 0x2000) == 2
     m.write(base + 0x1aea210, 0xdeadbeef, 4)
-    assert call(m, 'RegisterHintText', m.ram + 0x1000) == 0
+    assert call(m, 'RegisterCaption', 0, m.ram + 0x1000) == 5
 
     for order in (('InstallStorageHint', 'InstallFittingHint'), ('InstallFittingHint', 'InstallStorageHint')):
         m = Machine(base, {})
@@ -106,7 +108,7 @@ for base in (0x7100000000, 0x7200000000):
 
     m = Machine(base, {'fitting-room': DEFAULT})
     providers = m.module.find('HintProviders')
-    for i in range(4): m.write(providers + i * 8, m.ram + 0x1000 + i * 4)
+    for i in range(3): m.write(providers + i * 8, m.ram + 0x1000 + i * 4)
     m.boot(); m.activate()
     assert outcome(m, 'fitting.bag')[:2] == (3, False)
     assert outcome(m, 'resources.fitting')[:2] == (1, True)

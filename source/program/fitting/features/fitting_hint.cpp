@@ -91,9 +91,7 @@ HOOK_DEFINE_INLINE(AppendBagFooterHint) {
     }
 };
 
-const char16_t *FittingHintText(const char *key) {
-    return std::strcmp(key, CaptionKey) == 0 ? BagCaption() : nullptr;
-}
+
 } // namespace
 
 bool ValidateFittingHint() {
@@ -119,7 +117,7 @@ bool InstallFittingHint() {
         qol::core::Site<AppendBagFooterHint>("AppendBagFooterHint", address::AppendFittingFooter, {0xb9401fa8, 0x7100051f, 0x54000520, 0xf9410a89, 0xf942c129}, true),
     };
     if (!hookPlan) return false;
-    if (!qol::core::RegisterHintText(FittingHintText)) {
+    if (!qol::core::RegisterCaption(qol::core::CaptionKey::Bag, BagCaption)) {
         Logging.Error("[QoL Enhancements/Fitting Room] HINT_DISABLED shared text unavailable\n");
         return false;
     }

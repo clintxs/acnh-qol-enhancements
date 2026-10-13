@@ -1,5 +1,7 @@
 #pragma once
+#include "registration.hpp"
 #include <cstdint>
+#include <string_view>
 namespace qol::core {
 // ResourceSizeTable queries use the normalized path without compression suffix.
 inline constexpr char CounterResourcePath[] = "Layout/LBellCounterRT.Nin_NX_NVN";
@@ -13,6 +15,7 @@ inline constexpr char FittingResourcePath[] = "Layout/LBtnListShopTailorBtn.Nin_
 inline constexpr std::uint32_t FittingResourceMinimumBytes = 524288;
 // Installed RomFS assets need space even when their feature is disabled.
 // Both paths share one hook, but each allowance requires its own module marker.
+RegistrationResult RequireMinimum(std::string_view normalizedPath, std::uint32_t bytes);
 bool PrepareShoppingResources();
 bool PrepareFittingResources();
 }

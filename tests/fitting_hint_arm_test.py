@@ -35,7 +35,7 @@ class HintMachine(Machine):
         self.write(self.footer+0x220,self.entries)
         self.ticket=False
         self.write(self.module.find('InitializeHintCaption','OrigRef'),base+0x1aea210)
-        self.write(self.module.find('HintProviders'),self.module.find('FittingHintText'))
+        self.write(self.module.find('HintProviders'),self.module.find('BagCaption'))
         self.install_adapter()
     def service(self,u,pc,size,data):
         if not hasattr(self,'typefn'):
@@ -89,7 +89,7 @@ class HintMachine(Machine):
     def rows(self):
         return [self.read(self.entries+i*8) for i in range(self.read(self.footer+0x218,4))]
     def label(self,row):return self.string(self.read(row+0x18))
-    def caption(self,key=KEY,group=False,bad_adapter=False):
+    def caption(self,key=KEY,group=False,bad_adapter=False,bad_prepare=False,bad_payload=False):
         msg=self.ram+0x40000;binding=self.ram+0x41000;adapter=binding+0x100;methods=adapter+0x100
         bank=self.ram+0x43000;token=bank+0x100
         self.u.mem_write(msg,bytes(0x400))
@@ -108,7 +108,8 @@ class HintMachine(Machine):
         # stubs, so omitting NotifyTextChanged reproduces the 0.4.2 failure.
         interface=binding+0xa00;binding_vtable=interface+0x100
         event=binding+0xc00;queue=binding+0xd00
-        self.write(adapter,interface);self.write(interface+0x18,self.typefn+0x100)
+        self.write(adapter,interface);self.write(interface+0x18,0 if bad_prepare else self.typefn+0x100)
+        if bad_payload: self.write(adapter+8,0)
         self.write(binding,binding_vtable);self.write(binding_vtable+0x20,self.typefn+0x110)
         self.write(binding+0x50,event);self.write(binding+0x58,0,2)
         self.u.mem_write(event,bytes(0x60));self.u.mem_write(queue,bytes(0x60))
@@ -119,12 +120,12 @@ class HintMachine(Machine):
         self.invoke(self.module.find('InitializeHintCaption','Callback'),msg,binding,bank,token)
         if key in (KEY, b'qol_pockets.drop_release', b'qol_pockets.hold_wear'):
             assert self.read(msg+0xc,4)==12
-            if not bad_adapter:
+            if not (bad_adapter or bad_prepare or bad_payload):
                 assert self.text_events==['prepare','set','notify']
                 assert self.read(queue+0x40)==event+0x10 and self.read(queue+0x50,4)==1
             self.invoke(self.base+0x1aea9c8,msg) # Must not attempt MSBT lookup.
         else: assert self.read(msg+0xc,4)==1
-        if bad_adapter or key not in (KEY,b'qol_pockets.drop_release',b'qol_pockets.hold_wear'):
+        if bad_adapter or bad_prepare or bad_payload or key not in (KEY,b'qol_pockets.drop_release',b'qol_pockets.hold_wear'):
             assert self.text_events==[] and self.read(queue+0x50,4)==0
         # Native cleanup sees zero allocation ownership; mod owns no parser buffers.
         self.invoke(self.base+0x1ae9eb8,msg)
@@ -180,8 +181,9 @@ print('PASS: all 16 shipped locale captions through compiled UTF-8 parser and na
 for both in (False, True):
     m=HintMachine(0x7100000000)
     providers=m.module.find('HintProviders')
-    m.write(providers,m.module.find('PocketHintText'))
-    m.write(providers+8,m.module.find('FittingHintText') if both else 0)
+    m.write(providers,m.module.find('BagCaption') if both else 0)
+    m.write(providers+8,m.module.find('UseItemCaption'))
+    m.write(providers+16,m.module.find('DropItemCaption'))
     path='content:/qol-enhancements/messages/pockets.ini'
     m.files[path]=b'[USen]\nqol_pockets.drop_release=Drop / Release\nqol_pockets.hold_wear=Equip\n'
     m.caption(key=b'qol_pockets.drop_release'); m.caption(key=b'qol_pockets.hold_wear',group=True)
