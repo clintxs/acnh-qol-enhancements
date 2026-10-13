@@ -26,6 +26,13 @@ class CardMachine(Machine):
         for offset in HOOKS: self.u.mem_write(base + offset, RAW[offset:offset + 20])
         self.callbacks = {offset: self.module.find(name, 'Callback') for offset, name in
                           zip(HOOKS, ('ShopWallet', 'ShopDebit', 'ShopCapacity', 'SaleMessage', 'ShopPurchaseSpace', 'ShopBalanceDisplay', 'BellPageBalanceDisplay', 'CatalogOpened', 'CatalogClosed', 'CatalogDestroyed', 'CashNumberFeedback'))}
+        if enabled and base:
+            # Address-zero inherited fixtures use direct callbacks: native
+            # publication requires a nonzero main start. At real ASLR bases,
+            # exercise callbacks actually published by production activation.
+            for offset, callback in self.callbacks.items():
+                assert self.hooks[base + offset] == callback
+            self.callbacks = {offset:self.hooks[base + offset] for offset in HOOKS}
         for n, name in enumerate(('ShopWallet', 'ShopDebit', 'ShopCapacity', 'SaleMessage', 'ShopPurchaseSpace', 'ShopBalanceDisplay', 'BellPageBalanceDisplay', 'CatalogOpened', 'CatalogClosed', 'CatalogDestroyed', 'CashNumberFeedback')):
             stub = self.ram + 0x9000 + n * 0x10
             self.services[stub] = ('card_original', name)
@@ -256,7 +263,7 @@ for base in (0x7100000000, 0x7200000000):
     # Every fingerprint must fail before any feature hook is installed.
     import re
     from pathlib import Path
-    checks = Path(__file__).resolve().parents[1] / 'source/program/shopping/fingerprints.inc'
+    checks = Path(__file__).resolve().parents[1] / 'source/program/shopping/game/fingerprints.inc'
     for offset in re.findall(r'^\{(0x[0-9a-f]+),', checks.read_text(), re.M):
         bad = Machine(base, {'shopping-card': DEFAULT})
         bad.write(base + int(offset, 16), 0xdeadbeef, 4)

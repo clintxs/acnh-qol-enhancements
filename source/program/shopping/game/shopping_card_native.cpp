@@ -1,8 +1,8 @@
 #include "program/core/hook_plan.hpp"
 #include "lib.hpp"
-#include "shopping_card.hpp"
+#include "program/shopping/shopping_card.hpp"
 #include "program/core/resource_budget.hpp"
-#include "payment_policy.hpp"
+#include "program/shopping/features/shopping_features.hpp"
 #include <array>
 #include <cstring>
 
@@ -230,7 +230,8 @@ HOOK_DEFINE_TRAMPOLINE(StoragePayment) {
         const auto player = event ? reinterpret_cast<const std::uint8_t *>(event + field::EventPlayer) : nullptr;
         if (Valid(player) && storageDebitEvent == event) {
             const auto amount = Read<int>(action, storage::ActionAmount);
-            if (Read<std::uint8_t>(action, storage::ActionSubtract) && amount >= 0) {
+            if (Read<std::uint8_t>(action, storage::ActionSubtract) && amount >= 0 &&
+                AcceptsCard(PurchaseContext::StorageUpgrade)) {
                 PayWithCard(player, static_cast<unsigned>(amount));
                 return;
             }
@@ -331,21 +332,6 @@ void ShowPane(std::uintptr_t pane, bool visible) {
     if (!pane) return;
     auto &flags = *reinterpret_cast<std::uint8_t *>(pane + display::PaneFlags);
     flags = (flags & ~1u) | unsigned(visible);
-}
-unsigned FormatSavings(char16_t (&output)[12], unsigned balance) {
-    // Match the native nine-digit presentation; affordability uses the full total.
-    balance = std::min(balance, SavingsLimit);
-    char16_t reversed[12]{};
-    unsigned length = 0, digits = 0;
-    do {
-        if (digits && digits % 3 == 0) reversed[length++] = u',';
-        reversed[length++] = u'0' + balance % 10;
-        balance /= 10;
-        ++digits;
-    } while (balance && length < 11);
-    for (unsigned i = 0; i < length; ++i) output[i] = reversed[length - i - 1];
-    output[length] = 0;
-    return length;
 }
 enum class DisplaySurface : unsigned { Auxiliary, Hud };
 void UpdateStorageDismissal(std::uintptr_t owner, const std::uint8_t *player, DisplaySurface surface) {
@@ -463,7 +449,7 @@ void UpdateSavingsDisplay(std::uintptr_t counter, const std::uint8_t *player, Di
         storageSessions[*player].presented |= 1u << static_cast<unsigned>(surface);
     if (active) {
         char16_t text[12]{};
-        const auto balance = std::min(CombinedBalance(player), SavingsLimit);
+        const auto balance = DisplayedBalance(CombinedBalance(player));
         // Only the regular HUD drives feedback, so an auxiliary counter cannot
         // double-play the same purchase sound. Its balance remains immediate.
         const auto shown = surface == DisplaySurface::Hud ? AnimatedSavings(counter, balance, shop, *player) : balance;
@@ -514,36 +500,54 @@ HOOK_DEFINE_TRAMPOLINE(ShopWallet) {
         const auto caller = reinterpret_cast<std::uintptr_t>(__builtin_return_address(0));
         // Catalog's exact checkout caller works at Nook Stop and on the phone,
         // including outdoors. Its ordinary cash display calls remain untouched.
-        if (Valid(player) && ((caller == Main(storage::WalletReturn) && storageQueryResident == *player + 1u) ||
-                              caller == Main(catalog::WalletReturn) ||
-                              (Contains(WalletCallers, caller) && CurrentShop())))
-            return CombinedBalance(player);
+        auto context = PurchaseContext::OrdinaryCash;
+        if (Valid(player)) {
+            if (caller == Main(storage::WalletReturn) && storageQueryResident == *player + 1u)
+                context = PurchaseContext::StorageUpgrade;
+            else if (caller == Main(catalog::WalletReturn)) context = PurchaseContext::CatalogOrder;
+            else if (Contains(WalletCallers, caller) && CurrentShop()) context = PurchaseContext::ShopPurchase;
+        }
+        if (AcceptsCard(context)) return CombinedBalance(player);
         return Orig(player);
     }
 };
 HOOK_DEFINE_TRAMPOLINE(ShopDebit) {
     static void Callback(const std::uint8_t *player, unsigned amount) {
         const auto caller = reinterpret_cast<std::uintptr_t>(__builtin_return_address(0));
-        const bool catalogOrder = caller == Main(catalog::DebitReturn);
-        if (!Valid(player) || (!catalogOrder && !(Contains(DebitCallers, caller) && CurrentShop()))) {
+        auto context = PurchaseContext::OrdinaryCash;
+        if (Valid(player)) {
+            if (caller == Main(catalog::DebitReturn)) context = PurchaseContext::CatalogOrder;
+            else if (Contains(DebitCallers, caller) && CurrentShop()) context = PurchaseContext::ShopPurchase;
+        }
+        if (!AcceptsCard(context)) {
             Orig(player, amount);
             return;
         }
         PayWithCard(player, amount);
     }
 };
+// A borrowed resident is valid only during this synchronous payment callback.
+// These are the verified native paths, not independently writable money stores.
+class NativeCardPayment final : public game::CardPayment {
+    const std::uint8_t *player;
+public:
+    explicit NativeCardPayment(const std::uint8_t *resident) : player(resident) {}
+    bool ReadFunds(Balances &balance) override { return ReadBalances(player, balance); }
+    void WithdrawSavings(unsigned amount) override {
+        Fn<void (*)(const std::uint8_t *, unsigned)>(address::Withdraw)(player, amount);
+    }
+    void SpendNativeCash(unsigned amount) override { ShopDebit::Orig(player, amount); }
+    void ReturnNativeChange(unsigned amount) override {
+        Fn<void (*)(const std::uint8_t *, unsigned)>(address::AddCash)(player, amount);
+    }
+};
 bool PayWithCard(const std::uint8_t *player, unsigned amount) {
-    Balances balance;
-    const auto plan = ReadBalances(player, balance) ? PlanPayment(balance, amount) : Payment{};
+    NativeCardPayment native(player);
+    const auto plan = PayForPurchase(native, amount);
     if (!plan.affordable) {
         Logging.Debug("[QoL Enhancements/Shopping Card] INSUFFICIENT player=%u bells=%u\n", *player, amount);
         return false;
     }
-    if (plan.savings)
-        Fn<void (*)(const std::uint8_t *, unsigned)>(address::Withdraw)(player, plan.savings);
-    if (plan.cashDebit) ShopDebit::Orig(player, plan.cashDebit);
-    if (plan.walletRefund)
-        Fn<void (*)(const std::uint8_t *, unsigned)>(address::AddCash)(player, plan.walletRefund);
     Logging.Debug("[QoL Enhancements/Shopping Card] PURCHASE player=%u bells=%u savings=%u pockets=%u wallet=%u\n",
         *player, amount, plan.savings, plan.pockets, plan.wallet);
     return true;
@@ -552,7 +556,7 @@ HOOK_DEFINE_TRAMPOLINE(ShopCapacity) {
     static unsigned Callback(const std::uint8_t *player, unsigned reservedSlots) {
         const auto caller = reinterpret_cast<std::uintptr_t>(__builtin_return_address(0));
         const auto shop = caller == Main(0x00b1d4d8) && Valid(player) ? CurrentShop() : 0;
-        if (shop == MarketSmall || shop == MarketLarge) {
+        if (RouteSaleToSavings(shop == MarketSmall || shop == MarketLarge)) {
             // Native ShopSellDone compares this capacity BEFORE choosing either
             // wallet/Bell bags or its existing savings deposit at 00b1d4e8.
             Logging.Debug("[QoL Enhancements/Shopping Card] SALE_TO_SAVINGS player=%u\n", *player);
@@ -568,7 +572,7 @@ HOOK_DEFINE_TRAMPOLINE(ShopPurchaseSpace) {
             // Keep the conservative card-space preflight: do not promise slots
             // freed by bag spending, because native change/refunds may reuse a
             // slot. Preserve empty-slot and tailor-ticket accounting as before.
-            bells = 0;
+            bells = PurchaseSpaceBells(bells);
         }
         return Orig(player, bells, tickets);
     }
@@ -583,7 +587,7 @@ HOOK_DEFINE_TRAMPOLINE(SaleMessage) {
         // Case 2 explains that pockets are full, which is misleading for card
         // payments. Dialogue selection is independent of ShopCapacity: that
         // hook still routes the actual sale proceeds to native savings.
-        if (shop == MarketSmall || shop == MarketLarge) return 0;
+        if (UseOrdinarySaleMessage(shop == MarketSmall || shop == MarketLarge)) return 0;
         return Orig(query);
     }
 };

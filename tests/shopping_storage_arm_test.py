@@ -62,7 +62,11 @@ class StorageMachine(CardMachine):
         for offset, name in ((0x60f4f0,'StorageCommand'), (0x60fb10,'StorageAffordability'),
                              (0xc97260,'StoragePayment'), (0x60f340,'StorageEventDestroyed')):
             self.u.mem_write(base+offset, RAW[offset:offset+20])
-            self.callbacks[offset] = self.module.find('shopping',name,'Callback')
+            callback = self.module.find('shopping',name,'Callback')
+            if base:
+                assert self.hooks[base+offset] == callback
+                callback = self.hooks[base+offset]
+            self.callbacks[offset] = callback
             self.write(self.module.find('shopping',name,'OrigRef'), base+offset)
         del self.services[base+0x5bd550]  # run the actual native name hash
         self.area = self.ram+0x1b0000

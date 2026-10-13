@@ -8,7 +8,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 GROUPS = {
     'core': ['page_input_arm_test.py', 'feature_activation_arm_test.py', 'native_bindings_arm_test.py', 'logging_arm_test.py', 'core_arm_test.py', 'recipe_preview_arm_test.py'],
-    'shopping': ['shopping_layout_test.py', 'shopping_resource_arm_test.py', 'shopping_texture_arm_test.py', 'shopping_display_arm_test.py', 'shopping_cash_arm_test.py', 'shopping_storage_arm_test.py'],
+    'shopping': ['shopping_baseline_arm_test.py', 'shopping_layout_test.py', 'shopping_resource_arm_test.py', 'shopping_texture_arm_test.py', 'shopping_display_arm_test.py', 'shopping_cash_arm_test.py', 'shopping_storage_arm_test.py'],
     'dialogue': ['dialogue_policy_arm_test.py', 'dialogue_baseline_arm_test.py', 'dialogue_arm_test.py', 'dialogue_names_arm_test.py'],
     'crafting': ['crafting_baseline_arm_test.py', 'crafting_arm_test.py', 'quantity_shortcut_arm_test.py'],
     'controls': ['controls_baseline_arm_test.py', 'auto_swim_arm_test.py', 'swimming_camera_arm_test.py', 'auto_vault_arm_test.py', 'auto_ladder_arm_test.py', 'auto_placed_ladder_arm_test.py', 'auto_traversal_swap_arm_test.py', 'hold_y_arm_test.py', 'controls_dialogue_arm_test.py', 'dialogue_hurry_arm_test.py', 'dialogue_catch_hurry_arm_test.py'],
@@ -32,6 +32,7 @@ def main():
                             str(ROOT / 'tests' / f'{name}.cpp'),
                             *([str(ROOT / 'source/program/crafting/features/preview_features.cpp')] if name in ('preview_session_test', 'crafting_policy_test') else []),
                             *([str(ROOT / 'source/program/fitting/features/fitting_features.cpp')] if name in ('bag_policy_test','fitting_features_test') else []),
+                            *([str(ROOT / 'source/program/shopping/features/shopping_features.cpp')] if name == 'shopping_payment_test' else []),
                             *([str(ROOT / 'source/program/catalog/features/catalog_features.cpp')] if name == 'catalog_policy_test' else []),
                             *([str(ROOT / 'source/program/crafting/features/crafting_features.cpp')] if name == 'crafting_policy_test' else []), '-o', str(exe)], check=True)
             arguments = [str(exe)]
