@@ -63,6 +63,11 @@ every behavior to its native execution path and records verification limits.
 Faster Dialogue now has [readable speed and message policies](source/program/dialogue/features/faster_dialogue.hpp)
 and a [native-phase/verification handoff](docs/native-first-dialogue.md).
 
+Controls now has [readable pickup, hurry and camera decisions](source/program/controls/features/controls.hpp),
+[traversal and equipment lifecycle](source/program/controls/features/traversal.hpp),
+[swimming policy](source/program/controls/features/swimming.hpp), and
+a [reading-order/verification handoff](docs/native-first-controls.md).
+
 See the [internal architecture guide](docs/internal-architecture.md) for current
 feature/service/adapter boundaries, contributor rules and remaining migration
 candidates. The [stage 7 handoff](docs/stage7-live-validation.md) identifies the
@@ -99,7 +104,8 @@ C++ hook; its behavior is unchanged. Expected instruction words are validation
 fingerprints only, checked before each feature's first hook.
 
 Controls owns hold-to-advance policy and its native page-advance hook in
-`source/program/controls/dialogue_hurry.cpp`. Five reveal hooks are shared and
+`source/program/controls/features/controls.hpp` and
+`source/program/controls/game/hurry_native.cpp`. Five reveal hooks are shared and
 installed once when either dialogue feature needs them. Controls alone preserves
 native text speed and B/L/R behavior whenever Y is released; Faster Dialogue
 adds configured speed and its two speaker-name hooks. No synthetic A press or
