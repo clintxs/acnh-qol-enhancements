@@ -25,6 +25,33 @@ native offsets or state numbers. Input adapters own button/stick interpretation,
 consumption, edge history and blocked/suppressed sampling. UI-thread session
 policy owns timeout/repeat/pending-input state. It never owns a native pointer.
 
+### Encapsulated input operations (stage 7)
+
+All session navigation, rotation samples and accumulated phone tilt are private.
+The adapter uses these intent operations, preserving the previous distinctions:
+
+| Operation | Policy effect |
+| --- | --- |
+| `ClearFrameInput()` | Drop the frame's navigation sample and rotation axes, retaining a pending retry and held-repeat history. Used for non-showing dispatch. |
+| `CancelPendingInput()` | Drop navigation sample/pending retry and rotation axes. Keep held direction/repeat countdown; a subsequent sample-free frame rearms it. Used for missing/invalid snapshots or suppression. |
+| `ResetNavigation()` | Clear sample, pending step, held direction and countdown. Used on native close; `FinishClose()` also guarantees this reset. |
+| `CancelRotationInput()` | Clear axes without changing accumulated tilt. |
+| `TakeRotationInput()` | Return the axes by value and drain them once, even when the renderer is unavailable or the item has a fixed pose. |
+| `TiltBy(degrees)` | Accumulate and clamp phone tilt to ±60 degrees; called only after native rotation eligibility succeeds. |
+| `ResetItemRotation()` | Clear tilt and axes on item change/model creation, without resetting navigation cadence. |
+
+Consumed snapshot dispatch does not call cancellation merely because buttons or
+axes were already consumed: it leaves the first sample queued until Frame.
+Closing/lost starting context still follows native restoration and FinishClose;
+close drains input without resetting tilt, which resets at the next item setup.
+No operation acquires native pointers. Engine angles, transforms, readiness and
+resource ownership remain in the adapter. The workbench's separate native
+binding/tilt implementation is unchanged.
+
+Before, RotatePreview read `lifecycle.rotation.x/y` and assigned zero to both;
+now it calls `const auto [x, y] = s.lifecycle.TakeRotationInput();`. Changing an
+item similarly calls `ResetItemRotation()` instead of assigning three fields.
+
 The phone adapter privately owns the saved layout flags, parameter bytes,
 controller association and model reservation. Native phone update runs before
 session work. Starting work rechecks the current controller/parameter/mode

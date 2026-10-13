@@ -56,6 +56,11 @@ Version 1.0.0 is reserved for the initial release.
 
 ## Architecture
 
+See the [internal architecture guide](docs/internal-architecture.md) for current
+feature/service/adapter boundaries, contributor rules and remaining migration
+candidates. The [stage 7 handoff](docs/stage7-live-validation.md) identifies the
+local comparison candidate and pending Eden checks.
+
 `source/program/bootstrap.cpp` validates the original content-mount call and
 continuation, then installs one SIMD-preserving discovery hook at main+037B5464.
 Only after the game's `nn::fs::MountRom("content", ...)` call does Core read the

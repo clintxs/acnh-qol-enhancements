@@ -1,5 +1,10 @@
 # Unified QoL validation
 
+Current refactor evidence: [stage 7 verification](docs/stage7-verification.md).
+Live checks remain pending in the [Eden handoff](docs/stage7-live-validation.md);
+offline regressions do not establish live qualification. Historical records
+below retain their original scope.
+
 ## Hold-A selection feedback test (2026-10-11)
 
 Added one fingerprint-checked trampoline at 03c66950 (button feedback). Only

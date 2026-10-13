@@ -82,8 +82,10 @@ are rejected. An installed boolean is no longer evidence of hook ownership.
 
 `HookRegistry` has 160 claims, below the pinned 32-KiB trampoline pool's 163
 200-byte slots. Every program hook uses it; reused sites do not allocate another
-trampoline. A plan contains at most 20 reservations. The existing input handler,
-input observer and caption provider capacities remain 5, 5 and 4. Duplicate
+trampoline. A plan contains at most 20 reservations. The existing input handler and
+input observer capacities remain 5 and 5. Stage 5 replaced the historical
+four-provider caption registry with three exclusively owned caption keys; see
+[the current caption contract](shared-input-ui.md#captions). Duplicate
 registrations validate the owned hook before succeeding; incompatible observer
 pairs are rejected. The registry checks main-site bytes, not the integrity of
 every Exlaunch pool byte or native object lifetime.
