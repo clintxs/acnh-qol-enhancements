@@ -118,7 +118,8 @@ ownership, lifetime, limits, ordering and all stage 5 validation evidence.
 Before, `recipe_preview.cpp` mixed phone input/lifecycle, model allocation,
 layout caching, entity registry traversal and render-worker hooks. Its feature
 entry points now install phone-preview/workbench behavior through internal
-adapters. `crafting/services/preview_session.hpp` owns the UI policy: asynchronous
+adapters. `crafting/features/preview_features.cpp` now owns the UI policy (moved from
+`services/preview_session.hpp` by the subsequent Crafting pass): asynchronous
 Open, model-start timeout, Navigate/Rotate input, one pending navigation step,
 Close and back-release draining. It knows no offsets, ABI registers or native
 state numbers. Its runtime contract owns native work/restoration explicitly.

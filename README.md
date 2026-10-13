@@ -68,6 +68,10 @@ Controls now has [readable pickup, hurry and camera decisions](source/program/co
 [swimming policy](source/program/controls/features/swimming.hpp), and
 a [reading-order/verification handoff](docs/native-first-controls.md).
 
+Crafting now has [speed and quantity policy](source/program/crafting/features/crafting_features.cpp),
+[preview input and lifecycle policy](source/program/crafting/features/preview_features.cpp),
+and a [reading-order/native-contract handoff](docs/native-first-crafting.md).
+
 See the [internal architecture guide](docs/internal-architecture.md) for current
 feature/service/adapter boundaries, contributor rules and remaining migration
 candidates. The [stage 7 handoff](docs/stage7-live-validation.md) identifies the

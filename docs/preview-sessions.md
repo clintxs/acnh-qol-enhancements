@@ -1,7 +1,11 @@
-# Preview session and adapter contracts (stage 6)
+# Preview session and adapter contracts
+
+The session/publication split originated in stage 6. The subsequent Crafting
+pass moved input, selection and lifecycle policy into ordinary `.cpp` files;
+the engine/thread contracts below remain in force.
 
 Feature installation is now a small declaration of phone-preview/workbench
-behavior. `services/preview_session.hpp` describes when a preview opens,
+behavior. `features/preview_features.cpp` implements when a preview opens,
 navigates, rotates, closes or times out. Native model, layout, entity and drawing
 mechanics live in `game/preview_phone.cpp`, `preview_layout.cpp`,
 `preview_entities.cpp` and `preview_render.cpp`. These are internal components
@@ -21,9 +25,11 @@ for the current mod and supported ACNH build.
 `Open` starts a lifecycle, not synchronous model creation. The native adapter
 validates phone/selection/focus/renderer state and copies all eight item bytes
 before queueing it. `Navigate`, `Rotate` and `RequestClose` express policy without
-native offsets or state numbers. Input adapters own button/stick interpretation,
-consumption, edge history and blocked/suppressed sampling. UI-thread session
-policy owns timeout/repeat/pending-input state. It never owns a native pointer.
+native offsets or state numbers. Adapters decode native rows/masks and apply
+consumption; feature handlers choose button/stick intent and update the correlated
+edge history. Native adapters still supply blocking and ownership facts.
+UI-thread session policy owns timeout/repeat/pending-input state and never
+retains a native pointer or borrowed operation context.
 
 ### Encapsulated input operations (stage 7)
 
@@ -45,12 +51,12 @@ axes were already consumed: it leaves the first sample queued until Frame.
 Closing/lost starting context still follows native restoration and FinishClose;
 close drains input without resetting tilt, which resets at the next item setup.
 No operation acquires native pointers. Engine angles, transforms, readiness and
-resource ownership remain in the adapter. The workbench's separate native
-binding/tilt implementation is unchanged.
+resource ownership remain in the adapter. Workbench binding remains native; stick normalization and tilt arithmetic
+now run through `PreviewStickAxis` and `TiltWorkbench` in the feature implementation.
 
-Before, RotatePreview read `lifecycle.rotation.x/y` and assigned zero to both;
-now it calls `const auto [x, y] = s.lifecycle.TakeRotationInput();`. Changing an
-item similarly calls `ResetItemRotation()` instead of assigning three fields.
+The rotation policy drains axes with `session.TakeRotationInput()`. Changing an
+item calls `ResetItemRotation()` instead of assigning the private fields. The
+renderer operation is borrowed only for the synchronous feature call.
 
 The phone adapter privately owns the saved layout flags, parameter bytes,
 controller association and model reservation. Native phone update runs before
@@ -138,3 +144,8 @@ suites, six Pockets scripts and the stage 0 comparison again. It changes no
 preview behavior. Those final outputs and hashes are saved separately under
 `dist/refactor-stage6/final-build/`; the complete 46-script integration evidence
 for the publication build remains retained alongside it.
+
+The subsequent [Crafting handoff](native-first-crafting.md) maps the extracted
+input/selection/lifecycle policies, borrowed operation contracts and current
+verification. Session declarations now live in `features/recipe_preview.hpp`;
+substantial non-template implementation lives in `.cpp` files.
