@@ -112,3 +112,27 @@ minimum requirements. Native prepare/set/notify, metadata preservation and
 allocation floors remain in Core. The deliberate missing-adapter MSBT
 suppression policy is documented and tested. See `shared-input-ui.md` for
 ownership, lifetime, limits, ordering and all stage 5 validation evidence.
+
+## Preview session extraction
+
+Before, `recipe_preview.cpp` mixed phone input/lifecycle, model allocation,
+layout caching, entity registry traversal and render-worker hooks. Its feature
+entry points now install phone-preview/workbench behavior through internal
+adapters. `crafting/services/preview_session.hpp` owns the UI policy: asynchronous
+Open, model-start timeout, Navigate/Rotate input, one pending navigation step,
+Close and back-release draining. It knows no offsets, ABI registers or native
+state numbers. Its runtime contract owns native work/restoration explicitly.
+
+Native phone/model state is private to `preview_phone.cpp`; saved layout data
+and immutable resource caching live behind layout adapters; generation-bearing
+entity/parent/component validation lives in `preview_entities.cpp`; rendering
+and its native hook contracts live in `preview_render.cpp`. Shared declarations
+are internal to those adapters. This mechanical extraction retains the existing
+atomic publication rules; coherence changes are reviewed separately next.
+
+Validation: normal build, 18 host suites, six Core scripts (including the full
+preview/native-path suite) and both Crafting scripts passed. New policy tests
+cover waiting/failure/120-frame timeout, navigation retry/repeat, close/drain and
+20 repeated cycles. Existing native assertions for matrix/hidden-result ABI,
+entity identity, restoration, phone/workbench coexistence and hook conflicts
+remain. Logs: `dist/refactor-stage6/session-*.log`.
