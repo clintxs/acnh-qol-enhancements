@@ -288,12 +288,12 @@ void TapFocusedCursor(std::uintptr_t owner) {
     bool matches = false;
     for (int i=0; rows && i<count && i<128; ++i) if (RowLogicalIndex(list,i)==session.focus) {
         const auto row = At<std::uintptr_t>(rows, i*8);
-        const auto root = row ? RowRoot(row) : 0;
-        auto pane = focused;
-        for (unsigned depth=0; root && pane && depth<16; ++depth) {
-            if (pane==root) { matches=true; break; }
-            pane=At<std::uintptr_t>(pane,0x18);
-        }
+        // Cursor+218 is a native cursor target, not an nn::ui2d::Pane.
+        // Native FocusButton 031017f4..03101804 gets that same target from
+        // button+218. Compare identities; never walk the target as a pane.
+        // The old target+18 parent walk caused the Switch read at address 19.
+        const auto target = row ? At<std::uintptr_t>(row, 0x218) : 0;
+        if (target && target == focused) { matches = true; break; }
     }
     if (!matches) return;
     auto layout = At<std::uintptr_t>(cursor,0x220);

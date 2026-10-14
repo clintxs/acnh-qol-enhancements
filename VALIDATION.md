@@ -3130,3 +3130,27 @@ Pinned build and focused host/fitting regressions pass, including native checkou
 with simulated ticket removal, pricing, delivery and animation. Optional fitting
 baseline replay is skipped without QOL_BASELINE_ELF. No save files are accessed.
 Release markers remain 1.0.0; revision 10 preserves previous ZIPs.
+
+## 1.0.0 revision 11: Switch bag cursor-target crash (2026-10-14)
+
+The user's pre-ticket-remap crash report locates a Data Abort at Core+B4E8,
+reading 0x19 with X2=1, inside NativeSelection::PlayCursorTap. Released Core
+build 8B64CD25 is shared by revisions 6–9. The cursor's +218 focused object
+was incorrectly treated as an nn::ui2d::Pane and traversed via +18 parents.
+Compare its identity directly against the selected row's native cursor target
+at row+218, matching native FocusButton and the existing Pockets tap guard.
+The hand tap remains available without dereferencing the target as a pane.
+
+The preserved old ELF reproduces the exact fault address and Core offset at
+two load bases with a representative non-pane target. The corrected compiled
+code adds/removes bag items and requests feedback without reading target+18;
+null/unmatched targets skip feedback. The feedback fixture now uses real native
+row-root and logical-index resolution instead of the previous type-assuming
+stubs. See research/fitting-room/switch-cursor-crash.md for evidence and limits.
+
+Pinned build and focused host/fitting checks pass, including ticket X dispatch,
+native checkout, badge scale/dirty propagation and captions. Optional baseline
+replay remains skipped without QOL_BASELINE_ELF; the separate preserved-old-ELF
+crash regression runs locally. Package/manifests are checked. Live Switch
+validation is pending. This does not establish the cause of the separate
+checkout report. Revision 10's ticket remap is included; markers stay 1.0.0.
