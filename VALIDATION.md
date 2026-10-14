@@ -3082,9 +3082,10 @@ This retains the existing Eden module layout and initialization path.
 `rtld_header_arm_test.py` executes the actual hash-checked ACNH rtld probe in
 Unicorn at two Core load bases. The corrected header passes MOD0 validation;
 the old header faults and reproduces the hardware address exactly. The test
-is included in the Core check group. Live Switch and Eden launch validation
-of this corrected build remains pending; the probe test does not establish
-complete loader, runtime feature or resource compatibility.
+is included in the Core check group. The user confirmed successful ACNH startup
+on Switch with the revision 6 correction on October 14, 2026. Live Eden launch
+validation of this corrected build remains pending; the probe test and Switch
+startup confirmation do not establish full runtime feature or resource coverage.
 
 
 ## 1.0.0 revision 7: ABD Teal default (2026-10-14)
