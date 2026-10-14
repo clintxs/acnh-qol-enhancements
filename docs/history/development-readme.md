@@ -12,7 +12,7 @@ current release assessment.
 
 **1.0.0 release** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates seven optional RomFS feature packages. The
-standalone source projects/releases remain intact. Read [README.txt](../../README.txt)
+standalone source projects/releases remain intact. Read [README.txt](../user-guide.txt)
 for installation, version policy and user-facing limits.
 
 This build includes the revised defaults: automatic UI/unnamed dialogue boost

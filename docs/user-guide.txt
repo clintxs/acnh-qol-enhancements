@@ -7,9 +7,64 @@ This mod is broken up into a core module and seven feature modules enabling diff
 
 ## Installation
 
-CORE IS REQUIRED. Install `QoL Enhancements - Core (REQUIRED)` to your mods folder, along with any of the other modules you want.
+This release requires Animal Crossing: New Horizons 3.0.3. Core is required for every feature module; install Core plus whichever features you want.
 
-If you downloaded the Optional Files zip, it includes some extra customization options. The Shopping Card folder contains color variants - drag the enclosed `QoL Enhancements - Shopping Card` folder into your mods folder, replacing the default Shopping Card module if you already installed it. The included `My Custom QoL Configuration` can be added to your mods folder to customize settings. It's recommended to use this approach instead of editing the config files included in the mods, as they can be overrided when updating.
+### Eden
+
+1. Fully close the game and extract the main ZIP.
+2. Copy `QoL Enhancements - Core (REQUIRED)` and your chosen feature folders into ACNH's mods folder. Copy all eight QoL Enhancements folders for the full suite.
+3. Enable Core and the selected modules in Eden. Disable older standalone versions of those features.
+4. Restart the game after installing, updating, or changing settings.
+
+### Nintendo Switch running Atmosphère
+
+These steps assume your Switch already boots Atmosphère and has ACNH 3.0.3 installed. Release testing has been performed in Eden; these installation steps have not yet been verified on Switch hardware.
+
+1. Fully close ACNH and extract the main ZIP on your computer.
+2. Open your SD card and create this folder if it does not exist:
+
+   `sd:/atmosphere/contents/01006F8002326000/`
+
+3. Open `QoL Enhancements - Core (REQUIRED)` in the extracted ZIP. Copy its `exefs` and `romfs` folders into the folder above.
+4. For each feature you want, open its `QoL Enhancements - ...` folder and copy its `romfs` folder into the same destination. Merge folders when prompted. Do not copy the outer `QoL Enhancements - ...` folders onto the SD card.
+5. Replace older copies of this suite's files when updating. Keep your own `.custom.ini` files. Other mods using the same executable or resource files need a compatible merged installation; do not overwrite their files indiscriminately.
+6. Return the SD card to the Switch if you removed it, boot Atmosphère, and launch ACNH normally.
+
+The resulting structure should look like this (the exact files depend on the modules selected):
+
+```text
+sd:/atmosphere/contents/01006F8002326000/
+  exefs/
+    subsdk6
+    main.npdm
+  romfs/
+    qol-enhancements/
+      config/
+        core.ini
+        pockets.ini
+        controls.ini
+        ...
+      messages/
+        ...
+    Layout/
+      ...
+```
+
+The destination is the base game's title ID shown above. Keep both Core files in `exefs`, including `main.npdm`.
+
+On Atmosphère, selected modules share one installation folder rather than separate emulator mod folders. To remove a module, remove the files you copied from that module, including its regular config marker and any layouts or captions it supplied. Keep Core while using any other feature. To uninstall the suite, remove only its installed files, leaving unrelated mods intact.
+
+### Optional files
+
+The Optional Files ZIP includes Shopping Card colors and a personal configuration example.
+
+- On Eden, copy the chosen color's enclosed `QoL Enhancements - Shopping Card` folder into your mods folder, replacing the default Shopping Card module. Add `My Custom QoL Configuration` as a separate mod for personal settings.
+- On Atmosphère, copy the chosen color module's `romfs` folder into `sd:/atmosphere/contents/01006F8002326000/`, after installing the default Shopping Card module. Copy the `romfs` folder inside `My Custom QoL Configuration` into that same destination for personal settings.
+
+Choose one Shopping Card color. Reapply it after updating the default Shopping Card module. Keep a backup of edited custom settings instead of reinstalling the example over them.
+
+Atmosphère's executable replacement layout is documented at:
+https://github.com/Atmosphere-NX/Atmosphere/blob/master/docs/components/modules/loader.md
 
 
 ## Feature Modules
@@ -93,11 +148,11 @@ If you downloaded the Optional Files zip, it includes some extra customization o
 
 ## Custom Configuration
 
-It's recommended to download the Optional Files and drop the `My Custom QoL Configuration` folder into your mods folder to give you a template for setting up custom configuration.
+Personal settings use `.custom.ini` files in `romfs/qol-enhancements/config`.
 
-Configuration changes are made by creating your own custom "mod" that includes `.custom.ini` files for each module you want to configure. This is to avoid configuration gettig overwritten when updating, as your custom folder will be preserved.
+On Eden, keep them in a separate mod such as `My Custom QoL Configuration`, so replacing the suite's module folders preserves your settings. On Atmosphère, they go directly in `sd:/atmosphere/contents/01006F8002326000/romfs/qol-enhancements/config/`; keep a backup and preserve them when updating the suite.
 
-The mod looks for these `.custom.ini` files in the `romfs/qol-enhancements/config` folder.
+The regular module files supply defaults. Custom files override only the settings you include. Restart the game after editing them.
 
 
 ### core.custom.ini

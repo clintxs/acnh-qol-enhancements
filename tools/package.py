@@ -13,6 +13,7 @@ from shopping_card_texture import COLOR_LABELS, DEFAULT_PALETTE, PALETTES
 
 ROOT = Path(__file__).resolve().parents[1]
 CORE_FOLDER = 'QoL Enhancements - Core (REQUIRED)'
+USER_GUIDE = ROOT / 'docs/user-guide.txt'
 LABELS = ('Catalog', 'Pockets', 'Faster Dialogue', 'Fitting Room', 'Shopping Card', 'Crafting', 'Controls')
 
 def release_version():
@@ -40,12 +41,12 @@ def catalog_layouts():
 def suite_files():
     version = release_version()
     files = {
-        'README.txt': (ROOT / 'README.txt').read_bytes(),
+        'README.txt': USER_GUIDE.read_bytes(),
         'START HERE - CORE IS REQUIRED.txt': (
             'CORE IS REQUIRED FOR ALL FEATURE MODULES TO WORK.\n\n'
-            'Install and enable QoL Enhancements - Core (REQUIRED).\n'
-            'For the full suite, copy all eight QoL Enhancements folders into the\n'
-            'game mods folder. For selected features, copy Core plus those folders.\n'
+            'Install Core plus the feature modules you want.\n'
+            'On Eden, copy the selected QoL Enhancements folders into the game mods folder.\n'
+            'On Atmosphere, merge their exefs/romfs folders as described in README.txt.\n'
             'Disable older standalone versions and restart the game.\n'
             'See README.txt for details.\n'
         ).encode(),
@@ -82,7 +83,7 @@ def custom_files():
 
 
 def optional_files():
-    files = {'README.txt': (ROOT / 'README.txt').read_bytes(), **custom_files()}
+    files = {'README.txt': USER_GUIDE.read_bytes(), **custom_files()}
     module = ROOT / 'modules/Shopping Card'
     for palette in PALETTES:
         if palette == DEFAULT_PALETTE:

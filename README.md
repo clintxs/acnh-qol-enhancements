@@ -6,7 +6,7 @@ optional feature packages. Each package supplies its configuration and any RomFS
 resources it needs.
 
 This README covers building and navigating the source. For installation and
-player-facing features, see [README.txt](README.txt). Shopping Card appearance
+player-facing features, see [the packaged user guide](docs/user-guide.txt). Shopping Card appearance
 options are described in [SHOPPING_CARD_COLORS.md](SHOPPING_CARD_COLORS.md).
 
 ## Build requirements
@@ -85,6 +85,7 @@ Generated outputs and archives are ignored by Git. Preserve older archives.
 | `source/program/<module>/game/` | Native adapters, verified layouts and build profiles. Core uses `core/native/`. |
 | `source/program/<module>/services/` | Domain services where a feature needs shared rules or a deferred lifecycle. |
 | [modules/](modules/) | Packaged INI defaults and editable captions. |
+| [docs/user-guide.txt](docs/user-guide.txt) | User guide, included as `README.txt` in the release and Optional Files ZIPs. |
 | [examples/](examples/) | Personal configuration examples. |
 | [tools/](tools/) | Build, packaging and resource-generation scripts. |
 | [tests/](tests/) | Host policy tests, compiled ARM tests and package checks. |

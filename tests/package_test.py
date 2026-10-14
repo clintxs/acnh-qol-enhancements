@@ -61,7 +61,7 @@ assert not any('/exefs/' in name or name.endswith('/faster-dialogue.ini') for na
 print('PASS: separate personal preset, no module marker or executable, suite updates cannot replace custom INI')
 
 optional = package.optional_files()
-assert optional['README.txt'] == files['README.txt'] == (package.ROOT / 'README.txt').read_bytes()
+assert optional['README.txt'] == files['README.txt'] == package.USER_GUIDE.read_bytes()
 assert all(optional[name] == data for name, data in custom.items())
 assert not any('/exefs/' in name or 'Island Inverted/' in name for name in optional)
 assert {name.split('/')[1] for name in optional if name.startswith('Shopping Card/')} == {
