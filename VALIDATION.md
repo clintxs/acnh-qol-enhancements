@@ -3188,3 +3188,15 @@ evidence for a loading defect, not a complete asynchronous/GPU reproduction.
 Preview lifecycle/native binding checks, pinned build, Switch rtld header and
 package/manifest checks pass. Live Switch/Deck visual retesting is pending.
 See research/recipe-preview/switch-loading-texture.md for details.
+
+## 1.0.2 release (2026-10-14)
+
+The user confirms that 1.0.1 revision 3 fixes the DIY app loading crash on
+Switch. Promote the tested correction to 1.0.2. Core's release string/version
+tuple, all seven feature markers and the current source/user guides agree.
+Gameplay code is unchanged from the confirmed build. The earlier fitting-room
+cursor fix and X tickets/Y Bag remap remain included.
+
+Pinned build, versioned module activation, Nintendo rtld header compatibility,
+and final package/manifest checks pass. All layout archives and NPDM remain
+byte-identical to 1.0.1 revision 3. Previous release archives are preserved.
