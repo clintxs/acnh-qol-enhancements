@@ -19,7 +19,7 @@ constexpr std::uintptr_t FittingVtable = 0x04a10620;
 }
 constexpr auto &CaptionKey = BagHintKey;
 constexpr char MessagesPath[] = "content:/qol-enhancements/messages/fitting-room.ini";
-constexpr int NativeY = 7;
+constexpr int NativeX = 6, NativeY = 7;
 struct SafeString { std::uintptr_t vtable{}; const char *text{}; };
 struct HintDescription {
     int button = -1, secondary = -1, otherButton = -1, otherSecondary = -1;
@@ -106,6 +106,7 @@ HOOK_DEFINE_INLINE(AppendBagFooterHint) {
         // type-checked footer; x20 is still the fitting-room controller here.
         const auto footer = registers->X[19], owner = registers->X[20];
         if (!footer || !owner || Field<std::uintptr_t>(owner) != Main(address::FittingVtable)) return;
+        RemapTailorTicketInput(owner);
         NativeFooter target(footer, owner);
         AppendBagHint(target);
     }
@@ -114,11 +115,24 @@ HOOK_DEFINE_INLINE(AppendBagFooterHint) {
 
 } // namespace
 
+void RemapTailorTicketInput(std::uintptr_t owner) {
+    if (!owner || Field<std::uintptr_t>(owner) != Main(address::FittingVtable)) return;
+    const auto page = Field<std::uintptr_t>(owner, 0x210);
+    const auto ticketButton = page ? Field<std::uintptr_t>(page, 0x580) : 0;
+    const auto input = ticketButton ? Field<std::uintptr_t>(ticketButton, 0xa0) : 0;
+    // Native dispatch 03c4b244..03c4b270 reads this bit index for both held
+    // and consumed masks. Footer 03114f4c reads the same field for its glyph.
+    // Preserve unrelated bindings and all native eligibility/repeat state.
+    if (input && Field<int>(input, 0x14) == NativeY)
+        Field<int>(input, 0x14) = NativeX;
+}
+
 bool ValidateFittingHint() {
     struct Check { std::uintptr_t address; std::array<std::uint32_t, 5> words; };
     constexpr Check checks[]{
         {address::AppendFittingFooter, {0xb9401fa8, 0x7100051f, 0x54000520, 0xf9410a89, 0xf942c129}},
         {address::AppendHint, {0xb941f008, 0x3100051f, 0xb941f409, 0xb941b00a, 0x3a410920}},
+        {0x03c4b244, {0xb9401408, 0xb9400149, 0xb940140b, 0xb9403d4a, 0x1acb254a}},
         {address::GetActiveLocale, {0xa9be7bfd, 0xf9000bf3, 0x910003fd, 0xb00110c8, 0xf9436108}},
     };
     const auto &text = exl::util::GetMainModuleInfo().m_Text;

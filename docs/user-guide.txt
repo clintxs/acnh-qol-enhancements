@@ -134,7 +134,9 @@ Choose one Shopping Card color. Reapply it after updating the default Shopping C
 
 ### Fitting Room
 
-- Add clothes to your shopping bag to buy many items in one transaction
+- Press Y to add/remove clothes from your shopping bag and buy many items in one transaction
+- Press X to apply/remove a tailor ticket from an eligible tried-on item
+  - Bag-only items cost bells; tailor tickets still apply to tried-on items
 - Lets you press B to cancel the "Do you want to wear your items out?" message
 
 ### Core

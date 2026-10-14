@@ -464,6 +464,9 @@ void HandleInput(std::uintptr_t page, std::uintptr_t snapshot, unsigned blocked)
                 outcome.item.id, outcome.item.extra, unsigned(outcome.result), session.bag.count, outcome.price);
 }
 void Input(std::uintptr_t page, std::uintptr_t snapshot, unsigned blocked) {
+    // Also cover a reconstructed/cached input unit before native dispatch.
+    if (IsOwner(session.owner) && At<std::uintptr_t>(session.owner, field::Page) == page)
+        RemapTailorTicketInput(session.owner);
     HandleInput(page, snapshot, blocked);
     originalInput(page, snapshot, blocked);
 }

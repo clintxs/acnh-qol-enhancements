@@ -27,7 +27,7 @@ class HintMachine(Machine):
         self.write(base+0x4ab2bc0,self.safe-16);self.write(self.safe+24,self.safe_fn)
         self.write(self.owner,base+0x4a10620);self.write(self.owner+0x210,self.page)
         self.write(self.owner+0x1f8,2,1)
-        for i,button in enumerate((5,10,6)):
+        for i,button in enumerate((5,10,7)):
             obj=self.page+0x6000+i*0x1000;unit=obj+0x200
             self.write(self.page+0x570+i*8,obj);self.write(obj+0xa0,unit)
             self.write(unit+0x14,button,4);self.write(unit+0xbc,1,1)
@@ -139,6 +139,11 @@ for base in (0x7100000000,0x7200000000):
         assert labels.count(KEY.decode())==1 and len(rows)==(5 if ticket else 4),labels
         bag=next(r for r in rows if m.label(r)==KEY.decode())
         assert m.read(bag,4)==7 and m.read(bag+0x68,1)==2
+        ticket_input=m.read(m.read(m.page+0x580)+0xa0)
+        assert m.read(ticket_input+0x14,4)==6
+        if ticket:
+            ticket_hint=rows[-1]
+            assert m.read(ticket_hint,4)==6 and m.read(ticket_hint+0x68,1)==2
         # Same native hint mode skips the builder and does not append a duplicate.
         m.invoke(base+0x3114c3c,m.owner,0 if ticket else 0xffffffff)
         assert m.rows()==rows

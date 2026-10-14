@@ -3100,3 +3100,33 @@ Files. Existing green and Island Inverted layout checks pass, including original
 pane preservation, texture/material structure and native 16:9 placement. Package
 checks verify the new default, all five alternatives, marker versions, manifests
 and exact ZIP contents. Core is carried forward unchanged from revision 6.
+
+## 1.0.0 revision 10: X tailor tickets / Y Bag (2026-10-14)
+
+The user found that vanilla ticket usage and Bag share Y. Preserve Y for the
+frequent Bag action and move the native ticket action to X. The native fitting
+page ticket button is page+580, with its input unit at button+A0. Both native
+input dispatch 03C4B244..03C4B270 and ticket footer construction 03114F4C read
+the unit's +14 button bit index. Rebind only 7 (Y) to 6 (X), preserving unrelated
+bindings and native eligibility, consumption, repeat and ticket behavior.
+
+The existing footer inline hook remaps before the ticket hint is copied; the
+private fitting input adapter also remaps before dispatch, covering reconstructed
+or cached units. No new code hook is added. Validate the native mask-reader
+instructions before feature installation. Bag input and captions stay Y.
+
+The new fitting_ticket_arm_test.py executes the unmodified native button-unit
+dispatch at two load bases. X emits native press events and consumes X; raw Y
+does not emit a ticket press even when unconsumed. Includes accompanying bit16,
+consumed/blocked/disabled inputs and resident-row separation. Compiled fitting
+input tests exercise Y bag add/remove, X leaving bag membership unchanged,
+reconstructed-unit remapping, absent unit, foreign binding and page guards.
+The existing native footer test now starts from vanilla Y ticket binding and
+checks the resulting X ticket glyph/player while Bag retains Y. Event emission
+is modeled; actual ticket eligibility/assignment/removal and GPU glyph rendering
+remain live-test requirements.
+
+Pinned build and focused host/fitting regressions pass, including native checkout
+with simulated ticket removal, pricing, delivery and animation. Optional fitting
+baseline replay is skipped without QOL_BASELINE_ELF. No save files are accessed.
+Release markers remain 1.0.0; revision 10 preserves previous ZIPs.
