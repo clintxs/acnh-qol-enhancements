@@ -8,7 +8,7 @@ from dataclasses import dataclass, replace
 from functools import lru_cache
 
 # Packaging uses this reviewed palette; legacy helper defaults remain stable.
-DEFAULT_PALETTE = 'island-inverted'
+DEFAULT_PALETTE = 'green'
 COLOR_LABELS = {
     'green': 'ABD Teal',
     'gold': 'Bell Gold',

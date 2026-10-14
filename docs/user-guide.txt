@@ -56,7 +56,7 @@ On Atmosphère, selected modules share one installation folder rather than separ
 
 ### Optional files
 
-The Optional Files ZIP includes Shopping Card colors and a personal configuration example.
+The default Shopping Card theme is ABD Teal, with a green card and oval. The Optional Files ZIP includes Bell Gold, Hotel Blue, Poki Red, Island and Island Inverted, plus a personal configuration example.
 
 - On Eden, copy the chosen color's enclosed `QoL Enhancements - Shopping Card` folder into your mods folder, replacing the default Shopping Card module. Add `My Custom QoL Configuration` as a separate mod for personal settings.
 - On Atmosphère, copy the chosen color module's `romfs` folder into `sd:/atmosphere/contents/01006F8002326000/`, after installing the default Shopping Card module. Copy the `romfs` folder inside `My Custom QoL Configuration` into that same destination for personal settings.

@@ -3085,3 +3085,17 @@ the old header faults and reproduces the hardware address exactly. The test
 is included in the Core check group. Live Switch and Eden launch validation
 of this corrected build remains pending; the probe test does not establish
 complete loader, runtime feature or resource compatibility.
+
+
+## 1.0.0 revision 7: ABD Teal default (2026-10-14)
+
+Restore the screenshot's original green ABD Teal theme as the main-suite
+default. Island Inverted moves to Optional Files alongside Bell Gold, Hotel
+Blue, Poki Red and Island. No palette values, runtime code or version markers
+change; release remains 1.0.0. Updated user guide and color documentation.
+
+Default generated layout is byte-identical to ABD Teal in revision 6 Optional
+Files. Existing green and Island Inverted layout checks pass, including original
+pane preservation, texture/material structure and native 16:9 placement. Package
+checks verify the new default, all five alternatives, marker versions, manifests
+and exact ZIP contents. Core is carried forward unchanged from revision 6.

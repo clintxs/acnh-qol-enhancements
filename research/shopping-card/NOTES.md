@@ -769,3 +769,17 @@ Compared all palette fields to the historical source and generated the same
 layout with both definitions, byte for byte. Existing structure/material/texture
 checks pass. Core behavior, compiled version and configuration markers remain
 0.4.32; package revision 3 preserves earlier archives.
+
+
+## Restore ABD Teal as the 1.0.0 default (2026-10-14)
+
+The user's screenshot identifies the original green ABD Teal theme, rather
+than the blue Island Inverted theme selected previously. Set DEFAULT_PALETTE
+to green without changing any palette fields. Island Inverted becomes one of
+five Optional Files choices; ABD Teal is excluded from those alternatives.
+The main package, color helper and user documentation follow this default.
+
+Generated default layout bytes match ABD Teal in the preserved 1.0.0 revision 6
+Optional Files archive exactly. Existing green and Island Inverted structure
+checks pass. Core and every module marker remain 1.0.0; package revision 7
+preserves prior archives and retains the current Core without rebuilding it.

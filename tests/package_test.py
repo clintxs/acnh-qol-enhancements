@@ -49,7 +49,7 @@ for name, digest in manifest.items(): assert hashlib.sha256(files[name]).hexdige
 # Resource generation must reproduce the reviewed module baselines exactly.
 for name, digest in reference['assets'].items():
     assert hashlib.sha256(files[name]).hexdigest() == digest, name
-print('PASS: eight mod folders, subsdk6 only, seven versioned feature configs and default Core settings, seven layout resources, revised basket and default Island Inverted Shopping Card layout and SHA-256 manifest')
+print('PASS: eight mod folders, subsdk6 only, seven versioned feature configs and default Core settings, seven layout resources, revised basket and default ABD Teal Shopping Card layout and SHA-256 manifest')
 custom = package.custom_files()
 personal = [name for name in custom if '/config/' in name]
 assert len(personal) == 1 and personal[0].endswith('/faster-dialogue.custom.ini')
@@ -63,9 +63,9 @@ print('PASS: separate personal preset, no module marker or executable, suite upd
 optional = package.optional_files()
 assert optional['README.txt'] == files['README.txt'] == package.USER_GUIDE.read_bytes()
 assert all(optional[name] == data for name, data in custom.items())
-assert not any('/exefs/' in name or 'Island Inverted/' in name for name in optional)
+assert not any('/exefs/' in name or 'ABD Teal/' in name for name in optional)
 assert {name.split('/')[1] for name in optional if name.startswith('Shopping Card/')} == {
-    'ABD Teal', 'Bell Gold', 'Hotel Blue', 'Poki Red', 'Island'}
+    'Bell Gold', 'Hotel Blue', 'Poki Red', 'Island', 'Island Inverted'}
 from build_shopping_card_layout import build as shopping_layout
 for palette, label in package.COLOR_LABELS.items():
     generated = shopping_layout(palette)
