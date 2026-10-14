@@ -18,7 +18,7 @@ This release requires Animal Crossing: New Horizons 3.0.3. Core is required for 
 
 ### Nintendo Switch running Atmosphère
 
-These steps assume your Switch already boots Atmosphère and has ACNH 3.0.3 installed. Release testing has been performed in Eden. Installation and successful game startup have also been confirmed on Nintendo Switch hardware running Atmosphère with ACNH 3.0.3. Use packaging revision 6 or later, which includes the Switch startup fix.
+These steps assume your Switch already boots Atmosphère and has ACNH 3.0.3 installed.
 
 1. Fully close ACNH and extract the main ZIP on your computer.
 2. Open your SD card and create this folder if it does not exist:
@@ -62,9 +62,6 @@ The default Shopping Card theme is ABD Teal, with a green card and oval. The Opt
 - On Atmosphère, copy the chosen color module's `romfs` folder into `sd:/atmosphere/contents/01006F8002326000/`, after installing the default Shopping Card module. Copy the `romfs` folder inside `My Custom QoL Configuration` into that same destination for personal settings.
 
 Choose one Shopping Card color. Reapply it after updating the default Shopping Card module. Keep a backup of edited custom settings instead of reinstalling the example over them.
-
-Atmosphère's executable replacement layout is documented at:
-https://github.com/Atmosphere-NX/Atmosphere/blob/master/docs/components/modules/loader.md
 
 
 ## Feature Modules
