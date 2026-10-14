@@ -51,6 +51,7 @@ struct InputCapture {
     void *owner{};
     int row{}, previousSlot{};
     bool starting{};
+    std::uint64_t tick{};
 };
 InputCapture capture{};
 struct SafeString { std::uintptr_t vtable; const char *text; };
@@ -161,9 +162,10 @@ void BeforeHoldSelectInput(void *page, void *snapshot, unsigned blocked) {
     // An A press carried into a new/blocked picker must be released first.
     const int slot = game::pocket_input::FindFocusedItemSlot(page, row);
     if (!gesture.selection.CanStart() || slot < 0) return;
+    const auto tick = svcGetSystemTick();
     const bool starting = gesture.selection.Begin(
-        (Field<std::uint64_t>(owner, layout::SelectedSlots) & (std::uint64_t{1} << slot)) != 0);
-    capture = {owner, row, slot, starting};
+        (Field<std::uint64_t>(owner, layout::SelectedSlots) & (std::uint64_t{1} << slot)) != 0, tick);
+    capture = {owner, row, slot, starting, tick};
 }
 
 void *QueueHeldSelection(void *page, const InputCapture &input) {
@@ -186,7 +188,7 @@ void *QueueHeldSelection(void *page, const InputCapture &input) {
     if (slot < 0) return nullptr;
     const auto bit = std::uint64_t{1} << slot;
     const bool selected = (Field<std::uint64_t>(owner, layout::SelectedSlots) & bit) != 0;
-    if (!gesture.selection.WantsToggle(selected, slot != input.previousSlot) ||
+    if (!gesture.selection.WantsToggle(selected, slot != input.previousSlot, input.tick) ||
         (Field<std::uint64_t>(owner, layout::BlockedSlots) & bit) ||
         Field<std::uint16_t>(owner, layout::LogicalInput) != 0) return nullptr;
     auto *widget = Field<void *>(page, layout::ItemWidgets + sizeof(void *) * slot);

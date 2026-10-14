@@ -97,8 +97,12 @@ for base in (0x80000000, 0x1234500000):
                base + 0x257c230: lambda: free_storage,
                base + 0x3c66950: feedback,
                base + 0x3093d24: lambda: refreshes.append(h.read(pocket + 0x1c4e8))}
-    def frame(buttons=0, move=None, blocked=0, consumed=0, click=None, other_row=0):
+    tick = 0
+    h.stubs[h.mod + symbol('svcGetSystemTick')] = lambda: tick
+    def frame(buttons=0, move=None, blocked=0, consumed=0, click=None, other_row=0, elapsed_ms=250):
         global target, native_click
+        global tick
+        tick += elapsed_ms * 19200
         if move is not None: target = move
         native_click = click
         h.write(rows, other_row, 4); h.write(rows + 0x3c, 0, 4)
@@ -123,6 +127,25 @@ for base in (0x80000000, 0x1234500000):
         h.write(pocket + 0x1c51a, 0, 2); h.write(pocket + 0x1c518, 255, 1)
         h.write(ctx + 0x54, 0, 1); h.write(ctx + 0x58, 1, 4); h.write(masks + 0x10, 0, 4)
         frame(0, 0)
+    for mode in (1, 9):
+        reset(mode)
+        frame(16, click=0, elapsed_ms=0); native_select()
+        feedback_events.clear()
+        frame(16, 1, elapsed_ms=249)
+        assert h.read(pocket + 0x1c51a, 2) == 0
+        assert feedback_events == [(widgets + 0x400, b'Select', 123)]
+        frame(16, 2, elapsed_ms=1)
+        assert h.read(pocket + 0x1c51a, 2) == 4
+        native_select(); assert h.read(pocket + 0x1c4e8) == 5
+        # Release resets the timer; separate quick taps remain native clicks.
+        frame(0, elapsed_ms=0); frame(16, click=2, elapsed_ms=0); native_select()
+        frame(16, 3, elapsed_ms=100)
+        assert h.read(pocket + 0x1c51a, 2) == 0
+        frame(16, elapsed_ms=150) # Expiry alone must not click a stationary item.
+        assert h.read(pocket + 0x1c51a, 2) == 0
+        frame(16, 0, elapsed_ms=0); native_select()
+        assert h.read(pocket + 0x1c4e8) == 0 # Deselection intent retained from tap.
+        cases += 1
     for mode in (1, 9):
         reset(mode)
         # First item uses the normal A click, then four cursor moves add four more.

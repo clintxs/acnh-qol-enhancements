@@ -5,6 +5,22 @@ Live checks remain pending in the [Eden handoff](docs/stage7-live-validation.md)
 offline regressions do not establish live qualification. Historical records
 below retain their original scope.
 
+## 1.0.0 hold-A activation delay (2026-10-14)
+
+Hold-to-multiselect now requires 250 ms of continuous A before cursor movement
+can queue additional selections/deselections. The native initial click remains
+immediate. The feature policy receives the system tick from the native adapter
+(19.2 MHz), so the threshold is independent of input update rate. Release,
+blocked input and existing lifecycle resets require a new hold. Timer expiry
+alone never toggles a stationary item; movement before expiry is not replayed.
+Version and module markers remain 1.0.0.
+
+Offline build and all host policy/Pockets ARM suites passed. Policy checks cover
+the exact threshold and one tick below; 100 hold-select ARM scenarios at two
+bases include 249/250 ms, immediate taps, timer restart, stationary expiry,
+retained deselect intent and unchanged pre-delay movement sound. Native input
+and audio boundaries remain modeled; live Eden testing is pending.
+
 ## Hold-A selection feedback test (2026-10-11)
 
 Added one fingerprint-checked trampoline at 03c66950 (button feedback). Only

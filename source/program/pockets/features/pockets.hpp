@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include "program/pockets/game/item_menu.hpp"
 #include "program/pockets/game/pocket_footer.hpp"
 #include "program/pockets/game/stack_menu.hpp"
@@ -77,22 +78,28 @@ inline bool CanHoldSelect(game::SelectionContext context, int selectionLimit) {
 // toggles items and enforces capacity/selection limits; we only request a click.
 class HoldSelection {
     bool released_{}, holding_{}, selecting_{};
+    std::uint64_t startedAt_{};
 public:
+    static constexpr std::uint64_t StartDelayTicks = 19'200'000 / 4; // 250 ms, independent of FPS.
     void Block() { released_ = holding_ = false; }
     void Release() { released_ = true; holding_ = false; }
     bool CanStart() const { return released_; }
     bool Holding() const { return holding_; }
-    bool Begin(bool itemSelected) {
+    bool Begin(bool itemSelected, std::uint64_t now) {
         const bool starting = !holding_;
-        if (starting) selecting_ = !itemSelected;
+        if (starting) {
+            selecting_ = !itemSelected;
+            startedAt_ = now;
+        }
         holding_ = true;
         return starting;
     }
     // Navigation and the initial A press can share a frame; use the actual
     // native clicked item before it toggles, rather than the old cursor item.
     void InitialClick(bool itemSelected) { selecting_ = !itemSelected; }
-    bool WantsToggle(bool itemSelected, bool cursorMoved) const {
-        return holding_ && cursorMoved && itemSelected != selecting_;
+    bool WantsToggle(bool itemSelected, bool cursorMoved, std::uint64_t now) const {
+        return holding_ && now - startedAt_ >= StartDelayTicks &&
+            cursorMoved && itemSelected != selecting_;
     }
 };
 

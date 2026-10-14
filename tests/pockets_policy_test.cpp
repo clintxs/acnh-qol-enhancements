@@ -64,17 +64,21 @@ int main() {
     HoldSelection hold;
     assert(!hold.CanStart());
     hold.Release();
-    assert(hold.CanStart() && hold.Begin(false));
-    assert(hold.WantsToggle(false, true) && !hold.WantsToggle(true, true));
-    assert(!hold.WantsToggle(false, false)); // Revisit/no movement cannot create a request.
-    assert(!hold.Begin(true) && hold.WantsToggle(false, true)); // Keep initial intent.
+    constexpr auto delay = HoldSelection::StartDelayTicks;
+    assert(hold.CanStart() && hold.Begin(false, 0));
+    assert(!hold.WantsToggle(false, true, 0));
+    assert(!hold.WantsToggle(false, true, delay - 1));
+    assert(hold.WantsToggle(false, true, delay) && !hold.WantsToggle(true, true, delay));
+    assert(!hold.WantsToggle(false, false, delay)); // Stationary expiry cannot create a request.
+    assert(!hold.Begin(true, delay) && hold.WantsToggle(false, true, delay)); // Keep initial intent/time.
     hold.Block();
-    assert(!hold.CanStart() && !hold.WantsToggle(false, true));
+    assert(!hold.CanStart() && !hold.WantsToggle(false, true, delay));
     hold.Release();
-    assert(hold.Begin(true));
-    assert(hold.WantsToggle(true, true) && !hold.WantsToggle(false, true));
+    assert(hold.Begin(true, delay));
+    assert(!hold.WantsToggle(true, true, delay * 2 - 1)); // Fresh timer after release/block.
+    assert(hold.WantsToggle(true, true, delay * 2) && !hold.WantsToggle(false, true, delay * 2));
     hold.InitialClick(false); // Native click moved in the same initial frame.
-    assert(hold.WantsToggle(false, true));
+    assert(hold.WantsToggle(false, true, delay * 2));
     std::vector<game::PocketHint> hints;
     game::PocketFooter footer(&hints, [](void *context, game::PocketHint hint) {
         static_cast<std::vector<game::PocketHint> *>(context)->push_back(hint);

@@ -73,7 +73,7 @@ https://github.com/Atmosphere-NX/Atmosphere/blob/master/docs/components/modules/
 
 - Stack splitting: Grab 5 and Grab 10.
 - Trigger controls: ZL to drop items, ZR to use items (hold tools, wear clothing, or consume food)
-- Hold to select: in multi select menus (storage sheds, Nook's Cranny), hold A and move the cursor to select multiple items
+- Hold to select: in multi select menus (storage sheds, Nook's Cranny), hold A for 250 ms, then move the cursor to select multiple items. Individual taps still work normally.
 - Press Y to move items to storage while in your house
 - Bypass some menus:
   - Press A while in home storage to move an item to your pockets
