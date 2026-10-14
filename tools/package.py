@@ -47,7 +47,7 @@ def suite_files():
             'For the full suite, copy all eight QoL Enhancements folders into the\n'
             'game mods folder. For selected features, copy Core plus those folders.\n'
             'Disable older standalone versions and restart the game.\n'
-            'See README.txt for details. This is an integration test build.\n'
+            'See README.txt for details.\n'
         ).encode(),
         f'{CORE_FOLDER}/exefs/subsdk6': (ROOT / 'deploy/subsdk6').read_bytes(),
         f'{CORE_FOLDER}/exefs/main.npdm': (ROOT / 'deploy/main.npdm').read_bytes(),

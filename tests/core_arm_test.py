@@ -160,9 +160,10 @@ def check_all_subsets():
     print('PASS: all 128 module subsets at two bases; deferred activation, isolated C++ hooks, C++ dialogue hooks, once-only reads')
 
 def check_errors():
+    future = f'enabled=true\nversion={int(RELEASE_VERSION.split(".")[0]) + 1}.0.0'.encode()
     for slug in SLUGS:
         for data, expected in ((b'enabled=true\nversion=0.0.9', 'below minimum'),
-                               (b'enabled=true\nversion=0.5.0', 'newer than Core'),
+                               (future, 'newer than Core'),
                                (b'enabled=false\nversion=0.0.1', 'enabled=false'),
                                (b'enabled=true', 'config invalid'),
                                (b'x' * 4097, 'config invalid'),
@@ -170,7 +171,7 @@ def check_errors():
             m = Machine(0x7100000000, {slug: data})
             m.boot(); m.activate()
             assert expected in m.text, m.text
-            if b'version=0.5.0' in data:
+            if data == future:
                 assert 'BOOT_OK' in m.text and 'enabled_modules=1' in m.text
             else:
                 assert len(m.hooks) == 2 + (slug in ('shopping-card', 'fitting-room')) and m.read(m.base + 0xbc4140, 4) == 0x52803848

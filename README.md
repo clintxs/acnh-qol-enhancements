@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-**0.4.32 release test build** for ACNH **3.0.3 on Eden**. One Core
+**1.0.0 release** for ACNH **3.0.3 on Eden**. One Core
 executable in **subsdk6** activates seven optional RomFS feature packages. The
 standalone source projects/releases remain intact. Read [README.txt](README.txt)
 for installation, version policy and user-facing limits.
@@ -12,7 +12,7 @@ Version 0.4.32 adds `enable_multiselect`, native crafting speed with
 captions for all 16 locales. Rename old custom dialogue keys and
 `optimized_ui.grab_five/grab_ten` caption keys; no legacy aliases are read.
 Core logging defaults to version/settings summaries with warnings and errors
-always visible. Live Eden testing is still required before public release.
+always visible. See [VALIDATION.md](VALIDATION.md) for verification details.
 
 The DIY Recipes app now shows **A / Select** while browsing recipes with
 Crafting’s DIY preview enabled. It uses the existing localized caption and
@@ -52,7 +52,7 @@ Core includes the amiibo timeout fix. DIY Recipes app previews now belong to
 the optional Crafting module, alongside the former Faster Crafting feature.
 
 Development releases advance numerically (for example, 0.9.0 → 0.10.0).
-Version 1.0.0 is reserved for the initial release.
+Version 1.0.0 is the initial release.
 
 ## Architecture
 
@@ -179,7 +179,7 @@ produce and weeds. It adds no animation speed multiplier or pickup radius.
 
 ```ini
 enabled = true
-version = 0.4.32
+version = 1.0.0
 hold_to_advance_dialogue = true
 hold_to_hoover = true
 auto_vault = true
@@ -269,14 +269,14 @@ Diagnostic checks: `PYTHONPATH='../Grab 5/working/python:tests' python3 tests/di
 Install **QoL Enhancements - Crafting** with Core. This replaces the former
 Faster Crafting package; remove the old folder and rename personal
 `faster-crafting.custom.ini` preferences to `crafting.custom.ini`. Remove any old
-`version` override from that personal file (or update it to 0.4.32). The retired
+`version` override from that personal file (or update it to 1.0.0). The retired
 regular/custom paths are no longer read. Core alone no longer enables DIY previews.
 
 `romfs/qol-enhancements/config/crafting.ini` supplies these defaults:
 
 ```ini
 enabled = true
-version = 0.4.32
+version = 1.0.0
 diy_app_preview = true
 workbench_preview_tilt = true
 crafting_quantity_wrap = true
@@ -511,7 +511,7 @@ For example, `faster-dialogue.ini` can contain:
 
 ```ini
 enabled = true
-version = 0.4.32
+version = 1.0.0
 base_speed = 2
 boost_speed = 4
 boost_ui_messages = true
@@ -676,9 +676,9 @@ at `../vanilla-3.0.3/Layout`; builders verify their hashes and archive structure
 The package script checks that every INI matches the Core release, refuses to
 replace existing archives, and creates:
 
-- `dist/qol-enhancements-v0_4_32_for_acnh_v3_0_3.zip`
-- `dist/qol-enhancements-v0_4_32_for_acnh_v3_0_3_source.zip`
-- `dist/qol-enhancements-v0_4_32_for_acnh_v3_0_3_optional-files.zip`
+- `dist/qol-enhancements-v1_0_0_for_acnh_v3_0_3.zip`
+- `dist/qol-enhancements-v1_0_0_for_acnh_v3_0_3_source.zip`
+- `dist/qol-enhancements-v1_0_0_for_acnh_v3_0_3_optional-files.zip`
 
 The binary ZIP contains a conspicuous installation text file, README, Core and
 seven independently selectable feature folders, plus a SHA-256 manifest. Source
@@ -687,9 +687,7 @@ generated game resources and binaries are excluded. Optional Files includes
 five complete Shopping Card color replacements (excluding default Island Inverted),
 `My Custom QoL Configuration` with an internal-ID dialogue preset, and the shared
 README.txt. Use `python3 tools/package.py --revision 2` to produce `_r2` archives
-without replacing previously generated files. The supplied README.txt is the
-user's v1.0.0 release draft; executable/module versions remain developmental
-until the release is finalized.
+without replacing previously generated files. README.txt contains the release installation and feature guide.
 
 To prepare configuration for a fresh original ExeFS extraction:
 
