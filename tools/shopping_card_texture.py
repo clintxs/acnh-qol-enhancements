@@ -10,7 +10,7 @@ from functools import lru_cache
 # Packaging uses this reviewed palette; legacy helper defaults remain stable.
 DEFAULT_PALETTE = 'island-inverted'
 COLOR_LABELS = {
-    'green': 'ADB Teal',
+    'green': 'ABD Teal',
     'gold': 'Bell Gold',
     'hotel-blue': 'Hotel Blue',
     'poki-red': 'Poki Red',

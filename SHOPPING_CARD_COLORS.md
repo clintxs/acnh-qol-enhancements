@@ -1,7 +1,7 @@
 # Shopping Card colors — QoL Enhancements / ACNH 3.0.3
 
 Island Inverted is the main suite's default. Optional Files contains five
-alternatives: ADB Teal, Bell Gold, Hotel Blue, Poki Red and Island.
+alternatives: ABD Teal, Bell Gold, Hotel Blue, Poki Red and Island.
 
 1. Fully close the game.
 2. In Optional Files, open `Shopping Card`, then your chosen color folder.
@@ -19,7 +19,7 @@ capacity checks and native cash display are unchanged. No executable, new items
 or save fields are included. Keep personal settings in My Custom QoL Configuration
 so replacing the module preserves them.
 
-ADB Teal retains the original green design. Bell Gold uses the Bells counter's
+ABD Teal retains the original green design. Bell Gold uses the Bells counter's
 gold with a peach-gold card. Hotel Blue uses the hotel ticket counter's blue,
 navy edges and a red stripe. Poki Red uses coral red, cream details and a gold
 chip. Island pairs the ACNH Switch's turquoise blue with pockets cream.

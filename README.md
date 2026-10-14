@@ -403,7 +403,7 @@ card, blue oval and cream balance, outlines and backing. It shows a separate
 combined balance inside the two shops and while the catalog is open. The display
 saturates at **999,999,999**, while purchases still use the full combined funds;
 the label is English (“Bells”). Optional Files supplies five alternative colors.
-The following notes describe development of the original ADB Teal design.
+The following notes describe development of the original ABD Teal design.
 0.3.10 restored the compact layout after 0.3.9 made both savings and
 ordinary cash counters disappear; the user confirmed the recovery works.
 0.3.11 replaced the stepped corners with native rounded geometry but rendered

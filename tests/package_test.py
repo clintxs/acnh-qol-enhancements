@@ -65,7 +65,7 @@ assert optional['README.txt'] == files['README.txt'] == (package.ROOT / 'README.
 assert all(optional[name] == data for name, data in custom.items())
 assert not any('/exefs/' in name or 'Island Inverted/' in name for name in optional)
 assert {name.split('/')[1] for name in optional if name.startswith('Shopping Card/')} == {
-    'ADB Teal', 'Bell Gold', 'Hotel Blue', 'Poki Red', 'Island'}
+    'ABD Teal', 'Bell Gold', 'Hotel Blue', 'Poki Red', 'Island'}
 from build_shopping_card_layout import build as shopping_layout
 for palette, label in package.COLOR_LABELS.items():
     generated = shopping_layout(palette)
