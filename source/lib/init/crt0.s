@@ -16,8 +16,15 @@
 
 .global __module_start
 __module_start:
-    b entrypoint
+    // Nintendo's rtld recognizes the MOD0 pointer at +4 only when the first
+    // instruction is exactly `b +8`. Keep a trampoline before the banner;
+    // branching straight past it makes rtld interpret the word at +8 as an
+    // alternate header pointer and fault before module initialization.
+    b module_entry_trampoline
     .word __nx_mod0 - __module_start
+
+module_entry_trampoline:
+    b entrypoint
 
     .align 4
     .ascii "~~exlaunch uwu~~"

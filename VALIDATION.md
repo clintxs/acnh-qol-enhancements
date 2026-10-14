@@ -3058,3 +3058,30 @@ the generated default layout matches byte for byte. The existing Island Inverted
 structure/material/texture checks pass. No runtime or configuration change;
 Core stays 0.4.32. Generate revision 3 main/source/Optional Files archives and
 a standalone Island Inverted module, preserving older downloads.
+
+## 1.0.0 revision 6: Nintendo rtld header compatibility (2026-10-14)
+
+The ACNH 3.0.3 hardware crash report `01791976251_01006f8002326000.log`
+faults in original rtld build `283033DEEA3FC0B60104A4790098B9CCDB62D006`
+at PC +0x2238, reached from +0x1160 while probing Core's module header.
+The installed Core matches the preserved local build byte for byte.
+
+Core started with `b +0x20` (0x14000008), its MOD0 offset at +4, and a NOP
+(0xd503201f) at +8. This rtld accepts the +4 header form only for recognized
+entry words, including `b +8` (0x14000002). The old first word selects the
+alternate form and treats the NOP as a header offset. Core base
+0x6c40c78000 + 0xd503201f equals 0x6d15caa01f, exactly the reported invalid
+read address. The crash occurs before Core initialization and feature hooks.
+
+Use `b +8` followed by a trampoline to the existing +0x20 entrypoint.
+The trampoline occupies old alignment padding: the banner, entrypoint, MOD0,
+segments and feature code keep their existing locations. Decompressed old/new
+images differ only in five header instruction bytes and the 20-byte build ID.
+This retains the existing Eden module layout and initialization path.
+
+`rtld_header_arm_test.py` executes the actual hash-checked ACNH rtld probe in
+Unicorn at two Core load bases. The corrected header passes MOD0 validation;
+the old header faults and reproduces the hardware address exactly. The test
+is included in the Core check group. Live Switch and Eden launch validation
+of this corrected build remains pending; the probe test does not establish
+complete loader, runtime feature or resource compatibility.
