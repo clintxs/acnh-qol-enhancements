@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-QoL Enhancements **1.0.0** is a modular C++ mod suite for **Animal Crossing: New
+QoL Enhancements **1.0.1** is a modular C++ mod suite for **Animal Crossing: New
 Horizons 3.0.3 on Eden**. One required Core executable (`subsdk6`) loads seven
 optional feature packages. Each package supplies its configuration and any RomFS
 resources it needs.
@@ -55,13 +55,13 @@ Generate release archives:
 python3 tools/package.py
 ```
 
-For version 1.0.0, this produces:
+For version 1.0.1, this produces:
 
 | Archive | Contents |
 | --- | --- |
-| `dist/qol-enhancements-v1_0_0_for_acnh_v3_0_3.zip` | Core, seven feature folders, installation guide and SHA-256 manifest. |
-| `dist/qol-enhancements-v1_0_0_for_acnh_v3_0_3_source.zip` | Source, module configurations, captions, tools, tests and notices. |
-| `dist/qol-enhancements-v1_0_0_for_acnh_v3_0_3_optional-files.zip` | Personal configuration example and five Shopping Card color replacements. |
+| `dist/qol-enhancements-v1_0_1_for_acnh_v3_0_3.zip` | Core, seven feature folders, installation guide and SHA-256 manifest. |
+| `dist/qol-enhancements-v1_0_1_for_acnh_v3_0_3_source.zip` | Source, module configurations, captions, tools, tests and notices. |
+| `dist/qol-enhancements-v1_0_1_for_acnh_v3_0_3_optional-files.zip` | Personal configuration example and five Shopping Card color replacements. |
 
 Packaging verifies that module versions match Core and refuses to overwrite an
 existing archive. Choose an unused packaging revision when generating another

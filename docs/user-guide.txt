@@ -1,4 +1,4 @@
-QoL Enhancements v1.0.0
+QoL Enhancements v1.0.1
 
 The missing qualify of life update is here! This is a suite of small improvements to ease frustration and make gameplay a little smoother.
 

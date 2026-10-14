@@ -3154,3 +3154,16 @@ replay remains skipped without QOL_BASELINE_ELF; the separate preserved-old-ELF
 crash regression runs locally. Package/manifests are checked. Live Switch
 validation is pending. This does not establish the cause of the separate
 checkout report. Revision 10's ticket remap is included; markers stay 1.0.0.
+
+## 1.0.1 release (2026-10-14)
+
+The user confirmed that revision 11 fixes Y bag additions on their modded
+Switch, then confirmed the X tailor-ticket remap works on their Steam Deck.
+Promote those fixes to 1.0.1. Core's release string/version tuple, all seven
+feature marker versions, and the current user/source guides match 1.0.1.
+Gameplay code is unchanged from the live-tested revision 11.
+
+An existing local 1.0.1 archive set is preserved; this release uses packaging
+revision 2. Build, versioned-module activation, Switch rtld compatibility and
+package/manifest checks pass. The separate third-party checkout crash report
+remains unresolved pending their reproduction details or crash log.
