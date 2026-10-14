@@ -30,17 +30,16 @@ def verify_layout(original, patched):
     assert not any(parent == 'N_QolCapture_00' for _, parent in tree)
     assert not newpanes['N_QolCapture_00'][8] & 1
     assert struct.unpack_from('<ff', newpanes['N_QolCapture_00'], 44) == (-430, -64)
-    for tag in (b'mat1', b'txl1'):
-        old = next(s for s in before if s[:4] == tag); new = next(s for s in after if s[:4] == tag)
-        count = struct.unpack_from('<H', old, 8)[0]
-        assert struct.unpack_from('<H', new, 8)[0] == count + 1
-        if tag == b'mat1': assert material_records(new)[:-1] == material_records(old)
-        else:
-            def names(s, n):
-                return [s[12+struct.unpack_from('<I', s, 12+4*i)[0]:].split(b'\0',1)[0] for i in range(n)]
-            assert names(new, count) == names(old, count)
-            assert names(new, count+1)[-1] == b'Capture^t'
-    assert all(s in after for s in before if s[:4] not in (b'mat1', b'txl1'))
+    old_materials=next(s for s in before if s[:4]==b'mat1')
+    new_materials=next(s for s in after if s[:4]==b'mat1')
+    assert material_records(new_materials)[:-1]==material_records(old_materials)
+    old_textures=next(s for s in before if s[:4]==b'txl1')
+    assert next(s for s in after if s[:4]==b'txl1')==old_textures
+    texture_names=[old_textures[12+struct.unpack_from('<I',old_textures,12+4*i)[0]:].split(b'\0',1)[0]
+                   for i in range(struct.unpack_from('<H',old_textures,8)[0])]
+    new_material=material_records(new_materials)[-1]
+    assert texture_names[struct.unpack_from('<H',new_material,44)[0]]==b'White_00^r'
+    assert all(s in after for s in before if s[:4]!=b'mat1')
     # Check the author-defined user data with the format's entry-relative ABI.
     usd = next(after[i+1] for i,s in enumerate(after) if s[:4] == b'pan1' and pane_name(s) == 'N_QolCapture_00')
     name_offset, value_offset = struct.unpack_from('<II', usd, 12)

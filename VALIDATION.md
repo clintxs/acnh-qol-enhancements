@@ -3167,3 +3167,24 @@ An existing local 1.0.1 archive set is preserved; this release uses packaging
 revision 2. Build, versioned-module activation, Switch rtld compatibility and
 package/manifest checks pass. The separate third-party checkout crash report
 remains unresolved pending their reproduction details or crash log.
+
+## 1.0.1 revision 3: DIY app loading texture reference (2026-10-14)
+
+The user reports a Switch crash on the DIY loading screen. UILoad faults at
+main+031AA0B4 reading address 88 through a null texture backing resource.
+Their installed Core exactly matches 1.0.0 revision 11; the defect remains
+in 1.0.1 before revision 3. Preview augmentation adds a Capture^t texture name
+without an image of that name in MenuRecipe's BNTX. WorkBenchInfo, used as the
+reference, does supply it. Reuse MenuRecipe's existing White_00^r image for
+initial registration; native dynamic capture still supplies the preview image.
+Keep the texture table, original material records, panes and animations intact.
+A custom layout missing the backing name retains its unmodified normal grid.
+
+The new native resource regression resolves actual BNTX names, verifies the
+preserved old ELF introduces the unresolved name, and reproduces the reported
+getter offset/null read with modeled handle construction at two load bases.
+The fixed compiled layout resolves every declared texture. This is strong
+evidence for a loading defect, not a complete asynchronous/GPU reproduction.
+Preview lifecycle/native binding checks, pinned build, Switch rtld header and
+package/manifest checks pass. Live Switch/Deck visual retesting is pending.
+See research/recipe-preview/switch-loading-texture.md for details.

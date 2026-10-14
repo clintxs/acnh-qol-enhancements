@@ -8,6 +8,9 @@ namespace qol::crafting::recipe_layout {
 inline constexpr char SurfaceName[] = "N_QolPreview_00";
 inline constexpr char CaptureName[] = "N_QolCapture_00";
 inline constexpr char PictureName[] = "P_QolCapture_00";
+// Native texture registration resolves txl1 before DynamicCaptureUseName binds
+// the live capture. MenuRecipe has this backing image, but no Capture^t image.
+inline constexpr char BackingTextureName[] = "White_00^r";
 inline constexpr std::size_t MaximumBytes = 65536;
 
 template<class T> T Read(const std::byte *p, std::size_t o) {
@@ -80,7 +83,7 @@ inline std::size_t AddSurface(std::span<const std::byte> input, std::span<std::b
     const auto *data = input.data();
     if (input.size() < 20 || input.size() > MaximumBytes - 1024 ||
         std::memcmp(data, "FLYT\xff\xfe\x14\0", 8) || Read<unsigned>(data, 12) != input.size()) return 0;
-    unsigned sections = 0, depth = 0, rootStart = 0, rootEnd = 0, textures = 0, materials = 0;
+    unsigned sections = 0, depth = 0, rootStart = 0, rootEnd = 0, textures = 0, materials = 0, backingTexture = ~0u;
     bool menu = false, root = false, textureTable = false, materialTable = false;
     for (std::size_t at = 20; at < input.size();) {
         if (input.size() - at < 8) return 0;
@@ -111,38 +114,40 @@ inline std::size_t AddSurface(std::span<const std::byte> input, std::span<std::b
             for (unsigned i = 0; i < count; ++i) {
                 const auto offset = Read<unsigned>(s, 12 + i * 4) + (texture ? 12 : 0);
                 if (offset < 12 + count * 4 || offset >= size) return 0;
-                if (texture && !std::memchr(s + offset, 0, size - offset)) return 0;
+                if (texture) {
+                    if (!std::memchr(s + offset, 0, size - offset)) return 0;
+                    if (!std::strcmp(reinterpret_cast<const char *>(s + offset), BackingTextureName))
+                        backingTexture = i;
+                }
             }
         }
         at += size; ++sections;
     }
     if (!menu || !root || !rootStart || !rootEnd || depth || !textureTable || !materialTable ||
-        sections != Read<std::uint16_t>(data, 16) || output.size() < input.size() + 1024) return 0;
+        backingTexture >= textures || sections != Read<std::uint16_t>(data, 16) || output.size() < input.size() + 1024) return 0;
     auto *dest = output.data(); std::memcpy(dest, data, 20); unsigned used = 20;
     for (std::size_t at = 20; at < input.size();) {
         if (at == rootStart) used += Capture(dest + used);
         if (at == rootEnd) used += Surface(dest + used, materials);
         const auto *s = data + at; const unsigned size = Read<unsigned>(s, 4);
         auto *target = dest + used;
-        if (Tag(s, "txl1") || Tag(s, "mat1")) {
-            const bool texture = Tag(s, "txl1"); const unsigned count = texture ? textures : materials;
+        if (Tag(s, "mat1")) {
+            const unsigned count = materials;
             const unsigned tableEnd = 12 + count * 4;
-            const unsigned newSize = texture ? Align(size + 4 + 10) : size + 4 + 84;
-            Section(target, texture ? "txl1" : "mat1", newSize);
+            const unsigned newSize = size + 4 + 84;
+            Section(target, "mat1", newSize);
             Write<std::uint16_t>(target, 8, count + 1);
             for (unsigned i = 0; i < count; ++i) Write(target, 12 + i * 4, Read<unsigned>(s, 12 + i * 4) + 4);
-            Write(target, tableEnd, size + 4 - (texture ? 12 : 0));
+            Write(target, tableEnd, size + 4);
             std::memcpy(target + tableEnd + 4, s + tableEnd, size - tableEnd);
             auto *record = target + size + 4;
-            if (texture) std::memcpy(record, "Capture^t", 10);
-            else {
-                std::memcpy(record, PictureName, sizeof(PictureName));
-                // One texture, one transform, texture-only TEV stage; native
-                // capture material flags verified in ACNH's v9 layout format.
-                Write(record, 28, 0x15u); Write(record, 32, 0x08040200u); Write(record, 36, 0u); Write(record, 40, 0xffffffffu);
-                Write<std::uint16_t>(record, 44, textures); record[46] = std::byte(4); record[47] = std::byte(4);
-                Write(record, 60, 1.0f); Write(record, 64, 1.0f);
-            }
+            std::memcpy(record, PictureName, sizeof(PictureName));
+            // Reuse a real local texture until native DynamicCaptureUseName
+            // replaces the picture's texture. An unresolved added Capture^t
+            // can leave a null resource during native UILoad registration.
+            Write(record, 28, 0x15u); Write(record, 32, 0x08040200u); Write(record, 36, 0u); Write(record, 40, 0xffffffffu);
+            Write<std::uint16_t>(record, 44, backingTexture); record[46] = std::byte(4); record[47] = std::byte(4);
+            Write(record, 60, 1.0f); Write(record, 64, 1.0f);
             used += newSize;
         } else { std::memcpy(target, s, size); used += size; }
         at += size;
