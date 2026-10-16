@@ -1,8 +1,9 @@
-# 1.0.2 FPS compatibility test
+# 1.0.3 FPS compatibility
 
-This branch starts at the released **1.0.2** commit `370ae0b`. It does not
-include the later 1.1 development features. The suite and module versions
-remain 1.0.2; the test package uses packaging revision 2.
+Version **1.0.3** is based on released **1.0.2** (`370ae0b`) plus the FPS
+compatibility fix. It excludes later 1.1 development features. The preceding
+1.0.2 revision-2 test build was reported working by the user on 2026-10-16;
+that report does not identify every platform/rate combination as tested.
 
 ## Supported inputs
 
@@ -41,6 +42,16 @@ fully checked native function. It preserves the signed age threshold (2 updates
 for 45/60, 4 for 120), result code 1, and the resident's -1-to-7 requested-state
 transition. Vanilla still uses the original trampoline. No FPS helper is edited.
 
+## Patch order
+
+The FPS package's IPS/PCHTXT edits are loader-time changes to the executable.
+They are already present when QoL's `subsdk6` starts. QoL then installs its
+startup hook and activates its feature hooks after the game's RomFS mount.
+Consequently its validation and FPS detection inspect the patched code.
+Changing folder order cannot make loader-time edits run after QoL's runtime
+hooks. The compatibility adapter preserves the supported FPS behavior when
+QoL hooks the affected function.
+
 ## Timing
 
 Detected nominal update rate is initialized before feature installation.
@@ -61,7 +72,7 @@ implementation already uses system ticks; no 1.1 feature is backported here.
 Rate scaling follows the verified package's nominal rate, not measured display
 FPS. Engine slowdowns and FPS-mod behavior outside QoL are not compensated.
 
-## Verification and remaining live checks
+## Verification and live coverage
 
 Run `python3 tools/check.py fps` with the downloaded packages in `../external`.
 The test parses the enabled 3.0.3 PCHTXT records and IPS32 records (including the
@@ -79,14 +90,15 @@ regression groups continue to test vanilla 30 FPS behavior. Tests resolve the
 calling checkout's ELF so isolated worktrees do not accidentally test another
 branch's binary.
 
-Live emulator/Switch verification remains necessary. Test at each chosen rate:
+The compatibility test has a positive user live report. Additional emulator/Switch
+coverage remains useful. Test at each chosen rate:
 ordinary dialogue hold-Y and release; normal home pockets Y/ZL/ZR and hints;
 container menus; hold-A selling/storage selection; Fitting Room bag controls;
 crafting/cooking ramp; preview loading/navigation/rotation; automatic traversal;
 and swimming stroke timing/speed. These offline tests model UI/render/world
 services and cannot certify those live interactions.
 
-Install the compatibility test **instead of the existing QoL Core**, retaining
+Install 1.0.3 **instead of the existing QoL Core**, retaining
 only one copy of `subsdk6`. For a clean comparison, replace the selected suite
-folders from the matching full test ZIP, keep personal custom configuration
+folders from the matching full release ZIP, keep personal custom configuration
 separate, and restart the game. Preserve the original 1.0.2 ZIP for rollback.

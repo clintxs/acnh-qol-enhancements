@@ -1,4 +1,4 @@
-"""Execute 1.0.2 startup and affected callbacks over every supplied FPS patch.
+"""Execute released-suite startup and affected callbacks over every supplied FPS patch.
 
 Native text is patched exactly as the emulator/IPS loader would patch it. Hook
 publication and engine services are modeled; this is not a live emulator test.

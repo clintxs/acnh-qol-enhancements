@@ -1,22 +1,23 @@
-FPS COMPATIBILITY TEST - 1.0.2 PACKAGING REVISION 2
+QoL Enhancements v1.0.3
 
-Supports the supplied SpeedFix v1.4.1 ACNH 3.0.3 packages:
-45/60 FPS emulator or Switch, and 120 FPS emulator.
-Offline compatibility checks pass; live testing is still required.
-Replace the previous QoL folders; keep only one Core/subsdk6 enabled.
-Keep your original 1.0.2 ZIP for rollback. Restart after installing.
-No 1.1 features are included. FPS mods themselves are not included.
-
-Hold-A multiselect remains 250ms. Crafting ramps, preview controls and the
-amiibo timeout adjust to the supported nominal update rate. Very large custom
-amiibo timeouts cap at the native 65535-update limit with a logged warning.
-
-QoL Enhancements v1.0.2
-
-The missing qualify of life update is here! This is a suite of small improvements to ease frustration and make gameplay a little smoother.
+The missing quality of life update is here! This is a suite of small improvements to ease frustration and make gameplay a little smoother.
 
 This mod is broken up into a core module and seven feature modules enabling different categories of features. CORE IS REQUIRED, the mod will not work without it. Other submodules can be installed on their own or in any combination depending on which features you want.
 
+
+## New in 1.0.3
+
+Compatibility with the supplied SpeedFix v1.4.1 packages for ACNH 3.0.3:
+45/60 FPS on emulator or Switch, and 120 FPS on emulator. QoL detects the
+supported patch automatically; the FPS mod itself is installed separately.
+
+Fixes the Pockets shortcuts/hints and hold-Y dialogue conflict. Crafting ramps,
+preview controls and the amiibo timeout adjust to the detected nominal update
+rate. Hold-A multiselect remains 250ms. Very large custom amiibo timeouts cap
+at the native 65535-update limit with a logged warning.
+
+Replace the previous QoL folders and keep only one Core/subsdk6 enabled.
+Restart after updating. Preserve personal custom configuration separately.
 
 ## Installation
 

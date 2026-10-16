@@ -1,6 +1,6 @@
 # QoL Enhancements
 
-QoL Enhancements **1.0.2** is a modular C++ mod suite for **Animal Crossing: New
+QoL Enhancements **1.0.3** is a modular C++ mod suite for **Animal Crossing: New
 Horizons 3.0.3 on Eden**. One required Core executable (`subsdk6`) loads seven
 optional feature packages. Each package supplies its configuration and any RomFS
 resources it needs.
@@ -9,12 +9,13 @@ This README covers building and navigating the source. For installation and
 player-facing features, see [the packaged user guide](docs/user-guide.txt). Shopping Card appearance
 options are described in [SHOPPING_CARD_COLORS.md](SHOPPING_CARD_COLORS.md).
 
-## FPS compatibility test
+## FPS compatibility
 
-This isolated 1.0.2 branch adds compatibility with the supplied ACNH 3.0.3
+Version 1.0.3 adds compatibility with the supplied ACNH 3.0.3
 SpeedFix v1.4.1 packages (45/60 FPS on emulator/Switch, 120 FPS on emulator).
 See [the compatibility notes](docs/fps-compatibility.md) for the confirmed overlap,
-timer handling, validation and remaining live checks. No 1.1 features are included.
+timer handling and validation. The compatibility build was confirmed working in
+a user live test; each platform/rate combination still benefits from live testing.
 
 ## Build requirements
 
@@ -62,13 +63,13 @@ Generate release archives:
 python3 tools/package.py
 ```
 
-For version 1.0.2, this produces:
+For version 1.0.3, this produces:
 
 | Archive | Contents |
 | --- | --- |
-| `dist/qol-enhancements-v1_0_2_for_acnh_v3_0_3.zip` | Core, seven feature folders, installation guide and SHA-256 manifest. |
-| `dist/qol-enhancements-v1_0_2_for_acnh_v3_0_3_source.zip` | Source, module configurations, captions, tools, tests and notices. |
-| `dist/qol-enhancements-v1_0_2_for_acnh_v3_0_3_optional-files.zip` | Personal configuration example and five Shopping Card color replacements. |
+| `dist/qol-enhancements-v1_0_3_for_acnh_v3_0_3.zip` | Core, seven feature folders, installation guide and SHA-256 manifest. |
+| `dist/qol-enhancements-v1_0_3_for_acnh_v3_0_3_source.zip` | Source, module configurations, captions, tools, tests and notices. |
+| `dist/qol-enhancements-v1_0_3_for_acnh_v3_0_3_optional-files.zip` | Personal configuration example and five Shopping Card color replacements. |
 
 Packaging verifies that module versions match Core and refuses to overwrite an
 existing archive. Choose an unused packaging revision when generating another

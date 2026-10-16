@@ -1,3 +1,14 @@
+# 1.0.3 release — 2026-10-16
+
+The user reported the 1.0.2 revision-2 FPS compatibility build working. Version
+1.0.3 promotes that implementation with matching Core/module versions and
+release documentation. The report does not establish live coverage of all
+five FPS packages. The rebuilt 1.0.3 binary passes all five FPS-package checks, host policy suites,
+and Core's module-subset/configuration/startup tests. Prior full regression
+results remain recorded below.
+
+---
+
 # 1.0.2 SpeedFix compatibility test — 2026-10-16
 
 This isolated branch starts at released 1.0.2 (`370ae0b`), excluding later 1.1
