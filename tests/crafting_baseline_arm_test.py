@@ -22,7 +22,7 @@ def main():
     baseline = Path(filename).read_bytes()
     read_bytes = Path.read_bytes
     def saved_bytes(path):
-        return baseline if path.name == 'project.elf' and path.parent.name == 'qol-enhancements' else read_bytes(path)
+        return baseline if path.name == 'project.elf' and path.parent == Path(__file__).resolve().parents[1] else read_bytes(path)
     def pair(factory, *args):
         current = factory(*args)
         with patch.object(Path, 'read_bytes', saved_bytes): previous = factory(*args)

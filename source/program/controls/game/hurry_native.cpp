@@ -1,4 +1,5 @@
 #include "program/core/hook_plan.hpp"
+#include "program/core/native/speedfix.hpp"
 #include "lib.hpp"
 #include "../dialogue_hurry.hpp"
 #include "program/dialogue/reveal_hooks.hpp"
@@ -214,15 +215,14 @@ void TraceDialogueInput(std::uintptr_t manager, std::uintptr_t text,
 #endif
 }
 bool InstallHoldToAdvanceDialogue() {
-    struct Fingerprint { std::uintptr_t offset; std::uint32_t words[5]; };
-    constexpr Fingerprint fingerprints[]{
-        {address::AdvanceInput, {0xb964666b, 0x37f801ab, 0x3400024b, 0x5100096c, 0x7100057f}},
-        {address::ActiveController, {0xd10083ff, 0xa9017bfd, 0x910043fd, 0x90013ce8, 0x91276108}},
+    const qol::native::Fingerprint<> fingerprints[]{
+        {address::AdvanceInput, {0xb964666b, 0x37f801ab, 0x3400024b, 0x5100096c, 0x7100057f}, "controls.AdvanceInput"},
+        {address::ActiveController, {0xd10083ff, 0xa9017bfd, 0x910043fd, 0x90013ce8, 0x91276108}, "controls.ActiveController"},
     };
-    const auto &main = exl::util::GetMainModuleInfo();
     for (const auto &expected : fingerprints) {
-        if (expected.offset + sizeof(expected.words) > main.m_Text.m_Size ||
-            std::memcmp(reinterpret_cast<const void *>(Main(expected.offset)), expected.words, sizeof(expected.words))) {
+        const auto result = qol::native::CheckCompatibleCode(qol::native::MainExecutable(), expected);
+        if (!result) {
+            qol::native::ReportMismatch(result);
             Logging.Error("[QoL Enhancements/Controls] hold dialogue: DISABLED; instruction mismatch at main+0x%lx\n", expected.offset);
             return false;
         }

@@ -1,0 +1,37 @@
+{
+  "game": "3.0.3",
+  "build_id": "FF1D1C05670DB6021C85B624A710B963",
+  "speedfix": "1.4.1",
+  "inputs": [
+    {
+      "variant": "120fps-emulator-speedfix-v1-4-1-acnh",
+      "file": "120fps-emulator-speedfix-v1-4-1-acnh/mods/contents/01006F8002326000/ACNH 120 FPS + SpeedFix/exefs/speedfix120_main.pchtxt",
+      "sha256": "bbe27a3f84308867cbc7e59bb9c134a39a28ce793f9cf7d925d385c625756167",
+      "patched_bytes": 26192
+    },
+    {
+      "variant": "45fps-emulator-speedfix-v1-4-1-acnh",
+      "file": "45fps-emulator-speedfix-v1-4-1-acnh/mods/contents/01006F8002326000/ACNH 45 FPS + SpeedFix/exefs/speedfix45_main.pchtxt",
+      "sha256": "1a102adab85fa6751262414d9b34d2a7fa7c3998a1e79c4dce9bf55cf5d57313",
+      "patched_bytes": 29524
+    },
+    {
+      "variant": "45fps-switch-speedfix-v1-4-1-acnh",
+      "file": "45fps-switch-speedfix-v1-4-1-acnh/atmosphere/exefs_patches/ACNH_45FPS_SpeedFix/FF1D1C05670DB6021C85B624A710B963.ips",
+      "sha256": "d6ca7c06e2f46541f7277188fec93d139f08a008bf6c7eff1c0fce937e87823c",
+      "patched_bytes": 29524
+    },
+    {
+      "variant": "60fps-emulator-speedfix-v1-4-1-acnh",
+      "file": "60fps-emulator-speedfix-v1-4-1-acnh/mods/contents/01006F8002326000/ACNH 60 FPS + SpeedFix/exefs/speedfix_main.pchtxt",
+      "sha256": "b11e9447303e8c9b64cbfd9ec0f5b02af520cbac45ebd2a14d5412b1c0202595",
+      "patched_bytes": 25212
+    },
+    {
+      "variant": "60fps-switch-speedfix-v1-4-1-acnh",
+      "file": "60fps-switch-speedfix-v1-4-1-acnh/atmosphere/exefs_patches/ACNH_60FPS_SpeedFix/FF1D1C05670DB6021C85B624A710B963.ips",
+      "sha256": "57c395a0a39104f7c9586ad9be0b86c1108eb5882f9efaaa87828809fd0d683d",
+      "patched_bytes": 25212
+    }
+  ]
+}

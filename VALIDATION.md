@@ -1,3 +1,27 @@
+# 1.0.2 SpeedFix compatibility test — 2026-10-16
+
+This isolated branch starts at released 1.0.2 (`370ae0b`), excluding later 1.1
+work. See [fps-compatibility.md](docs/fps-compatibility.md) for the audited
+instruction overlaps, external helper return hazard and timer handling.
+
+- Pinned offline Docker build succeeds.
+- All host policy suites and all eight existing ARM/resource regression groups
+  pass: Core, Pockets, Controls, Crafting, Dialogue, Fitting Room, Catalog,
+  Shopping. Preserved-ELF comparisons that require `QOL_BASELINE_ELF` were skipped;
+  no compatible preserved baseline ELF was supplied in this checkout.
+- All five supplied SpeedFix v1.4.1 main patches pass at two ASLR bases, including
+  standalone Controls/Pockets startup, held-Y native dialogue advance, 1,120
+  C++/patched-native menu comparisons, crafting and amiibo timing, patch-byte
+  preservation outside hook spans, and corrupted/unknown instruction rejection.
+- Host session tests verify multiselect's unchanged 250ms delay, preview timeout
+  and workbench tilt speed at 30/45/60/120 Hz.
+
+Offline engine/hook-publication services are modeled. Live FPS-package loading,
+UI rendering, input/controller behavior and world movement still need testing.
+The FPS patches and game assets are external local fixtures, not distributed.
+
+---
+
 # Unified QoL validation
 
 Current refactor evidence: [stage 7 verification](docs/stage7-verification.md).

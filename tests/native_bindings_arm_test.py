@@ -52,7 +52,7 @@ if baseline:
     original_read = Path.read_bytes
 
     def baseline_read(path):
-        if path.name == 'project.elf' and path.parent.name == 'qol-enhancements':
+        if path.name == 'project.elf' and path.parent == Path(__file__).resolve().parents[1]:
             return preserved
         return original_read(path)
 

@@ -24,7 +24,7 @@ if BASELINE.exists():
     baseline=BASELINE.read_bytes()
     read_bytes=Path.read_bytes
     def old_module(path):
-        if path.name=='project.elf' and path.parent.name=='qol-enhancements': return baseline
+        if path.name=='project.elf' and path.parent==Path(__file__).resolve().parents[1]: return baseline
         return read_bytes(path)
     for base in (0,0x7100000000):
         with patch.object(Path,'read_bytes',old_module):

@@ -1,4 +1,5 @@
 #include "program/core/hook_plan.hpp"
+#include "program/core/update_rate.hpp"
 #include "lib.hpp"
 #include "../settings.hpp"
 #include "../features/crafting.hpp"
@@ -25,7 +26,7 @@ HOOK_DEFINE_INLINE(AutomaticMashBoost) {
         // native exit resets remain intact. Manual mashing works when disabled.
         const auto actor = registers->X[19];
         const auto elapsed = *reinterpret_cast<const unsigned *>(actor + ActorStateFrames);
-        registers->S[0] = features::CraftingRate(elapsed, MaximumSpeed);
+        registers->S[0] = features::CraftingRate(core::NativeFrames(elapsed), MaximumSpeed);
     }
 };
 } // namespace

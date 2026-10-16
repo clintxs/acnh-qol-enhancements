@@ -1,4 +1,5 @@
 #include "recipe_preview.hpp"
+#include "program/core/update_rate.hpp"
 #include <algorithm>
 namespace qol::crafting::preview {
 int Session::Navigation::Step() {
@@ -8,7 +9,7 @@ int Session::Navigation::Step() {
         const bool fresh = input != held;
         held = input;
         if (!fresh && wait) --wait;
-        else { pending = input; wait = fresh ? 12 : 4; }
+        else { pending = input; wait = core::UpdateFrames(fresh ? 12 : 4); }
     }
     return pending;
 }
@@ -44,10 +45,10 @@ void Session::Frame(game::PreviewRuntime &runtime) {
         if (direction && runtime.Navigate(direction) != NavigationProgress::Retry) navigation_.pending = 0;
         runtime.PlaceBanner();
         runtime.Rotate();
-        if (++frames_ == 30) runtime.ReportShowing();
+        if (++frames_ == core::UpdateFrames(30)) runtime.ReportShowing();
     }
     if (phase_ != Phase::Starting) return;
-    if (++frames_ > 120) { runtime.ReleaseRenderer(); FinishClose(); return; }
+    if (++frames_ > core::UpdateFrames(120)) { runtime.ReleaseRenderer(); FinishClose(); return; }
     const auto progress = runtime.CreateItemModel();
     if (progress == ModelProgress::Failed) { runtime.ReleaseRenderer(); FinishClose(); }
     else if (progress == ModelProgress::Created) {
@@ -65,7 +66,7 @@ float PreviewStickAxis(float value) {
     if (value < -DeadZone) return (value + DeadZone) / (1.f - DeadZone);
     return 0;
 }
-float TiltWorkbench(float previous, float stickY) { return std::clamp(previous - stickY * 6.f, -60.f, 60.f); }
+float TiltWorkbench(float previous, float stickY) { return std::clamp(previous - stickY * 6.f * core::UpdateScale(), -60.f, 60.f); }
 bool ShowRecipePreviewHint(bool categoryFocus, unsigned count, unsigned selected, preview::Phase phase) {
     return !categoryFocus && count && count <= 4096 && selected < count &&
         (phase == preview::Phase::Idle || phase == preview::Phase::DrainBack);
@@ -153,8 +154,8 @@ preview::NavigationProgress NavigateRecipePreview(preview::Session &session, gam
 void RotateRecipePreview(preview::Session &session, game::PreviewRotation &renderer) {
     const auto [x,y] = session.TakeRotationInput();
     if (renderer.FixedPose() || (x == 0 && y == 0) || !renderer.RendererReady()) return;
-    const auto tilt = session.TiltBy(-y * 6.f);
-    renderer.QueueRotation(x * 6.f, tilt);
+    const auto tilt = session.TiltBy(-y * 6.f * core::UpdateScale());
+    renderer.QueueRotation(x * 6.f * core::UpdateScale(), tilt);
 }
 }
 

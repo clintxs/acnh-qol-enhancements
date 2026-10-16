@@ -7,7 +7,8 @@ u64=lambda b,o:struct.unpack_from("<Q",b,o)[0]
 class Module:
     def __init__(self,machine,folder,address):
         self.folder,self.address=folder,address
-        e=(ROOT/folder/'project.elf').read_bytes();u=machine.u
+        project = Path(__file__).resolve().parents[1] if folder == 'qol-enhancements' else ROOT/folder
+        e=(project/'project.elf').read_bytes();u=machine.u
         segments=[struct.unpack_from('<IIQQQQQQ',e,u64(e,32)+i*u16(e,54)) for i in range(u16(e,56))]
         # Match the ELF memory size, including .bss. Imports live after the
         # image so larger retained UI-resource buffers cannot overwrite stubs.

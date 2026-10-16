@@ -2,6 +2,7 @@
 #include "lib.hpp"
 #include "program/core/settings.hpp"
 #include "core_operations.hpp"
+#include "program/core/update_rate.hpp"
 #include "runtime.hpp"
 #include "program/catalog/game/build_profile.hpp"
 #include <cstring>
@@ -38,7 +39,10 @@ bool InstallAmiiboTimeout(unsigned frames) {
         Logging.Error("[QoL Enhancements/Core] Amiibo timeout: DISABLED; instruction mismatch\n");
         return false;
     }
-    TimeoutFrames = frames;
+    const auto scaled = core::UpdateFrames(frames);
+    TimeoutFrames = scaled > MaxAmiiboTimeoutFrames ? MaxAmiiboTimeoutFrames : scaled;
+    if (scaled > MaxAmiiboTimeoutFrames)
+        Logging.Error("[QoL Enhancements/Core] Amiibo timeout capped at 65535 updates for %u Hz\n", core::UpdateFrequency);
 
     qol::core::HookPlan hookPlan{
         qol::core::Site<ScanTimeout>("ScanTimeout", ScanTimeoutAssignment, {0xb900f67f, 0x7901f268, 0xf94002a8, 0xb4000048, 0xf9401508}, true),

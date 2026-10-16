@@ -1,3 +1,16 @@
+FPS COMPATIBILITY TEST - 1.0.2 PACKAGING REVISION 2
+
+Supports the supplied SpeedFix v1.4.1 ACNH 3.0.3 packages:
+45/60 FPS emulator or Switch, and 120 FPS emulator.
+Offline compatibility checks pass; live testing is still required.
+Replace the previous QoL folders; keep only one Core/subsdk6 enabled.
+Keep your original 1.0.2 ZIP for rollback. Restart after installing.
+No 1.1 features are included. FPS mods themselves are not included.
+
+Hold-A multiselect remains 250ms. Crafting ramps, preview controls and the
+amiibo timeout adjust to the supported nominal update rate. Very large custom
+amiibo timeouts cap at the native 65535-update limit with a logged warning.
+
 QoL Enhancements v1.0.2
 
 The missing qualify of life update is here! This is a suite of small improvements to ease frustration and make gameplay a little smoother.

@@ -1,12 +1,15 @@
 #include "hook_plan.hpp"
+#include "native/speedfix.hpp"
 namespace qol::core {
 // 160 claims fit below Exlaunch's 163 200-byte trampoline slots. Every program
 // hook goes through a plan; inline entries have a larger independent capacity.
 static_assert(160 < exl::setting::JitSize / 200);
 HookRegistry<> OwnedHooks{};
 HookPlan::HookPlan(std::initializer_list<HookSite> sites) {
-    for (const auto &site : sites) {
+    for (auto site : sites) {
         if (!site.enabled) continue;
+        site.original = native::CompatibleFingerprint(native::MainExecutable(),
+            native::Fingerprint<>{site.offset, site.original, site.owner}).words;
         if (count_ == entries_.size()) { Fail(site, ClaimError::Capacity); break; }
         const auto reservation = OwnedHooks.Prepare(site, native::MainExecutable());
         if (!reservation) { Fail(site, reservation.error); break; }

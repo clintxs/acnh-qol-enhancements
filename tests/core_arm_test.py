@@ -3,6 +3,7 @@
 FS, hook installation, writable aliases and cache services are modeled. Every
 module installer and its validation run from the final ELF. No game/save writes.
 """
+from pathlib import Path
 from itertools import product
 import re
 from unicorn import Uc, UC_ARCH_ARM64, UC_MODE_ARM, UC_HOOK_CODE, UC_HOOK_MEM_WRITE
@@ -12,7 +13,7 @@ RAW = (ROOT / 'Grab 5/working/main.raw').read_bytes()
 SLUGS = ('catalog', 'pockets', 'faster-dialogue', 'fitting-room', 'shopping-card', 'crafting', 'controls')
 COUNTS = (19, 20, 7, 12, 15, 19, 27)  # Controls and Faster Dialogue share five reveal sites.
 RELEASE_VERSION = re.search(r'ReleaseVersion\[\] = "(\d+\.\d+\.\d+)"',
-                            (ROOT / 'qol-enhancements/source/program/core/release.hpp').read_text())[1]
+                            (Path(__file__).resolve().parents[1] / 'source/program/core/release.hpp').read_text())[1]
 DEFAULT = f'enabled=true\nversion={RELEASE_VERSION}\n'.encode()
 # Explicitly isolate pickup/dialogue checks from swimming/traversal; Core tests use real defaults.
 CONTROLS_MANUAL = DEFAULT + b'auto_vault=false\nauto_ladder=false\nauto_equip_traversal=false\nauto_swim=false\n'

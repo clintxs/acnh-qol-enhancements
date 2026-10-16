@@ -1,5 +1,8 @@
 #include "program/crafting/features/recipe_preview.hpp"
 #include <cassert>
+#include <cmath>
+#include "program/core/update_rate.hpp"
+#include "program/pockets/features/pockets.hpp"
 #include <iostream>
 using namespace qol::crafting::preview;
 struct Runtime : qol::crafting::game::PreviewRuntime {
@@ -18,7 +21,35 @@ struct Runtime : qol::crafting::game::PreviewRuntime {
     void Rotate() override { ++rotations; }
     void ReportShowing() override { ++reports; }
 };
+void CheckFpsTiming() {
+    for (const unsigned fps : {30u,45u,60u,120u}) {
+        qol::core::UpdateFrequency = fps;
+        Session session; Runtime runtime;
+        session.Open(); session.Frame(runtime);
+        for (unsigned frame=0; frame<fps*4; ++frame) session.Frame(runtime);
+        assert(session.State()==Phase::Starting && runtime.creates==fps*4);
+        session.Frame(runtime);
+        assert(session.State()==Phase::DrainBack && runtime.closes==1);
+        // One second of the same stick input retains the same angular travel.
+        float tilt=0;
+        for (unsigned frame=0; frame<fps; ++frame)
+            tilt=qol::crafting::features::TiltWorkbench(tilt,.1f);
+        assert(std::abs(tilt+18.f)<.001f);
+        qol_pockets::features::HoldSelection hold;
+        hold.Release(); hold.Begin(false,0);
+        unsigned ready=0;
+        for (unsigned frame=0; frame<=fps; ++frame) {
+            const auto tick=std::uint64_t(frame)*19'200'000/fps;
+            if (hold.WantsToggle(false,true,tick)) { ready=frame; break; }
+        }
+        const auto readyTick=std::uint64_t(ready)*19'200'000/fps;
+        assert(readyTick>=hold.StartDelayTicks);
+        assert(readyTick-hold.StartDelayTicks<19'200'000/fps);
+    }
+    qol::core::UpdateFrequency=30;
+}
 int main() {
+    CheckFpsTiming();
     Session s; Runtime runtime;
     s.Rotate(1,1); s.Navigate(1);
     assert(s.TakeRotationInput().x == 0);
@@ -95,5 +126,5 @@ int main() {
     assert(s.TakeRotationInput().x == 0 && s.TiltBy(0) == 12);
     s.ReleaseBack(); s.Open(); s.Frame(runtime); s.Frame(runtime);
     s.Frame(runtime); assert(runtime.moves == moves); // No stale navigation after close.
-    std::cout << "PASS: asynchronous preview open/fail/timeout, bounded pending navigation, rotation scope, close/drain and repeated lifecycle\n";
+    std::cout << "PASS: 30/45/60/120 Hz hold delay, preview timeout/angular speed; asynchronous preview open/fail/timeout, bounded pending navigation, rotation scope, close/drain and repeated lifecycle\n";
 }

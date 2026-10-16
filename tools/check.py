@@ -7,6 +7,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 GROUPS = {
+    'fps': ['fps_compat_arm_test.py'],
     'core': ['rtld_header_arm_test.py', 'core_baseline_arm_test.py', 'page_input_arm_test.py', 'feature_activation_arm_test.py', 'native_bindings_arm_test.py', 'logging_arm_test.py', 'core_arm_test.py', 'recipe_preview_arm_test.py', 'recipe_texture_resource_arm_test.py'],
     'shopping': ['shopping_baseline_arm_test.py', 'shopping_layout_test.py', 'shopping_resource_arm_test.py', 'shopping_texture_arm_test.py', 'shopping_display_arm_test.py', 'shopping_cash_arm_test.py', 'shopping_storage_arm_test.py'],
     'dialogue': ['dialogue_policy_arm_test.py', 'dialogue_baseline_arm_test.py', 'dialogue_arm_test.py', 'dialogue_names_arm_test.py'],
@@ -41,7 +42,7 @@ def main():
             if name == 'catalog_test':
                 arguments.append(str(ROOT / 'modules/Pockets/romfs/qol-enhancements/messages/pockets.ini'))
             subprocess.run(arguments, check=True)
-    for group in args.groups or GROUPS:
+    for group in args.groups or [name for name in GROUPS if name != 'fps']:
         for name in GROUPS[group]:
             print(f'Checking {group}: {name}', flush=True)
             subprocess.run(['python3', str(ROOT / 'tests' / name)], check=True, env=env)

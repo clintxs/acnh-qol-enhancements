@@ -9,6 +9,13 @@ This README covers building and navigating the source. For installation and
 player-facing features, see [the packaged user guide](docs/user-guide.txt). Shopping Card appearance
 options are described in [SHOPPING_CARD_COLORS.md](SHOPPING_CARD_COLORS.md).
 
+## FPS compatibility test
+
+This isolated 1.0.2 branch adds compatibility with the supplied ACNH 3.0.3
+SpeedFix v1.4.1 packages (45/60 FPS on emulator/Switch, 120 FPS on emulator).
+See [the compatibility notes](docs/fps-compatibility.md) for the confirmed overlap,
+timer handling, validation and remaining live checks. No 1.1 features are included.
+
 ## Build requirements
 
 Run the commands below from the repository root.

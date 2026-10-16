@@ -17,7 +17,7 @@ else:
     baseline = Path(baseline_path).read_bytes()
     read_bytes = Path.read_bytes
     def baseline_bytes(path):
-        return baseline if path.name == 'project.elf' and path.parent.name == 'qol-enhancements' else read_bytes(path)
+        return baseline if path.name == 'project.elf' and path.parent == Path(__file__).resolve().parents[1] else read_bytes(path)
     class CountIdentity(DialogueMachine):
         def __init__(self, *args, **kwargs):
             self.identity_calls = 0

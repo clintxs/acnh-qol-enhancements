@@ -9,7 +9,7 @@ from catalog_query_arm_test import NativeQuery, ROOT
 from unicorn import UC_HOOK_CODE, UC_PROT_READ, UC_PROT_EXEC
 from unicorn.arm64_const import *
 
-elf = (ROOT / 'qol-enhancements/project.elf').read_bytes()
+elf = (Path(__file__).resolve().parents[1] / 'project.elf').read_bytes()
 u16 = lambda b,o: struct.unpack_from('<H',b,o)[0]
 u64 = lambda b,o: struct.unpack_from('<Q',b,o)[0]
 sections = [struct.unpack_from('<IIQQQQIIQQ',elf,u64(elf,40)+i*u16(elf,58)) for i in range(u16(elf,60))]

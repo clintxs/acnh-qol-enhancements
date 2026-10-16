@@ -1,4 +1,7 @@
 #include "core_features.hpp"
+#include "program/core/native/speedfix.hpp"
+#include "program/core/native/runtime.hpp"
+#include "program/core/update_rate.hpp"
 #include "program/core/modules.hpp"
 #include "program/core/native/core_operations.hpp"
 #include "program/core/resource_budget.hpp"
@@ -50,6 +53,9 @@ bool InstallConfiguredScanTimeout() { return game::InstallAmiiboTimeout(Requeste
 } // namespace
 
 FeatureResult ActivateCoreFeatures(const Settings &settings) {
+    UpdateFrequency = native::SpeedFixFrequency(native::MainExecutable());
+    Logging.Debug("[QoL Enhancements/Core] update rate=%u Hz; verified SpeedFix=%u\n",
+                  UpdateFrequency, unsigned(UpdateFrequency != 30));
     RequestedScanTimeout = settings.amiiboTimeoutFrames;
     // Zero leaves the game's initialization, countdown and expiry untouched.
     // The default is 9,000 updates; settings validate the unsigned 16-bit range.

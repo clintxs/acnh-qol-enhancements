@@ -67,7 +67,7 @@ for base in (0x7100000000,0x7200000000):
     if baseline.exists():
         old_elf=baseline.read_bytes();reader=Path.read_bytes
         def preserved(path):
-            return old_elf if path.name=='project.elf' and path.parent.name=='qol-enhancements' else reader(path)
+            return old_elf if path.name=='project.elf' and path.parent==Path(__file__).resolve().parents[1] else reader(path)
         with patch.object(Path,'read_bytes',preserved): old=PreviewMachine(base)
         old_names=names(old.patch(MENU))
         assert [name for name in old_names if not native.resolves(name)]==['Capture^t']
